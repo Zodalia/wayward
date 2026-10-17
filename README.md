@@ -82,6 +82,22 @@ Install the same way as WFProbe below, with the `Wayfinder` folder.
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
 harvesting and the panel against a fake two-continent world.
 
+### Quests
+
+The **Quests** tab (or `/wf quest <name>`) searches QuestieDB quests by name,
+or takes a shift-clicked quest link. Each quest shows its level and whether you
+can take it: available (grey and red quests say so), in your log, done, needs
+earlier quests (naming the first one you can take, or the one in your log to
+finish), too low, not for your race or class, or not available (closed by a
+quest you did, outlevelled, needs a profession). Click a quest to go to its
+quest giver, to where you hand it in, or to the start of its chain; the trip
+waits there until you accept or hand in the quest. When a search matches
+dungeon quests, and on the Dungeons tab ("Quests" button), one trip picks up
+every quest you can take for that dungeon and ends at the entrance. The rules
+are the Quest hubs rules (`ns.Questie.QuestStatus(id)` and
+`ns.Questie.ChainStart(id)` give the status, reason and first chain step).
+Needs QuestieDB.
+
 ### Building on Wayfinder: pages and journeys
 
 - **Pages** are the panel's tabs. A file that loads before `UI/Panel.lua`

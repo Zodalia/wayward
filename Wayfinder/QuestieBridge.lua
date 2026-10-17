@@ -23,7 +23,7 @@ local CLASS_BY_TRAINER_TITLE = {
 local QUEST_FIELDS = { "name", "questLevel", "requiredLevel", "requiredRaces", "requiredClasses",
   "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill", "nextQuestInChain",
   "parentQuest", "requiredMaxLevel", "availableUntilCompleted", "availableStartingWith", "disabledByQuest",
-  "breadcrumbForQuestId", "zoneOrSort" }
+  "breadcrumbForQuestId", "zoneOrSort", "finishedBy" }
 
 local RED_LEVELS = 5 -- a quest this many levels above you shows red
 
@@ -194,6 +194,7 @@ end
 
 local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
 local questByID -- [questID] = quest row (every quest, with or without a starter)
+local nameIndex -- { {lowercase name, quest row}, ... }, built on the first search
 
 local function buildQuestIndex()
   questIndex, predecessors, questByID = {}, {}, {}
@@ -301,29 +302,134 @@ local function active(id, done, inLog)
   return id ~= 0 and (done[id] or inLog[id])
 end
 
+local function questName(id)
+  local q = questByID[id]
+  return q and q.name or ("quest " .. id)
+end
+
+-- Why this character can't take the quest now, as a status and a reason, or
+-- nil when nothing stops you (level fit aside, see fitsLevel). Statuses: done,
+-- inLog, notForYou, tooLow, unavailable (closed to you for good or for now),
+-- needsEarlier (an earlier quest first, see chainStart).
 -- Field meanings: QuestieDB src/meta/questMeta.lua. Questie handles more
 -- (holiday/event flags, reputation); quests needing a profession are left out.
-local function eligible(q, p, done, inLog)
-  if done[q.id] or inLog[q.id] then return false end
+local function blocker(q, p, done, inLog)
+  if done[q.id] then return "done", "You have done this quest." end
+  if inLog[q.id] then return "inLog", "In your quest log." end
+  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then
+    return "notForYou", "Not for your race."
+  end
+  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then
+    return "notForYou", "Not for your class."
+  end
   local required = q.requiredLevel or 0
-  if required ~= 0 and required > p.level then return false end
-  if (q.requiredMaxLevel or 0) ~= 0 and p.level > q.requiredMaxLevel then return false end
-  local questLevel = (q.questLevel or 0) ~= 0 and q.questLevel or required
-  if questLevel > 0 and (isTrivial(questLevel, p.level) or questLevel - p.level >= RED_LEVELS) then return false end
-  if not canEverDo(q, p) then return false end
-  if q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done) then return false end
-  if q.preQuestGroup and not allDone(q.preQuestGroup, done) then return false end
-  if not chainReached(q, p, done) then return false end
-  if anyDone(q.exclusiveTo, done) then return false end
+  if required ~= 0 and required > p.level then return "tooLow", "Requires level " .. required .. "." end
+  if (q.requiredMaxLevel or 0) ~= 0 and p.level > q.requiredMaxLevel then
+    return "unavailable", "Only up to level " .. q.requiredMaxLevel .. "."
+  end
+  for _, id in ipairs(q.exclusiveTo or {}) do
+    if done[id] then return "unavailable", "Closed by " .. questName(id) .. ", which you did." end
+  end
   -- You have moved on: the next quest in the chain is active or completed.
-  if active(q.nextQuestInChain or 0, done, inLog) then return false end
-  if active(q.breadcrumbForQuestId or 0, done, inLog) then return false end
-  if (q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest] then return false end
-  if (q.availableStartingWith or 0) ~= 0 and not active(q.availableStartingWith, done, inLog) then return false end
-  if (q.availableUntilCompleted or 0) ~= 0 and done[q.availableUntilCompleted] then return false end
-  if (q.disabledByQuest or 0) ~= 0 and inLog[q.disabledByQuest] then return false end
-  if q.requiredSkill then return false end
-  return true
+  if active(q.nextQuestInChain or 0, done, inLog) then
+    return "unavailable", "You have moved on to " .. questName(q.nextQuestInChain) .. "."
+  end
+  if active(q.breadcrumbForQuestId or 0, done, inLog) then
+    return "unavailable", "Leads to " .. questName(q.breadcrumbForQuestId) .. ", which you already have."
+  end
+  if (q.availableUntilCompleted or 0) ~= 0 and done[q.availableUntilCompleted] then
+    return "unavailable", "Closed by " .. questName(q.availableUntilCompleted) .. ", which you did."
+  end
+  if (q.disabledByQuest or 0) ~= 0 and inLog[q.disabledByQuest] then
+    return "unavailable", "Not while " .. questName(q.disabledByQuest) .. " is in your log."
+  end
+  if (q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest] and done[q.parentQuest] then
+    return "unavailable", "Part of " .. questName(q.parentQuest) .. ", which you did."
+  end
+  if (q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done))
+    or (q.preQuestGroup and not allDone(q.preQuestGroup, done))
+    or not chainReached(q, p, done)
+    or ((q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest])
+    or ((q.availableStartingWith or 0) ~= 0 and not active(q.availableStartingWith, done, inLog)) then
+    return "needsEarlier", "Needs earlier quests."
+  end
+  if q.requiredSkill then return "unavailable", "Needs a profession." end
+  return nil
+end
+
+-- Hubs hide grey quests (little XP) and red ones (too hard).
+local function fitsLevel(q, p)
+  local questLevel = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
+  if questLevel <= 0 then return true, questLevel end
+  if isTrivial(questLevel, p.level) then return false, questLevel, "grey" end
+  if questLevel - p.level >= RED_LEVELS then return false, questLevel, "red" end
+  return true, questLevel
+end
+
+-- The Quest hubs rules: nothing stops you and the level fits.
+local function eligible(q, p, done, inLog)
+  return blocker(q, p, done, inLog) == nil and (fitsLevel(q, p))
+end
+
+-- Earlier quests that `q` still waits for (the unmet requirements).
+local function requirements(q, p, done, inLog)
+  local out = {}
+  for _, id in ipairs(q.preQuestGroup or {}) do
+    if not done[id] then out[#out + 1] = id end
+  end
+  if not anyDone(q.preQuestSingle, done) then
+    for _, id in ipairs(q.preQuestSingle or {}) do out[#out + 1] = id end
+  end
+  if not chainReached(q, p, done) then
+    for _, prev in ipairs(predecessors[q.id]) do
+      if canEverDo(prev, p) then out[#out + 1] = prev.id end
+    end
+  end
+  if (q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest] then out[#out + 1] = q.parentQuest end
+  local starting = q.availableStartingWith or 0
+  if starting ~= 0 and not active(starting, done, inLog) then out[#out + 1] = starting end
+  return out
+end
+
+-- The first quest on the way to `q` you can act on now: an earlier quest you
+-- can take ("available", grey or red included) or one in your log to finish
+-- first ("inLog"). Depth first, so the earliest takeable step of a chain wins.
+local function chainStart(q, p, done, inLog, seen)
+  seen[q.id] = true
+  for _, id in ipairs(requirements(q, p, done, inLog)) do
+    local prev = questByID[id]
+    if prev and not seen[id] then
+      local status = blocker(prev, p, done, inLog)
+      if status == nil then return id, "available" end
+      if status == "inLog" then return id, "inLog" end
+      if status == "needsEarlier" then
+        local stepID, state = chainStart(prev, p, done, inLog, seen)
+        if stepID then return stepID, state end
+      end
+    end
+  end
+  return nil
+end
+
+-- status, reason[, stepID, stepState] for a quest row (see Bridge.QuestStatus).
+local function questStatus(q, p, done, inLog)
+  local status, reason = blocker(q, p, done, inLog)
+  if status == "needsEarlier" then
+    local stepID, state = chainStart(q, p, done, inLog, {})
+    if state == "available" then
+      reason = "Needs earlier quests. Start the chain: " .. questName(stepID) .. "."
+    elseif state == "inLog" then
+      reason = "Needs earlier quests. Finish " .. questName(stepID) .. " first (in your log)."
+    else
+      reason = "Needs earlier quests you can't take yet."
+    end
+    return status, reason, stepID, state
+  end
+  if status then return status, reason end
+  local _, questLevel, why = fitsLevel(q, p)
+  if why == "grey" then return "available", "Grey for you: little XP." end
+  if why == "red" then return "available", string.format("Level %d: hard for you.", questLevel) end
+  return "available", "You can take this quest."
 end
 
 local function giverNode(kind, id, here, faction)
@@ -339,6 +445,21 @@ local function giverNode(kind, id, here, faction)
   return giver.name, Bridge.Nearest(giver.nodes, here)
 end
 
+-- Nearest of a quest's starters or finishers ({npcIDs, objectIDs}) you can talk
+-- to: name, node, distance, key (or nil).
+local function nearestOf(ends, here, faction)
+  local bestName, bestNode, bestDistance, bestKey
+  for kind, group in pairs({ npc = ends and ends[1], object = ends and ends[2] }) do
+    for _, id in ipairs(group or {}) do
+      local name, node, distance = giverNode(kind, id, here, faction)
+      if node and (not bestDistance or distance < bestDistance) then
+        bestName, bestNode, bestDistance, bestKey = name, node, distance, kind .. id
+      end
+    end
+  end
+  return bestName, bestNode, bestDistance, bestKey
+end
+
 -- Hubs of quest givers you can take quests from, nearest first (straight line).
 function Bridge.QuestHubs(here, limit)
   if not Bridge.Available() then return {} end
@@ -350,15 +471,7 @@ function Bridge.QuestHubs(here, limit)
   local givers, order = {}, {}
   for _, q in ipairs(questIndex) do
     if eligible(q, p, done, inLog) then
-      local bestName, bestNode, bestDistance, bestKey
-      for kind, group in pairs({ npc = q.startedBy[1], object = q.startedBy[2] }) do
-        for _, id in ipairs(group or {}) do
-          local name, node, distance = giverNode(kind, id, here, faction)
-          if node and (not bestDistance or distance < bestDistance) then
-            bestName, bestNode, bestDistance, bestKey = name, node, distance, kind .. id
-          end
-        end
-      end
+      local bestName, bestNode, bestDistance, bestKey = nearestOf(q.startedBy, here, faction)
       if bestNode then
         local g = givers[bestKey]
         if not g then
@@ -434,17 +547,64 @@ end
 function Bridge.QuestGiver(questID, here)
   local q = Bridge.Quest(questID)
   if not (q and q.startedBy) then return nil end
-  local faction = UnitFactionGroup("player")
-  local bestName, bestNode, bestDistance
-  for kind, group in pairs({ npc = q.startedBy[1], object = q.startedBy[2] }) do
-    for _, id in ipairs(group or {}) do
-      local name, node, distance = giverNode(kind, id, here, faction)
-      if node and (not bestDistance or distance < bestDistance) then
-        bestName, bestNode, bestDistance = name, node, distance
-      end
+  local name, node, distance = nearestOf(q.startedBy, here, UnitFactionGroup("player"))
+  return name, node, distance
+end
+
+-- Nearest NPC or object you hand the quest in to: name, node, distance (or nil).
+function Bridge.QuestFinisher(questID, here)
+  local q = Bridge.Quest(questID)
+  if not (q and q.finishedBy) then return nil end
+  local name, node, distance = nearestOf(q.finishedBy, here, UnitFactionGroup("player"))
+  return name, node, distance
+end
+
+-- The level shown for a quest (your level for quests that scale with you).
+function Bridge.QuestLevel(questID)
+  local q = Bridge.Quest(questID)
+  return q and displayLevel(q, playerProfile()) or nil
+end
+
+-- Whether this character can take a quest, and why not:
+--   status, reason[, stepID, stepState]
+-- status is "available" (grey and red quests too; the reason says so), "inLog",
+-- "done", "needsEarlier", "tooLow", "notForYou", "unavailable" or "unknown"
+-- (not in QuestieDB). For "needsEarlier", stepID is the first quest of the
+-- chain you can act on (see Bridge.ChainStart) and stepState "available" or
+-- "inLog" (finish it first); both are nil when no earlier quest is open to you.
+function Bridge.QuestStatus(questID, done, inLog)
+  local q = Bridge.Quest(questID)
+  if not q then return "unknown", "Unknown to QuestieDB." end
+  if not done then done, inLog = playerQuestState() end
+  return questStatus(q, playerProfile(), done, inLog)
+end
+
+-- The first quest on the way to `questID` you can act on now: stepID, stepState
+-- ("available": take it; "inLog": finish it first), or nil.
+function Bridge.ChainStart(questID, done, inLog)
+  local q = Bridge.Quest(questID)
+  if not q then return nil end
+  if not done then done, inLog = playerQuestState() end
+  return chainStart(q, playerProfile(), done, inLog, {})
+end
+
+-- Quests whose name contains `text` (case-insensitive), with or without a
+-- starter, lowest ID first. The name index is built once, on the first search.
+function Bridge.FindQuests(text)
+  if not Bridge.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  if not nameIndex then
+    nameIndex = {}
+    for _, q in pairs(questByID) do
+      if type(q.name) == "string" then nameIndex[#nameIndex + 1] = { q.name:lower(), q } end
     end
+    table.sort(nameIndex, function(a, b) return a[2].id < b[2].id end)
   end
-  return bestName, bestNode, bestDistance
+  local needle, out = text:lower(), {}
+  for _, entry in ipairs(nameIndex) do
+    if entry[1]:find(needle, 1, true) then out[#out + 1] = entry[2] end
+  end
+  return out
 end
 
 local function addGiver(hub, g)

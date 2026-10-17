@@ -729,6 +729,147 @@ for areaID in pairs(catalogue[1] and catalogue[1].areaIDs or {}) do someArea = a
 check(someArea and ns.Dungeons.ForArea(someArea) and ns.Dungeons.ForArea(someArea).name == catalogue[1].name,
   "Dungeons.ForArea finds a dungeon by area ID")
 
+---------------------------------------------------------------- quests page (begin)
+do
+  io.write("quests page\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local function reload() assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns) end
+  local added = { 10, 30, 31, 32, 33 }
+  QUESTS[10].finishedBy = { { 6000 } } -- "Already in log", handed in in Stormwind
+  QUESTS[30] = { name = "Chain part 3", questLevel = 20, requiredLevel = 15, preQuestSingle = { 13 },
+    startedBy = { { 345 } } }
+  QUESTS[31] = { name = "After the log quest", questLevel = 20, requiredLevel = 15, preQuestSingle = { 10 },
+    startedBy = { { 345 } } }
+  QUESTS[32] = { name = "Defias Orders", questLevel = 21, requiredLevel = 16, zoneOrSort = 1581,
+    startedBy = { { 345 } } }
+  QUESTS[33] = { name = "Lost to the Horde", questLevel = 20, requiredLevel = 15, startedBy = { { 5001 } } }
+  for i = 1, 25 do
+    QUESTS[200 + i] = { name = "Filler errand " .. i, questLevel = 20, requiredLevel = 15, requiredRaces = 2,
+      startedBy = { { 344 } } }
+    added[#added + 1] = 200 + i
+  end
+  LibQuestieDB.Meta.QuestMeta.questKeys.finishedBy = 3
+  reload()
+
+  local function status(id) return (ns.Questie.QuestStatus(id)) end
+  local codes = {}
+  for _, id in ipairs({ 1, 10, 2, 13, 9, 3, 8, 18, 5, 4, 4242 }) do codes[#codes + 1] = status(id) end
+  check(table.concat(codes, ",") == "available,inLog,done,needsEarlier,tooLow,notForYou,notForYou,unavailable,"
+    .. "available,needsEarlier,unknown", "every status (" .. table.concat(codes, ",") .. ")")
+  local _, greyReason = ns.Questie.QuestStatus(5)
+  check(greyReason:find("Grey"), "a grey quest is available but says so: " .. greyReason)
+  local _, reason, stepID, stepState = ns.Questie.QuestStatus(30)
+  check(stepID == 14 and stepState == "available" and reason:find("Start the chain: Chain part 1", 1, true),
+    "a two-step chain starts at its first quest: " .. reason)
+  check(select(1, ns.Questie.ChainStart(31)) == 10 and select(2, ns.Questie.ChainStart(31)) == "inLog",
+    "a chain waiting on a quest in your log says to finish it")
+  _, reason, stepID = ns.Questie.QuestStatus(4)
+  check(stepID == nil and reason:find("can't take yet"), "no takeable step: " .. reason)
+  local agree = true
+  local done, inLog = ns.Questie.PlayerQuestState()
+  for id in pairs(QUESTS) do
+    local s, r = ns.Questie.QuestStatus(id, done, inLog)
+    local fits = s == "available" and r == "You can take this quest."
+    if ns.Questie.IsQuestAvailable(id, done, inLog) ~= fits then agree = false end
+  end
+  check(agree, "IsQuestAvailable is exactly 'available' at a fitting level")
+  local hubs = ns.QuestHubs.Results()
+  check(#hubs == 2 and hubs[1].title == "Lakeshire  ·  6 quests", "quest hubs still apply the same rules ("
+    .. tostring(hubs[1] and hubs[1].title) .. ")")
+
+  local function byTitle(list, title)
+    for _, row in ipairs(list) do if row.title == title then return row end end
+  end
+  local rows = ns.QuestsPage.Results("CHAIN")
+  local got = {}
+  for _, row in ipairs(rows) do got[#got + 1] = row.title end
+  check(table.concat(got, " | ") == "[19] Chain part 1 | [19] Chain part 2 | [20] Chain part 3",
+    "case-insensitive search, available first (" .. table.concat(got, " | ") .. ")")
+  local part1 = byTitle(rows, "[19] Chain part 1")
+  local stop = part1 and part1.journey and part1.journey.stops[1]
+  check(stop and stop.action.kind == "pickup" and stop.action.questID == 14
+    and stop.text == "Pick up Chain part 1 from Stormwind Questgiver", "available: to the quest giver")
+  local part3 = byTitle(rows, "[20] Chain part 3")
+  stop = part3 and part3.journey and part3.journey.stops[1]
+  check(stop and stop.action.questID == 14 and stop.text == "Start the chain: pick up Chain part 1 from Stormwind Questgiver"
+    and part3.subtitle:find("start: Chain part 1", 1, true), "needs earlier quests: to the start of the chain")
+  -- Quest rows by id: a dungeon run row can come first ("Already in log" is a Deadmines quest).
+  local function questRow(text, id)
+    for _, row in ipairs(ns.QuestsPage.Results(text)) do if row.id == "quest" .. id then return row end end
+  end
+  local inLogRow = questRow("already in log", 10)
+  stop = inLogRow and inLogRow.journey and inLogRow.journey.stops[1]
+  check(stop and stop.action.kind == "turnin" and stop.action.questID == 10 and stop.node.mapID == 1453
+    and stop.text == "Hand in Already in log to Stormwind Questgiver", "in your log: to where you hand it in")
+  rows = ns.QuestsPage.Results("after the log")
+  stop = rows[1] and rows[1].journey and rows[1].journey.stops[1]
+  check(stop and stop.action.kind == "turnin" and stop.action.questID == 10, "chain behind a log quest: hand that in first")
+  local function subFor(text, id)
+    local r = questRow(text, id)
+    return r and r.subtitle or ""
+  end
+  check(subFor("too high", 9):find("Too low") and subFor("too high", 9):find("level 28"), "too low: " .. subFor("too high", 9))
+  check(subFor("horde only", 8):find("Not for your race"), "race: " .. subFor("horde only", 8))
+  check(subFor("mages only", 3):find("Not for your class"), "class: " .. subFor("mages only", 3))
+  check(subFor("already done", 2):find("Done") and not questRow("already done", 2).journey, "done: no route")
+  check(subFor("lost to the horde", 33):find("no known quest giver"), "other faction's giver: no route")
+  rows = ns.QuestsPage.Results("|cffffff00|Hquest:4242:20|h[Lost Quest]|h|r")
+  check(#rows == 1 and rows[1].title == "Lost Quest" and rows[1].subtitle:find("Unknown to QuestieDB"),
+    "a quest link unknown to QuestieDB")
+  rows = ns.QuestsPage.Results("|cffffff00|Hquest:1:18|h[Redridge Goulash]|h|r")
+  check(#rows == 1 and rows[1].title == "[18] Redridge Goulash", "a shift-clicked quest link finds that quest")
+  rows = ns.QuestsPage.Results("filler")
+  check(#rows == 20 and ns.QuestsPage.SummaryText("filler"):find("First 20 of 25"), "results capped at 20")
+  check(#ns.QuestsPage.Results("x") == 0 and ns.QuestsPage.EmptyText("x"):find("at least"), "one letter is too short")
+
+  -- Dungeon quests in one trip: givers first (quickest order), the entrance last.
+  rows = ns.QuestsPage.Results("defias")
+  local run = rows[1]
+  check(run and run.title == "The Deadmines: pick up 3 quests" and run.journey, "search offers the dungeon run: "
+    .. tostring(run and run.title))
+  local dungeons = ns.Dungeons.Results()
+  local deadmines
+  for _, d in ipairs(dungeons) do if d.title:find("^The Deadmines") then deadmines = d end end
+  check(deadmines and deadmines.actions and deadmines.actions[1].label == "Quests", "Dungeons row has a Quests action")
+  ns.Panel.Search("quests", "")
+  deadmines.actions[1].run(deadmines)
+  local journey = ns.Nav.active and ns.Nav.active.journey
+  local texts = {}
+  for _, st in ipairs(journey and journey.stops or {}) do texts[#texts + 1] = st.text end
+  check(table.concat(texts, " | ") == "Pick up Defias Ledger from Magistrate Solomon | Pick up Defias Orders from "
+    .. "Foreman Oslow | Pick up Red Silk Bandanas from Stormwind Questgiver | Enter The Deadmines",
+    "pickup stops in order, then the entrance (" .. table.concat(texts, " | ") .. ")")
+  check(journey and journey.stops[1].action.kind == "pickup" and journey.stops[4].node == deadmines.goal
+    and not ns.Panel.IsShown(), "journey ends at the entrance and the panel closes")
+  ns.Nav.Stop()
+
+  local seen
+  local realResults = ns.QuestsPage.Results
+  ns.QuestsPage.Results = function(q) seen = q return realResults(q) end
+  SlashCmdList.WAYFINDER("quest Redridge Goulash")
+  check(ns.Panel.IsShown() and seen == "Redridge Goulash", "/wf quest opens the Quests page with that search")
+  ns.QuestsPage.Results = realResults
+
+  local savedLib = LibQuestieDB
+  LibQuestieDB = nil
+  reload()
+  local none, err = ns.QuestsPage.Results("chain")
+  check(#none == 0 and err and err:find("Install QuestieDB"), "without QuestieDB: the page says it is needed")
+  check(ns.QuestsPage.SummaryText(""):find("Install QuestieDB"), "without QuestieDB: summary too")
+  for _, d in ipairs(ns.Dungeons.Results()) do
+    if d.actions then check(false, "no dungeon quest action without QuestieDB") end
+  end
+  ns.Panel.Search("quests", "chain")
+  check(ns.Panel.IsShown(), "panel shows the Quests page without QuestieDB")
+
+  LibQuestieDB = savedLib
+  QUESTS[10].finishedBy = nil
+  for i = 2, #added do QUESTS[added[i]] = nil end
+  reload()
+end
+---------------------------------------------------------------- quests page (end)
+
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

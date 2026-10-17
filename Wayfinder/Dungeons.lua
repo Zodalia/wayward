@@ -211,6 +211,10 @@ function Dungeons.Results()
       route = route,
       details = details,
       score = (route and route.seconds or math.huge) + f.penalty,
+      -- Pick up the quests you can take, then go in (QuestsPage.lua).
+      actions = #available > 0 and { { label = "Quests", run = function()
+        ns.QuestsPage.StartDungeonRun(entry.name, goal, available)
+      end } } or nil,
     }
   end
 
