@@ -24,9 +24,9 @@ the `_forever_…` folder next to `_retail_` in your WoW install:
 ln -s "$PWD/WFProbe" "/Applications/World of Warcraft/<forever folder>/Interface/AddOns/WFProbe"
 ```
 
-The TOC lists `16001, 120105` as a guess at the interface version. If the addon
-shows as out of date, tick **Load out of date AddOns** on the character-select
-AddOns screen. The probe reports the real number, and we fix the TOC with it.
+The TOC targets interface `16001` (confirmed on beta build 1.60.1.70450). If the
+addon shows as out of date after a patch, tick **Load out of date AddOns** on the
+character-select AddOns screen; the probe reports the new number.
 
 ### Run
 

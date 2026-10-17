@@ -95,7 +95,16 @@ C_Item = { GetItemInfo = function() return "Battleworn Hammer", nil, 1, 2, 1, "W
 GetProfessions = function() return nil, nil, nil, 4, 5 end
 GetProfessionInfo = function(i) return i == 4 and "Fishing" or "Cooking", nil, 1, 75 end
 GetMerchantItemLink = function() return "|cffffffff|Hitem:159::::|h[Refreshing Spring Water]|h|r" end
-GetMerchantNumItems = function() return 2 end
+C_QuestHub = { GetHubsForMap = function(mapID) assert(mapID, "needs map"); return { { name = "Auberdine", x = 0.37, y = 0.44 } } end,
+  AcceptSomething = function() error("explorer must not call non-read functions") end }
+C_GameRules = { GetForeverExperiencePreset = function() return 2 end }
+C_TaxiMap.GetAllTaxiNodes = function() return { { name = "Auberdine", position = vec(0.42, 0.25) } } end
+EJ_GetNumTiers = function() return 1 end
+EJ_GetCurrentTier = function() return 0 end
+EJ_GetTierInfo = function() return "Classic" end
+EJ_SelectTier = function(i) if i == 0 then error("Usage: EJ_SelectTier(index) Invalid index 0") end end
+EJ_GetInstanceByIndex = function(i, isRaid) if i == 1 then return isRaid and 741 or 227, isRaid and "Molten Core" or "Blackfathom Deeps" end end
+GetMerchantNumItems =function() return 2 end
 GetMerchantItemInfo = function(i) return "Item" .. i, nil, 100, 1, -1, true end
 
 local ns = {}
@@ -130,4 +139,9 @@ assert(text:find("Wolves Across the Border"), "quest missing from export")
 assert(text:find("\\124Hitem"), "pipe not escaped")
 assert(text:find("playerHealthIsSecret = true"), "secret flag missing"); assert(ns.serialize({ hp = SECRET }):find("<secret table>"), "secret not marked")
 assert(text:find('AmmoSlot = "<no such slot>"'), "slot error not captured")
+assert(text:find("Blackfathom Deeps"), "encounter journal tiers lost")
+assert(text:find('calls = "a_none=error b_zone=ok%(table:1%)'), "explorer did not record calls")
+assert(not text:find("AcceptSomething"), "explorer touched a non-read function")
+assert(text:find("preset = {"), "experience preset missing")
+assert(not ns.serialize({ position = vec(1, 2) }):find("GetXY"), "function fields not skipped")
 io.write("SMOKE OK\n")

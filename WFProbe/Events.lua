@@ -95,6 +95,12 @@ local function trainer()
     end
     out.services = services
   end
+  out.filters = {
+    available = get("GetTrainerServiceTypeFilter", "available"),
+    unavailable = get("GetTrainerServiceTypeFilter", "unavailable"),
+    used = get("GetTrainerServiceTypeFilter", "used"),
+  }
+  out.cTrainer = ns.explore("C_Trainer", { a_none = {}, b_index1 = { 1 } })
   return out
 end
 
@@ -181,7 +187,12 @@ end
 
 local handlers = {
   MERCHANT_SHOW = function() store("merchant", merchant) end,
-  TRAINER_SHOW = function() store("trainer", trainer) end,
+  -- v0.1 saw 0 services at TRAINER_SHOW; look again once the list has loaded.
+  TRAINER_SHOW = function()
+    store("trainer", trainer)
+    C_Timer.After(0.5, function() store("trainerAfterDelay", trainer) end)
+  end,
+  TRAINER_UPDATE = function() store("trainerUpdate", trainer) end,
   TAXIMAP_OPENED = function() store("taxi", taxi) end,
   GOSSIP_SHOW = function() store("gossip", gossip) end,
   QUEST_DETAIL = function() store("questDetail", questFrame) end,

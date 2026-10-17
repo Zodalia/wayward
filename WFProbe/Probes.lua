@@ -71,7 +71,14 @@ probe("meta", "foreverGlobals", function()
     end
   end
   table.sort(hits)
-  return { count = #hits, names = table.concat(hits, ", ") }
+  local enums = {}
+  for k in pairs(Enum or {}) do
+    local lk = tostring(k):lower()
+    if lk:find("forever") or lk:find("camelot") or lk:find("questhub") or lk:find("trainer") then
+      enums[k] = Enum[k]
+    end
+  end
+  return { count = #hits, names = table.concat(hits, ", "), enums = enums }
 end)
 
 probe("meta", "namespaces", function()
@@ -89,6 +96,23 @@ probe("meta", "gameRules", function()
     activeGameMode = try("C_GameRules.GetActiveGameMode"),
     gameModeEnum = Enum.GameMode,
   }
+end)
+
+-- Namespaces that are new or unexplained in Forever; explored generically.
+local EXPLORE = { "C_QuestHub", "C_QuestOffer", "C_QuestInfoSystem", "C_Trainer", "C_LevelLink",
+  "C_MapExplorationInfo", "C_ContentTracking" }
+
+probe("explore", "namespaces", function()
+  local args = { a_none = {} }
+  if ctx.mapID then args.b_zone = { ctx.mapID } end
+  if ctx.continentID then args.c_continent = { ctx.continentID } end
+  local out = {}
+  for _, name in ipairs(EXPLORE) do out[name] = ns.explore(name, args) end
+  return out
+end)
+
+probe("explore", "foreverExperiencePreset", function()
+  return { preset = try("C_GameRules.GetForeverExperiencePreset"), enum = Enum.ForeverExperiencePreset }
 end)
 
 probe("meta", "secretValues", function()
@@ -368,7 +392,8 @@ probe("dungeons", "encounterJournal", function()
     end
     tiers[t] = entry
   end
-  if previous then EJ_SelectTier(previous) end
+  -- Forever reports current tier 0, which EJ_SelectTier rejects.
+  if previous and previous > 0 then EJ_SelectTier(previous) end
   return { numTiers = numTiers, tiers = tiers }
 end)
 

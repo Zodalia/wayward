@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 
-ns.VERSION = "0.1.0"
+ns.VERSION = "0.2.0"
 ns.MAX_SAMPLES = 5
 
 function ns.print(msg)
@@ -85,6 +85,56 @@ function ns.listFunctions(name)
   end
   table.sort(names)
   return table.concat(names, ", ")
+end
+
+local unpack = unpack or table.unpack
+local READ_ONLY = { "Get", "Is", "Has", "Can", "Fetch", "Should", "Does", "Are" }
+
+local function isReadOnly(name)
+  for _, prefix in ipairs(READ_ONLY) do
+    if name:sub(1, #prefix) == prefix then return true end
+  end
+  return false
+end
+
+local function describe(rec)
+  if rec.status ~= "ok" then return rec.status end
+  local v = rec.value
+  if rec.values then v = rec.values[1] end
+  if ns.isSecret(v) then return "ok(secret)" end
+  if type(v) == "table" then
+    local n = 0
+    for _ in pairs(v) do n = n + 1 end
+    return "ok(table:" .. n .. ")"
+  end
+  return "ok(" .. tostring(v) .. ")"
+end
+
+-- Discovers what an unfamiliar namespace returns: calls every read-style
+-- function (Get*/Is*/Has*/...) with each argument set and summarises the result.
+-- Only the first successful result per function is kept, sampled.
+function ns.explore(nsName, argSets)
+  local t = _G[nsName]
+  if type(t) ~= "table" then return { status = "missing" } end
+  local out, labels = {}, {}
+  for label in pairs(argSets) do labels[#labels + 1] = label end
+  table.sort(labels)
+  for name, fn in pairs(t) do
+    if type(fn) == "function" and isReadOnly(name) then
+      local parts, firstOk = {}, nil
+      for _, label in ipairs(labels) do
+        local rec = ns.try(nsName .. "." .. name, unpack(argSets[label]))
+        parts[#parts + 1] = label .. "=" .. describe(rec)
+        if rec.status == "ok" and not firstOk then
+          firstOk = rec.values or rec.value
+          if type(firstOk) == "table" then firstOk = ns.sample(firstOk, 3) end
+        end
+      end
+      out[name] = firstOk ~= nil and { calls = table.concat(parts, " "), firstOk = firstOk }
+        or table.concat(parts, " ")
+    end
+  end
+  return out
 end
 
 function ns.enumName(enum, value)

@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- Renders values as readable Lua table text for the copy/paste export.
 
-local MAX_DEPTH = 8
+local MAX_DEPTH = 12
 local MAX_ARRAY = 50
 
 local function quote(s)
@@ -23,9 +23,12 @@ local function scalar(v)
   return '"<' .. tv .. '>"'
 end
 
+-- Function fields are skipped so mixins (e.g. Vector2D positions) print as data.
 local function sortedKeys(t)
   local keys = {}
-  for k in pairs(t) do keys[#keys + 1] = k end
+  for k, v in pairs(t) do
+    if type(v) ~= "function" then keys[#keys + 1] = k end
+  end
   table.sort(keys, function(a, b)
     local ta, tb = type(a), type(b)
     if ta ~= tb then return ta < tb end
