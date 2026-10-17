@@ -389,16 +389,19 @@ end
 
 -- Pick up the dungeon's quests on the way (nearest givers), finish at the entrance.
 local function dungeonJourney(option, ctx, start, net)
+  -- Givers are ranked by trip time, not straight distance, so one on another
+  -- continent (e.g. Darnassus for Blackfathom Deeps) still counts.
   local pickups = {}
   for _, q in ipairs(option.available) do
-    local giver, node, distance = ns.Questie.QuestGiver(q.id, start)
-    if node and distance and distance < math.huge then
-      pickups[#pickups + 1] = { node = node, distance = distance, group = "pickup",
+    local giver, node = ns.Questie.QuestGiver(q.id, start)
+    local route = node and ns.Router.Plan(start, node, net)
+    if route then
+      pickups[#pickups + 1] = { node = node, seconds = route.seconds, group = "pickup",
         text = string.format("Pick up %s from %s", q.name or ("quest " .. q.id), giver or "?"),
         action = { kind = "pickup", questID = q.id } }
     end
   end
-  table.sort(pickups, function(a, b) return a.distance < b.distance end)
+  table.sort(pickups, function(a, b) return a.seconds < b.seconds end)
   while #pickups > MAX_PICKUPS do table.remove(pickups) end
   option.stops = pickups
   option.finish = { node = option.goal, text = "Enter " .. option.name, phrase = "run " .. option.name }
