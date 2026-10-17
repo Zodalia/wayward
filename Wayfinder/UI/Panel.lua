@@ -145,6 +145,10 @@ local function createRow(parent, index)
   row.sub:SetPoint("RIGHT", -6, 0)
   row.sub:SetJustifyH("LEFT")
 
+  ns.Skin.Button(row.action)
+  ns.Skin.Text(row.title)
+  ns.Skin.Text(row.sub)
+
   row:SetScript("OnEnter", showTooltip)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)
   row:SetScript("OnClick", function(self)
@@ -201,7 +205,9 @@ local function sortedPages()
 end
 
 local function create()
-  local f = CreateFrame("Frame", "WayfinderPanel", UIParent, "BackdropTemplate")
+  -- ButtonFrameTemplate is Blizzard's standard window (title bar, close button,
+  -- inset), so UI suites that restyle Blizzard windows know it too.
+  local f, templated = ns.Skin.CreateWindow("WayfinderPanel")
   f:SetSize(384, 520)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
@@ -214,48 +220,62 @@ local function create()
     self:StopMovingOrSizing()
     ns.SavePosition(self, "panelPos")
   end)
-  f:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    tile = true, tileSize = 32, edgeSize = 32,
-    insets = { left = 8, right = 8, top = 8, bottom = 8 },
-  })
   ns.RestorePosition(f, "panelPos")
   tinsert(UISpecialFrames, "WayfinderPanel")
 
-  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  title:SetPoint("TOPLEFT", 18, -16)
+  local title = f.titleText
+  if not title then
+    title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 18, -16)
+  end
   title:SetText("Wayfinder")
+  ns.Skin.Text(title)
+  ns.Skin.CloseButton(f.close)
+  if templated then
+    -- The tabs stand on the inset; the footer stays inside it.
+    f.Inset:ClearAllPoints()
+    f.Inset:SetPoint("TOPLEFT", 4, -62)
+    f.Inset:SetPoint("BOTTOMRIGHT", -6, 4)
+    ns.Skin.Inset(f.Inset)
+  end
 
-  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", -6, -6)
-
-  -- Page tabs.
+  -- Page tabs, bottom edge 62 below the top. Template tabs size themselves on
+  -- show between the window's min/maxTabWidth.
   local pages = sortedPages()
-  local tabWidth = math.floor((348 - 4 * (#pages - 1)) / math.max(#pages, 1))
+  local tabWidth = math.min(math.floor((348 - 4 * (#pages - 1)) / math.max(#pages, 1)), 110)
+  f.minTabWidth, f.maxTabWidth = tabWidth, tabWidth
   f.tabs = {}
+  f.templateTabs = true
   local previous
   for i, page in ipairs(pages) do
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    b:SetSize(math.min(tabWidth, 110), 22)
+    local b, tab = ns.Skin.CreateTab(f)
+    f.templateTabs = f.templateTabs and tab
+    b:SetID(i)
+    b:SetWidth(tabWidth)
+    if not tab then b:SetHeight(22) end
     b:SetText(page.label)
-    if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", 18, -40) end
+    if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 18, -62) end
     b:SetScript("OnClick", function() Panel.SelectPage(page.id) end)
+    ns.Skin.Tab(b)
     f.tabs[i] = { button = b, page = page }
     previous = b
   end
+  f.numTabs = #pages -- for PanelTemplates_SetTab
 
-  f.search = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+  local searchTemplate
+  f.search, searchTemplate = ns.Skin.CreateSearchBox(f)
   f.search:SetSize(338, 22)
   f.search:SetPoint("TOPLEFT", 24, -68)
   f.search:SetAutoFocus(false)
-  f.search.hint = f.search:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-  f.search.hint:SetPoint("LEFT", 2, 0)
-  f.search:SetScript("OnTextChanged", function(self, userInput)
+  -- Hook rather than replace the template's handler (clear button, hint).
+  local onText = searchTemplate and f.search.HookScript or f.search.SetScript
+  onText(f.search, "OnTextChanged", function(self, userInput)
     query = self:GetText() or ""
     self.hint:SetShown(query == "")
-    if userInput then scheduleSearch() end
+    -- The clear button empties the box without user input.
+    if userInput or (searchTemplate and query == "") then scheduleSearch() end
   end)
+  ns.Skin.EditBox(f.search)
   f.search:SetScript("OnEnterPressed", function(self)
     self:ClearFocus()
     Panel.Refresh()
@@ -271,6 +291,7 @@ local function create()
     b:SetText(cat.label)
     if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", 18, -96) end
     b:SetScript("OnClick", function() Panel.Select(i) end)
+    ns.Skin.Button(b)
     f.categoryButtons[i] = b
     previous = b
   end
@@ -294,9 +315,13 @@ local function create()
   f.footer:SetWidth(348)
   f.footer:SetJustifyH("LEFT")
   f.footer:SetWordWrap(true)
+  ns.Skin.Text(f.summary)
+  ns.Skin.Text(f.empty)
+  ns.Skin.Text(f.footer)
 
   hookLinks()
   f:SetScript("OnShow", function() Panel.Refresh() end)
+  ns.Skin.Window(f)
   -- New frames start shown; hide so the first Toggle opens rather than closes.
   f:Hide()
   return f
@@ -310,8 +335,16 @@ local function currentPage()
 end
 
 local function layout(page)
-  for _, tab in ipairs(frame.tabs) do
-    if tab.page == page then tab.button:LockHighlight() else tab.button:UnlockHighlight() end
+  for i, tab in ipairs(frame.tabs) do
+    local selected = tab.page == page
+    if frame.templateTabs then
+      if selected and PanelTemplates_SetTab then PanelTemplates_SetTab(frame, i) end
+    elseif selected then
+      tab.button:LockHighlight()
+    else
+      tab.button:UnlockHighlight()
+    end
+    ns.Skin.SetTabSelected(tab.button, selected)
   end
   if page.searchable then frame.search:Show() else frame.search:Hide() end
   frame.search.hint:SetText(page.placeholder or "Search")

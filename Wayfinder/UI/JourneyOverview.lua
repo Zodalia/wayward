@@ -13,7 +13,7 @@ local ROW_HEIGHT = 18
 local frame
 
 local function create()
-  local f = CreateFrame("Frame", "WayfinderJourneyOverview", UIParent, "BackdropTemplate")
+  local f = ns.Skin.CreateBox("WayfinderJourneyOverview")
   f:SetSize(340, 64 + MAX_ROWS * ROW_HEIGHT)
   f:SetPoint("TOPLEFT", UIParent, "TOP", 170, -140)
   f:SetFrameStrata("MEDIUM")
@@ -26,12 +26,6 @@ local function create()
     self:StopMovingOrSizing()
     ns.SavePosition(self, "overviewPos")
   end)
-  f:SetBackdrop({
-    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-  })
   f:SetBackdropColor(0, 0, 0, 0.85)
   ns.RestorePosition(f, "overviewPos")
 
@@ -45,6 +39,9 @@ local function create()
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -2, -2)
+  ns.Skin.CloseButton(close)
+  ns.Skin.Text(f.title)
+  ns.Skin.Text(f.info)
 
   f.rows = {}
   for i = 1, MAX_ROWS do
@@ -60,11 +57,15 @@ local function create()
     row.drop:SetPoint("RIGHT", 0, 0)
     row.drop:SetText("x")
     row.drop:SetScript("OnClick", function() ns.Nav.Drop(row.stop) end)
+    ns.Skin.Button(row.drop)
+    ns.Skin.Text(row.text)
     f.rows[i] = row
   end
 
   f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.more:SetPoint("BOTTOMLEFT", 12, 8)
+  ns.Skin.Text(f.more)
+  ns.Skin.Box(f)
   f:Hide()
   return f
 end
