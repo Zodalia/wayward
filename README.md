@@ -118,6 +118,25 @@ objectives are close together become one whole-quest trip ("Finish 2 quests
 near Lakeshire"), timed at 5 minutes times the share of objectives left (at
 least a quarter). A dungeon's quests in your log count toward its XP.
 
+### Getting around
+
+- **Directions** add a step whenever you walk into another zone ("Walk to
+  Elwynn Forest"); it counts as done as soon as you're in that zone.
+- **Re-routing is automatic** after a hearthstone, portal or loading screen,
+  when you're on another continent than the current step expects, or when
+  you've walked well away from the current target. Never during a flight,
+  and at most every 10 seconds. The R button still re-plans on demand.
+- **TomTom**: when it's installed, Wayfinder puts each step on TomTom's arrow
+  and map pins instead of its own (`/wf tomtom` switches back).
+- **Journey stops** show their zone in the overview and in previews.
+- **Class trainers** in the same room are one row ("3 warlock trainers in
+  Stormwind City").
+- **Minimap button**: left-click opens Wayfinder, right-click opens the journey
+  overview during a trip. It uses LibDBIcon when another addon provides it
+  (so button managers can handle it), otherwise a plain button you can drag
+  around the minimap. `/wf minimap` hides it. Wayfinder is also in the addon
+  compartment menu.
+
 ### Look
 
 Wayfinder's windows use Blizzard's standard templates (window, tabs, search
