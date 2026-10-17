@@ -1294,6 +1294,153 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- trips (end)
+---------------------------------------------------------------- quest log trips (begin)
+do
+  io.write("quest log trips\n")
+  ns.Nav.Stop()
+  local function reload() assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns) end
+  local savedLog = { C_QuestLog.GetAllCompletedQuestIDs, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo,
+    C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives }
+  -- Murlocs to kill near Lakeshire; quests given by Solomon (344), handed in to Oslow (345) or in Stormwind (6000).
+  NPCS[9201] = { name = "Log Murloc", minLevel = 18, maxLevel = 19, spawns = { [44] = { { 70, 70 } } } }
+  QUESTS[50] = { name = "Murloc Cull", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9201 } } } }
+  QUESTS[51] = { name = "Bandit Letter", questLevel = 18, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 6000 } } }
+  QUESTS[52] = { name = "Lost Necklace", questLevel = 17, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 344 } } }
+  QUESTS[53] = { name = "Gnoll Patrol", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9201 } } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy, questKeys.objectives = 3, 10
+  reload()
+
+  local completed = { 2 }
+  local log = {
+    { title = "Redridge Mountains", isHeader = true },
+    { title = "Murloc Cull", questID = 50, level = 19 },
+    { title = "Bandit Letter", questID = 51, level = 18 },
+    { title = "Elwynn Forest", isHeader = true },
+    { title = "Lost Necklace", questID = 52, level = 17 },
+  }
+  local complete = { [51] = true, [52] = true }
+  C_QuestLog.GetAllCompletedQuestIDs = function() return completed end
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return log[i] end
+  C_QuestLog.IsComplete = function(id) return complete[id] == true end
+  C_QuestLog.GetQuestObjectives = function(id)
+    if id == 50 then
+      return { { text = "Log Murloc slain: 3/8", finished = false }, { text = "Murloc fin: 2/2", finished = true } }
+    end
+    return {}
+  end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  ns.QuestsPage.ClearPicks()
+
+  local function byID(rows, id)
+    for _, row in ipairs(rows) do if row.id == id then return row end end
+  end
+  local function kinds(stops)
+    local out = {}
+    for _, st in ipairs(stops) do out[#out + 1] = st.action.kind .. st.action.questID end
+    return table.concat(out, ",")
+  end
+
+  -- The log, with progress.
+  local rows = ns.QuestsPage.Results("")
+  local cull, letter, necklace = byID(rows, "log50"), byID(rows, "log51"), byID(rows, "log52")
+  check(cull and letter and necklace and not byID(rows, "picked"), "empty search lists the quest log, headers skipped")
+  check(cull and cull.title == "[19] Murloc Cull" and cull.subtitle:find("Redridge Mountains", 1, true)
+    and cull.subtitle:find("Log Murloc slain: 3/8", 1, true), "a log quest shows zone and the first unfinished objective: "
+    .. tostring(cull and cull.subtitle))
+  check(necklace and necklace.subtitle:find("Elwynn Forest", 1, true) and necklace.subtitle:find("Ready to hand in"),
+    "a complete quest is ready to hand in")
+  check(ns.QuestsPage.SummaryText(""):find("Your quest log: 3 quests"), "summary counts the log")
+
+  -- Clicking a log quest: what's left of it, no pickup.
+  check(cull and cull.journey and kinds(cull.journey.stops) == "complete50,turnin50",
+    "a log quest's trip skips the pickup: " .. kinds(cull and cull.journey and cull.journey.stops or {}))
+  check(letter and letter.journey and kinds(letter.journey.stops) == "turnin51", "a complete log quest: just hand it in")
+
+  -- The hand-in row.
+  local handin = byID(rows, "handin")
+  check(handin and handin.title == "Hand in 2 completed quests" and handin.journey
+    and #handin.journey.stops == 2 and handin.journey.stops[1].action.kind == "turnin"
+    and handin.journey.stops[2].action.kind == "turnin", "one row hands in every completed quest")
+  check(rows[1] == handin, "trip rows come before the log")
+
+  -- Pick and unpick.
+  check(cull.actions and cull.actions[1].label == "Add", "log rows have an Add action")
+  cull.actions[1].run(cull)
+  check(WayfinderCharDB.questPicks and WayfinderCharDB.questPicks[50] == true, "the pick is saved per character")
+  rows = ns.QuestsPage.Results("")
+  check(byID(rows, "log50").actions[1].label == "Added", "a picked quest says Added")
+  check(byID(rows, "picked") and byID(rows, "picked").title == "Plan a trip for 1 quest" and rows[1].id == "picked",
+    "picking shows a trip row at the top")
+  byID(rows, "log50").actions[1].run()
+  rows = ns.QuestsPage.Results("")
+  check(not byID(rows, "picked") and byID(rows, "log50").actions[1].label == "Add", "clicking Added unpicks it")
+
+  -- Picking from a search, then one trip for both.
+  ns.QuestsPage.TogglePick(50)
+  local found = byID(ns.QuestsPage.Results("gnoll patrol"), "quest53")
+  check(found and found.actions and found.actions[1].label == "Add", "search results have the Add action too")
+  found.actions[1].run(found)
+  local done = byID(ns.QuestsPage.Results("already done"), "quest2")
+  check(done and not done.actions, "no Add on a quest you have done")
+  rows = ns.QuestsPage.Results("")
+  local picked = byID(rows, "picked")
+  check(picked and picked.title == "Plan a trip for 2 quests" and picked.journey, "trip row for 2 picked quests")
+  local order = {}
+  for i, st in ipairs(picked and picked.journey.stops or {}) do order[st.action.kind .. st.action.questID] = i end
+  check(#picked.journey.stops == 5 and order.pickup53 < order.complete53 and order.complete53 < order.turnin53
+    and order.complete50 < order.turnin50 and not order.pickup50,
+    "the combined trip keeps each quest's own order: " .. kinds(picked.journey.stops))
+  check(#picked.details == 2 and picked.actions[1].label == "Clear", "the tooltip names the quests; Clear empties it")
+  ns.Panel.Search("quests", "")
+  check(ns.Panel.IsShown(), "panel shows the quest log with trip rows")
+  ns.Nav.StartJourney(picked.journey, true) -- what clicking the row does
+  check(ns.Nav.active and #ns.Nav.active.journey.stops == 5, "the combined trip starts as one journey")
+  ns.Nav.Stop()
+
+  -- Done quests leave the picks.
+  completed = { 2, 53 }
+  rows = ns.QuestsPage.Results("")
+  check(byID(rows, "picked").title == "Plan a trip for 1 quest" and not WayfinderCharDB.questPicks[53],
+    "a quest you have done leaves the picks")
+  fire("QUEST_TURNED_IN", 50)
+  check(next(WayfinderCharDB.questPicks) == nil and not byID(ns.QuestsPage.Results(""), "picked"),
+    "handing in the last picked quest clears the trip row")
+  ns.QuestsPage.TogglePick(50)
+  byID(ns.QuestsPage.Results(""), "picked").actions[1].run()
+  check(next(WayfinderCharDB.questPicks) == nil, "Clear empties the picks")
+
+  -- Without QuestieDB: the log still shows, without trips.
+  ns.QuestsPage.TogglePick(50)
+  local savedLib = LibQuestieDB
+  LibQuestieDB = nil
+  reload()
+  rows = ns.QuestsPage.Results("")
+  cull = byID(rows, "log50")
+  check(#rows == 3 and cull and cull.title == "[19] Murloc Cull" and not cull.journey and not cull.actions
+    and cull.subtitle:find("directions need QuestieDB") and cull.subtitle:find("3/8", 1, true),
+    "without QuestieDB: the log lists, says directions need it, no trips: " .. tostring(cull and cull.subtitle))
+  check(ns.QuestsPage.SummaryText(""):find("Install QuestieDB"), "without QuestieDB: the summary says so")
+  ns.Panel.Search("quests", "")
+  check(ns.Panel.IsShown(), "panel shows the quest log without QuestieDB")
+  log = {}
+  rows = ns.QuestsPage.Results("")
+  check(#rows == 0 and ns.QuestsPage.EmptyText(""):find("quest log is empty"), "an empty log says so")
+  LibQuestieDB = savedLib
+
+  ns.QuestsPage.ClearPicks()
+  C_QuestLog.GetAllCompletedQuestIDs, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives = savedLog[1], savedLog[2], savedLog[3], savedLog[4], savedLog[5]
+  for id = 50, 53 do QUESTS[id] = nil end
+  NPCS[9201] = nil
+  reload()
+end
+---------------------------------------------------------------- quest log trips (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
