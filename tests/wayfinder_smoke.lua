@@ -869,6 +869,170 @@ do
   reload()
 end
 ---------------------------------------------------------------- quests page (end)
+---------------------------------------------------------------- items page (begin)
+do
+  io.write("items page\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  -- Wetlands (area 11) joins the area map; the bridge is reloaded to pick it up.
+  local baseGet = LibQuestieDB.Support.Get
+  LibQuestieDB.Support.Get = function(name)
+    local t = baseGet(name)
+    t.private.areaIdToUiMapId = "return { [44] = 1433, [1519] = 1453, [11] = 1437 }"
+    return t
+  end
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+
+  NPCS[9100] = { name = "Edwin VanCleef", rank = 3, minLevel = 21, maxLevel = 21, spawns = { [1581] = { { -1, -1 } } } }
+  NPCS[9104] = { name = "Defias Pirate", rank = 1, minLevel = 19, maxLevel = 20, spawns = { [10029] = { { -1, -1 } } } }
+  NPCS[9101] = { name = "Murloc Forager", minLevel = 18, maxLevel = 19, spawns = { [44] = { { 60, 60 }, { 80, 80 } } } }
+  NPCS[9102] = { name = "Murloc Scout", minLevel = 17, maxLevel = 18, spawns = { [44] = { { 30, 30 } } } }
+  NPCS[9103] = { name = "Wetlands Murloc", minLevel = 22, maxLevel = 24, spawns = { [11] = { { 50, 50 } } } }
+  NPCS[9105] = { name = "Ogre Mauler", minLevel = 30, maxLevel = 31, spawns = { [11] = { { 20, 20 } } } }
+  ObjectDB = entity({ [9200] = { name = "Battered Chest", spawns = { [44] = { { 55, 55 } } } } }, {})
+  ITEMS[9001] = { name = "Cruel Barb", itemLevel = 24, requiredLevel = 19, npcDrops = { 9100, 9104 } }
+  ITEMS[9002] = { name = "Murloc Fin", itemLevel = 15, npcDrops = { 9101, 9102, 9103 } }
+  ITEMS[9003] = { name = "Shiny Pearl", objectDrops = { 9200 }, itemDrops = { 9007 } }
+  ITEMS[9007] = { name = "Big-mouth Clam", npcDrops = { 9101 } }
+  ITEMS[9004] = { name = "Goulash Ring", questRewards = { 1, 4, 10, 2, 3, 9 } }
+  ITEMS[9005] = { name = "Fine Longbow", vendors = { 7004, 7001 }, npcDrops = { 9105 } }
+  QUESTS[10].finishedBy = { { 345 } }
+  LibQuestieDB.Meta.QuestMeta.questKeys.finishedBy = 3
+
+  local page
+  for _, p in ipairs(ns.pages) do if p.id == "items" then page = p end end
+  local seen
+  local realResults = page.Results
+  page.Results = function(q) seen = q; return realResults(q) end
+  local function rows(q) return (ns.Items.Results(q)) end
+  local function names(list)
+    local t = {}
+    for _, r in ipairs(list) do t[#t + 1] = r.title end
+    return table.concat(t, " | ")
+  end
+  local function detailText(r)
+    local t = {}
+    for _, d in ipairs(r and r.details or {}) do t[#t + 1] = d.text end
+    return table.concat(t, "\n")
+  end
+
+  check(page and page.order == 40 and page.searchable, "Items page registered (order 40, searchable)")
+  check(ns.Items.ParseID("|cffa335ee|Hitem:9001::::::::20:::::|h[Cruel Barb]|h|r") == 9001
+    and ns.Items.ParseID("item:9002") == 9002 and ns.Items.ParseID("Cruel Barb") == nil, "item ID parsed from a link")
+
+  local link = "|cffa335ee|Hitem:9001::::::::20:::::|h[Cruel Barb]|h|r"
+  SlashCmdList.WAYFINDER("item " .. link)
+  check(ns.Panel.IsShown() and seen == link, "/wf item <link> opens the Items page with the link")
+  check(ns.Items.SummaryText(link):find("Cruel Barb  ·  item level 24  ·  requires level 19", 1, true),
+    "summary names the item and its levels: " .. ns.Items.SummaryText(link))
+
+  -- Dungeon drop: to the entrance, boss named, quests on the way.
+  local list = rows(link)
+  local dm = list[1]
+  check(dm and dm.title == "Drops from Edwin VanCleef and 1 other in The Deadmines",
+    "dungeon drop names the boss (alternative area IDs count): " .. names(list))
+  check(dm and dm.route and math.abs(dm.goal.x - 0.7) < 1e-6 and math.abs(dm.goal.y - 0.4) < 1e-6,
+    "dungeon drop routes to the entrance")
+  check(detailText(dm):find("Dungeon level 20; you are level 20.", 1, true), "tooltip has the dungeon level")
+  check(dm and dm.actions and dm.actions[1].label == "+2 quests", "dungeon quests offered as a journey")
+  dm.actions[1].run(dm)
+  local j = ns.Nav.active and ns.Nav.active.journey
+  check(j and #j.stops == 3 and j.stops[3].text == "Enter The Deadmines" and j.stops[1].action.kind == "pickup",
+    "+2 quests: pick both up, then the entrance")
+  ns.Nav.Stop()
+
+  -- World drop: one row per zone, nearest first.
+  list = rows("item:9002")
+  check(#list == 2 and list[1].title == "Drops from Murloc Forager and 1 other" and list[1].zone == "Redridge Mountains"
+    and list[2].title == "Drops from Wetlands Murloc" and list[2].zone == "Wetlands",
+    "world drop grouped per zone, nearest zone first: " .. names(list))
+  check(list[1].route and math.abs(list[1].goal.x - 0.6) < 1e-6, "routes to the nearest spawn")
+  check(detailText(list[1]):find("Murloc Scout, level 17-18", 1, true), "tooltip lists the mobs with levels")
+
+  -- Objects and containers.
+  list = rows("item:9003")
+  check(names(list) == "Found in Battered Chest | Comes in Big-mouth Clam", "object and container rows: " .. names(list))
+  list[2].actions[1].run(list[2])
+  check(seen == "item:9007", "Look up searches the container")
+
+  -- Quest rewards.
+  list = rows("item:9004")
+  local all = names(list)
+  check(list[1] and list[1].title == "Reward from Redridge Goulash" and list[1].route
+    and detailText(list[1]):find("take it now from Magistrate Solomon", 1, true),
+    "available quest first, routed to its giver: " .. all)
+  local inLog, chain, high
+  for _, r in ipairs(list) do
+    if r.title:find("Already in log", 1, true) then inLog = r end
+    if r.title:find("Needs prequest", 1, true) then chain = r end
+    if r.title:find("Too high", 1, true) then high = r end
+  end
+  check(inLog and inLog.title:find("in your log") and inLog.route and inLog.goal.label == "Foreman Oslow",
+    "quest in your log: says so, routes to where you hand it in")
+  check(chain and chain.title:find("needs earlier quests") and chain.route and chain.goal.label == "Magistrate Solomon",
+    "quest needing earlier quests: says so, routes to its giver anyway")
+  check(high and high.title:find("from level 28"), "quest above your level: says from which level")
+  check(list[#list].title:find("Already done  ·  done", 1, true) and not list[#list].route, "done quest last, no route")
+  check(not all:find("Mages only"), "another class's quest is hidden")
+  local tiersOk = true
+  for i, r in ipairs(list) do
+    if (r == chain or r == high) and i <= 2 then tiersOk = false end
+  end
+  check(tiersOk, "quests you can do now rank above later ones")
+
+  -- Vendor beats a too-high drop; other faction's vendor hidden.
+  list = rows("item:9005")
+  check(list[1] and list[1].title == "Sold by Lakeshire Bowyer" and list[1].route, "nearest vendor that sells it: " .. names(list))
+  check(list[2] and list[2].title == "Drops from Ogre Mauler" and detailText(list[2]):find("Level 30 and up"),
+    "drop from mobs far above you ranks after the vendor")
+  check(not names(list):find("Horde"), "other faction's vendor hidden")
+  list = rows("item:1205")
+  check(list[1] and list[1].title == "Sold by Innkeeper Farley" and detailText(list[1]):find("1 other vendor sells it too", 1, true),
+    "QuestieDB sellers and visited vendors together: " .. detailText(list[1]))
+
+  -- Name search.
+  list = rows("murloc")
+  check(list[1] and list[1].title:find("Drops from Murloc Forager"), "a single name match shows its sources")
+  list = rows("fin")
+  check(names(list) == "Fine Longbow | Murloc Fin" and list[1].actions[1].label == "Show",
+    "several matches: a list to pick from, names starting with the text first (" .. names(list) .. ")")
+  list[2].actions[1].run(list[2])
+  check(seen == "item:9002", "Show looks the item up")
+  list = rows("FINE longbow")
+  check(list[1] and list[1].title == "Sold by Lakeshire Bowyer", "name search ignores case")
+  check(#rows("fi") == 0 and ns.Items.EmptyText("fi"):find("at least 3"), "short names wait for more letters")
+
+  -- Tooltip line.
+  check(ns.Items.TooltipLine(9002) and not ns.Items.TooltipLine(424242), "tooltip line only for items with sources")
+  InCombatLockdown = function() return true end
+  check(ns.Items.TooltipLine(9002) == nil, "no tooltip line in combat")
+  InCombatLockdown = nil
+
+  -- Without QuestieDB: vendors you visited only.
+  local realAvailable = ns.Questie.Available
+  ns.Questie.Available = function() return false, "QuestieDB is not installed" end
+  GetItemInfo = function(id)
+    if id == 1205 then return "Melon Juice", "|cffffffff|Hitem:1205::::|h[Melon Juice]|h|r", 1, 5, 1 end
+  end
+  list = rows("item:1205")
+  check(#list == 1 and list[1].title == "Sold by Lakeshire Cook" and detailText(list[1]):find("last visited"),
+    "without QuestieDB: the visited vendor that sold it (" .. names(list) .. ")")
+  check(ns.Items.SummaryText("item:1205"):find("Install QuestieDB"), "summary says QuestieDB is needed for the rest")
+  check(#rows("item:9001") == 0 and ns.Items.EmptyText("item:9001"):find("Install QuestieDB"),
+    "without QuestieDB: no drops, and the page says why")
+  list = rows("melon")
+  check(list[1] and list[1].title == "Sold by Lakeshire Cook", "without QuestieDB: names searched among visited goods")
+  check(#rows("cruel") == 0 and ns.Items.EmptyText("cruel"):find("vendors you visited"), "unknown name explained")
+  ns.Panel.Search("items", "item:1205")
+  check(ns.Panel.IsShown(), "panel shows the Items page without QuestieDB")
+  GetItemInfo = nil
+  ns.Questie.Available = realAvailable
+
+  ns.Panel.Search("items", "fin")
+  check(ns.Panel.IsShown(), "panel shows the Items page with QuestieDB")
+  page.Results = realResults
+end
+---------------------------------------------------------------- items page (end)
 
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then

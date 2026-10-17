@@ -77,6 +77,20 @@ repair flag and English subtitles ("Food & Drink", "Bowyer"); without it, only
 vendors you visited are listed. Food, ammo and reagent tiers in
 `Data/VendorGoods.lua` are vanilla item IDs, not yet checked in Forever.
 
+### Items
+
+**Items** tells you where an item comes from, with directions. Shift-click an
+item into its search box, type `/wf item <link>` in chat, or type part of the
+name. Each source is a row: dungeon drops ("Drops from Edwin VanCleef in The
+Deadmines", routed to the entrance, with a **+N quests** button that picks up
+the dungeon's quests on the way), mobs and objects in the world (nearest spawn,
+one row per zone), quests that reward it (can take now, in your log, needs
+earlier quests or a higher level) and the nearest vendor that sells it. Things
+you can do now come first, then shorter trips. Drops and quest rewards need
+QuestieDB (ItemDB); without it only vendors you visited that sold the item are
+known. Item tooltips get a "Wayfinder: /wf item for directions" line when an
+item has known sources (never in combat).
+
 Install the same way as WFProbe below, with the `Wayfinder` folder.
 
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
