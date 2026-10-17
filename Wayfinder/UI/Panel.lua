@@ -144,6 +144,8 @@ local function create()
   f.footer:SetWordWrap(true)
 
   f:SetScript("OnShow", function() Panel.Refresh() end)
+  -- New frames start shown; hide so the first Toggle opens rather than closes.
+  f:Hide()
   return f
 end
 
@@ -199,6 +201,10 @@ function Panel.Refresh()
     frame.footer:SetText(source .. string.format("%d known flight path%s. Boat and zeppelin docks are "
       .. "approximate.", flights, flights == 1 and "" or "s"))
   end
+end
+
+function Panel.IsShown()
+  return frame ~= nil and frame:IsShown()
 end
 
 function Panel.Toggle()
