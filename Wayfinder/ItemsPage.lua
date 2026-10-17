@@ -794,7 +794,7 @@ function Items.EmptyText(query)
 end
 
 ns.RegisterPage({
-  id = "items", label = "Items", order = 40, searchable = true,
+  id = "items", label = "Items", order = 60, searchable = true,
   placeholder = "Shift-click an item, or type its name",
   SummaryText = function(q) return Items.SummaryText(q) end,
   EmptyText = function(q) return Items.EmptyText(q) end,

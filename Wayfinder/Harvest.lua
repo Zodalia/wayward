@@ -113,7 +113,15 @@ local function readTrainer()
   if #services == 0 then return end
   local kind = classify(services)
   local _, class = UnitClass("player")
-  Harvest.RecordNPC(kind, kind == "classTrainer" and { class = class } or nil)
+  local extra
+  if kind == "classTrainer" then
+    extra = { class = class }
+  elseif kind == "weaponMaster" then
+    local weapons = {}
+    for _, s in ipairs(services) do weapons[#weapons + 1] = s.name end
+    extra = { weapons = weapons }
+  end
+  Harvest.RecordNPC(kind, extra)
   if kind == "classTrainer" then
     ns.charDB.classSpells = { updated = time(), level = UnitLevel("player"), services = services }
     ns.Fire("DATA_CHANGED")

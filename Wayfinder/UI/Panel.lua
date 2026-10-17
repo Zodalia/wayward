@@ -1,8 +1,9 @@
 local _, ns = ...
 
 -- The Wayfinder window. The main window shows the card page (For you) and
--- never changes size; the other pages (Find, Quests, Items, ...) open in a
--- side panel docked to its right, from icon tabs down its right edge.
+-- never changes size; the other pages (Quests, Vendors, Trainers, Dungeons,
+-- Items) open in a side panel docked to its right, from icon tabs inside its
+-- right edge.
 --
 -- Page contract (register with ns.RegisterPage(page) from any file that loads
 -- before this one):
@@ -12,12 +13,12 @@ local _, ns = ...
 --   page.layout = "cards"      -- shown in the main window as cards (UI/Cards.lua), with
 --   page.width                 --   this window width; other pages are lists in the side panel
 --   page.searchable            -- show the search box (shift-clicked links go in it too)
---   page.placeholder           -- search box hint
+--   page.placeholder           -- search box hint (or page.Placeholder())
 --   page.SummaryText(query)    -- line under the search box
 --   page.EmptyText(query)      -- shown when there are no results
 --   page.Results(query)        -- returns results, err, net
---   page.categories            -- optional { {label, provider}, ... } shown as buttons
---                                 (providers use the same Summary/Empty/Results shape)
+--   page.categories            -- optional { {label, provider}, ... } shown as buttons,
+--   page.selected              --   and the selected one (see categoryPage below)
 -- A result:
 --   title, and either subtitle or zone (zone gets "· time · summary" appended),
 --   goal + route (from ns.Router.Plan) or journey (from ns.Journey.Plan),
@@ -38,17 +39,19 @@ local SIDE_TAB_SIZE = 32
 -- The tab column inside the main window's right edge.
 local TAB_COLUMN = SIDE_TAB_SIZE + 16
 local TAB_ICONS = {
-  find = "Interface\\Icons\\INV_Misc_Spyglass_03",
-  quests = "Interface\\Icons\\INV_Misc_Book_08",
+  quests = "Interface\\Icons\\INV_Misc_QuestionMark",
+  vendors = "Interface\\Icons\\INV_Misc_Coin_02",
+  trainers = "Interface\\Icons\\INV_Misc_Book_11",
+  dungeons = "Interface\\Icons\\INV_Misc_Key_14",
   items = "Interface\\Icons\\INV_Misc_Bag_08",
 }
+local MAX_CATEGORIES = 4
 
 local frame, side
 local mainPage, sidePage = nil, nil
-local selectedCategory = 1
 local query = ""
 
----------------------------------------------------------------- Find page
+---------------------------------------------------------------- side pages
 
 local function matches(r, q)
   if q == "" then return true end
@@ -56,34 +59,44 @@ local function matches(r, q)
   return text:find(q:lower(), 1, true) ~= nil
 end
 
-local findPage = {
-  id = "find", label = "Find", order = 20, searchable = true, placeholder = "Filter these results",
-  categories = {
-    { label = "Class trainer", provider = ns.Trainers },
-    { label = "Quest hubs", provider = ns.QuestHubs },
-    { label = "Dungeons", provider = ns.Dungeons },
-    { label = "Vendors", provider = ns.Vendors },
-  },
-}
-
-local function category()
-  return findPage.categories[selectedCategory].provider
-end
-
-function findPage.SummaryText() return category().SummaryText() end
-function findPage.EmptyText() return category().EmptyText() end
-
-function findPage.Results(q)
-  local results, err, net = category().Results()
-  if q == "" then return results, err, net end
-  local filtered = {}
-  for _, r in ipairs(results) do
-    if matches(r, q) then filtered[#filtered + 1] = r end
+-- A side page made of providers (same SummaryText/EmptyText/Results shape),
+-- one per category button. A searchable provider gets the search text; for
+-- the others the box filters their results.
+local function categoryPage(page)
+  page.searchable = true
+  page.selected = 1
+  local function current() return page.categories[page.selected].provider end
+  function page.Placeholder() return current().placeholder or "Filter these results" end
+  function page.SummaryText(q) return current().SummaryText(q) end
+  function page.EmptyText(q) return current().EmptyText(q) end
+  function page.Results(q)
+    local provider = current()
+    if provider.searchable then return provider.Results(q) end
+    local results, err, net = provider.Results()
+    if q == "" then return results, err, net end
+    local filtered = {}
+    for _, r in ipairs(results or {}) do
+      if matches(r, q) then filtered[#filtered + 1] = r end
+    end
+    return filtered, err, net
   end
-  return filtered, err, net
+  ns.RegisterPage(page)
 end
 
-ns.RegisterPage(findPage)
+categoryPage({ id = "quests", label = "Quests", order = 20, categories = {
+  { label = "Journal", provider = ns.QuestsPage },
+  { label = "Hubs", provider = ns.QuestHubs },
+} })
+categoryPage({ id = "vendors", label = "Vendors", order = 30, categories = {
+  { label = "Vendors", provider = ns.Vendors },
+} })
+categoryPage({ id = "trainers", label = "Trainers", order = 40, categories = {
+  { label = "Class", provider = ns.Trainers },
+  { label = "Weapons", provider = ns.WeaponMasters },
+} })
+categoryPage({ id = "dungeons", label = "Dungeons", order = 50, categories = {
+  { label = "Dungeons", provider = ns.Dungeons },
+} })
 
 ---------------------------------------------------------------- pages
 
@@ -319,18 +332,15 @@ local function createSide(parent)
   end)
   s.search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
-  -- Category buttons (Find page).
+  -- Category buttons, labelled for the page shown (see refreshSide).
   s.categoryButtons = {}
-  local previous
-  for i, cat in ipairs(findPage.categories) do
+  for i = 1, MAX_CATEGORIES do
     local b = CreateFrame("Button", nil, s, "UIPanelButtonTemplate")
     b:SetSize(84, 22)
-    b:SetText(cat.label)
-    if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", 18, -62) end
     b:SetScript("OnClick", function() Panel.Select(i) end)
     ns.Skin.Button(b)
+    b:Hide()
     s.categoryButtons[i] = b
-    previous = b
   end
 
   s.summary = s:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -535,11 +545,21 @@ local function refreshSide()
   local page = sidePage
   side.title:SetText(page.label)
   if page.searchable then side.search:Show() else side.search:Hide() end
-  side.search.hint:SetText(page.placeholder or "Search")
-  local showCategories = page.categories ~= nil
+  side.search.hint:SetText(page.Placeholder and page.Placeholder() or page.placeholder or "Search")
+  -- One category is just the page: no buttons.
+  local categories = page.categories and #page.categories > 1 and page.categories or {}
+  local showCategories = #categories > 0
+  local width = showCategories and math.floor((SIDE_WIDTH - 36 - 4 * (#categories - 1)) / #categories) or 0
   for i, b in ipairs(side.categoryButtons) do
-    b:SetShown(showCategories)
-    if i == selectedCategory then b:LockHighlight() else b:UnlockHighlight() end
+    local cat = categories[i]
+    b:SetShown(cat ~= nil)
+    if cat then
+      b:SetText(cat.label)
+      b:SetWidth(width)
+      b:ClearAllPoints()
+      b:SetPoint("TOPLEFT", 18 + (i - 1) * (width + 4), -62)
+      if i == page.selected then b:LockHighlight() else b:UnlockHighlight() end
+    end
   end
   local top = page.searchable and -62 or -34
   if showCategories then top = top - 28 end
@@ -550,7 +570,7 @@ local function refreshSide()
   local results, err, net = page.Results(q)
   results = results or {}
   -- A new page, category or search starts at the top; a data refresh keeps your place.
-  local key = page.id .. "|" .. selectedCategory .. "|" .. q
+  local key = page.id .. "|" .. (page.selected or 1) .. "|" .. q
   if key ~= listKey then offset, listKey = 0, key end
   side.results = results
   side.summary:SetText(page.SummaryText(q) or "")
@@ -598,11 +618,13 @@ function Panel.CloseSide()
 end
 
 -- Selects a page by id: a card page shows in the main window (and closes the
--- side panel), any other page opens in the side panel.
-function Panel.SelectPage(id)
+-- side panel), any other page opens in the side panel, on `category` (index)
+-- when given.
+function Panel.SelectPage(id, category)
   frame = frame or create()
   for _, page in ipairs(sortedPages()) do
     if page.id == id then
+      if category and page.categories and page.categories[category] then page.selected = category end
       if isCards(page) then
         mainPage = page
         side:Hide()
@@ -619,17 +641,17 @@ function Panel.SelectPage(id)
   Panel.Refresh()
 end
 
--- Selects a category on the Find page.
+-- Selects a category on the side panel's page.
 function Panel.Select(index)
-  selectedCategory = index
-  Panel.SelectPage("find")
+  if sidePage then Panel.SelectPage(sidePage.id, index) end
 end
 
--- Opens the window on a page with a search, e.g. from /wf item <link>.
+-- Opens the window on a page with a search, e.g. from /wf item <link>; on a
+-- page with categories, the first one (Quests: your journal, which searches).
 function Panel.Search(id, text)
   frame = frame or create()
   if not frame:IsShown() then frame:Show() end
-  Panel.SelectPage(id)
+  Panel.SelectPage(id, 1)
   if side:IsShown() then
     query = text or ""
     side.search:SetText(query)

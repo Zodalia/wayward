@@ -117,6 +117,9 @@ end
 
 ---------------------------------------------------------------- trainers
 
+-- Weapon masters are kept with the class trainers, under this key.
+local WEAPON_MASTER = "WEAPON_MASTER"
+
 local function buildTrainers()
   trainersByClass = {}
   local started = now()
@@ -125,7 +128,8 @@ local function buildTrainers()
   for _, id in ipairs(NpcDB.GetAllIds()) do
     local flags = NpcDB.Get(id, "npcFlags") or 0
     if flags ~= 0 and hasBit(flags, trainerFlag) then
-      local class = CLASS_BY_TRAINER_TITLE[NpcDB.GetRaw(id, "subName") or ""]
+      local subName = NpcDB.GetRaw(id, "subName") or ""
+      local class = CLASS_BY_TRAINER_TITLE[subName] or (subName == "Weapon Master" and WEAPON_MASTER) or nil
       if class then
         trainersByClass[class] = trainersByClass[class] or {}
         table.insert(trainersByClass[class], { id = id, name = NpcDB.Get(id, "name"),
@@ -149,6 +153,11 @@ function Bridge.ClassTrainers(class, faction, here)
     end
   end
   return out
+end
+
+-- Weapon masters for your faction, the same shape.
+function Bridge.WeaponMasters(faction, here)
+  return Bridge.ClassTrainers(WEAPON_MASTER, faction, here)
 end
 
 ---------------------------------------------------------------- dungeons

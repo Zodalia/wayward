@@ -389,7 +389,7 @@ end
 check(#leaked == 0, "ineligible quests filtered (leaked: " .. table.concat(leaked, ", ") .. ")")
 check(hubs[1] and hubs[1].route and ns.Router.Describe(hubs[1].route, #hubs[1].route.steps) == "Walk to Lakeshire (Magistrate Solomon)",
   "hub has directions to its main quest giver")
-ns.Panel.Select(2)
+ns.Panel.SelectPage("quests", 2)
 check(ns.Panel.IsShown(), "panel shows quest hubs without errors")
 
 io.write("dock recorder\n")
@@ -408,7 +408,7 @@ check(recorded and recorded.kind == "boat" and recorded.b.label == "Test Pier" a
   "arriving saves the boat with its trip time")
 check(recorded and ns.Docks.LuaLine(recorded):find('label = "Test Pier"'), "recorded boat exports as a data line")
 player.mapID, player.x, player.y = 1439, 0.5, 0.5
-ns.Panel.Select(1)
+ns.Panel.SelectPage("trainers", 1)
 local viaNewBoat = ns.Trainers.Results()[1]
 local usesIt = false
 for _, st in ipairs(viaNewBoat and viaNewBoat.route and viaNewBoat.route.steps or {}) do
@@ -548,7 +548,7 @@ check(ns.Vendors.SummaryText():find("Reagents: Light Feather, Rune of Teleportat
 check(not ns.Vendors.SummaryText():find("Ammo"), "no ranged weapon, not a hunter: no ammo need")
 UnitClass = function() return "Warlock", "WARLOCK", 9 end
 
-ns.Panel.Select(4)
+ns.Panel.SelectPage("vendors")
 check(ns.Panel.IsShown(), "panel shows vendors without errors")
 
 ---------------------------------------------------------------- vendors (end)
@@ -619,7 +619,7 @@ check(sfk and sfk.details[2].text:find("approximate"), "data entrances are marke
 check(not all:find("Ragefire") and not all:find("Gnomeregan") and not all:find("Scholomance")
   and not all:find("Molten Core") and not all:find("Warsong"),
   "other faction's capital, too high, raids and battlegrounds hidden at level 20")
-ns.Panel.Select(3)
+ns.Panel.SelectPage("dungeons")
 check(ns.Panel.IsShown(), "panel shows dungeons without errors")
 
 UnitLevel = function() return 58 end
@@ -666,7 +666,7 @@ check(find(dungeons, "Hall of Testing") and not all:find("Hellfire"),
   "QuestieDB-only dungeon shows when the client lists it; later expansions don't")
 stockade = find(dungeons, "The Stockade")
 check(stockade and math.abs(stockade.goal.x - 0.6) < 1e-6, "our Era Stormwind point converted with EraToForever")
-ns.Panel.Select(3)
+ns.Panel.SelectPage("dungeons")
 check(ns.Panel.IsShown(), "panel shows dungeons with QuestieDB")
 
 ---------------------------------------------------------------- dungeons (end)
@@ -725,12 +725,12 @@ ns.RegisterPage({ id = "test", label = "Test", order = 5, searchable = true, pla
   end })
 ns.Panel.Search("test", "abc")
 check(seenQuery == "abc", "Panel.Search opens a page with its query")
-local findPage
-for _, page in ipairs(ns.pages) do if page.id == "find" then findPage = page end end
-ns.Panel.Select(2)
-local filtered = findPage.Results("lakeshire")
-check(#filtered == 1 and filtered[1].title:find("Lakeshire"), "the Find page filters results by text")
-check(#findPage.Results("") >= 2, "an empty filter shows everything")
+local questPage
+for _, page in ipairs(ns.pages) do if page.id == "quests" then questPage = page end end
+ns.Panel.SelectPage("quests", 2)
+local filtered = questPage.Results("lakeshire")
+check(#filtered == 1 and filtered[1].title:find("Lakeshire"), "the search box filters a category's results by text")
+check(#questPage.Results("") >= 2, "an empty filter shows everything")
 
 io.write("shared helpers\n")
 local commandArg
@@ -936,7 +936,7 @@ do
     return table.concat(t, "\n")
   end
 
-  check(page and page.order == 40 and page.searchable, "Items page registered (order 40, searchable)")
+  check(page and page.order == 60 and page.searchable, "Items page registered (order 60, last tab, searchable)")
   check(ns.Items.ParseID("|cffa335ee|Hitem:9001::::::::20:::::|h[Cruel Barb]|h|r") == 9001
     and ns.Items.ParseID("item:9002") == 9002 and ns.Items.ParseID("Cruel Barb") == nil, "item ID parsed from a link")
 
@@ -1635,7 +1635,8 @@ do
     end
     function ui.On() end
     for _, page in ipairs(ns.pages) do
-      if page.id ~= "find" then ui.RegisterPage(page) end
+      -- Panel.lua registers its own category pages again.
+      if not ({ quests = true, vendors = true, trainers = true, dungeons = true })[page.id] then ui.RegisterPage(page) end
     end
     for _, file in ipairs({ "CopyBox", "HUD", "JourneyOverview", "Panel" }) do
       assert(loadfile(dir .. "/UI/" .. file .. ".lua"))("Wayfinder", ui)
@@ -1651,7 +1652,7 @@ do
     asked = {}
     local ok, err = pcall(function()
       ui.Panel.Toggle()
-      ui.Panel.SelectPage("find")
+      ui.Panel.SelectPage("trainers")
       ui.ShowCopyBox("Look", "text")
       ui.JourneyOverview.Show()
       ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Look",
@@ -1674,7 +1675,7 @@ do
   local ui = freshUI()
   check(openAll(ui), "windows open with the templates")
   check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 3
-    and ui.Panel.SelectedTab() == "find",
+    and ui.Panel.SelectedTab() == "trainers",
     "template windows, search box and side tabs (tab " .. tostring(ui.Panel.SelectedTab()) .. ")")
 
   -- Without EllesmereUI the skin does nothing.
@@ -2038,8 +2039,8 @@ do
   ns.Nav.Stop()
 
   -- Other pages keep rows at the normal width.
-  ns.Panel.Select(1)
-  check(#ns.Panel.VisibleResults() > 0, "the Find page still shows rows")
+  ns.Panel.SelectPage("trainers", 1)
+  check(#ns.Panel.VisibleResults() > 0, "the Trainers page still shows rows")
 end
 ---------------------------------------------------------------- cards (end)
 ---------------------------------------------------------------- side panel (begin)
@@ -2055,8 +2056,21 @@ do
   ns.Panel.CloseSide()
   check(not ns.Panel.SideShown() and ns.Panel.IsShown() and ns.Panel.SelectedTab() == nil,
     "closing the side panel keeps the main window and clears the tab")
-  ns.Panel.Select(1)
-  check(ns.Panel.SideShown() and #ns.Panel.VisibleResults() > 0, "Find's categories open in the side panel")
+  ns.Panel.SelectPage("trainers", 1)
+  check(ns.Panel.SideShown() and #ns.Panel.VisibleResults() > 0, "Trainers opens in the side panel")
+  local tabs = {}
+  for _, page in ipairs(ns.pages) do if page.layout ~= "cards" and not page.id:find("test") then tabs[#tabs + 1] = page.id end end
+  check(table.concat(tabs, ",") :find("quests,vendors,trainers,dungeons,items", 1, true),
+    "side tabs: Quests, Vendors, Trainers, Dungeons, Items (" .. table.concat(tabs, ",") .. ")")
+  ns.Panel.Select(2)
+  check(ns.Panel.SideShown() and ns.Panel.SelectedTab() == "trainers", "the Weapons category of Trainers opens")
+  local here = ns.Geo.PlayerNode()
+  ns.db.npcs[990001] = { name = "Test Weaponmaster", kinds = { weaponMaster = true }, mapID = here.mapID,
+    x = here.x + 0.01, y = here.y, weapons = { "Daggers", "Swords" } }
+  local masters = ns.WeaponMasters.Results()
+  check(masters[1] and masters[1].title == "Test Weaponmaster" and masters[1].details[1].text == "Daggers, Swords",
+    "a visited weapon master is listed with what they teach")
+  ns.db.npcs[990001] = nil
   ns.Panel.Search("quests", "redridge")
   check(ns.Panel.SideShown(), "/wf quest and /wf item open the side panel with the search")
   ns.Panel.Search("foryou", "")

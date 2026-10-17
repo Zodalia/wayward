@@ -7,7 +7,8 @@ local _, ns = ...
 -- lists your quest log; "Add" puts a quest (log or search) into the current trip.
 -- Searching and directions need QuestieDB; the log list does not.
 
-local QuestsPage = { id = "quests", label = "Quests", order = 30, searchable = true,
+-- The Quests side page's "Journal" category (UI/Panel.lua); it searches itself.
+local QuestsPage = { id = "journal", label = "Journal", searchable = true,
   placeholder = "Quest name (or shift-click a quest link)" }
 ns.QuestsPage = QuestsPage
 
@@ -458,7 +459,6 @@ function QuestsPage.Results(query)
   return results, nil, net
 end
 
-ns.RegisterPage(QuestsPage)
 
 ns.RegisterCommand("quest", "/wf quest <name> - find a quest: can you take it, and where to go", function(rest)
   ns.Panel.Search("quests", rest)
