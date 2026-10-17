@@ -427,7 +427,7 @@ end
 function Journey.StopsDone(journey)
   local done = 0
   for _, stop in ipairs(journey.stops) do
-    if stop.done then done = done + 1 end
+    if stop.done and not stop.passed then done = done + 1 end
   end
   return done
 end
@@ -459,7 +459,7 @@ function Journey.Save(journey)
     local after = {}
     for _, before in ipairs(stop.after or {}) do after[#after + 1] = index[before] end
     return { node = saveNode(stop.node), text = stop.text, action = stop.action, resolve = stop.resolve,
-      done = stop.done, skipped = stop.skipped, after = #after > 0 and after or nil }
+      done = stop.done, passed = stop.passed, skipped = stop.skipped, after = #after > 0 and after or nil }
   end
   local saved = { title = root.title, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
@@ -472,7 +472,7 @@ function Journey.Load(saved)
   local def = { title = saved.title, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, action = s.action, resolve = s.resolve, done = s.done,
-      skipped = s.skipped }
+      passed = s.passed, skipped = s.skipped }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end
   for i, s in ipairs(saved.stops or {}) do

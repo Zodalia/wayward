@@ -176,18 +176,20 @@ local function currentStop(a)
   return nil
 end
 
--- { {stop, state} } with state "done", "dropped", "now" or "next".
+-- { {stop, state} } with state "done", "dropped", "skipped" (passed with the
+-- directions box's next button), "now" or "next".
 function Overview.Rows()
   local a = ns.Nav.active
   if not (a and a.journey) then return {} end
   local now = currentStop(a)
   local rows = {}
   for _, stop in ipairs(ns.Journey.AllStops(a.journey)) do
-    local state = stop.skipped and "dropped" or stop.done and "done" or stop == now and "now" or "next"
+    local state = stop.skipped and "dropped" or stop.passed and "skipped" or stop.done and "done"
+      or stop == now and "now" or "next"
     rows[#rows + 1] = { stop = stop, state = state }
   end
   -- Done and dropped stops first, in the order they happened to be listed.
-  local order = { done = 1, dropped = 1, now = 2, next = 3 }
+  local order = { done = 1, dropped = 1, skipped = 1, now = 2, next = 3 }
   local keyed = {}
   for i, r in ipairs(rows) do keyed[i] = { r = r, i = i } end
   table.sort(keyed, function(x, y)
@@ -201,6 +203,7 @@ end
 local LOOK = {
   done = { "|cff7fd1aedone|r  ", 0.6 },
   dropped = { "|cff808080dropped|r  ", 0.5 },
+  skipped = { "|cff808080skipped|r  ", 0.6 },
   now = { "|cffffd200now|r  ", 1 },
   next = { "      ", 1 },
 }

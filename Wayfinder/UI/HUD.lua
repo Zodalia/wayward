@@ -172,18 +172,19 @@ function HUD.ObjectiveText(questID)
   return nil
 end
 
--- The stop a step leads to, and its number among the trip's stops.
-local function stopAhead(a)
-  for k = a.index, #a.route.steps do
-    local stop = a.route.steps[k].stop
-    if stop then
-      for i, s in ipairs(a.journey.stops) do
-        if s == stop then return stop, i end
-      end
-      return stop, nil
-    end
+-- Where the current step is among the steps to the next stop (a trip) or to
+-- the destination: position and count.
+local function legPosition(a)
+  local steps = a.route.steps
+  if not a.journey then return a.index, #steps end
+  local first, last = 1, #steps
+  for k = a.index - 1, 1, -1 do
+    if steps[k].stop then first = k + 1 break end
   end
-  return nil, nil
+  for k = a.index, #steps do
+    if steps[k].stop then last = k break end
+  end
+  return a.index - first + 1, last - first + 1
 end
 
 -- Lays the text out under the title, or under the progress bar on a trip.
@@ -210,22 +211,23 @@ function HUD.Update()
   frame.list:SetShown(trip)
   place(trip)
 
-  local stop, stopNumber
+  -- One count each: stops done in the title, steps to the next stop (or to
+  -- the destination) under the step, only when there's more than one.
   if trip then
     local done, total = ns.Journey.StopsDone(a.journey), #a.journey.stops
-    frame.title:SetText(string.format("%s  |cff9d9d9d(%d/%d stops)|r", a.title, done, total))
+    frame.title:SetText(string.format("%s  |cff9d9d9d%d of %d done|r", a.title, done, total))
     frame.progress:SetValue(total > 0 and done / total or 0)
-    stop, stopNumber = stopAhead(a)
   else
     frame.title:SetText(a.title)
   end
   frame.step:SetText(ns.Router.Describe(a.route, a.index))
-  local steps = #a.route.steps
-  if stopNumber then
-    frame.sub:SetText(string.format("Stop %d of %d  ·  step %d of %d", stopNumber, #a.journey.stops, a.index, steps))
-  else
-    frame.sub:SetText(string.format("Step %d of %d", a.index, steps))
-  end
+  local position, count = legPosition(a)
+  local sub = count > 1 and string.format(trip and "Step %d of %d to get there" or "Step %d of %d", position, count)
+    or ""
+  frame.sub:SetText(sub)
+  frame.info:ClearAllPoints()
+  frame.info:SetPoint("TOPLEFT", sub ~= "" and frame.sub or frame.step, "BOTTOMLEFT", 0, -5)
+  frame.info:SetPoint("RIGHT", -PADDING, 0)
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
@@ -243,8 +245,9 @@ function HUD.Update()
 
   -- Grow to fit the text (titles and steps can wrap).
   local function height(fs) return fs:GetStringHeight() or 12 end
+  local subHeight = sub ~= "" and (3 + height(frame.sub)) or 0
   frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + (trip and 16 or 5) + height(frame.step)
-    + 3 + height(frame.sub) + 5 + height(frame.info)))
+    + subHeight + 5 + height(frame.info)))
 
   local heading = facing()
   -- TomTom draws the arrow when it's in use; then the circle shows what's ahead.
@@ -255,7 +258,7 @@ function HUD.Update()
     frame.icon:Hide()
   else
     frame.arrow:Hide()
-    local action = (step.stop or stop or {}).action
+    local action = (step.stop or {}).action
     frame.icon:SetTexture(action and STOP_ICONS[action.kind] or MODE_ICONS[step.mode] or MODE_ICONS.walk)
     frame.icon:Show()
   end

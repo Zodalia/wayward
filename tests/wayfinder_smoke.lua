@@ -2010,9 +2010,21 @@ do
   check(labels() == "A,B,Giver,Finisher", "planned nearest first: " .. labels())
   ns.HUD.Update()
   local lines = ns.HUD.Lines()
-  check(lines[1]:find("Errands", 1, true) and lines[1]:find("(0/4 stops)", 1, true) and lines[2] == "Visit A"
-    and lines[3]:find("^Stop 1 of 4") and lines[4]:find("yd", 1, true),
-    "the directions box: trip and stops, the step, stop number, distance and time: " .. table.concat(lines, " | "))
+  check(lines[1]:find("Errands", 1, true) and lines[1]:find("0 of 4 done", 1, true) and lines[2] == "Visit A"
+    and lines[3] == "" and lines[4]:find("yd", 1, true),
+    "the directions box: trip and stops done, the step, distance and time (no step count for a one-step stop): "
+      .. table.concat(lines, " | "))
+
+  -- Skipping ahead and back: the stops come back.
+  ns.Nav.Next()
+  ns.Nav.Next()
+  check(ns.Journey.StopsDone(ns.Nav.active.journey) == 0 and ns.JourneyOverview.Rows()[1].state == "skipped",
+    "skipped stops aren't counted as done; the overview says skipped")
+  ns.Nav.Prev()
+  ns.Nav.Prev()
+  local states = {}
+  for _, r in ipairs(ns.JourneyOverview.Rows()) do states[#states + 1] = r.state end
+  check(table.concat(states, ",") == "now,next,next,next", "going back opens them again: " .. table.concat(states, ","))
   ns.JourneyOverview.Show()
   check(ns.JourneyOverview.HandleCount() == 4, "every open stop has a drag handle")
   check(ns.JourneyOverview.Move(1, 2) and labels() == "B,A,Giver,Finisher", "dragging A below B swaps them: " .. labels())

@@ -177,11 +177,13 @@ local function arrive()
 end
 
 -- "Skip" also counts the current stop as done, so the journey moves on.
+-- Skipping a stop's step passes the stop (`passed`: left out of the plan, but
+-- not counted as done); going back to it opens it again.
 function Nav.Next()
   local a = Nav.active
   if not a then return end
   local stop = a.route.steps[a.index].stop
-  if stop then stop.done = true end
+  if stop and not stop.done then stop.done, stop.passed = true, true end
   if a.index >= #a.route.steps then return arrive() end
   a.index = a.index + 1
   showStep()
@@ -191,6 +193,8 @@ function Nav.Prev()
   local a = Nav.active
   if a and a.index > 1 then
     a.index = a.index - 1
+    local stop = a.route.steps[a.index].stop
+    if stop and stop.passed then stop.done, stop.passed = nil, nil end
     showStep()
   end
 end
@@ -270,7 +274,7 @@ local function questAction(kind, questID)
   for i, step in ipairs(a.route.steps) do
     local stop = ns.Journey.PendingAction(step)
     if stop and stop.action.kind == kind and stop.action.questID == questID and i >= a.index then
-      stop.done = true
+      stop.done, stop.passed = true, nil
       if i == #a.route.steps then return arrive() end
       local relocate = false
       for k = i + 1, #a.route.steps do
@@ -520,11 +524,11 @@ function Nav.Tick()
           showStep()
         end
       elseif k == #steps then
-        if step.stop then step.stop.done = true end
+        if step.stop then step.stop.done, step.stop.passed = true, nil end
         arrive()
         return here, nil
       else
-        if step.stop then step.stop.done = true end
+        if step.stop then step.stop.done, step.stop.passed = true, nil end
         a.index = k + 1
         showStep()
       end
