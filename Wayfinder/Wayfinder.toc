@@ -6,6 +6,7 @@
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 ## SavedVariables: WayfinderDB
 ## SavedVariablesPerCharacter: WayfinderCharDB
+## OptionalDeps: QuestieDB
 
 Core.lua
 Geo.lua
@@ -14,7 +15,9 @@ Data\Seed.lua
 Harvest.lua
 Network.lua
 Router.lua
+QuestieBridge.lua
 Trainers.lua
+QuestHubs.lua
 Navigator.lua
 UI\HUD.lua
 UI\Panel.lua

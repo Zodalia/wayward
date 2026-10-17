@@ -125,6 +125,7 @@ local HELP = {
   "/wf stop - stop the current directions",
   "/wf arrow - toggle the on-screen arrow (text directions stay)",
   "/wf where - print your map ID and coordinates (to report data fixes)",
+  "/wf debug - data sources and one-time QuestieDB scan times",
 }
 
 SLASH_WAYFINDER1 = "/wf"
@@ -147,6 +148,18 @@ SlashCmdList.WAYFINDER = function(msg)
       ns.print(string.format("mapID=%d (%s) x=%.4f y=%.4f", mapID, ns.MapName(mapID), x, y))
     else
       ns.print("no map position here")
+    end
+  elseif cmd == "debug" then
+    local available, reason = ns.Questie.Available()
+    ns.print("QuestieDB: " .. (available and ns.Questie.StatusText() or tostring(reason)))
+    local function count(t)
+      local n = 0
+      for _ in pairs(t) do n = n + 1 end
+      return n
+    end
+    ns.print(string.format("learned NPCs: %d, known flight paths: %d", count(ns.db.npcs), count(ns.charDB.knownTaxi)))
+    for name, ms in pairs(ns.debugTimings or {}) do
+      ns.print(string.format("%s scan: %.0f ms", name, ms))
     end
   else
     for _, line in ipairs(HELP) do ns.print(line) end

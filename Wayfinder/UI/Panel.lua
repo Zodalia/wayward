@@ -1,19 +1,20 @@
 local _, ns = ...
 
 -- The main window: pick a category, see ranked options for your character,
--- click one to get directions. Only "Class trainer" works in this MVP.
+-- click one to get directions.
 
 local Panel = {}
 ns.Panel = Panel
 
 local CATEGORIES = {
   { label = "Class trainer", provider = ns.Trainers },
-  { label = "Quest hubs" },
+  { label = "Quest hubs", provider = ns.QuestHubs },
   { label = "Dungeons" },
   { label = "Vendors" },
 }
 local MAX_ROWS = 7
 local ROW_HEIGHT = 42
+local MAX_DETAIL_LINES = 12
 
 local frame
 
@@ -22,6 +23,15 @@ local function showRouteTooltip(row)
   if not (r and r.route) then return end
   GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
   GameTooltip:SetText(r.title)
+  for i, line in ipairs(r.details or {}) do
+    if i > MAX_DETAIL_LINES then
+      GameTooltip:AddLine(string.format("... and %d more", #r.details - MAX_DETAIL_LINES), 0.6, 0.6, 0.6)
+      break
+    end
+    local c = line.color or { r = 1, g = 1, b = 1 }
+    GameTooltip:AddLine(line.text, c.r, c.g, c.b)
+  end
+  if r.details then GameTooltip:AddLine(" ") end
   for i = 1, #r.route.steps do
     GameTooltip:AddLine(i .. ". " .. ns.Router.Describe(r.route, i), 1, 1, 1, true)
   end
@@ -97,6 +107,7 @@ local function create()
   hint:SetText("Search (coming soon)")
 
   local previous
+  f.categoryButtons = {}
   for i, cat in ipairs(CATEGORIES) do
     local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     b:SetSize(84, 22)
@@ -107,6 +118,7 @@ local function create()
     else
       b:Disable()
     end
+    f.categoryButtons[i] = b
     previous = b
   end
 
@@ -145,9 +157,12 @@ end
 function Panel.Refresh()
   if not (frame and frame:IsShown()) then return end
   local provider = CATEGORIES[selected].provider
-  frame.summary:SetText(provider.SummaryText())
+  for i, b in ipairs(frame.categoryButtons) do
+    if i == selected then b:LockHighlight() else b:UnlockHighlight() end
+  end
 
   local results, err, net = provider.Results()
+  frame.summary:SetText(provider.SummaryText())
   for i, row in ipairs(frame.rows) do
     local r = results[i]
     row.result = r
@@ -168,20 +183,21 @@ function Panel.Refresh()
   if err then
     frame.empty:SetText(err)
   elseif #results == 0 then
-    local className = UnitClass("player")
-    frame.empty:SetText(string.format("No %s trainers known yet. Talk to one once and Wayfinder "
-      .. "remembers where they are. City guards can point you to one.", className:lower()))
+    frame.empty:SetText(provider.EmptyText())
   else
     frame.empty:SetText("")
   end
 
+  local source = ns.Questie.StatusText()
+  source = source and ("Data: " .. source .. " + places you visited. ")
+    or "Data: places you visited (install QuestieDB for more). "
   local flights = net and net.knownFlights or 0
   if flights == 0 then
-    frame.footer:SetText("|cffffd200No flight paths known yet, so routes are on foot. Talk to any "
-      .. "flight master once and routes will use your flight paths.|r")
+    frame.footer:SetText(source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to "
+      .. "any flight master once and routes will use your flight paths.|r")
   else
-    frame.footer:SetText(string.format("%d known flight path%s on routes. Open any flight map to update. "
-      .. "Boat and zeppelin docks are approximate.", flights, flights == 1 and "" or "s"))
+    frame.footer:SetText(source .. string.format("%d known flight path%s. Boat and zeppelin docks are "
+      .. "approximate.", flights, flights == 1 and "" or "s"))
   end
 end
 

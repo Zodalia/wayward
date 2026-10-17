@@ -1,0 +1,300 @@
+local _, ns = ...
+
+-- Optional bridge to QuestieDB (github.com/Questie/QuestieDB), read at runtime
+-- through its public API. Nothing is copied into Wayfinder: QuestieDB has no
+-- licence file, so we only read what the player has installed. Without it,
+-- Wayfinder falls back to the NPCs it has learned (Harvest.lua).
+--
+-- API reference: QuestieDB docs/api.md (contract 4 adds Enum.npcFlags/classKeys).
+
+local Bridge = {}
+ns.Questie = Bridge
+
+local CONTRACT = 4
+local HUB_RADIUS = 150 -- yards: quest givers this close together form one hub
+
+-- English trainer subtitles (read with GetRaw, which skips localisation).
+local CLASS_BY_TRAINER_TITLE = {
+  ["Warrior Trainer"] = "WARRIOR", ["Paladin Trainer"] = "PALADIN", ["Hunter Trainer"] = "HUNTER",
+  ["Rogue Trainer"] = "ROGUE", ["Priest Trainer"] = "PRIEST", ["Shaman Trainer"] = "SHAMAN",
+  ["Mage Trainer"] = "MAGE", ["Warlock Trainer"] = "WARLOCK", ["Druid Trainer"] = "DRUID",
+}
+
+local QUEST_FIELDS = { "name", "questLevel", "requiredLevel", "requiredRaces", "requiredClasses",
+  "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill" }
+
+local lib, failure
+local areaToUiMap, trainersByClass, questIndex
+local giverNodes = {}
+
+-- Masks can exceed 32 bits (Skyborne), so test bits arithmetically.
+local function hasBit(mask, bit)
+  return bit ~= nil and bit > 0 and math.floor(mask / bit) % 2 == 1
+end
+
+local function now()
+  return debugprofilestop and debugprofilestop() or 0
+end
+
+-- True when QuestieDB is installed and speaks a contract we understand.
+function Bridge.Available()
+  if lib then return true end
+  if failure then return false, failure end
+  local candidate = _G.LibQuestieDB
+  if type(candidate) ~= "table" or type(candidate.RequireContract) ~= "function" then
+    return false, "QuestieDB is not installed"
+  end
+  local ok, accepted, message = pcall(candidate.RequireContract, CONTRACT)
+  if ok and accepted then
+    lib = candidate
+    return true
+  end
+  failure = "QuestieDB is too old or too new for Wayfinder: " .. tostring(message or accepted)
+  ns.print(failure)
+  return false, failure
+end
+
+function Bridge.StatusText()
+  if not Bridge.Available() then return nil end
+  local mode = lib.readMode == "source" and "SOURCE MODE" or (lib.readMode or "?")
+  return "QuestieDB (" .. mode .. ")"
+end
+
+---------------------------------------------------------------- locations
+
+local function uiMapForArea(areaID)
+  if not areaToUiMap then
+    areaToUiMap = {}
+    local ok, zoneDB = pcall(lib.Support.Get, "ZoneDB")
+    local source = ok and zoneDB and zoneDB.private and zoneDB.private.areaIdToUiMapId
+    if type(source) == "string" then
+      local chunk = loadstring(source)
+      local loaded, value = pcall(chunk or error)
+      if loaded and type(value) == "table" then areaToUiMap = value end
+    elseif type(source) == "table" then
+      areaToUiMap = source
+    end
+  end
+  return areaToUiMap[areaID]
+end
+
+-- spawns = { [areaID] = { {x, y[, phase]}, ... } } in 0-100 map percentages.
+local function spawnNodes(spawns, label)
+  local nodes = {}
+  for areaID, points in pairs(spawns or {}) do
+    local uiMap = uiMapForArea(areaID)
+    if uiMap then
+      for _, p in ipairs(points) do
+        if type(p[1]) == "number" and p[1] >= 0 then
+          local node = ns.Geo.Node(uiMap, p[1] / 100, p[2] / 100, label)
+          if node then nodes[#nodes + 1] = node end
+        end
+      end
+    end
+  end
+  return nodes
+end
+
+function Bridge.Nearest(nodes, here)
+  local best, bestDistance = nodes[1], math.huge
+  for _, node in ipairs(nodes) do
+    local d = ns.Geo.Distance(here, node)
+    if d < bestDistance then best, bestDistance = node, d end
+  end
+  return best, bestDistance
+end
+
+local function friendlyTo(friendly, faction)
+  if friendly == nil or friendly == "" then return true end
+  return friendly:find(faction == "Alliance" and "A" or "H", 1, true) ~= nil
+end
+
+---------------------------------------------------------------- trainers
+
+local function buildTrainers()
+  trainersByClass = {}
+  local started = now()
+  local trainerFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.TRAINER
+  if not trainerFlag then return end
+  for _, id in ipairs(NpcDB.GetAllIds()) do
+    local flags = NpcDB.Get(id, "npcFlags") or 0
+    if flags ~= 0 and hasBit(flags, trainerFlag) then
+      local class = CLASS_BY_TRAINER_TITLE[NpcDB.GetRaw(id, "subName") or ""]
+      if class then
+        trainersByClass[class] = trainersByClass[class] or {}
+        table.insert(trainersByClass[class], { id = id, name = NpcDB.Get(id, "name"),
+          friendly = NpcDB.Get(id, "friendlyToFaction") })
+      end
+    end
+  end
+  ns.debugTimings = ns.debugTimings or {}
+  ns.debugTimings.questieTrainers = now() - started
+end
+
+-- { {id, name, node}, ... } for your class and faction, nearest spawn each.
+function Bridge.ClassTrainers(class, faction, here)
+  if not Bridge.Available() then return {} end
+  if not trainersByClass then buildTrainers() end
+  local out = {}
+  for _, t in ipairs(trainersByClass[class] or {}) do
+    if friendlyTo(t.friendly, faction) then
+      local node = Bridge.Nearest(spawnNodes(NpcDB.Get(t.id, "spawns"), t.name), here)
+      if node then out[#out + 1] = { id = t.id, name = t.name, node = node } end
+    end
+  end
+  return out
+end
+
+---------------------------------------------------------------- quests
+
+local function buildQuestIndex()
+  questIndex = {}
+  local started = now()
+  local keys = {}
+  local questKeys = lib.Meta.QuestMeta.questKeys
+  for _, field in ipairs(QUEST_FIELDS) do
+    if questKeys[field] then keys[#keys + 1] = field end
+  end
+  for _, id in ipairs(QuestDB.GetAllIds()) do
+    local values = QuestDB.GetAll(id, keys)
+    if values then
+      local q = { id = id }
+      for i, field in ipairs(keys) do q[field] = values[i] end
+      local starters = q.startedBy or {}
+      if (starters[1] and #starters[1] > 0) or (starters[2] and #starters[2] > 0) then
+        questIndex[#questIndex + 1] = q
+      end
+    end
+  end
+  ns.debugTimings = ns.debugTimings or {}
+  ns.debugTimings.questieQuests = now() - started
+end
+
+local function anyDone(list, done)
+  for _, id in ipairs(list or {}) do
+    if done[id] then return true end
+  end
+  return false
+end
+
+local function allDone(list, done)
+  for _, id in ipairs(list or {}) do
+    if not done[id] then return false end
+  end
+  return true
+end
+
+-- Grey ("trivial") quests give little XP; hide them.
+local function isTrivial(questLevel, level)
+  if UnitQuestTrivialLevelRange then
+    local range = UnitQuestTrivialLevelRange("player")
+    if type(range) == "number" then return level - questLevel > range end
+  end
+  local gray
+  if level <= 5 then gray = 0
+  elseif level <= 39 then gray = level - 5 - math.floor(level / 10)
+  elseif level <= 59 then gray = level - 1 - math.floor(level / 5)
+  else gray = level - 9 end
+  return questLevel <= gray
+end
+
+local function playerQuestState()
+  local done, inLog = {}, {}
+  for _, id in ipairs(C_QuestLog.GetAllCompletedQuestIDs() or {}) do done[id] = true end
+  for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+    local info = C_QuestLog.GetInfo(i)
+    if info and not info.isHeader and info.questID then inLog[info.questID] = true end
+  end
+  return done, inLog
+end
+
+-- Prototype rules. Questie handles more (breadcrumbs, holidays, reputation);
+-- quests that need a profession skill are left out rather than guessed.
+local function eligible(q, p, done, inLog)
+  if done[q.id] or inLog[q.id] then return false end
+  local required = q.requiredLevel or 0
+  if required ~= 0 and required > p.level then return false end
+  local questLevel = (q.questLevel or 0) ~= 0 and q.questLevel or required
+  if questLevel > 0 and isTrivial(questLevel, p.level) then return false end
+  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return false end
+  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then return false end
+  if q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done) then return false end
+  if q.preQuestGroup and not allDone(q.preQuestGroup, done) then return false end
+  if anyDone(q.exclusiveTo, done) then return false end
+  if q.requiredSkill then return false end
+  return true
+end
+
+local function giverNode(kind, id, here, faction)
+  local key = kind .. id
+  if giverNodes[key] == nil then
+    local db = kind == "npc" and NpcDB or ObjectDB
+    local name = db.Get(id, "name")
+    local ok = kind ~= "npc" or friendlyTo(db.Get(id, "friendlyToFaction"), faction)
+    giverNodes[key] = ok and { name = name, nodes = spawnNodes(db.Get(id, "spawns"), name) } or false
+  end
+  local giver = giverNodes[key]
+  if not giver or #giver.nodes == 0 then return nil end
+  return giver.name, Bridge.Nearest(giver.nodes, here)
+end
+
+-- Hubs of quest givers you can take quests from, nearest first (straight line).
+function Bridge.QuestHubs(here, limit)
+  if not Bridge.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  local _, class = UnitClass("player")
+  local _, _, raceID = UnitRace("player")
+  local faction = UnitFactionGroup("player")
+  local p = {
+    level = UnitLevel("player"),
+    raceMask = lib.Enum.raceMaskById and lib.Enum.raceMaskById[raceID],
+    classMask = lib.Enum.classKeys and lib.Enum.classKeys[class],
+  }
+  local done, inLog = playerQuestState()
+
+  local givers, order = {}, {}
+  for _, q in ipairs(questIndex) do
+    if eligible(q, p, done, inLog) then
+      local bestName, bestNode, bestDistance, bestKey
+      for kind, group in pairs({ npc = q.startedBy[1], object = q.startedBy[2] }) do
+        for _, id in ipairs(group or {}) do
+          local name, node, distance = giverNode(kind, id, here, faction)
+          if node and (not bestDistance or distance < bestDistance) then
+            bestName, bestNode, bestDistance, bestKey = name, node, distance, kind .. id
+          end
+        end
+      end
+      if bestNode then
+        local g = givers[bestKey]
+        if not g then
+          g = { name = bestName, node = bestNode, distance = bestDistance, quests = {} }
+          givers[bestKey] = g
+          order[#order + 1] = g
+        end
+        -- Level <= 0 means "scales with you" in Questie data; show your level.
+        local level = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
+        g.quests[#g.quests + 1] = { id = q.id, name = q.name, level = level > 0 and level or p.level }
+      end
+    end
+  end
+
+  table.sort(order, function(a, b) return a.distance < b.distance end)
+  local hubs = {}
+  for _, g in ipairs(order) do
+    local hub
+    for _, h in ipairs(hubs) do
+      if ns.Geo.Distance(h.anchor.node, g.node) <= HUB_RADIUS then hub = h break end
+    end
+    if not hub and #hubs < (limit or 12) then
+      hub = { anchor = g, givers = {}, count = 0 }
+      hubs[#hubs + 1] = hub
+    end
+    -- Past the limit, farther givers can still join a hub that already exists.
+    if hub then
+      table.insert(hub.givers, g)
+      hub.count = hub.count + #g.quests
+      if #g.quests > #hub.anchor.quests then hub.anchor = g end
+    end
+  end
+  return hubs
+end

@@ -48,7 +48,14 @@ function Trainers.SummaryText()
   return table.concat(parts, " · ")
 end
 
--- Results: { title, subtitle, goal (route node), route } sorted by travel time.
+function Trainers.EmptyText()
+  local className = UnitClass("player")
+  return string.format("No %s trainers known yet. Talk to one once and Wayfinder remembers where "
+    .. "they are, or install QuestieDB. City guards can point you to one.", className:lower())
+end
+
+-- Results: { title, zone, goal (route node), route } sorted by travel time.
+-- Sources: trainers you visited, Data/Seed.lua, and QuestieDB when installed.
 function Trainers.Results()
   local _, class = UnitClass("player")
   local faction = UnitFactionGroup("player")
@@ -56,19 +63,27 @@ function Trainers.Results()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
 
-  local results = {}
+  local results, seen = {}, {}
+  local function add(id, name, goal)
+    seen[id] = true
+    results[#results + 1] = {
+      id = id,
+      title = name,
+      zone = ns.MapName(goal.mapID),
+      goal = goal,
+      route = ns.Router.Plan(start, goal, net),
+    }
+  end
+
+  -- Visited and seeded trainers first: their positions were measured in Forever.
   for id, npc in pairs(ns.Harvest.AllNPCs()) do
     if npc.kinds.classTrainer and npc.class == class and (npc.faction == nil or npc.faction == faction) then
       local goal = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name)
-      local route = goal and ns.Router.Plan(start, goal, net)
-      results[#results + 1] = {
-        id = id,
-        title = npc.name,
-        zone = ns.MapName(npc.mapID),
-        goal = goal,
-        route = route,
-      }
+      if goal then add(id, npc.name, goal) end
     end
+  end
+  for _, t in ipairs(ns.Questie.ClassTrainers(class, faction, start)) do
+    if not seen[t.id] then add(t.id, t.name, t.node) end
   end
   table.sort(results, function(a, b)
     local ta = a.route and a.route.seconds or math.huge
