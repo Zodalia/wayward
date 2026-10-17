@@ -96,12 +96,14 @@ local function showTooltip(row)
         .. (zone and ("  |cff9d9d9d(" .. zone .. ")|r") or ""), 1, 1, 1, true)
     end
     GameTooltip:AddLine("Click to start this journey", 0.5, 0.8, 0.7)
+    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
   elseif r.route then
     local route = ns.Router.WithZoneSteps(r.route)
     for i = 1, #route.steps do
       GameTooltip:AddLine(i .. ". " .. ns.Router.Describe(route, i), 1, 1, 1, true)
     end
     GameTooltip:AddLine("Click for directions", 0.5, 0.8, 0.7)
+    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
   end
   GameTooltip:Show()
 end
@@ -156,6 +158,13 @@ local function createRow(parent, index)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)
   row:SetScript("OnClick", function(self)
     local r = self.result
+    -- Shift-click: add to the trip you're on, keep the panel open.
+    if r and ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then
+      local stops = ns.Nav.StopsFor(r)
+      if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
+      Panel.Refresh()
+      return
+    end
     if r and r.journey then
       ns.Nav.StartJourney(r.journey)
       frame:Hide()
