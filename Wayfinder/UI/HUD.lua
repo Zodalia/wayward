@@ -100,12 +100,19 @@ function HUD.Update()
     frame:Hide()
     return
   end
-  frame.title:SetText(a.title)
+  if a.journey then
+    frame.title:SetText(string.format("%s  (%d/%d stops)", a.title, ns.Journey.StopsDone(a.journey),
+      #a.journey.stops))
+  else
+    frame.title:SetText(a.title)
+  end
   frame.step:SetText(string.format("%d/%d  %s", a.index, #a.route.steps, ns.Router.Describe(a.route, a.index)))
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = ns.FormatDuration(ns.Nav.RemainingSeconds(here))
-  if distance < math.huge and step.mode == "walk" then
+  if ns.Nav.Waiting() then
+    frame.info:SetText("|cff7fd1aeYou're here|r  ·  " .. remaining .. " to go")
+  elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%d yd  ·  %s to go", math.floor(distance), remaining))
   else
     frame.info:SetText(remaining .. " to go")
