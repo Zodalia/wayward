@@ -193,9 +193,10 @@ end
 ---------------------------------------------------------------- quests
 
 local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
+local questByID -- [questID] = quest row (every quest, with or without a starter)
 
 local function buildQuestIndex()
-  questIndex, predecessors = {}, {}
+  questIndex, predecessors, questByID = {}, {}, {}
   local started = now()
   local keys = {}
   local questKeys = lib.Meta.QuestMeta.questKeys
@@ -207,6 +208,7 @@ local function buildQuestIndex()
     if values then
       local q = { id = id }
       for i, field in ipairs(keys) do q[field] = values[i] end
+      questByID[id] = q
       local nextID = q.nextQuestInChain or 0
       if nextID ~= 0 then
         predecessors[nextID] = predecessors[nextID] or {}
@@ -395,6 +397,54 @@ function Bridge.QuestsForAreas(areaIDs)
     end
   end
   return out
+end
+
+---------------------------------------------------------------- shared quest helpers
+
+-- For pages built on the bridge (Quests, Items, For you). Rows are the
+-- QUEST_FIELDS above; treat them as read-only.
+
+function Bridge.Quest(questID)
+  if not Bridge.Available() then return nil end
+  if not questIndex then buildQuestIndex() end
+  return questByID[questID]
+end
+
+-- Every quest that has an NPC or object starter.
+function Bridge.AllQuests()
+  if not Bridge.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  return questIndex
+end
+
+-- done, inLog: sets of quest IDs for this character right now.
+function Bridge.PlayerQuestState()
+  return playerQuestState()
+end
+
+-- True when this character can pick the quest up now (same rules as Quest hubs).
+function Bridge.IsQuestAvailable(questID, done, inLog)
+  local q = Bridge.Quest(questID)
+  if not q then return false end
+  if not done then done, inLog = playerQuestState() end
+  return eligible(q, playerProfile(), done, inLog)
+end
+
+-- Nearest starter of a quest you can talk to: name, node, distance (or nil).
+function Bridge.QuestGiver(questID, here)
+  local q = Bridge.Quest(questID)
+  if not (q and q.startedBy) then return nil end
+  local faction = UnitFactionGroup("player")
+  local bestName, bestNode, bestDistance
+  for kind, group in pairs({ npc = q.startedBy[1], object = q.startedBy[2] }) do
+    for _, id in ipairs(group or {}) do
+      local name, node, distance = giverNode(kind, id, here, faction)
+      if node and (not bestDistance or distance < bestDistance) then
+        bestName, bestNode, bestDistance = name, node, distance
+      end
+    end
+  end
+  return bestName, bestNode, bestDistance
 end
 
 local function addGiver(hub, g)

@@ -53,6 +53,15 @@ function ns.RegisterPage(page)
   table.insert(ns.pages, page)
 end
 
+-- /wf subcommands added by modules from their own files:
+--   ns.RegisterCommand("item", "/wf item <link> - where an item comes from", function(rest) ... end)
+-- `rest` keeps its original case, so links survive.
+ns.commands = {}
+
+function ns.RegisterCommand(name, help, run)
+  ns.commands[name] = { help = help, run = run }
+end
+
 ---------------------------------------------------------------- saved data
 
 local DEFAULTS = {
@@ -145,7 +154,10 @@ SLASH_WAYFINDER1 = "/wf"
 SLASH_WAYFINDER2 = "/wayfinder"
 SlashCmdList.WAYFINDER = function(msg)
   local cmd, rest = (msg or ""):lower():match("^(%S*)%s*(.-)$")
-  if cmd == "" then
+  local registered = ns.commands[cmd]
+  if registered then
+    registered.run((msg or ""):match("^%S*%s*(.-)$"))
+  elseif cmd == "" then
     ns.Panel.Toggle()
   elseif cmd == "stop" then
     ns.Nav.Stop()
@@ -178,5 +190,6 @@ SlashCmdList.WAYFINDER = function(msg)
     end
   else
     for _, line in ipairs(HELP) do ns.print(line) end
+    for _, command in pairs(ns.commands) do ns.print(command.help) end
   end
 end

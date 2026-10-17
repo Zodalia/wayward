@@ -97,6 +97,11 @@ harvesting and the panel against a fake two-continent world.
   accepted or handed in; a quest done early is planned out of the rest of the
   trip. Start one with `ns.Nav.StartJourney(ns.Journey.Plan(start, def))`, or
   return it as a result's `journey`.
+- **Commands**: `ns.RegisterCommand(name, help, run)` adds `/wf <name>`; `run`
+  gets the rest of the line in its original case, so item links survive.
+- **Quest helpers** on `ns.Questie`: `Quest(id)`, `AllQuests()`,
+  `PlayerQuestState()`, `IsQuestAvailable(id)` (the Quest hubs rules) and
+  `QuestGiver(id, here)`.
 
 ## WFProbe (dev tool)
 

@@ -713,6 +713,17 @@ local filtered = findPage.Results("lakeshire")
 check(#filtered == 1 and filtered[1].title:find("Lakeshire"), "the Find page filters results by text")
 check(#findPage.Results("") >= 2, "an empty filter shows everything")
 
+io.write("shared helpers\n")
+local commandArg
+ns.RegisterCommand("echo", "/wf echo - test", function(rest) commandArg = rest end)
+SlashCmdList.WAYFINDER("echo |cff9d9d9d|Hitem:2589::::|h[Linen Cloth]|h|r")
+check(commandArg == "|cff9d9d9d|Hitem:2589::::|h[Linen Cloth]|h|r", "registered /wf commands get the raw text")
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+check(ns.Questie.IsQuestAvailable(1) and not ns.Questie.IsQuestAvailable(2), "IsQuestAvailable uses the hub rules")
+check(ns.Questie.Quest(14) and ns.Questie.Quest(14).nextQuestInChain == 13, "Quest(id) returns the quest row")
+local giverName = ns.Questie.QuestGiver(1, ns.Geo.PlayerNode())
+check(giverName == "Magistrate Solomon", "QuestGiver finds the nearest starter")
+
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
