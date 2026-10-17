@@ -7,6 +7,9 @@
 ## SavedVariables: WayfinderDB
 ## SavedVariablesPerCharacter: WayfinderCharDB
 ## OptionalDeps: QuestieDB
+## AddonCompartmentFunc: Wayfinder_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Wayfinder_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Wayfinder_OnAddonCompartmentLeave
 
 Core.lua
 Geo.lua
@@ -34,3 +37,4 @@ UI\CopyBox.lua
 UI\HUD.lua
 UI\JourneyOverview.lua
 UI\Panel.lua
+UI\MinimapButton.lua
