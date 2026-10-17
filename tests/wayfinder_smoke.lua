@@ -1962,6 +1962,58 @@ do
   ns.JourneyOverview.Toggle()
 end
 ---------------------------------------------------------------- adding to a trip (end)
+---------------------------------------------------------------- cards (begin)
+do
+  io.write("cards\n")
+  ns.Nav.Stop()
+  local forYou
+  for _, page in ipairs(ns.pages) do if page.id == "foryou" then forYou = page end end
+  check(forYou.layout == "cards" and forYou.width and forYou.width > 384, "For you uses the card layout on a wider panel")
+
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local goal = ns.Geo.Node(1433, 0.6, 0.5, "Camp")
+  local route = ns.Router.Plan(ns.Geo.PlayerNode(), goal, ns.Network.Build())
+  local suggestions = {}
+  for i = 1, 5 do
+    suggestions[i] = { title = "Suggestion " .. i, subtitle = "|cff7fd1aewhy " .. i .. "|r", goal = goal, route = route,
+      details = { { text = "rank" }, { text = "detail " .. i } }, kind = i == 1 and "dungeon" or "hub",
+      icon = "Interface\\Icons\\INV_Misc_Key_14" }
+  end
+  ns.RegisterPage({ id = "cardtest", label = "Cards", order = 98, layout = "cards", width = 730,
+    SummaryText = function() return "cards" end, EmptyText = function() return "none" end,
+    Results = function() return suggestions end })
+  ns.Panel.Search("cardtest", "")
+  local function titles()
+    local out = {}
+    for _, r in ipairs(ns.Cards.Visible()) do out[#out + 1] = r.title end
+    return table.concat(out, ",")
+  end
+  check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "one large and two small cards: " .. titles())
+  ns.Cards.Step(-1)
+  check(titles() == "Suggestion 2,Suggestion 3,Suggestion 4", "the arrows step through the suggestions")
+  ns.Panel.Scroll(-10)
+  check(titles() == "Suggestion 5", "the mouse wheel steps too, stopping at the last")
+  ns.Panel.Refresh()
+  check(titles() == "Suggestion 5", "a refresh keeps the card you were on")
+  ns.Panel.Search("cardtest", "")
+  ns.Cards.Step(10)
+  check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "back to the first")
+
+  -- The card button and shift-click work like a row.
+  ns.Panel.Activate(suggestions[1])
+  check(ns.Nav.active and ns.Nav.active.title == "Suggestion 1", "a card's Go starts its directions")
+  IsShiftKeyDown = function() return true end
+  ns.Panel.Search("cardtest", "")
+  ns.Panel.Activate(suggestions[2])
+  check(ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2, "shift-click on a card adds it to the trip")
+  IsShiftKeyDown = nil
+  ns.Nav.Stop()
+
+  -- Other pages keep rows at the normal width.
+  ns.Panel.Select(1)
+  check(#ns.Panel.VisibleResults() > 0, "the Find page still shows rows")
+end
+---------------------------------------------------------------- cards (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
