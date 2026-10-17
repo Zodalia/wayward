@@ -9,27 +9,60 @@ ns.HUD = HUD
 
 local frame
 local UPDATE_INTERVAL = 0.1
-local MIN_HEIGHT = 78
-local PADDING = 9
+local WIDTH = 330
+local MIN_HEIGHT = 84
+local PADDING = 10
+local CIRCLE = 42
+local TEXT_LEFT = PADDING + CIRCLE + 10
 
-local function button(parent, text, onClick, tooltip)
-  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  b:SetSize(24, 20)
-  b:SetText(text)
-  b:SetScript("OnClick", onClick)
+-- What's at a stop, shown in the circle when there's no arrow to show.
+local STOP_ICONS = {
+  pickup = "Interface\\GossipFrame\\AvailableQuestIcon",
+  turnin = "Interface\\GossipFrame\\ActiveQuestIcon",
+  complete = "Interface\\Icons\\INV_Sword_04",
+}
+local MODE_ICONS = {
+  fly = "Interface\\Icons\\Ability_Hunter_EagleEye",
+  transport = "Interface\\Icons\\INV_Misc_Map_01",
+  walk = "Interface\\Icons\\INV_Misc_Map_01",
+}
+local DISTANCE_ICON = "|TInterface\\Icons\\Ability_Tracking:13:13:0:0:64:64:5:59:5:59|t"
+local TIME_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:13:13:0:0:64:64:5:59:5:59|t"
+
+local function tooltip(b, text)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText(tooltip)
+    GameTooltip:SetText(text)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  ns.Skin.Button(b)
+end
+
+-- Blizzard's square button with an arrow (`arrow`: LEFT, RIGHT, ...) or an
+-- icon file on it; a text button when this client lacks the template.
+local function squareButton(parent, arrow, iconFile, fallback, onClick, tip)
+  local b, templated = ns.Skin.Create("Button", nil, parent, "UIPanelSquareButton", "UIPanelButtonTemplate", { "icon" })
+  b:SetSize(22, 22)
+  if templated then
+    if arrow and SquareButton_SetIcon then
+      SquareButton_SetIcon(b, arrow)
+    else
+      b.icon:SetTexture(iconFile)
+      b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+      b.icon:SetSize(14, 14)
+    end
+  else
+    b:SetText(fallback)
+    ns.Skin.Button(b)
+  end
+  b:SetScript("OnClick", onClick)
+  tooltip(b, tip)
   return b
 end
 
 local function create()
   local f = ns.Skin.CreateBox("WayfinderHUD")
-  f:SetSize(340, MIN_HEIGHT)
+  f:SetSize(WIDTH, MIN_HEIGHT)
   f:SetPoint("TOP", 0, -140)
   f:SetClampedToScreen(true)
   f:SetMovable(true)
@@ -43,44 +76,74 @@ local function create()
   f:SetBackdropColor(0, 0, 0, 0.8)
   ns.RestorePosition(f, "hudPos")
 
-  -- On its own frame: skins fade every texture of the box itself.
-  local arrowHolder = CreateFrame("Frame", nil, f)
-  arrowHolder:SetAllPoints()
-  f.arrow = arrowHolder:CreateTexture(nil, "ARTWORK")
-  f.arrow:SetSize(40, 40)
-  f.arrow:SetPoint("LEFT", 10, 0)
+  -- The arrow (or the stop's icon) in a dark circle, on its own frame: skins
+  -- fade every texture of the box itself.
+  local holder = CreateFrame("Frame", nil, f)
+  holder:SetSize(CIRCLE, CIRCLE)
+  holder:SetPoint("TOPLEFT", PADDING, -PADDING)
+  local circle = holder:CreateTexture(nil, "BACKGROUND")
+  circle:SetAllPoints()
+  circle:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+  circle:SetVertexColor(0, 0, 0, 0.55)
+  f.arrow = holder:CreateTexture(nil, "ARTWORK")
+  f.arrow:SetSize(CIRCLE - 4, CIRCLE - 4)
+  f.arrow:SetPoint("CENTER")
   f.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
+  f.icon = holder:CreateTexture(nil, "ARTWORK")
+  f.icon:SetSize(CIRCLE - 8, CIRCLE - 8)
+  f.icon:SetPoint("CENTER")
+  if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+  f.icon:Hide()
+
+  -- Buttons top right: previous / next step, all stops, recalculate, stop.
+  f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+  f.close:SetSize(24, 24)
+  f.close:SetPoint("TOPRIGHT", -3, -3)
+  f.close:SetScript("OnClick", function() ns.Nav.Stop() end)
+  tooltip(f.close, "Stop directions")
+  ns.Skin.CloseButton(f.close)
+  f.recalc = squareButton(f, nil, "Interface\\Buttons\\UI-RefreshButton", "R", function() ns.Nav.Recalculate() end,
+    "Recalculate from here")
+  f.recalc:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
+  f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
+    "All stops of this trip")
+  f.list:SetPoint("RIGHT", f.recalc, "LEFT", -2, 0)
+  f.next = squareButton(f, "RIGHT", nil, ">", function() ns.Nav.Next() end, "Skip to the next step")
+  f.prev = squareButton(f, "LEFT", nil, "<", function() ns.Nav.Prev() end, "Previous step")
+  f.prev:SetPoint("RIGHT", f.next, "LEFT", -2, 0)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  f.title:SetPoint("TOPLEFT", 58, -9)
-  f.title:SetPoint("RIGHT", -86, 0)
+  f.title:SetPoint("TOPLEFT", TEXT_LEFT, -PADDING - 2)
   f.title:SetJustifyH("LEFT")
+  f.title:SetWordWrap(false)
 
-  f.step = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  f.step:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
-  f.step:SetPoint("RIGHT", -86, 0)
+  -- Stops done, as a thin bar under the title (trips only).
+  f.progress = CreateFrame("StatusBar", nil, f)
+  f.progress:SetHeight(4)
+  f.progress:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
+  f.progress:SetPoint("RIGHT", -PADDING, 0)
+  f.progress:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+  f.progress:SetStatusBarColor(1, 0.82, 0)
+  f.progress:SetMinMaxValues(0, 1)
+  local track = f.progress:CreateTexture(nil, "BACKGROUND")
+  track:SetAllPoints()
+  track:SetColorTexture(1, 1, 1, 0.12)
+
+  f.step = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+  f.step:SetPoint("RIGHT", -PADDING, 0)
   f.step:SetJustifyH("LEFT")
   f.step:SetWordWrap(true)
 
-  -- Under the step, so long titles and steps push it down instead of covering it.
-  f.info = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.info:SetPoint("TOPLEFT", f.step, "BOTTOMLEFT", 0, -4)
-  f.info:SetPoint("RIGHT", -10, 0)
-  f.info:SetJustifyH("LEFT")
-  ns.Skin.Text(f.title)
-  ns.Skin.Text(f.step)
-  ns.Skin.Text(f.info)
+  f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.sub:SetPoint("TOPLEFT", f.step, "BOTTOMLEFT", 0, -3)
+  f.sub:SetPoint("RIGHT", -PADDING, 0)
+  f.sub:SetJustifyH("LEFT")
 
-  local stop = button(f, "x", function() ns.Nav.Stop() end, "Stop directions")
-  stop:SetPoint("TOPRIGHT", -6, -6)
-  local nextB = button(f, ">", function() ns.Nav.Next() end, "Skip to next step")
-  nextB:SetPoint("RIGHT", stop, "LEFT", -2, 0)
-  local prev = button(f, "<", function() ns.Nav.Prev() end, "Previous step")
-  prev:SetPoint("RIGHT", nextB, "LEFT", -2, 0)
-  local recalc = button(f, "R", function() ns.Nav.Recalculate() end, "Recalculate from here")
-  recalc:SetPoint("TOP", stop, "BOTTOM", 0, -26)
-  f.list = button(f, "=", function() ns.JourneyOverview.Toggle() end, "All stops of this journey")
-  f.list:SetPoint("RIGHT", recalc, "LEFT", -2, 0)
+  f.info = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
+  f.info:SetPoint("RIGHT", -PADDING, 0)
+  f.info:SetJustifyH("LEFT")
+  for _, fs in ipairs({ f.title, f.step, f.sub, f.info }) do ns.Skin.Text(fs) end
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -109,6 +172,30 @@ function HUD.ObjectiveText(questID)
   return nil
 end
 
+-- The stop a step leads to, and its number among the trip's stops.
+local function stopAhead(a)
+  for k = a.index, #a.route.steps do
+    local stop = a.route.steps[k].stop
+    if stop then
+      for i, s in ipairs(a.journey.stops) do
+        if s == stop then return stop, i end
+      end
+      return stop, nil
+    end
+  end
+  return nil, nil
+end
+
+-- Lays the text out under the title, or under the progress bar on a trip.
+local function place(trip)
+  frame.progress:SetShown(trip)
+  frame.step:ClearAllPoints()
+  frame.step:SetPoint("TOPLEFT", trip and frame.progress or frame.title, "BOTTOMLEFT", 0, trip and -7 or -5)
+  frame.step:SetPoint("RIGHT", -PADDING, 0)
+  -- The title stops short of the buttons.
+  frame.title:SetPoint("RIGHT", frame.prev, "LEFT", -6, 0)
+end
+
 function HUD.Update()
   if not frame then return end
   local here, step = ns.Nav.Tick()
@@ -117,43 +204,67 @@ function HUD.Update()
     frame:Hide()
     return
   end
-  if a.journey then
-    frame.title:SetText(string.format("%s  (%d/%d stops)", a.title, ns.Journey.StopsDone(a.journey),
-      #a.journey.stops))
+  local trip = a.journey ~= nil
+  frame.next:ClearAllPoints()
+  frame.next:SetPoint("RIGHT", trip and frame.list or frame.recalc, "LEFT", -2, 0)
+  frame.list:SetShown(trip)
+  place(trip)
+
+  local stop, stopNumber
+  if trip then
+    local done, total = ns.Journey.StopsDone(a.journey), #a.journey.stops
+    frame.title:SetText(string.format("%s  |cff9d9d9d(%d/%d stops)|r", a.title, done, total))
+    frame.progress:SetValue(total > 0 and done / total or 0)
+    stop, stopNumber = stopAhead(a)
   else
     frame.title:SetText(a.title)
   end
-  frame.step:SetText(string.format("%d/%d  %s", a.index, #a.route.steps, ns.Router.Describe(a.route, a.index)))
+  frame.step:SetText(ns.Router.Describe(a.route, a.index))
+  local steps = #a.route.steps
+  if stopNumber then
+    frame.sub:SetText(string.format("Stop %d of %d  ·  step %d of %d", stopNumber, #a.journey.stops, a.index, steps))
+  else
+    frame.sub:SetText(string.format("Step %d of %d", a.index, steps))
+  end
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
-  local remaining = ns.FormatDuration(ns.Nav.RemainingSeconds(here))
-  frame.list:SetShown(a.journey ~= nil)
+  local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
   local objective = step.stop and step.stop.action and step.stop.action.kind == "complete"
     and HUD.ObjectiveText(step.stop.action.questID)
   if objective then
-    frame.info:SetText(objective .. "  ·  " .. remaining .. " to go")
+    frame.info:SetText(objective .. "     " .. remaining)
   elseif ns.Nav.Waiting() then
-    frame.info:SetText("|cff7fd1aeYou're here|r  ·  " .. remaining .. " to go")
+    frame.info:SetText("|cff7fd1aeYou're here|r     " .. remaining)
   elseif distance < math.huge and step.mode == "walk" then
-    frame.info:SetText(string.format("%d yd  ·  %s to go", math.floor(distance), remaining))
+    frame.info:SetText(string.format("%s %d yd     %s", DISTANCE_ICON, math.floor(distance), remaining))
   else
-    frame.info:SetText(remaining .. " to go")
+    frame.info:SetText(remaining)
   end
 
   -- Grow to fit the text (titles and steps can wrap).
   local function height(fs) return fs:GetStringHeight() or 12 end
-  frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + 4 + height(frame.step) + 4
-    + height(frame.info)))
+  frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + (trip and 16 or 5) + height(frame.step)
+    + 3 + height(frame.sub) + 5 + height(frame.info)))
 
   local heading = facing()
-  -- TomTom draws the arrow when it's in use.
+  -- TomTom draws the arrow when it's in use; then the circle shows what's ahead.
   if ns.db.settings.showArrow and not ns.Nav.UsingTomTom() and step.mode == "walk" and distance < math.huge
-    and heading then
+    and heading and not ns.Nav.Waiting() then
     frame.arrow:SetRotation(ns.Geo.Bearing(here, step.to) - heading)
     frame.arrow:Show()
+    frame.icon:Hide()
   else
     frame.arrow:Hide()
+    local action = (step.stop or stop or {}).action
+    frame.icon:SetTexture(action and STOP_ICONS[action.kind] or MODE_ICONS[step.mode] or MODE_ICONS.walk)
+    frame.icon:Show()
   end
+end
+
+-- The directions box's text, top to bottom (for tests).
+function HUD.Lines()
+  if not frame then return {} end
+  return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText() }
 end
 
 ns.Listen("NAV_CHANGED", function()

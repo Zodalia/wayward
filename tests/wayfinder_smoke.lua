@@ -1999,6 +1999,11 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands",
     stops = { stopAt(0.52, "A"), stopAt(0.54, "B"), pickup, turnin } }))
   check(labels() == "A,B,Giver,Finisher", "planned nearest first: " .. labels())
+  ns.HUD.Update()
+  local lines = ns.HUD.Lines()
+  check(lines[1]:find("Errands", 1, true) and lines[1]:find("(0/4 stops)", 1, true) and lines[2] == "Visit A"
+    and lines[3]:find("^Stop 1 of 4") and lines[4]:find("yd", 1, true),
+    "the directions box: trip and stops, the step, stop number, distance and time: " .. table.concat(lines, " | "))
   ns.JourneyOverview.Show()
   check(ns.JourneyOverview.Move(1, 2) and labels() == "B,A,Giver,Finisher", "dragging A below B swaps them: " .. labels())
   check(ns.Nav.active.route.steps[#ns.Nav.active.route.steps].stop == turnin

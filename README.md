@@ -21,7 +21,11 @@ What works in this MVP:
 - **Directions**: walking, flight paths you know, boats, zeppelins, the Deeprun
   Tram and the Rut'theran portal. Each step places the map waypoint and moves on
   when you get there. The directions box has its own arrow (`/wf arrow` hides
-  it), because Blizzard's on-screen navigation is off by default in Forever.
+  it), because Blizzard's on-screen navigation is off by default in Forever;
+  without an arrow its circle shows what's ahead (quest pickup or hand-in,
+  flight). It also shows the trip, a bar of stops done, the step, which stop
+  you're on, and distance and time left, with Blizzard's square buttons for
+  previous / next step, all stops, recalculate and stop.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
@@ -236,7 +240,7 @@ panel to add it to the trip you're on.
     area marker once it's in your log, else QuestieDB's objective mobs, objects,
     item drops and explore points), hand it in.
   - The current trip is saved per character and resumed after a login or
-    reload, re-planned from where you are. The directions box's `=` button
+    reload, re-planned from where you are. The directions box's book button
     opens an overview of every stop (done / now / next); a stop can be dropped
     there, together with the stops that need it, or dragged up or down to
     reorder the trip. A reordered trip keeps your order (`Journey.Move`);
