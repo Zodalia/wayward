@@ -602,6 +602,24 @@ local function logArea(questID, label)
   return nil
 end
 
+-- Places an item drops or can be picked up: its droppers' and objects' spawns.
+local function itemNodes(itemID, label, nodes)
+  nodes = nodes or {}
+  if not ItemDB then return nodes end
+  local function add(spawns)
+    for _, node in ipairs(spawnNodes(spawns, label)) do nodes[#nodes + 1] = node end
+  end
+  for i, npcID in ipairs(ItemDB.Get(itemID, "npcDrops") or {}) do
+    if i > MAX_DROPPERS then break end
+    add(NpcDB.Get(npcID, "spawns"))
+  end
+  for i, objectID in ipairs(ItemDB.Get(itemID, "objectDrops") or {}) do
+    if i > MAX_DROPPERS then break end
+    add(ObjectDB.Get(objectID, "spawns"))
+  end
+  return nodes
+end
+
 local function objectiveNodes(q, label)
   local nodes = {}
   local function add(spawns)
@@ -610,18 +628,7 @@ local function objectiveNodes(q, label)
   local groups = type(q.objectives) == "table" and q.objectives or {}
   for _, creature in ipairs(groups[1] or {}) do add(NpcDB.Get(creature[1], "spawns")) end
   for _, object in ipairs(groups[2] or {}) do add(ObjectDB.Get(object[1], "spawns")) end
-  if ItemDB then
-    for _, item in ipairs(groups[3] or {}) do
-      for i, npcID in ipairs(ItemDB.Get(item[1], "npcDrops") or {}) do
-        if i > MAX_DROPPERS then break end
-        add(NpcDB.Get(npcID, "spawns"))
-      end
-      for i, objectID in ipairs(ItemDB.Get(item[1], "objectDrops") or {}) do
-        if i > MAX_DROPPERS then break end
-        add(ObjectDB.Get(objectID, "spawns"))
-      end
-    end
-  end
+  for _, item in ipairs(groups[3] or {}) do itemNodes(item[1], label, nodes) end
   if type(q.triggerEnd) == "table" then add(q.triggerEnd[2]) end
   return nodes
 end
@@ -644,6 +651,44 @@ function Bridge.ObjectiveNode(questID, here)
   end
   if #nodes == 0 then return nil end
   return Bridge.Nearest(nodes, here), "QuestieDB"
+end
+
+-- A quest field read on demand (not kept in the quest index), or nil.
+local function questField(questID, field)
+  local keys = lib and lib.Meta and lib.Meta.QuestMeta and lib.Meta.QuestMeta.questKeys
+  if not (keys and keys[field]) then return nil end
+  local ok, value = pcall(QuestDB.Get, questID, field)
+  return ok and type(value) == "table" and value or nil
+end
+
+-- What a quest needs before its objectives can be done, from QuestieDB, in
+-- order: items to collect first (its source items that drop or lie somewhere,
+-- and that you don't have yet), then Questie's extra objectives (e.g. "Fill the
+-- bowl at the moonwell"), each with its nearest place:
+--   { {kind = "item", itemID, text, node} | {kind = "event", text, node}, ... }
+function Bridge.QuestPrep(questID, here)
+  if not Bridge.Available() then return {} end
+  local q = Bridge.Quest(questID)
+  if not q then return {} end
+  local out, objectiveItems = {}, {}
+  local groups = type(q.objectives) == "table" and q.objectives or {}
+  for _, item in ipairs(groups[3] or {}) do objectiveItems[item[1]] = true end
+  for _, itemID in ipairs(questField(questID, "requiredSourceItems") or {}) do
+    local have = GetItemCount and (GetItemCount(itemID) or 0) > 0
+    if type(itemID) == "number" and not objectiveItems[itemID] and not have then
+      local name = (ItemDB and ItemDB.Get(itemID, "name")) or ("item " .. itemID)
+      local node = Bridge.Nearest(itemNodes(itemID, name), here)
+      if node then out[#out + 1] = { kind = "item", itemID = itemID, text = "Collect " .. name, node = node } end
+    end
+  end
+  for _, extra in ipairs(questField(questID, "extraObjectives") or {}) do
+    local spawns, text = extra[1], extra[3]
+    if type(spawns) == "table" and type(text) == "string" then
+      local node = Bridge.Nearest(spawnNodes(spawns, text), here)
+      if node then out[#out + 1] = { kind = "event", text = text, node = node } end
+    end
+  end
+  return out
 end
 
 -- The level shown for a quest (your level for quests that scale with you).

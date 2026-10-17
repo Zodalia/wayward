@@ -1322,6 +1322,69 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- trips (end)
+---------------------------------------------------------------- quest steps (begin)
+do
+  io.write("quest steps\n")
+  ns.Nav.Stop()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  local savedObjects, savedCount = ObjectDB, GetItemCount
+  -- Like The Blackwood Corrupted: collect a sample (object 600), fill a bowl (an
+  -- extra objective), then the talisman (item 501, from Murloc Foragers).
+  ITEMS[500] = { name = "Blackwood Grain Sample", objectDrops = { 600 } }
+  ITEMS[501] = { name = "Talisman of Corruption", npcDrops = { 9101 } }
+  ObjectDB = entity({ [600] = { spawns = { [44] = { { 45.0, 50.0 } } } } }, {})
+  QUESTS[41] = { name = "The Blackwood Corrupted", questLevel = 18, requiredLevel = 14, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { nil, nil, { { 501 } } }, requiredSourceItems = { 500, 501 },
+    extraObjectives = { { { [44] = { { 40.0, 50.0 } } }, "Interface\\Icons\\event", "Fill the bowl at the moonwell" } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy, questKeys.objectives, questKeys.requiredSourceItems, questKeys.extraObjectives = 3, 10, 21, 27
+  LibQuestieDB.Meta.ItemMeta.itemKeys.npcDrops, LibQuestieDB.Meta.ItemMeta.itemKeys.objectDrops = 2, 3
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local bags = {}
+  GetItemCount = function(id) return bags[id] or 0 end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+
+  local qs = ns.Journey.QuestStops(41, here)
+  local kinds = {}
+  for _, st in ipairs(qs) do kinds[#kinds + 1] = st.action.kind end
+  check(table.concat(kinds, ",") == "pickup,item,manual,complete,turnin",
+    "a quest with steps: pick up, collect, its extra step, do it, hand in: " .. table.concat(kinds, ","))
+  check(qs[2].text == "Collect Blackwood Grain Sample for The Blackwood Corrupted" and qs[2].after[1] == qs[1]
+    and qs[3].text == "Fill the bowl at the moonwell" and qs[3].after[1] == qs[2] and qs[4].after[1] == qs[3],
+    "the collecting comes after the pickup, the extra step after it, the objective last")
+  bags[500] = 1
+  local kinds2 = {}
+  for _, st in ipairs(ns.Journey.QuestStops(41, here)) do kinds2[#kinds2 + 1] = st.action.kind end
+  check(table.concat(kinds2, ",") == "pickup,manual,complete,turnin", "an item you already have isn't collected again")
+  bags[500] = nil
+
+  -- Start it with the quest in the log: skip the collecting, then collect anyway.
+  local log = { 41 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  qs = ns.Journey.QuestStops(41, here)
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Blackwood", stops = qs }))
+  check(ns.Nav.CurrentStep().stop.action.kind == "item", "first: collect the sample")
+  ns.Nav.Next()
+  check(ns.JourneyOverview.Rows()[1].state == "skipped", "skipped it")
+  bags[500] = 1
+  fire("BAG_UPDATE_DELAYED")
+  check(ns.JourneyOverview.Rows()[1].state == "done", "a skipped stop you then do counts as done")
+  -- The extra step is confirmed with next: done, not skipped.
+  while ns.Nav.CurrentStep() and ns.Nav.CurrentStep().stop ~= qs[2] do ns.Nav.Next() end
+  ns.Nav.Next()
+  check(qs[2].done and not qs[2].passed, "next confirms a quest's extra step")
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
+  ObjectDB, GetItemCount = savedObjects, savedCount
+  QUESTS[41], ITEMS[500], ITEMS[501] = nil, nil, nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- quest steps (end)
 ---------------------------------------------------------------- quest log trips (begin)
 do
   io.write("quest log trips\n")

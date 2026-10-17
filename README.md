@@ -236,11 +236,18 @@ panel to add it to the trip you're on.
   - A stop can list `after = { otherStop }` (it must come later), and
     `resolve = { kind = "objectives", questID }` to find its place at planning
     time. Action kinds: `pickup`, `complete` (the objectives; done when the game
-    reports the quest complete) and `turnin`.
+    reports the quest complete), `turnin`, `item` (collect an item a quest
+    needs; done when it's in your bags) and `manual` (a quest step only you can
+    tell is done; the directions box's next button confirms it).
   - `ns.Journey.QuestStops(questID, here)` gives the stops for a whole quest
     from where it stands now: pick it up, do the objectives (the game's quest
     area marker once it's in your log, else QuestieDB's objective mobs, objects,
-    item drops and explore points), hand it in.
+    item drops and explore points), hand it in. Before the objectives come
+    what QuestieDB says the quest needs first: its source items you don't have
+    (where they drop or lie) and Questie's extra objectives in order (e.g.
+    "Fill the bowl at the moonwell").
+  - Skipping a stop with next marks it skipped, not done; going back reopens
+    it, and doing it anyway (the quest log or your bags say so) marks it done.
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's book button
     opens an overview of every stop (done / now / next); a stop can be dropped

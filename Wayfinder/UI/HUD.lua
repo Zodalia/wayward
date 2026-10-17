@@ -20,6 +20,8 @@ local STOP_ICONS = {
   pickup = "Interface\\GossipFrame\\AvailableQuestIcon",
   turnin = "Interface\\GossipFrame\\ActiveQuestIcon",
   complete = "Interface\\Icons\\INV_Sword_04",
+  item = "Interface\\Icons\\INV_Misc_Bag_10",
+  manual = "Interface\\Icons\\INV_Misc_Note_01",
 }
 local MODE_ICONS = {
   fly = "Interface\\Icons\\Ability_Hunter_EagleEye",
@@ -236,7 +238,10 @@ function HUD.Update()
   if objective then
     frame.info:SetText(objective .. "     " .. remaining)
   elseif ns.Nav.Waiting() then
-    frame.info:SetText("|cff7fd1aeYou're here|r     " .. remaining)
+    -- A quest step only you can tell is done.
+    local manual = step.stop and step.stop.action and step.stop.action.kind == "manual"
+    frame.info:SetText((manual and "|cff7fd1aeYou're here:|r do it, then press next" or "|cff7fd1aeYou're here|r")
+      .. "     " .. remaining)
   elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%s %d yd     %s", DISTANCE_ICON, math.floor(distance), remaining))
   else

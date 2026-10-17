@@ -15,7 +15,9 @@ local _, ns = ...
 --   {
 --     node = route node (ns.Geo.Node),
 --     text = "Pick up Red Silk Bandanas from Scout Riell",  -- shown on arrival
---     action = { kind = "pickup" | "complete" | "turnin", questID = 123 },  -- optional
+--     action = { kind = "pickup" | "complete" | "turnin", questID = 123 },  -- optional; also
+--       { kind = "item", itemID, questID } (collect an item a quest needs) and
+--       { kind = "manual", questID } (a step of a quest you confirm with next)
 --     after = { stop, ... },   -- optional: stops that must come first
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
 --   }
@@ -50,24 +52,38 @@ local function objectivesDone(questID)
   return inLog(questID) and C_QuestLog.IsComplete and C_QuestLog.IsComplete(questID) or false
 end
 
+local function hasItem(itemID)
+  return GetItemCount ~= nil and (GetItemCount(itemID) or 0) > 0
+end
+
 -- Marks quest stops done when the quest has already moved past them (e.g.
--- while you were offline, or a party member shared it).
+-- while you were offline, a party member shared it, or you skipped the stop
+-- and did it anyway). Returns how many changed.
 function Journey.SyncQuestState(def)
   refresh()
+  local changed = 0
   local function sync(stop)
     local action = stop and stop.action
-    if not (action and action.questID) or stop.done then return end
+    if not (action and action.questID) or (stop.done and not stop.passed) then return end
     local id = action.questID
+    local now
     if action.kind == "pickup" then
-      stop.done = inLog(id) or completed(id)
-    elseif action.kind == "complete" then
-      stop.done = completed(id) or objectivesDone(id)
+      now = inLog(id) or completed(id)
+    elseif action.kind == "complete" or action.kind == "manual" then
+      now = completed(id) or objectivesDone(id)
+    elseif action.kind == "item" then
+      now = completed(id) or objectivesDone(id) or hasItem(action.itemID)
     elseif action.kind == "turnin" then
-      stop.done = completed(id)
+      now = completed(id)
+    end
+    if now then
+      stop.done, stop.passed = true, nil
+      changed = changed + 1
     end
   end
   for _, stop in ipairs(def.stops or {}) do sync(stop) end
   sync(def.finish)
+  return changed
 end
 
 -- The stops for doing a whole quest from where it stands now: pick it up,
@@ -89,9 +105,27 @@ function Journey.QuestStops(questID, here)
   end
 
   if not objectivesDone(questID) then
+    -- What the quest needs first: items to collect (any order), then its
+    -- extra steps in order (e.g. fill a bowl, place it at a bonfire).
+    local gate = previous and { previous } or nil
+    local items = {}
+    for _, p in ipairs(ns.Questie.QuestPrep(questID, here)) do
+      local stop
+      if p.kind == "item" then
+        stop = { node = p.node, text = string.format("%s for %s", p.text, name), after = previous and { previous } or nil,
+          action = { kind = "item", itemID = p.itemID, questID = questID } }
+        items[#items + 1] = stop
+      else
+        if #items > 0 then gate, items = items, {} end
+        stop = { node = p.node, text = p.text, after = gate, action = { kind = "manual", questID = questID } }
+        gate = { stop }
+      end
+      stops[#stops + 1] = stop
+    end
+    if #items > 0 then gate = items end
     local node = ns.Questie.ObjectiveNode(questID, here)
     if node then
-      previous = { node = node, text = "Do " .. name, after = previous and { previous } or nil,
+      previous = { node = node, text = "Do " .. name, after = gate,
         action = { kind = "complete", questID = questID }, resolve = { kind = "objectives", questID = questID } }
       stops[#stops + 1] = previous
     end

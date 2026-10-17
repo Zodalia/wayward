@@ -178,12 +178,16 @@ end
 
 -- "Skip" also counts the current stop as done, so the journey moves on.
 -- Skipping a stop's step passes the stop (`passed`: left out of the plan, but
--- not counted as done); going back to it opens it again.
+-- not counted as done); going back to it opens it again. A quest step you
+-- confirm yourself ("Fill the bowl at the moonwell") is done instead.
 function Nav.Next()
   local a = Nav.active
   if not a then return end
   local stop = a.route.steps[a.index].stop
-  if stop and not stop.done then stop.done, stop.passed = true, true end
+  if stop and not stop.done then
+    stop.done = true
+    stop.passed = not (stop.action and stop.action.kind == "manual") or nil
+  end
   if a.index >= #a.route.steps then return arrive() end
   a.index = a.index + 1
   showStep()
@@ -266,14 +270,15 @@ ns.Listen("FLIGHTS_CHANGED", function()
   end
 end)
 
--- A journey stop's quest was accepted / handed in. At the current stop the
--- journey moves on; done ahead of time, the rest is re-planned without it.
-local function questAction(kind, questID)
+-- A journey stop's quest was accepted / handed in (or its item collected:
+-- `matches` picks the stop). At the current stop the journey moves on; done
+-- ahead of time, the rest is re-planned without it. Returns true if a stop was.
+local function finishStop(matches)
   local a = Nav.active
-  if not (a and a.journey) then return end
+  if not (a and a.journey) then return false end
   for i, step in ipairs(a.route.steps) do
     local stop = ns.Journey.PendingAction(step)
-    if stop and stop.action.kind == kind and stop.action.questID == questID and i >= a.index then
+    if stop and i >= a.index and matches(stop.action) then
       stop.done, stop.passed = true, nil
       if i == #a.route.steps then return arrive() end
       local relocate = false
@@ -288,13 +293,48 @@ local function questAction(kind, questID)
         -- Done ahead of time, or a later stop's place is now known better.
         Nav.Recalculate()
       end
-      return
+      return true
     end
+  end
+  return false
+end
+
+local function questAction(kind, questID)
+  return finishStop(function(action) return action.kind == kind and action.questID == questID end)
+end
+
+-- Every other stop of the trip that the quest log, your bags or the completed
+-- quests say is done now: skipped stops you did anyway, and steps of a quest
+-- whose objectives are complete. The trip is re-planned if the stop you were
+-- heading for is among them.
+local function syncStops()
+  local a = Nav.active
+  if not (a and a.journey) then return end
+  local current = Nav.CurrentStep()
+  local pending = current and current.stop and not current.stop.done and current.stop
+  if ns.Journey.SyncQuestState(a.journey.root or a.journey.def) == 0 then return end
+  if pending and pending.done then
+    Nav.Recalculate()
+  else
+    showStep()
   end
 end
 
-ns.On("QUEST_ACCEPTED", function(questID) questAction("pickup", questID) end)
-ns.On("QUEST_TURNED_IN", function(questID) questAction("turnin", questID) end)
+ns.On("QUEST_ACCEPTED", function(questID)
+  questAction("pickup", questID)
+  syncStops()
+end)
+ns.On("QUEST_TURNED_IN", function(questID)
+  questAction("turnin", questID)
+  syncStops()
+end)
+
+-- Collecting an item a quest needs.
+ns.On("BAG_UPDATE_DELAYED", function()
+  if not GetItemCount then return end
+  finishStop(function(action) return action.kind == "item" and (GetItemCount(action.itemID) or 0) > 0 end)
+  syncStops()
+end)
 
 -- Objectives have no event of their own: check the journey's quests when the log changes.
 ns.On("QUEST_LOG_UPDATE", function()
@@ -304,9 +344,10 @@ ns.On("QUEST_LOG_UPDATE", function()
     local stop = ns.Journey.PendingAction(step)
     if stop and stop.action.kind == "complete" and C_QuestLog.IsComplete(stop.action.questID) then
       questAction("complete", stop.action.questID)
-      return
+      break
     end
   end
+  syncStops()
 end)
 
 -- Drops a stop (and the stops that need it, e.g. a quest's hand-in when you
