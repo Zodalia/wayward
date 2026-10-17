@@ -2082,6 +2082,14 @@ do
   IsShiftKeyDown = nil
   ns.Nav.Stop()
 
+  -- Details marked `more` stay off the cards but are in the breakdown.
+  ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "rank" },
+    { text = "Quests in your log count at full XP; ...", more = true }, { text = "shown" } } } }, "", true)
+  check(ns.Cards.Detail(1) == "shown", "a card leaves out details marked more: " .. tostring(ns.Cards.Detail(1)))
+  local noted = ns.Cards.Breakdown(ns.Cards.Visible()[1])
+  check(noted[2][1]:find("full XP", 1, true), "the breakdown still has them")
+  ns.Cards.Show(suggestions, "", true)
+
   -- The "?" button: every stop and step in place of the cards.
   local here = ns.Geo.PlayerNode()
   local trip = ns.Journey.Plan(here, { title = "Two stops", stops = {

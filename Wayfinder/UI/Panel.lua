@@ -22,7 +22,8 @@ local _, ns = ...
 -- A result:
 --   title, and either subtitle or zone (zone gets "· time · summary" appended),
 --   goal + route (from ns.Router.Plan) or journey (from ns.Journey.Plan),
---   details = { {text, color}, ... } for the tooltip,
+--   details = { {text, color, more}, ... } for the tooltip (cards leave out the
+--     first, the ranking, and those with `more`; the breakdown shows them all),
 --   actions = { {label, run = function(result) end} } (the first is shown as a button).
 
 local Panel = {}

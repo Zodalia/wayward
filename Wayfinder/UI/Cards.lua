@@ -358,9 +358,13 @@ local function fill(card, r, large)
   local subtitle = plain(r.subtitle)
   if level then subtitle = level:gsub("^l", "L") .. "  ·  " .. subtitle end
   card.text:SetText(subtitle)
-  -- The why (details after the ranking line); the breakdown has the rest.
-  local lines = {}
-  for i = 2, math.min(#(r.details or {}), large and 10 or 5) do lines[#lines + 1] = plain(r.details[i].text) end
+  -- The why (details after the ranking line, without those marked `more`);
+  -- the breakdown has the rest.
+  local lines, room = {}, large and 9 or 4
+  for i = 2, #(r.details or {}) do
+    if #lines >= room then break end
+    if not r.details[i].more then lines[#lines + 1] = plain(r.details[i].text) end
+  end
   card.detail:SetText(table.concat(lines, "\n"))
   card.button:SetText(r.journey and "Start trip" or "Go")
   card.button:SetEnabled(r.journey ~= nil or r.route ~= nil)
@@ -567,6 +571,12 @@ function Cards.Visible()
     if card.result then out[#out + 1] = card.result end
   end
   return out
+end
+
+-- The details drawn on a card (1 = large), for tests.
+function Cards.Detail(index)
+  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
+  return card and card.detail:GetText()
 end
 
 -- The titles and button labels drawn on the cards (for tests).

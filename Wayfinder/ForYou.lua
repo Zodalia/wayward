@@ -829,8 +829,9 @@ local function optionRow(option, rank, total, ctx)
       how[#how + 1] = string.format("unfinished ones take %d min times the share of objectives left",
         SECONDS_PER_QUEST / 60)
     end
+    -- The same on most cards: in the breakdown and tooltip only.
     details[#details + 1] = { text = "Quests in your log count at full XP; " .. table.concat(how, ", ") .. ".",
-      color = GREY }
+      color = GREY, more = true }
   end
   if option.estimated > 0 then
     details[#details + 1] = { text = string.format("XP estimated for %s QuestieDB has no XP for.",
