@@ -33,7 +33,11 @@ function Network.Build()
   end
   net.knownFlights = #net.flights
 
-  for _, t in ipairs(ns.data.transports) do
+  local transports = {}
+  for _, t in ipairs(ns.data.transports) do transports[#transports + 1] = t end
+  for _, t in ipairs(ns.db.transports) do transports[#transports + 1] = t end -- /wf dock
+
+  for _, t in ipairs(transports) do
     if t.faction == nil or t.faction == faction then
       local a = ns.Geo.Node(t.a.mapID, t.a.x, t.a.y, t.a.label)
       local b = ns.Geo.Node(t.b.mapID, t.b.x, t.b.y, t.b.label)

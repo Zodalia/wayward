@@ -20,5 +20,7 @@ QuestieBridge.lua
 Trainers.lua
 QuestHubs.lua
 Navigator.lua
+Docks.lua
+UI\CopyBox.lua
 UI\HUD.lua
 UI\Panel.lua

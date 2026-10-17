@@ -47,6 +47,7 @@ end
 
 local DEFAULTS = {
   npcs = {},         -- [npcID] = harvested NPC (see Harvest.lua)
+  transports = {},   -- recorded with /wf dock (see Docks.lua)
   settings = { showArrow = true },
 }
 
@@ -125,13 +126,15 @@ local HELP = {
   "/wf stop - stop the current directions",
   "/wf arrow - toggle the on-screen arrow (text directions stay)",
   "/wf where - print your map ID and coordinates (to report data fixes)",
+  "/wf dock [boat|zeppelin|portal] - record a transport: once where you board, once where you get off",
+  "/wf dock list - copy recorded transports",
   "/wf debug - data sources and one-time QuestieDB scan times",
 }
 
 SLASH_WAYFINDER1 = "/wf"
 SLASH_WAYFINDER2 = "/wayfinder"
 SlashCmdList.WAYFINDER = function(msg)
-  local cmd = (msg or ""):lower():match("^(%S*)")
+  local cmd, rest = (msg or ""):lower():match("^(%S*)%s*(.-)$")
   if cmd == "" then
     ns.Panel.Toggle()
   elseif cmd == "stop" then
@@ -149,6 +152,8 @@ SlashCmdList.WAYFINDER = function(msg)
     else
       ns.print("no map position here")
     end
+  elseif cmd == "dock" then
+    ns.Docks.Command(rest)
   elseif cmd == "debug" then
     local available, reason = ns.Questie.Available()
     ns.print("QuestieDB: " .. (available and ns.Questie.StatusText() or tostring(reason)))
