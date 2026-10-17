@@ -54,36 +54,65 @@ function Trainers.EmptyText()
     .. "they are, or install QuestieDB. City guards can point you to one.", className:lower())
 end
 
--- Results: { title, zone, goal (route node), route } sorted by travel time.
+-- Trainers this close together (one room or building) are one result.
+local GROUP_RADIUS = 40
+
+-- Results: { title, zone, goal (route node), route, details } sorted by travel time.
 -- Sources: trainers you visited, Data/Seed.lua, and QuestieDB when installed.
 function Trainers.Results()
-  local _, class = UnitClass("player")
+  local className, class = UnitClass("player")
   local faction = UnitFactionGroup("player")
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
 
-  local results, seen = {}, {}
-  local function add(id, name, goal)
-    seen[id] = true
-    results[#results + 1] = {
-      id = id,
-      title = name,
-      zone = ns.MapName(goal.mapID),
-      goal = goal,
-      route = ns.Router.Plan(start, goal, net),
-    }
-  end
-
+  local trainers, seen = {}, {}
   -- Visited and seeded trainers first: their positions were measured in Forever.
   for id, npc in pairs(ns.Harvest.AllNPCs()) do
     if npc.kinds.classTrainer and npc.class == class and (npc.faction == nil or npc.faction == faction) then
-      local goal = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name)
-      if goal then add(id, npc.name, goal) end
+      local node = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name)
+      if node then
+        seen[id] = true
+        trainers[#trainers + 1] = { id = id, name = npc.name, node = node }
+      end
     end
   end
   for _, t in ipairs(ns.Questie.ClassTrainers(class, faction, start)) do
-    if not seen[t.id] then add(t.id, t.name, t.node) end
+    if not seen[t.id] then trainers[#trainers + 1] = { id = t.id, name = t.name, node = t.node } end
+  end
+
+  -- Group trainers in the same room; each group is reached via its closest trainer.
+  local groups = {}
+  for _, t in ipairs(trainers) do
+    local home
+    for _, g in ipairs(groups) do
+      for _, member in ipairs(g) do
+        if ns.Geo.Distance(member.node, t.node) <= GROUP_RADIUS then home = g break end
+      end
+      if home then break end
+    end
+    if home then table.insert(home, t) else groups[#groups + 1] = { t } end
+  end
+
+  local results = {}
+  for _, g in ipairs(groups) do
+    table.sort(g, function(a, b) return ns.Geo.Distance(start, a.node) < ns.Geo.Distance(start, b.node) end)
+    local goal = g[1].node
+    local title, details = g[1].name, nil
+    if #g > 1 then
+      local place = ns.Places.NameFor(goal) or ns.MapName(goal.mapID)
+      title = string.format("%d %s trainers in %s", #g, (className or class):lower(), place)
+      details = {}
+      for _, t in ipairs(g) do details[#details + 1] = { text = t.name } end
+    end
+    results[#results + 1] = {
+      id = g[1].id,
+      title = title,
+      zone = ns.MapName(goal.mapID),
+      goal = goal,
+      route = ns.Router.Plan(start, goal, net),
+      details = details,
+    }
   end
   table.sort(results, function(a, b)
     local ta = a.route and a.route.seconds or math.huge
