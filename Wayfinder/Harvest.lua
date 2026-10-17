@@ -125,10 +125,37 @@ ns.On("TRAINER_UPDATE", readTrainer)
 
 ---------------------------------------------------------------- flight paths
 
+-- A flight map only lists the flight paths of the continent you're on, so
+-- what you know is tracked per continent (continent uiMapID).
+local function playerContinent()
+  local here = ns.Geo.PlayerNode()
+  return here and ns.Geo.Continents()[here.instance], here
+end
+
+-- True once Wayfinder knows your flight paths on a continent: a flight map was
+-- opened there, or (older saved data) a flight path there is already known.
+function Harvest.FlightsKnownOn(continent)
+  if not continent then return false end
+  ns.charDB.taxiSeen = ns.charDB.taxiSeen or {}
+  if ns.charDB.taxiSeen[continent] then return true end
+  for _, t in ipairs(C_TaxiMap.GetTaxiNodesForMap(continent) or {}) do
+    if ns.charDB.knownTaxi[t.nodeID] then
+      ns.charDB.taxiSeen[continent] = true
+      return true
+    end
+  end
+  return false
+end
+
 local function readTaxi()
   local taxiMapID = GetTaxiMapID and GetTaxiMapID()
   local nodes = taxiMapID and C_TaxiMap.GetAllTaxiNodes(taxiMapID)
   if type(nodes) ~= "table" then return end
+  local continent = playerContinent()
+  if continent then
+    ns.charDB.taxiSeen = ns.charDB.taxiSeen or {}
+    ns.charDB.taxiSeen[continent] = true
+  end
   local S = Enum.FlightPathState or { Current = 0, Reachable = 1 }
   local learned = 0
   for _, n in ipairs(nodes) do
@@ -142,6 +169,26 @@ local function readTaxi()
 end
 
 ns.On("TAXIMAP_OPENED", readTaxi)
+
+-- "New flight path discovered!": the nearest flight path is now known.
+local NEW_PATH_RADIUS = 150
+
+ns.On("UI_INFO_MESSAGE", function(_, message)
+  if not (ERR_NEWTAXIPATH and message == ERR_NEWTAXIPATH) then return end
+  local continent, here = playerContinent()
+  if not continent then return end
+  local best, bestDistance
+  for _, t in ipairs(C_TaxiMap.GetTaxiNodesForMap(continent) or {}) do
+    local node = t.position and ns.Geo.Node(continent, t.position.x, t.position.y, t.name)
+    local d = node and ns.Geo.Distance(here, node)
+    if d and d <= NEW_PATH_RADIUS and d < (bestDistance or math.huge) then best, bestDistance = t, d end
+  end
+  if best and not ns.charDB.knownTaxi[best.nodeID] then
+    ns.charDB.knownTaxi[best.nodeID] = true
+    ns.Fire("FLIGHTS_CHANGED", 1)
+    ns.Fire("DATA_CHANGED")
+  end
+end)
 
 ---------------------------------------------------------------- other NPCs
 

@@ -390,6 +390,12 @@ local function footerText(net)
     return source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight "
       .. "master once and routes will use your flight paths.|r"
   end
+  local here = ns.Geo.PlayerNode()
+  local continent = here and ns.Geo.Continents()[here.instance]
+  if continent and not ns.Harvest.FlightsKnownOn(continent) then
+    return source .. string.format("|cffffd200Open any flight map in %s once so Wayfinder knows your flight "
+      .. "paths here.|r", ns.MapName(continent))
+  end
   return source .. string.format("%d known flight path%s. Boat and zeppelin docks are approximate.", flights,
     flights == 1 and "" or "s")
 end

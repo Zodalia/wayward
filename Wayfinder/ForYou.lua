@@ -339,9 +339,12 @@ end
 local OTHER_FACTION = { Alliance = 1, Horde = 2 }
 
 -- The nearest flight path you haven't discovered, if it is a short trip.
+local FLIGHT_MASTER_RADIUS = 120 -- yards from a flight path's map position
+
 local function flightNeed(ctx, start, net)
   local continent = ns.Geo.Continents()[start.instance]
-  if not continent then return nil end
+  -- Only where we know your flight paths; otherwise every one looks new.
+  if not (continent and ns.Harvest.FlightsKnownOn(continent)) then return nil end
   local other = OTHER_FACTION[UnitFactionGroup("player")]
   local reach = FLIGHT_NEAR_SECONDS * ns.Router.RUN_SPEED / ns.Router.WALK_FACTOR
   local best, bestDistance
@@ -355,14 +358,28 @@ local function flightNeed(ctx, start, net)
   local route = best and ns.Router.Plan(start, best, net)
   if not route or route.seconds > FLIGHT_NEAR_SECONDS then return nil end
   local town = best.label:match("^([^,]+)") or best.label
+  -- Head for the flight master's own spot when Wayfinder has recorded them.
+  local master, talkTo
+  for _, npc in pairs(ns.Harvest.AllNPCs()) do
+    if npc.kinds.flightMaster then
+      local node = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name)
+      if node and ns.Geo.Distance(node, best) <= FLIGHT_MASTER_RADIUS
+        and (not master or ns.Geo.Distance(node, best) < ns.Geo.Distance(master, best)) then
+        master, talkTo = node, npc.name
+      end
+    end
+  end
+  local stopNode = master or best
+  if master then route = ns.Router.Plan(start, master, net) or route end
   return {
     kind = "flight", only = "Flight only",
     title = string.format("Learn the %s flight path", town),
-    zone = ns.MapName(best.mapID), goal = best, route = route,
+    zone = ns.MapName(best.mapID), goal = stopNode, route = route,
     why = "not discovered yet",
     rank = "Needs come first: a flight path you haven't discovered is close by, and later trips get faster.",
     details = {},
-    stop = { node = best, text = "Talk to the flight master to learn " .. town,
+    stop = { node = stopNode, text = string.format("Talk to %s to learn %s",
+        talkTo and (talkTo .. ", the flight master,") or "the flight master", town),
       phrase = string.format("learn the %s flight path", town) },
   }
 end
