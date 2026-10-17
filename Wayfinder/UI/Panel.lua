@@ -24,6 +24,7 @@ local Panel = {}
 ns.Panel = Panel
 
 local MAX_ROWS = 7
+local DEFAULT_WIDTH = 384
 local ROW_HEIGHT = 42
 local MAX_DETAIL_LINES = 12
 local SEARCH_DELAY = 0.3
@@ -83,10 +84,9 @@ local function addDetails(r)
   if r.details then GameTooltip:AddLine(" ") end
 end
 
-local function showTooltip(row)
-  local r = row.result
-  if not r then return end
-  GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+-- The tooltip for a result (rows and cards share it).
+function Panel.ShowTooltip(owner, r)
+  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
   GameTooltip:SetText(r.title)
   addDetails(r)
   if r.journey then
@@ -154,26 +154,28 @@ local function createRow(parent, index)
   ns.Skin.Text(row.title)
   ns.Skin.Text(row.sub)
 
-  row:SetScript("OnEnter", showTooltip)
+  row:SetScript("OnEnter", function(self) if self.result then Panel.ShowTooltip(self, self.result) end end)
   row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  row:SetScript("OnClick", function(self)
-    local r = self.result
-    -- Shift-click: add to the trip you're on, keep the panel open.
-    if r and ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then
-      local stops = ns.Nav.StopsFor(r)
-      if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
-      Panel.Refresh()
-      return
-    end
-    if r and r.journey then
-      ns.Nav.StartJourney(r.journey)
-      frame:Hide()
-    elseif r and r.route then
-      ns.Nav.Start(r.title, r.goal, r.route)
-      frame:Hide()
-    end
-  end)
+  row:SetScript("OnClick", function(self) if self.result then Panel.Activate(self.result) end end)
   return row
+end
+
+-- What clicking a result does (rows and cards): start its directions or
+-- journey; with shift held during a trip, add it to the trip instead.
+function Panel.Activate(r)
+  if ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then
+    local stops = ns.Nav.StopsFor(r)
+    if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
+    Panel.Refresh()
+    return
+  end
+  if r.journey then
+    ns.Nav.StartJourney(r.journey)
+    frame:Hide()
+  elseif r.route then
+    ns.Nav.Start(r.title, r.goal, r.route)
+    frame:Hide()
+  end
 end
 
 ---------------------------------------------------------------- search
@@ -220,7 +222,7 @@ local function create()
   -- ButtonFrameTemplate is Blizzard's standard window (title bar, close button,
   -- inset), so UI suites that restyle Blizzard windows know it too.
   local f, templated = ns.Skin.CreateWindow("WayfinderPanel")
-  f:SetSize(384, 520)
+  f:SetSize(DEFAULT_WIDTH, 520)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
@@ -315,6 +317,8 @@ local function create()
 
   f.rows = {}
   for i = 1, MAX_ROWS do f.rows[i] = createRow(f, i) end
+  f.cards = ns.Cards.Create(f)
+  f.cards:Hide()
 
   -- Scrolling: the mouse wheel anywhere on the panel, or these buttons.
   f.down = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -388,6 +392,27 @@ local function layout(page)
   if showCategories then top = top - 28 end
   frame.summary:ClearAllPoints()
   frame.summary:SetPoint("TOPLEFT", 18, top)
+
+  -- A page can ask for its own width and for cards instead of rows.
+  local width = page.width or DEFAULT_WIDTH
+  frame:SetWidth(width)
+  frame.summary:SetWidth(width - 36)
+  frame.footer:SetWidth(width - 36)
+  frame.empty:SetWidth(width - 36)
+  local cards = page.layout == "cards"
+  for _, row in ipairs(frame.rows) do
+    if cards then row:Hide() end
+  end
+  if cards then
+    frame.up:Hide()
+    frame.down:Hide()
+    frame.position:SetText("")
+    frame.cards:ClearAllPoints()
+    frame.cards:SetPoint("TOPLEFT", frame.summary, "BOTTOMLEFT", 0, -12)
+    frame.cards:Show()
+  else
+    frame.cards:Hide()
+  end
 end
 
 local function footerText(net)
@@ -452,9 +477,16 @@ function Panel.Refresh()
   results = results or {}
   -- A new page, category or search starts at the top; a data refresh keeps your place.
   local key = page.id .. "|" .. selectedCategory .. "|" .. q
-  if key ~= listKey then offset, listKey = 0, key end
+  local fresh = key ~= listKey
+  if fresh then offset, listKey = 0, key end
   frame.results = results
   frame.summary:SetText(page.SummaryText(q) or "")
+  if page.layout == "cards" then
+    ns.Cards.Show(results, err or (#results == 0 and page.EmptyText(q)) or "", fresh)
+    frame.empty:SetText("")
+    frame.footer:SetText(footerText(net or ns.Network.Build()))
+    return
+  end
   paint()
 
   if err then
@@ -470,6 +502,7 @@ end
 -- Moves the result list: positive goes up (towards the first result).
 function Panel.Scroll(delta)
   if not (frame and frame:IsShown() and frame.results) then return end
+  if currentPage().layout == "cards" then return ns.Cards.Step(delta) end
   offset = math.max(0, offset - delta)
   paint()
 end

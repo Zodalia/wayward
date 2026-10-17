@@ -36,5 +36,6 @@ UI\Skin.lua
 UI\CopyBox.lua
 UI\HUD.lua
 UI\JourneyOverview.lua
+UI\Cards.lua
 UI\Panel.lua
 UI\MinimapButton.lua
