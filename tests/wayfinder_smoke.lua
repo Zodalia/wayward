@@ -251,6 +251,110 @@ io.write("panel\n")
 ns.Panel.Toggle()
 check(true, "panel opens and refreshes without errors")
 
+io.write("without QuestieDB\n")
+local noHubs, noHubsErr = ns.QuestHubs.Results()
+check(#noHubs == 0 and noHubsErr and noHubsErr:find("not installed"), "quest hubs explain that QuestieDB is needed")
+check(ns.Questie.StatusText() == nil, "no QuestieDB status line")
+
+io.write("questiedb bridge\n")
+local NPCS = {
+  [461] = { name = "Demisette Cloyce", subName = "Warlock Trainer", npcFlags = 18, friendlyToFaction = "A",
+    spawns = { [1519] = { { 39.38, 84.83 } } } },
+  [5000] = { name = "Ursula Deline", subName = "Warlock Trainer", npcFlags = 16, friendlyToFaction = "A",
+    spawns = { [1519] = { { 45.0, 70.0 } } } },
+  [5001] = { name = "Horde Warlock", subName = "Warlock Trainer", npcFlags = 16, friendlyToFaction = "H",
+    spawns = { [1519] = { { 50, 50 } } } },
+  [5002] = { name = "Some Mage", subName = "Mage Trainer", npcFlags = 16, friendlyToFaction = "A",
+    spawns = { [1519] = { { 30, 30 } } } },
+  [344] = { name = "Magistrate Solomon", npcFlags = 2, friendlyToFaction = "A", spawns = { [44] = { { 30.0, 45.0 } } } },
+  [6000] = { name = "Stormwind Questgiver", npcFlags = 2, friendlyToFaction = "AH",
+    spawns = { [1519] = { { 50.0, 50.0 } } } },
+}
+local QUESTS = {
+  [1] = { name = "Redridge Goulash", questLevel = 18, requiredLevel = 15, startedBy = { { 344 } } },
+  [2] = { name = "Already done", questLevel = 18, requiredLevel = 15, startedBy = { { 344 } } },
+  [3] = { name = "Mages only", questLevel = 18, requiredLevel = 15, requiredClasses = 128, startedBy = { { 344 } } },
+  [4] = { name = "Needs prequest", questLevel = 18, requiredLevel = 15, preQuestSingle = { 999 }, startedBy = { { 344 } } },
+  [5] = { name = "Too easy", questLevel = 5, requiredLevel = 1, startedBy = { { 344 } } },
+  [6] = { name = "Stormwind errand", questLevel = 20, requiredLevel = 18, startedBy = { { 6000 } } },
+  [7] = { name = "Lakeshire Logs", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } } },
+  [8] = { name = "Horde only", questLevel = 19, requiredLevel = 15, requiredRaces = 2, startedBy = { { 344 } } },
+  [9] = { name = "Too high", questLevel = 30, requiredLevel = 28, startedBy = { { 344 } } },
+  [10] = { name = "Already in log", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } } },
+}
+local function entity(rows, defaults)
+  local E = {}
+  function E.Get(id, key)
+    local row = rows[id]
+    if not row then return nil end
+    if row[key] == nil then return defaults[key] end
+    return row[key]
+  end
+  E.GetRaw = E.Get
+  function E.GetAll(id, keys)
+    if not rows[id] then return nil end
+    local out = { n = #keys }
+    for i, k in ipairs(keys) do out[i] = E.Get(id, k) end
+    return out
+  end
+  function E.GetAllIds()
+    local ids = {}
+    for id in pairs(rows) do ids[#ids + 1] = id end
+    table.sort(ids)
+    return ids
+  end
+  return E
+end
+NpcDB = entity(NPCS, { npcFlags = 0 })
+QuestDB = entity(QUESTS, { questLevel = 0, requiredLevel = 0, requiredRaces = 0, requiredClasses = 0 })
+ObjectDB = entity({}, {})
+loadstring = loadstring or load
+LibQuestieDB = {
+  readMode = "baked",
+  RequireContract = function(v) return v <= 4, "provider speaks contract 4" end,
+  Enum = { npcFlags = { TRAINER = 16, QUEST_GIVER = 2 }, classKeys = { WARLOCK = 256, MAGE = 128 },
+    raceMaskById = { [1] = 1, [2] = 2 } },
+  Meta = { QuestMeta = { questKeys = { name = 1, startedBy = 2, requiredLevel = 4, questLevel = 5,
+    requiredRaces = 6, requiredClasses = 7, preQuestGroup = 12, preQuestSingle = 13, exclusiveTo = 16,
+    requiredSkill = 18 } } },
+  Support = { Get = function() return { private = { areaIdToUiMapId = "return { [44] = 1433, [1519] = 1453 }" } } end },
+}
+UnitRace = function() return "Human", "Human", 1 end
+C_QuestLog = {
+  GetAllCompletedQuestIDs = function() return { 2 } end,
+  GetNumQuestLogEntries = function() return 1 end,
+  GetInfo = function() return { questID = 10, isHeader = false } end,
+}
+
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+check(ns.Questie.Available() and ns.Questie.StatusText() == "QuestieDB (baked)", "QuestieDB detected (contract 4)")
+local trainers = ns.Trainers.Results()
+local names = {}
+for _, t in ipairs(trainers) do names[#names + 1] = t.title end
+table.sort(names)
+check(table.concat(names, ",") == "Demisette Cloyce,Ursula Deline",
+  "trainers merge seed + QuestieDB, same faction and class only (" .. table.concat(names, ",") .. ")")
+
+local hubs = ns.QuestHubs.Results()
+check(#hubs == 2, "two quest hubs (" .. #hubs .. ")")
+check(hubs[1] and hubs[1].title == "2 quests at Magistrate Solomon", "nearest hub first: " .. tostring(hubs[1] and hubs[1].title))
+check(hubs[2] and hubs[2].title == "1 quest at Stormwind Questgiver", "farther hub second")
+local listed = {}
+for _, h in ipairs(hubs) do for _, d in ipairs(h.details) do listed[#listed + 1] = d.text end end
+local text = table.concat(listed, "\n")
+check(text:find("Redridge Goulash") and text:find("Lakeshire Logs") and text:find("Stormwind errand"),
+  "eligible quests listed")
+local leaked = {}
+for _, name in ipairs({ "Already done", "Mages only", "Needs prequest", "Too easy", "Horde only", "Too high",
+  "Already in log" }) do
+  if text:find(name, 1, true) then leaked[#leaked + 1] = name end
+end
+check(#leaked == 0, "ineligible quests filtered (leaked: " .. table.concat(leaked, ", ") .. ")")
+check(hubs[1] and hubs[1].route and ns.Router.Describe(hubs[1].route, #hubs[1].route.steps) == "Walk to Magistrate Solomon",
+  "hub has directions to its main quest giver")
+ns.Panel.Select(2)
+check(true, "panel shows quest hubs without errors")
+
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
