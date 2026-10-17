@@ -21,7 +21,11 @@ local CLASS_BY_TRAINER_TITLE = {
 }
 
 local QUEST_FIELDS = { "name", "questLevel", "requiredLevel", "requiredRaces", "requiredClasses",
-  "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill" }
+  "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill", "nextQuestInChain",
+  "parentQuest", "requiredMaxLevel", "availableUntilCompleted", "availableStartingWith", "disabledByQuest",
+  "breadcrumbForQuestId" }
+
+local RED_LEVELS = 5 -- a quest this many levels above you shows red
 
 local lib, failure
 local areaToUiMap, trainersByClass, questIndex
@@ -147,8 +151,10 @@ end
 
 ---------------------------------------------------------------- quests
 
+local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
+
 local function buildQuestIndex()
-  questIndex = {}
+  questIndex, predecessors = {}, {}
   local started = now()
   local keys = {}
   local questKeys = lib.Meta.QuestMeta.questKeys
@@ -160,6 +166,11 @@ local function buildQuestIndex()
     if values then
       local q = { id = id }
       for i, field in ipairs(keys) do q[field] = values[i] end
+      local nextID = q.nextQuestInChain or 0
+      if nextID ~= 0 then
+        predecessors[nextID] = predecessors[nextID] or {}
+        table.insert(predecessors[nextID], q)
+      end
       local starters = q.startedBy or {}
       if (starters[1] and #starters[1] > 0) or (starters[2] and #starters[2] > 0) then
         questIndex[#questIndex + 1] = q
@@ -208,19 +219,50 @@ local function playerQuestState()
   return done, inLog
 end
 
--- Prototype rules. Questie handles more (breadcrumbs, holidays, reputation);
--- quests that need a profession skill are left out rather than guessed.
+local function canEverDo(q, p)
+  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return false end
+  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then return false end
+  return true
+end
+
+-- A follow-up quest is only recorded on its predecessor (nextQuestInChain), so
+-- it stays hidden until one predecessor you could ever do is completed.
+local function chainReached(q, p, done)
+  local before = predecessors[q.id]
+  if not before then return true end
+  local possible = false
+  for _, prev in ipairs(before) do
+    if done[prev.id] then return true end
+    if canEverDo(prev, p) then possible = true end
+  end
+  return not possible
+end
+
+local function active(id, done, inLog)
+  return id ~= 0 and (done[id] or inLog[id])
+end
+
+-- Field meanings: QuestieDB src/meta/questMeta.lua. Questie handles more
+-- (holiday/event flags, reputation); quests needing a profession are left out.
 local function eligible(q, p, done, inLog)
   if done[q.id] or inLog[q.id] then return false end
   local required = q.requiredLevel or 0
   if required ~= 0 and required > p.level then return false end
+  if (q.requiredMaxLevel or 0) ~= 0 and p.level > q.requiredMaxLevel then return false end
   local questLevel = (q.questLevel or 0) ~= 0 and q.questLevel or required
-  if questLevel > 0 and isTrivial(questLevel, p.level) then return false end
-  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return false end
-  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then return false end
+  if questLevel > 0 and (isTrivial(questLevel, p.level) or questLevel - p.level >= RED_LEVELS) then return false end
+  if not canEverDo(q, p) then return false end
   if q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done) then return false end
   if q.preQuestGroup and not allDone(q.preQuestGroup, done) then return false end
+  if not chainReached(q, p, done) then return false end
   if anyDone(q.exclusiveTo, done) then return false end
+  -- You have moved on: the next quest in the chain is active or completed.
+  if active(q.nextQuestInChain or 0, done, inLog) then return false end
+  if active(q.breadcrumbForQuestId or 0, done, inLog) then return false end
+  if (q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest] then return false end
+  if (q.availableStartingWith or 0) ~= 0 and not active(q.availableStartingWith, done, inLog) then return false end
+  if (q.availableUntilCompleted or 0) ~= 0 and done[q.availableUntilCompleted] then return false end
+  if (q.disabledByQuest or 0) ~= 0 and inLog[q.disabledByQuest] then return false end
   if q.requiredSkill then return false end
   return true
 end

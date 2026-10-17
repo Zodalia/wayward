@@ -284,6 +284,16 @@ local QUESTS = {
   [9] = { name = "Too high", questLevel = 30, requiredLevel = 28, startedBy = { { 344 } } },
   [10] = { name = "Already in log", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } } },
   [11] = { name = "Bridge Footings", questLevel = 17, requiredLevel = 14, startedBy = { { 345 } } },
+  [12] = { name = "Too hard", questLevel = 26, requiredLevel = 18, startedBy = { { 344 } } },
+  -- Chains: 14 leads to 13 (only recorded on 14), so 13 waits until 14 is done.
+  [13] = { name = "Chain part 2", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } } },
+  [14] = { name = "Chain part 1", questLevel = 19, requiredLevel = 15, nextQuestInChain = 13, startedBy = { { 6000 } } },
+  -- Its only predecessor is Horde-only, so an Alliance character can take it.
+  [15] = { name = "Alliance step", questLevel = 18, requiredLevel = 15, startedBy = { { 344 } } },
+  [16] = { name = "Horde step", questLevel = 18, requiredLevel = 15, requiredRaces = 2, nextQuestInChain = 15,
+    startedBy = { { 344 } } },
+  [17] = { name = "Needs parent", questLevel = 18, requiredLevel = 15, parentQuest = 99, startedBy = { { 344 } } },
+  [18] = { name = "Superseded", questLevel = 18, requiredLevel = 15, nextQuestInChain = 2, startedBy = { { 344 } } },
 }
 local function entity(rows, defaults)
   local E = {}
@@ -309,7 +319,9 @@ local function entity(rows, defaults)
   return E
 end
 NpcDB = entity(NPCS, { npcFlags = 0 })
-QuestDB = entity(QUESTS, { questLevel = 0, requiredLevel = 0, requiredRaces = 0, requiredClasses = 0 })
+QuestDB = entity(QUESTS, { questLevel = 0, requiredLevel = 0, requiredRaces = 0, requiredClasses = 0,
+  nextQuestInChain = 0, parentQuest = 0, requiredMaxLevel = 0, availableUntilCompleted = 0,
+  availableStartingWith = 0, disabledByQuest = 0, breadcrumbForQuestId = 0 })
 ObjectDB = entity({}, {})
 loadstring = loadstring or load
 LibQuestieDB = {
@@ -319,7 +331,8 @@ LibQuestieDB = {
     raceMaskById = { [1] = 1, [2] = 2 } },
   Meta = { QuestMeta = { questKeys = { name = 1, startedBy = 2, requiredLevel = 4, questLevel = 5,
     requiredRaces = 6, requiredClasses = 7, preQuestGroup = 12, preQuestSingle = 13, exclusiveTo = 16,
-    requiredSkill = 18 } } },
+    requiredSkill = 18, nextQuestInChain = 22, parentQuest = 25, breadcrumbForQuestId = 27,
+    requiredMaxLevel = 32, availableUntilCompleted = 33, availableStartingWith = 34, disabledByQuest = 36 } } },
   Support = { Get = function() return { private = { areaIdToUiMapId = "return { [44] = 1433, [1519] = 1453 }" } } end },
 }
 UnitRace = function() return "Human", "Human", 1 end
@@ -340,18 +353,18 @@ check(table.concat(names, ",") == "Demisette Cloyce,Ursula Deline",
 
 local hubs = ns.QuestHubs.Results()
 check(#hubs == 2, "two quest hubs (" .. #hubs .. ")")
-check(hubs[1] and hubs[1].title == "Lakeshire  ·  3 quests",
+check(hubs[1] and hubs[1].title == "Lakeshire  ·  4 quests",
   "nearest hub named after its town, both clusters merged: " .. tostring(hubs[1] and hubs[1].title))
-check(hubs[2] and hubs[2].title == "Stormwind  ·  1 quest", "farther hub second: " .. tostring(hubs[2] and hubs[2].title))
+check(hubs[2] and hubs[2].title == "Stormwind  ·  2 quests", "farther hub second: " .. tostring(hubs[2] and hubs[2].title))
 local listed = {}
 for _, h in ipairs(hubs) do for _, d in ipairs(h.details) do listed[#listed + 1] = d.text end end
 local text = table.concat(listed, "\n")
 check(text:find("Redridge Goulash") and text:find("Lakeshire Logs") and text:find("Stormwind errand")
-  and text:find("Bridge Footings"),
+  and text:find("Bridge Footings") and text:find("Chain part 1") and text:find("Alliance step"),
   "eligible quests listed")
 local leaked = {}
 for _, name in ipairs({ "Already done", "Mages only", "Needs prequest", "Too easy", "Horde only", "Too high",
-  "Already in log" }) do
+  "Already in log", "Too hard", "Chain part 2", "Horde step", "Needs parent", "Superseded" }) do
   if text:find(name, 1, true) then leaked[#leaked + 1] = name end
 end
 check(#leaked == 0, "ineligible quests filtered (leaked: " .. table.concat(leaked, ", ") .. ")")

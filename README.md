@@ -41,8 +41,10 @@ Data limits to know about:
 - Without QuestieDB, trainer locations are only what you have visited, plus
   one seeded trainer (Stormwind warlock trainer). The client has no
   trainer-location API.
-- Quest hub rules are a prototype: breadcrumbs, holiday and reputation quests
-  aren't handled, and quests needing a profession skill are left out.
+- Quest hubs hide grey and red quests, quests whose chain you haven't reached
+  (or have moved past), and quests whose parent, start or end conditions
+  aren't met. Holiday/event and reputation requirements aren't handled yet,
+  and quests needing a profession skill are left out.
 - Class trainers from QuestieDB are recognised by their English subtitle
   ("Warlock Trainer").
 - Boat, zeppelin, tram and portal docks in `Wayfinder/Data/Transports.lua` are
