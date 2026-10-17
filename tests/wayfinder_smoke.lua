@@ -386,6 +386,141 @@ check(usesIt, "Darkshore to Stormwind now takes the recorded boat (" .. ns.Route
 SlashCmdList.WAYFINDER("dock list")
 check(true, "/wf dock list opens the copy box")
 
+---------------------------------------------------------------- vendors (begin)
+
+io.write("vendors\n")
+local merchant = { items = {}, repairs = false }
+GetMerchantNumItems = function() return #merchant.items end
+C_MerchantFrame = { GetItemInfo = function(i) return { itemID = merchant.items[i], price = 10, stackCount = 1 } end }
+CanMerchantRepair = function() return merchant.repairs end
+local ITEM_INSTANT = {
+  [100] = { 2, 2 },  -- a bow
+  [9999] = { 6, 2 }, -- arrows not in Data/VendorGoods.lua
+}
+C_Item = { GetItemInfoInstant = function(id)
+  local c = ITEM_INSTANT[id]
+  if c then return id, "", "", "", 0, c[1], c[2] end
+end }
+local durability = { 50, 50 }
+GetInventoryItemDurability = function(slot) if slot == 1 then return durability[1], durability[2] end end
+local npcName = "Test Darkbinder"
+UnitName = function(u) return u == "npc" and npcName or "Zodalia" end
+local function visitMerchant(id, name, mapID, x, y, items, repairs)
+  UnitGUID = function() return "Creature-0-1-0-2-" .. id .. "-AB" end
+  npcName, merchant.items, merchant.repairs = name, items, repairs
+  player.mapID, player.x, player.y = mapID, x, y
+  fire("MERCHANT_SHOW")
+  runTimers()
+end
+local function titles(list)
+  local t = {}
+  for _, v in ipairs(list) do t[#t + 1] = v.title end
+  return table.concat(t, " | ")
+end
+local function find(list, needle)
+  for i, v in ipairs(list) do
+    if v.title:find(needle, 1, true) then return v, i end
+  end
+end
+
+visitMerchant(8001, "Lakeshire Cook", 1433, 0.45, 0.5, { 1205, 4542, 9999 }, false)
+local cook = ns.db.npcs[8001]
+check(cook and cook.kinds.vendor and #cook.goods == 3 and cook.goods[1] == 1205,
+  "merchant visit records the vendor's item IDs")
+check(cook and cook.sells.food and cook.sells.arrow and cook.repairs == false,
+  "goods get a category guess (food, arrows from the item class) and no repairs")
+visitMerchant(8002, "Stormwind Smith", 1453, 0.5, 0.5, { 1179 }, true)
+check(ns.db.npcs[8002] and ns.db.npcs[8002].repairs == true, "repairing vendor recorded as such")
+ns.db.npcs[8003] = { kinds = { vendor = true }, name = "Orgrimmar Grocer", faction = "Horde", mapID = 1433,
+  x = 0.5, y = 0.5, goods = { 1205 }, sells = { food = true }, repairs = true }
+
+-- Without QuestieDB: only vendors you visited.
+local realAvailable = ns.Questie.Available
+ns.Questie.Available = function() return false, "QuestieDB is not installed" end
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+local shops = ns.Vendors.Results()
+check(#shops == 2 and shops[1].id == 8001 and shops[2].id == 8002,
+  "without QuestieDB: visited vendors of your faction, nearest first (" .. titles(shops) .. ")")
+check(shops[1].title == "Lakeshire Cook  ·  Food & drink", "row says why: " .. tostring(shops[1].title))
+check(shops[2].title == "Stormwind Smith  ·  Repair, Food & drink", "repair listed: " .. tostring(shops[2].title))
+local older = shops[2].details[2]
+check(older and older.text:find("Ice Cold Milk") and older.text:find("older tier"),
+  "lower-tier food is marked (" .. tostring(older and older.text) .. ")")
+check(not ns.Vendors.SummaryText():find("repair"), "full durability: no repair warning")
+
+durability = { 10, 50 }
+shops = ns.Vendors.Results()
+check(shops[1] and shops[1].id == 8002, "gear at 20%: the repair vendor jumps to the top (" .. titles(shops) .. ")")
+check(ns.Vendors.SummaryText():find("Gear at 20%%: repair soon"), "summary warns: " .. ns.Vendors.SummaryText())
+check(shops[1].title:find("|cffff7f3fRepair|r", 1, true), "repair label highlighted")
+durability = { 50, 50 }
+ns.Questie.Available = realAvailable
+
+-- With QuestieDB: ItemDB sellers, repair flags, faction filter.
+NPCS[7000] = { name = "Innkeeper Farley", subName = "Innkeeper", npcFlags = 4 + 128, friendlyToFaction = "A",
+  spawns = { [44] = { { 52.0, 50.0 } } } }
+NPCS[7001] = { name = "Horde Cook", subName = "Food & Drink", npcFlags = 4, friendlyToFaction = "H",
+  spawns = { [44] = { { 50.0, 50.0 } } } }
+NPCS[7002] = { name = "Stormwind Armorer", subName = "Armorer", npcFlags = 4 + 16384, friendlyToFaction = "A",
+  spawns = { [1519] = { { 60.0, 60.0 } } } }
+NPCS[7003] = { name = "Redridge Smith", subName = "Blacksmith", npcFlags = 4 + 16384, friendlyToFaction = "A",
+  spawns = { [44] = { { 20.0, 60.0 } } } }
+NPCS[7004] = { name = "Lakeshire Bowyer", subName = "Bowyer", npcFlags = 4, friendlyToFaction = "A",
+  spawns = { [44] = { { 55.0, 45.0 } } } }
+local ITEMS = {
+  [1205] = { vendors = { 7000, 7001 } },
+  [4542] = { vendors = { 7000 } },
+  [2515] = { vendors = { 7004 } },
+}
+ItemDB = entity(ITEMS, {})
+LibQuestieDB.Meta.ItemMeta = { itemKeys = { name = 1, vendors = 14 } }
+LibQuestieDB.Enum.npcFlags.VENDOR, LibQuestieDB.Enum.npcFlags.REPAIR = 4, 16384
+
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+shops = ns.Vendors.Results()
+check(not find(shops, "Horde Cook") and not find(shops, "Orgrimmar"), "other faction's vendors hidden (" .. titles(shops) .. ")")
+local inn = find(shops, "Innkeeper Farley")
+check(inn and inn.title == "Innkeeper Farley  ·  Food & drink" and inn.details[1].text:find("Melon Juice"),
+  "QuestieDB vendor found through ItemDB sellers: " .. tostring(inn and inn.details[1].text))
+local _, near = find(shops, "Redridge Smith")
+local _, farther = find(shops, "Stormwind Armorer")
+check(near and farther and near < farther, "repair vendors ranked by travel time (" .. titles(shops) .. ")")
+local sorted = true
+for i = 2, #shops do
+  if shops[i].route.seconds < shops[i - 1].route.seconds then sorted = false end
+end
+check(sorted, "rows sorted by travel time")
+check(not find(shops, "Bowyer"), "no ammo vendors for a warlock")
+
+UnitClass = function() return "Hunter", "HUNTER", 3 end
+GetInventorySlotInfo = function(name) return name == "RangedSlot" and 18 or 0 end
+GetInventoryItemID = function(_, slot) return slot == 18 and 100 or nil end
+GetInventoryItemCount = function() return 150 end
+shops = ns.Vendors.Results()
+local bowyer = find(shops, "Lakeshire Bowyer")
+check(bowyer and bowyer.title:find("Ammo") and bowyer.details[1].text:find("Sharp Arrow"),
+  "hunter with a bow: arrow vendor listed (" .. titles(shops) .. ")")
+check(ns.Vendors.SummaryText():find("Ammo %(150 left%)"), "summary shows ammo left: " .. ns.Vendors.SummaryText())
+
+UnitClass = function() return "Mage", "MAGE", 8 end
+GetInventoryItemID = function() return nil end
+NPCS[7005] = { name = "Reagent Seller", subName = "Reagents", npcFlags = 4, friendlyToFaction = "A",
+  spawns = { [1519] = { { 40.0, 40.0 } } } }
+ITEMS[17031] = { vendors = { 7005 } }
+shops = ns.Vendors.Results()
+local reagents = find(shops, "Reagent Seller")
+check(reagents and reagents.title:find("Reagents") and reagents.details[1].text == "Reagents: Rune of Teleportation",
+  "mage: reagent vendor listed with the reagent (" .. tostring(reagents and reagents.details[1].text) .. ")")
+check(ns.Vendors.SummaryText():find("Reagents: Light Feather, Rune of Teleportation", 1, true),
+  "summary names your reagents: " .. ns.Vendors.SummaryText())
+check(not ns.Vendors.SummaryText():find("Ammo"), "no ranged weapon, not a hunter: no ammo need")
+UnitClass = function() return "Warlock", "WARLOCK", 9 end
+
+ns.Panel.Select(4)
+check(ns.Panel.IsShown(), "panel shows vendors without errors")
+
+---------------------------------------------------------------- vendors (end)
+
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
