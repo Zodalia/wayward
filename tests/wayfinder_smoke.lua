@@ -897,6 +897,7 @@ do
   ITEMS[9004] = { name = "Goulash Ring", questRewards = { 1, 4, 10, 2, 3, 9, 13 } }
   ITEMS[9005] = { name = "Fine Longbow", vendors = { 7004, 7001 }, npcDrops = { 9105 } }
   QUESTS[10].finishedBy = { { 345 } }
+  QUESTS[1].finishedBy = { { 344 } } -- Redridge Goulash, handed back to Solomon
   LibQuestieDB.Meta.QuestMeta.questKeys.finishedBy = 3
 
   local page
@@ -958,9 +959,13 @@ do
   -- Quest rewards.
   list = rows("item:9004")
   local all = names(list)
-  check(list[1] and list[1].title == "Reward from Redridge Goulash" and list[1].route
-    and detailText(list[1]):find("take it now from Magistrate Solomon", 1, true),
-    "available quest first, routed to its giver: " .. all)
+  local function stops(r) return r and r.journey and r.journey.stops or {} end
+  local goulash = stops(list[1])
+  check(list[1] and list[1].title == "Reward from Redridge Goulash"
+    and detailText(list[1]):find("take it now from Magistrate Solomon", 1, true)
+    and goulash[1] and goulash[1].action.kind == "pickup" and goulash[1].node.label == "Magistrate Solomon"
+    and goulash[#goulash].action.kind == "turnin",
+    "available quest first, tracked from pickup to hand-in: " .. all)
   local inLog, chain, closed, high
   for _, r in ipairs(list) do
     if r.title:find("Already in log", 1, true) then inLog = r end
@@ -968,10 +973,11 @@ do
     if r.title:find("Needs prequest", 1, true) then closed = r end
     if r.title:find("Too high", 1, true) then high = r end
   end
-  check(inLog and inLog.title:find("in your log") and inLog.route and inLog.goal.label == "Foreman Oslow",
-    "quest in your log: says so, routes to where you hand it in")
-  check(chain and chain.title:find("needs earlier quests") and chain.route
-    and chain.goal.label == "Stormwind Questgiver"
+  check(inLog and inLog.title:find("in your log") and stops(inLog)[1]
+    and stops(inLog)[1].action.kind == "turnin" and stops(inLog)[1].node.label == "Foreman Oslow",
+    "quest in your log: says so, tracked to where you hand it in")
+  check(chain and chain.title:find("needs earlier quests") and stops(chain)[1]
+    and stops(chain)[1].node.label == "Stormwind Questgiver" and stops(chain)[1].action.questID == 14
     and detailText(chain):find("Start the chain: pick up Chain part 1 from Stormwind Questgiver", 1, true),
     "quest needing earlier quests: routes to the start of its chain")
   check(closed and not closed.route and closed.subtitle == "Needs earlier quests you can't take yet",
@@ -1206,6 +1212,88 @@ end
 
 ---------------------------------------------------------------- for you (end)
 
+---------------------------------------------------------------- trips (begin)
+do
+  io.write("trips\n")
+  ns.Nav.Stop()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  -- A quest with an objective: kill Murloc Foragers (NPC 9101, Redridge), hand in to Foreman Oslow.
+  QUESTS[40] = { name = "Murloc Menace", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.objectives, questKeys.triggerEnd = 10, 9
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+
+  local qs = ns.Journey.QuestStops(40, here)
+  local kinds = {}
+  for _, st in ipairs(qs) do kinds[#kinds + 1] = st.action.kind end
+  check(table.concat(kinds, ",") == "pickup,complete,turnin", "a whole quest: pick up, do it, hand in")
+  check(qs[2] and qs[2].after[1] == qs[1] and qs[3].after[1] == qs[2] and qs[2].node.mapID == 1433,
+    "objectives are where the quest's mobs are, after the pickup")
+  local journey = ns.Journey.Plan(here, { title = "Murloc Menace", stops = { qs[3], qs[2], qs[1] } })
+  kinds = {}
+  for _, st in ipairs(journey.stops) do kinds[#kinds + 1] = st.action.kind end
+  check(table.concat(kinds, ",") == "pickup,complete,turnin", "stop order rules hold even when given backwards")
+
+  ns.Nav.StartJourney(journey)
+  check(ns.JourneyOverview.IsShown(), "a journey with several stops opens the overview")
+  local rows = ns.JourneyOverview.Rows()
+  check(#rows == 3 and rows[1].state == "now", "the overview lists every stop, the first one now")
+  check(ns.charDB.nav and ns.charDB.nav.journey and #ns.charDB.nav.journey.stops == 3, "the trip is saved")
+
+  -- Pick it up: the quest is in the log, objectives not done.
+  player.mapID, player.x, player.y = qs[1].node.mapID, qs[1].node.x, qs[1].node.y
+  ns.HUD.Update()
+  local log = { 10 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  C_QuestLog.GetQuestObjectives = function(id)
+    return id == 40 and { { text = "3/8 Murloc Forager slain", finished = false } } or {}
+  end
+  log[#log + 1] = 40
+  fire("QUEST_ACCEPTED", 40)
+  local step = ns.Nav.CurrentStep()
+  check(step and step.stop and step.stop.action.kind == "complete", "after the pickup: do the objectives")
+  check(ns.HUD.ObjectiveText(40) == "3/8 Murloc Forager slain", "the directions box shows objective progress")
+  fire("QUEST_LOG_UPDATE")
+  check(ns.Nav.CurrentStep().stop.action.kind == "complete", "objectives not done yet: keep going")
+  C_QuestLog.IsComplete = function(id) return id == 40 end
+  fire("QUEST_LOG_UPDATE")
+  step = ns.Nav.CurrentStep()
+  check(step and step.stop and step.stop.action.kind == "turnin", "objectives done: go and hand it in")
+
+  -- Log out and back in: the open part of the trip comes back.
+  ns.Nav.active = nil
+  ns.Nav.Resume()
+  check(ns.Nav.active and #ns.Nav.active.journey.stops == 1 and ns.Nav.active.journey.stops[1].action.kind == "turnin",
+    "after a relog the trip resumes from where it was")
+  check(#ns.JourneyOverview.Rows() == 3, "the overview still shows the stops already done")
+  fire("QUEST_TURNED_IN", 40)
+  check(ns.Nav.active == nil and ns.charDB.nav == nil, "handing it in ends the trip and clears the save")
+
+  -- Dropping a pickup drops what needs it.
+  log = { 10 }
+  local goulash = ns.Journey.QuestStops(1, here)
+  local visit = { node = ns.Geo.Node(1433, 0.9, 0.9, "Lookout"), text = "Visit the lookout" }
+  local stops = { visit }
+  for _, st in ipairs(goulash) do stops[#stops + 1] = st end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = stops }))
+  ns.Nav.Drop(goulash[1])
+  check(goulash[1].skipped and goulash[#goulash].skipped and #ns.Nav.active.journey.stops == 1
+    and ns.Nav.active.journey.stops[1] == visit, "dropping a pickup also drops its hand-in")
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+  QUESTS[40] = nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- trips (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
