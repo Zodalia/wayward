@@ -182,11 +182,17 @@ Needs QuestieDB.
 
 With an empty search the tab lists your quest log: level, zone and the first
 objective not done yet (or "ready to hand in"). Click a quest for a trip for
-what is left of it. "Add" (on log quests and search results) picks quests for
-one trip, saved per character until you hand them in; "Plan a trip for N
-quests" then does them together, each quest in its own order but interleaved
-by travel time. "Hand in N completed quests" visits every finisher in one
-trip. Without QuestieDB the log still lists, but without directions.
+what is left of it. "Add" (on log quests and search results) puts the quest
+into the trip you're on, or starts one; "In trip" takes it out again. The
+trip is re-ordered from where you are each time, each quest in its own order
+(pick up, objectives, hand in) but interleaved by travel time. "Hand in N
+completed quests" visits every finisher in one trip, and can be added to the
+current trip too. Without QuestieDB the log still lists, but without
+directions.
+
+**Trips are flexible:** starting new directions while a trip is on asks
+whether to add them to the trip or replace it. Shift-click any row in the
+panel to add it to the trip you're on.
 
 ### Building on Wayfinder: pages and journeys
 
