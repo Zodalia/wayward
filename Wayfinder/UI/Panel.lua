@@ -2,12 +2,13 @@ local _, ns = ...
 
 -- The Wayfinder window. The main window shows the card page (For you) and
 -- never changes size; the other pages (Find, Quests, Items, ...) open in a
--- side panel docked to its right, from buttons in the main window's header.
+-- side panel docked to its right, from icon tabs down its right edge.
 --
 -- Page contract (register with ns.RegisterPage(page) from any file that loads
 -- before this one):
---   page.id, page.label        -- header button / side panel title
---   page.order                 -- button order, lowest first
+--   page.id, page.label        -- side tab tooltip / side panel title
+--   page.icon                  -- side tab icon (optional)
+--   page.order                 -- tab order, lowest first
 --   page.layout = "cards"      -- shown in the main window as cards (UI/Cards.lua), with
 --   page.width                 --   this window width; other pages are lists in the side panel
 --   page.searchable            -- show the search box (shift-clicked links go in it too)
@@ -33,6 +34,12 @@ local HEIGHT = 520
 local ROW_HEIGHT = 42
 local MAX_DETAIL_LINES = 12
 local SEARCH_DELAY = 0.3
+local SIDE_TAB_SIZE = 32
+local TAB_ICONS = {
+  find = "Interface\\Icons\\INV_Misc_Spyglass_03",
+  quests = "Interface\\Icons\\INV_Misc_Book_08",
+  items = "Interface\\Icons\\INV_Misc_Bag_08",
+}
 
 local frame, side
 local mainPage, sidePage = nil, nil
@@ -271,7 +278,8 @@ local function createSide(parent)
   local s, templated = ns.Skin.CreateWindow("WayfinderSidePanel")
   s:SetParent(parent)
   s:SetSize(SIDE_WIDTH, HEIGHT)
-  s:SetPoint("TOPLEFT", parent, "TOPRIGHT", -2, 0)
+  -- To the right of the side tabs.
+  s:SetPoint("TOPLEFT", parent, "TOPRIGHT", SIDE_TAB_SIZE + 4, 0)
   s:EnableMouse(true)
 
   s.title = s.titleText
@@ -395,33 +403,41 @@ local function create()
   ns.Skin.Text(title)
   ns.Skin.CloseButton(f.close)
   if templated then
-    -- The header buttons stand on the inset; the footer stays inside it.
+    -- The footer stays inside the inset.
     f.Inset:ClearAllPoints()
-    f.Inset:SetPoint("TOPLEFT", 4, -62)
+    f.Inset:SetPoint("TOPLEFT", 4, -26)
     f.Inset:SetPoint("BOTTOMRIGHT", -6, 4)
     ns.Skin.Inset(f.Inset)
   end
 
-  -- Header buttons for the list pages: each opens (or closes) the side panel.
+  -- Side tabs down the right edge for the list pages, Blizzard style (square
+  -- icons with the spellbook's tab border); each opens or closes the side panel.
   f.tabs = {}
-  local previous
   for i, page in ipairs(listPages()) do
-    local b, tab = ns.Skin.CreateTab(f)
-    b:SetID(i)
-    b:SetWidth(110)
-    if not tab then b:SetHeight(22) end
-    b:SetText(page.label)
-    if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 18, -62) end
+    local b = CreateFrame("CheckButton", nil, f)
+    b:SetSize(SIDE_TAB_SIZE, SIDE_TAB_SIZE)
+    b:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -40 - (i - 1) * (SIDE_TAB_SIZE + 12))
+    local border = b:CreateTexture(nil, "BACKGROUND")
+    border:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    border:SetSize(SIDE_TAB_SIZE * 2, SIDE_TAB_SIZE * 2)
+    border:SetPoint("TOPLEFT", -3, 11)
+    b:SetNormalTexture(page.icon or TAB_ICONS[page.id] or "Interface\\Icons\\INV_Misc_Map_01")
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight", "ADD")
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(page.label)
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function()
       if sidePage == page and side:IsShown() then Panel.CloseSide() else Panel.SelectPage(page.id) end
     end)
-    ns.Skin.Tab(b)
-    f.tabs[i] = { button = b, page = page, template = tab }
-    previous = b
+    f.tabs[i] = { button = b, page = page }
   end
 
   f.summary = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  f.summary:SetPoint("TOPLEFT", 18, -70)
+  f.summary:SetPoint("TOPLEFT", 18, -34)
   f.summary:SetWidth(width - 36)
   f.summary:SetJustifyH("LEFT")
   f.summary:SetWordWrap(true)
@@ -450,19 +466,18 @@ end
 
 ---------------------------------------------------------------- refresh
 
+local checkedPage
+
 local function markTabs()
+  checkedPage = side:IsShown() and sidePage and sidePage.id or nil
   for _, tab in ipairs(frame.tabs) do
-    local selected = side:IsShown() and tab.page == sidePage
-    local b = tab.button
-    if tab.template and PanelTemplates_SelectTab and PanelTemplates_DeselectTab then
-      if selected then PanelTemplates_SelectTab(b) else PanelTemplates_DeselectTab(b) end
-    elseif selected then
-      b:LockHighlight()
-    else
-      b:UnlockHighlight()
-    end
-    ns.Skin.SetTabSelected(b, selected)
+    tab.button:SetChecked(checkedPage == tab.page.id)
   end
+end
+
+-- The list page whose side tab is selected, or nil (for tests).
+function Panel.SelectedTab()
+  return checkedPage
 end
 
 local offset, listKey = 0, nil
