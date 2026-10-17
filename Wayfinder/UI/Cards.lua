@@ -2,7 +2,9 @@ local _, ns = ...
 
 -- Suggestion cards in the style of modern WoW's Adventure Guide ("Suggested
 -- Content"): one large featured card on the left, two smaller ones stacked on
--- the right, arrows to step through the rest. Sizes, fonts and colours follow
+-- the right, arrows under them to step through the rest. Each card's "?"
+-- button shows its breakdown (why, then every stop and step) in place of the
+-- cards. Sizes, fonts and colours follow
 -- Blizzard's own frame (Blizzard_EncounterJournal, AdventureJournal templates).
 -- The Adventure Guide isn't in Forever, so its art is used only when the
 -- client has those atlases; otherwise a plain parchment look.
@@ -13,9 +15,12 @@ local _, ns = ...
 local Cards = {}
 ns.Cards = Cards
 
-local LARGE_W, LARGE_H = 335, 337
-local SMALL_W, SMALL_H = 344, 161
+local LARGE_W, LARGE_H = 335, 365
+local SMALL_W, SMALL_H = 344, 175
 local GAP = 11
+local WIDTH = LARGE_W + 12 + SMALL_W
+local NAV_HEIGHT = 34      -- the arrows under the cards
+local BREAKDOWN_ROWS = 17
 -- Ink on parchment, darkest for titles.
 local TITLE_COLOR = { 0.20, 0.10, 0.02 }
 local TEXT_COLOR = { 0.22, 0.14, 0.06 }
@@ -108,6 +113,27 @@ local function extra(card)
   return b
 end
 
+-- The "?" button in a card's top-right corner: its breakdown.
+local function queryButton(card)
+  local b = CreateFrame("Button", nil, card)
+  b:SetSize(22, 22)
+  b:SetPoint("TOPRIGHT", -14, -12)
+  b:SetNormalTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+  b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  local border = b:CreateTexture(nil, "OVERLAY")
+  border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+  border:SetSize(22 * 64 / 36, 22 * 64 / 36)
+  border:SetPoint("CENTER")
+  b:SetScript("OnClick", function() if card.result then Cards.ShowBreakdown(card.result) end end)
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Show every step")
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  card.query = b
+end
+
 local function hover(card)
   card:EnableMouse(true)
   card:SetScript("OnEnter", function(self) if self.result then ns.Panel.ShowTooltip(self, self.result) end end)
@@ -128,7 +154,7 @@ local function largeCard(parent)
   -- Title and subtitle centred under the icon; the details below read as a
   -- left-aligned paragraph.
   card.title = text(card, "GameFontNormalHuge", 18, TITLE_COLOR)
-  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -16)
+  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -14)
   card.title:SetWidth(264)
   card.title:SetJustifyH("CENTER")
   if card.title.SetMaxLines then card.title:SetMaxLines(2) end
@@ -144,32 +170,13 @@ local function largeCard(parent)
   card.detail:SetWidth(250)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(3)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(5) end
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(9) end
 
   card.button = button(card, 116, 32, true)
-  card.button:SetPoint("BOTTOM", 0, 31)
+  card.button:SetPoint("BOTTOM", 0, 22)
   card.extra = extra(card)
-  card.extra:SetPoint("BOTTOM", card.button, "TOP", 0, 6)
-
-  card.prev = CreateFrame("Button", nil, card)
-  card.prev:SetSize(32, 32)
-  card.prev:SetPoint("BOTTOMLEFT", 16, 12)
-  card.prev:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up")
-  card.prev:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Down")
-  card.prev:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Disabled")
-  card.prev:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-  card.prev:SetScript("OnClick", function() Cards.Step(1) end)
-  card.next = CreateFrame("Button", nil, card)
-  card.next:SetSize(32, 32)
-  card.next:SetPoint("BOTTOMRIGHT", -16, 12)
-  card.next:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-  card.next:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
-  card.next:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Disabled")
-  card.next:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-  card.next:SetScript("OnClick", function() Cards.Step(-1) end)
-
-  card.position = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
-  card.position:SetPoint("BOTTOM", 0, 18)
+  card.extra:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
+  queryButton(card)
   hover(card)
   return card
 end
@@ -183,7 +190,7 @@ local function smallCard(parent)
 
   card.title = text(card, "GameFontNormalLarge", 14, TITLE_COLOR)
   card.title:SetPoint("TOPLEFT", 72, -16)
-  card.title:SetWidth(256)
+  card.title:SetWidth(222)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
 
@@ -193,12 +200,20 @@ local function smallCard(parent)
   card.text:SetJustifyH("LEFT")
   card.text:SetWordWrap(true)
   card.text:SetSpacing(2)
-  if card.text.SetMaxLines then card.text:SetMaxLines(3) end
+  if card.text.SetMaxLines then card.text:SetMaxLines(2) end
+
+  card.detail = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
+  card.detail:SetPoint("TOPLEFT", card.text, "BOTTOMLEFT", 0, -6)
+  card.detail:SetWidth(256)
+  card.detail:SetJustifyH("LEFT")
+  card.detail:SetSpacing(2)
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(4) end
 
   card.button = button(card, 116, 24)
   card.button:SetPoint("BOTTOMLEFT", 70, 14)
   card.extra = extra(card)
   card.extra:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
+  queryButton(card)
   hover(card)
   return card
 end
@@ -208,18 +223,87 @@ end
 local view
 local results, offset = {}, 0
 
+local function pageButton(parent, direction, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(32, 32)
+  local base = "Interface\\Buttons\\UI-SpellbookIcon-" .. direction .. "Page-"
+  b:SetNormalTexture(base .. "Up")
+  b:SetPushedTexture(base .. "Down")
+  b:SetDisabledTexture(base .. "Disabled")
+  b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+  b:SetScript("OnClick", onClick)
+  return b
+end
+
+-- The breakdown: in place of the cards, a result's why and every stop and
+-- step, with its button to go and one to come back.
+local function createBreakdown(holder)
+  local b = CreateFrame("Frame", nil, holder)
+  b:SetAllPoints()
+  background(b, "adventureguide-pane-small")
+  b:EnableMouse(true)
+  icon(b, 48, 70)
+  b.icon:SetPoint("TOPLEFT", 22, -18)
+  b.title = text(b, "GameFontNormalHuge", 18, TITLE_COLOR)
+  b.title:SetPoint("TOPLEFT", 84, -22)
+  b.title:SetPoint("RIGHT", -24, 0)
+  b.title:SetJustifyH("LEFT")
+  b.title:SetWordWrap(false)
+  b.text = text(b, "GameFontHighlight", 12, TEXT_COLOR)
+  b.text:SetPoint("TOPLEFT", b.title, "BOTTOMLEFT", 0, -6)
+  b.text:SetPoint("RIGHT", -24, 0)
+  b.text:SetJustifyH("LEFT")
+  b.text:SetWordWrap(false)
+  b.rows = {}
+  for i = 1, BREAKDOWN_ROWS do
+    local row = text(b, "GameFontHighlightSmall", 11, TEXT_COLOR)
+    row:SetPoint("TOPLEFT", 30, -84 - (i - 1) * 15)
+    row:SetPoint("RIGHT", -30, 0)
+    row:SetJustifyH("LEFT")
+    row:SetWordWrap(false)
+    b.rows[i] = row
+  end
+  b.back = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
+  b.back:SetSize(96, 24)
+  b.back:SetPoint("BOTTOMLEFT", 24, 18)
+  b.back:SetText("Back")
+  b.back:SetScript("OnClick", function() Cards.HideBreakdown() end)
+  b.button = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
+  b.button:SetSize(116, 24)
+  b.button:SetPoint("BOTTOMRIGHT", -24, 18)
+  b.button:SetScript("OnClick", function()
+    local r = b.result
+    Cards.HideBreakdown()
+    if r then ns.Panel.Activate(r) end
+  end)
+  b.position = text(b, "GameFontHighlightSmall", 10, DETAIL_COLOR)
+  b.position:SetPoint("BOTTOM", 0, 24)
+  b:Hide()
+  return b
+end
+
 function Cards.Create(parent)
   local holder = CreateFrame("Frame", nil, parent)
-  holder:SetSize(LARGE_W + 12 + SMALL_W, LARGE_H)
+  holder:SetSize(WIDTH, LARGE_H + NAV_HEIGHT)
   holder.large = largeCard(holder)
   holder.large:SetPoint("TOPLEFT", 0, 0)
   holder.small = { smallCard(holder), smallCard(holder) }
   holder.small[1]:SetPoint("TOPLEFT", holder.large, "TOPRIGHT", 12, -4)
   holder.small[2]:SetPoint("TOPLEFT", holder.small[1], "BOTTOMLEFT", 0, -GAP)
+
+  -- Under the cards: back, "2 of 7", forward.
+  holder.position = text(holder, "GameFontHighlightSmall", 11, { 0.85, 0.8, 0.7 })
+  holder.position:SetPoint("TOP", holder.large, "BOTTOM", (WIDTH - LARGE_W) / 2, -11)
+  holder.prev = pageButton(holder, "Prev", function() Cards.Step(1) end)
+  holder.prev:SetPoint("RIGHT", holder.position, "LEFT", -10, 0)
+  holder.next = pageButton(holder, "Next", function() Cards.Step(-1) end)
+  holder.next:SetPoint("LEFT", holder.position, "RIGHT", 10, 0)
+
   holder.empty = holder:CreateFontString(nil, "ARTWORK", "GameFontDisable")
   holder.empty:SetPoint("TOPLEFT", 0, -8)
-  holder.empty:SetWidth(LARGE_W + 12 + SMALL_W)
+  holder.empty:SetWidth(WIDTH)
   holder.empty:SetJustifyH("LEFT")
+  holder.breakdown = createBreakdown(holder)
   view = holder
   return holder
 end
@@ -251,16 +335,20 @@ local function fill(card, r, large)
   local subtitle = plain(r.subtitle)
   if level then subtitle = level:gsub("^l", "L") .. "  ·  " .. subtitle end
   card.text:SetText(subtitle)
-  if large then
-    local lines = {}
-    for i = 2, math.min(#(r.details or {}), 5) do lines[#lines + 1] = plain(r.details[i].text) end
-    card.detail:SetText(table.concat(lines, "\n"))
-  end
+  -- The why (details after the ranking line); the breakdown has the rest.
+  local lines = {}
+  for i = 2, math.min(#(r.details or {}), large and 10 or 5) do lines[#lines + 1] = plain(r.details[i].text) end
+  card.detail:SetText(table.concat(lines, "\n"))
   card.button:SetText(r.journey and "Start trip" or "Go")
   card.button:SetEnabled(r.journey ~= nil or r.route ~= nil)
   local action = r.actions and r.actions[1]
   card.extra:SetShown(action ~= nil)
   if action then card.extra:SetText(action.label) end
+  if large then
+    -- Side by side when there are two buttons.
+    card.button:ClearAllPoints()
+    card.button:SetPoint("BOTTOM", action and -51 or 0, 22)
+  end
 end
 
 local reported
@@ -282,16 +370,126 @@ local function paint()
   safeFill(view.large, results[offset + 1], true)
   safeFill(view.small[1], results[offset + 2])
   safeFill(view.small[2], results[offset + 3])
-  view.large.prev:SetEnabled(offset > 0)
-  view.large.next:SetEnabled(offset < maxOffset)
-  view.large.position:SetText(#results > 1 and string.format("%d of %d", offset + 1, #results) or "")
+  local several = #results > 1
+  view.prev:SetShown(several)
+  view.next:SetShown(several)
+  view.prev:SetEnabled(offset > 0)
+  view.next:SetEnabled(offset < maxOffset)
+  view.position:SetText(several and string.format("%d of %d", offset + 1, #results) or "")
   view.empty:SetShown(#results == 0)
 end
 
--- Shows results; `reset` starts again at the first one.
+---------------------------------------------------------------- breakdown
+
+local function rowText(text, indent) return (indent and "      " or "") .. plain(text) end
+
+-- A result's breakdown, top to bottom: { {text, kind} } with kind "why" (its
+-- details), "stop" (a trip's stops, numbered), "step" (travel, with its
+-- time) or "note".
+function Cards.Breakdown(r)
+  local out = {}
+  for _, line in ipairs(r.details or {}) do out[#out + 1] = { rowText(line.text), "why" } end
+  local function travel(route, i)
+    local step = route.steps[i]
+    return { rowText(ns.Router.Describe(route, i, true) .. "  ·  " .. ns.FormatDuration(step.seconds or 0), true), "step" }
+  end
+  if r.journey then
+    local route = ns.Router.WithZoneSteps({ steps = r.journey.steps, seconds = r.journey.seconds })
+    -- Each stop, then how you get there.
+    local number, leg = 0, {}
+    for i, step in ipairs(route.steps) do
+      leg[#leg + 1] = travel(route, i)
+      if step.stop then
+        number = number + 1
+        local zone = ns.Journey.StopZone(step.stop)
+        out[#out + 1] = { string.format("%d. %s%s", number, plain(step.stop.text or step.stop.node.label or "?"),
+          zone and ("  (" .. zone .. ")") or ""), "stop" }
+        for _, line in ipairs(leg) do out[#out + 1] = line end
+        leg = {}
+      end
+    end
+    out[#out + 1] = { string.format("%d stops, %s in all", number, ns.FormatDuration(r.journey.seconds)), "note" }
+  elseif r.route then
+    local route = ns.Router.WithZoneSteps(r.route)
+    for i = 1, #route.steps do out[#out + 1] = travel(route, i) end
+    if #route.steps == 0 then out[#out + 1] = { "You're already there.", "note" } end
+    out[#out + 1] = { ns.FormatDuration(r.route.seconds) .. " in all", "note" }
+  else
+    out[#out + 1] = { "No route found from here.", "note" }
+  end
+  return out
+end
+
+local KIND_COLOR = { why = DETAIL_COLOR, stop = TITLE_COLOR, step = TEXT_COLOR, note = DETAIL_COLOR }
+local breakdownOffset = 0
+
+local function paintBreakdown()
+  local b = view.breakdown
+  local lines = b.lines or {}
+  local maxOffset = math.max(0, #lines - BREAKDOWN_ROWS)
+  if breakdownOffset > maxOffset then breakdownOffset = maxOffset end
+  for i, row in ipairs(b.rows) do
+    local line = lines[breakdownOffset + i]
+    row:SetText(line and line[1] or "")
+    local c = KIND_COLOR[line and line[2] or "step"]
+    row:SetTextColor(c[1], c[2], c[3])
+  end
+  b.position:SetText(#lines > BREAKDOWN_ROWS and string.format("%d-%d of %d lines (scroll)", breakdownOffset + 1,
+    math.min(breakdownOffset + BREAKDOWN_ROWS, #lines), #lines) or "")
+end
+
+function Cards.ShowBreakdown(r)
+  if not view then return end
+  GameTooltip:Hide()
+  local b = view.breakdown
+  b.result = r
+  b.lines = Cards.Breakdown(r)
+  breakdownOffset = 0
+  local title, level = (r.title or ""):match("^(.-)%s+·%s+(level %d+)$")
+  b.title:SetText(title or r.title)
+  local subtitle = plain(r.subtitle)
+  if level then subtitle = level:gsub("^l", "L") .. "  ·  " .. subtitle end
+  b.text:SetText(subtitle)
+  if r.iconCoords then
+    b.sheetIcon:SetTexture(r.icon)
+    b.sheetIcon:SetTexCoord((unpack or table.unpack)(r.iconCoords))
+    b.sheetIcon:Show()
+    b.icon:Hide()
+  else
+    b.icon:SetTexture(r.icon or DEFAULT_ICON)
+    b.icon:Show()
+    b.sheetIcon:Hide()
+  end
+  b.button:SetText(r.journey and "Start trip" or "Go")
+  b.button:SetEnabled(r.journey ~= nil or r.route ~= nil)
+  paintBreakdown()
+  b:Show()
+end
+
+function Cards.HideBreakdown()
+  if view then view.breakdown:Hide() end
+end
+
+-- The breakdown's lines on screen (for tests), or nil when it's closed.
+function Cards.BreakdownShown()
+  if not (view and view.breakdown:IsShown()) then return nil end
+  local out = {}
+  for _, row in ipairs(view.breakdown.rows) do
+    local t = row:GetText()
+    if t and t ~= "" then out[#out + 1] = t end
+  end
+  return out
+end
+
+---------------------------------------------------------------- showing
+
+-- Shows results; `reset` starts again at the first one (and closes a breakdown).
 function Cards.Show(list, emptyText, reset)
   results = list or {}
-  if reset then offset = 0 end
+  if reset then
+    offset = 0
+    Cards.HideBreakdown()
+  end
   if view then
     view:Show()
     view.empty:SetText(emptyText or "")
@@ -303,8 +501,14 @@ function Cards.Hide()
   if view then view:Hide() end
 end
 
--- Steps through the suggestions: positive goes back towards the first.
+-- Steps through the suggestions (positive goes back towards the first), or
+-- scrolls the breakdown when it's open.
 function Cards.Step(delta)
+  if view and view.breakdown:IsShown() then
+    breakdownOffset = math.max(0, breakdownOffset - delta)
+    paintBreakdown()
+    return
+  end
   offset = math.max(0, offset - delta)
   paint()
 end

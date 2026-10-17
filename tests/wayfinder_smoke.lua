@@ -2080,6 +2080,29 @@ do
   IsShiftKeyDown = nil
   ns.Nav.Stop()
 
+  -- The "?" button: every stop and step in place of the cards.
+  local here = ns.Geo.PlayerNode()
+  local trip = ns.Journey.Plan(here, { title = "Two stops", stops = {
+    { node = ns.Geo.Node(1433, 0.55, 0.5, "First"), text = "Visit First" },
+    { node = ns.Geo.Node(1433, 0.6, 0.5, "Second"), text = "Visit Second" } } })
+  local tripCard = { title = "Two stops", subtitle = "why", journey = trip, details = { { text = "rank line" } } }
+  local lines = ns.Cards.Breakdown(tripCard)
+  local texts = {}
+  for _, line in ipairs(lines) do texts[#texts + 1] = line[2] .. ":" .. line[1] end
+  local joined = table.concat(texts, " / ")
+  check(joined:find("why:rank line", 1, true) and joined:find("stop:1. Visit First", 1, true)
+    and joined:find("stop:2. Visit Second", 1, true) and joined:find("step:      Walk to First", 1, true)
+    and joined:find("note:2 stops", 1, true), "a trip's breakdown: why, each stop, then how to get there: " .. joined)
+  local first = joined:find("stop:1. Visit First", 1, true)
+  check(first < joined:find("step:      Walk to First", 1, true), "a stop comes before the steps that lead to it")
+  ns.Cards.ShowBreakdown(tripCard)
+  local shown = ns.Cards.BreakdownShown()
+  check(shown and #shown == #lines, "the breakdown shows in place of the cards")
+  ns.Cards.HideBreakdown()
+  check(ns.Cards.BreakdownShown() == nil, "Back returns to the cards")
+  local routeLines = ns.Cards.Breakdown(suggestions[1])
+  check(routeLines[#routeLines][2] == "note" and routeLines[3][2] == "step", "directions list their steps too")
+
   ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City", route = { steps = {} } } }, "", true)
   check(ns.Cards.Drawn()[1] == "Run The Stockade|Go", "a dungeon's level moves from the card title to the subtitle")
 

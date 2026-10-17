@@ -102,7 +102,10 @@ Guide: the top suggestion on a large card (icon, title, why, details, a Go or
 Start trip button, and arrows to step through the rest), the next two on
 smaller cards beside it. The card art comes from the client when it has the
 Adventure Guide textures (Forever does); otherwise the cards are plain
-parchment. Hover a card for the full tooltip; shift-click adds it to your
+parchment. Each card shows why it's suggested; its **?** button shows the
+breakdown in place of the cards (the why, every stop, and the steps to each,
+with times; the mouse wheel scrolls it). The arrows under the cards step
+through the rest. Hover a card for the tooltip; shift-click adds it to your
 trip.
 
 The window keeps one size: For you is the main window, and **Quests**
