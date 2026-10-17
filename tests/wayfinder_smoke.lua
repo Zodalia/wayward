@@ -1617,6 +1617,9 @@ do
   local hidPortrait, selectedTab = 0, nil
   ButtonFrameTemplate_HidePortrait = function() hidPortrait = hidPortrait + 1 end
   PanelTemplates_SetTab = function(frame, id) frame.selectedTab = id; selectedTab = id end
+  -- The main window's header buttons select one tab (or none) directly.
+  PanelTemplates_SelectTab = function(tab) selectedTab = rawget(tab, "text") end
+  PanelTemplates_DeselectTab = function() end
 
   -- Fresh copies of the four UI files (their frames are created once).
   local function freshUI()
@@ -1659,16 +1662,15 @@ do
   failing = { ButtonFrameTemplate = true, SearchBoxTemplate = true, PanelTopTabButtonTemplate = true }
   unknown = { TooltipBackdropTemplate = true }
   check(openAll(freshUI()), "windows open when the templates fail")
-  check(count(asked, "ButtonFrameTemplate") == 2 and count(asked, "BackdropTemplate") == 4
+  -- Windows: the main window, its side panel and the copy box; plus the HUD and overview boxes.
+  check(count(asked, "ButtonFrameTemplate") == 3 and count(asked, "BackdropTemplate") == 5
     and count(asked, "TooltipBackdropTemplate") == 0 and count(asked, "InputBoxTemplate") == 1,
     "a failing or unknown template falls back to the old look")
   failing, unknown = {}, {}
   local ui = freshUI()
   check(openAll(ui), "windows open with the templates")
-  local findIndex
-  for i, page in ipairs(ui.pages) do if page.id == "find" then findIndex = i end end
-  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 2
-    and selectedTab == findIndex, "template windows, search box and tabs (tab " .. tostring(selectedTab) .. ")")
+  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 3
+    and selectedTab == "Find", "template windows, search box and tabs (tab " .. tostring(selectedTab) .. ")")
 
   -- Without EllesmereUI the skin does nothing.
   fire("PLAYER_LOGIN")
@@ -1689,7 +1691,7 @@ do
     and (calls.Font or 0) > 0 and (calls.Inset or 0) >= 2, "windows made earlier get EllesmereUI's look")
   local shells, boxes, fonts = calls.Shell, calls.Panel, calls.Font
   openAll(freshUI())
-  check(calls.Shell == shells + 2 and calls.Panel == boxes + 2 and (calls.SetTabSelection or 0) > 0,
+  check(calls.Shell == shells + 3 and calls.Panel == boxes + 2 and (calls.SetTabSelection or 0) > 0,
     "new windows get it right away")
   ns.Panel.Toggle()
   ns.Panel.Toggle()
@@ -1706,10 +1708,11 @@ do
   check(ns.db.settings.skin == false and calls.Shell == shells, "/wf skin turns it off for new windows")
   check(chat[said + 1]:find("skin off; /reload", 1, true) ~= nil, "and says a reload removes it from open ones")
   SlashCmdList.WAYFINDER("skin")
-  check(ns.db.settings.skin == true and calls.Shell == shells + 2, "/wf skin again paints what was missed")
+  check(ns.db.settings.skin == true and calls.Shell == shells + 3, "/wf skin again paints what was missed")
 
   CreateFrame, C_XMLUtil, EllesmereUI = savedCreate, nil, nil
   ButtonFrameTemplate_HidePortrait, PanelTemplates_SetTab = nil, nil
+  PanelTemplates_SelectTab, PanelTemplates_DeselectTab = nil, nil
 end
 ---------------------------------------------------------------- look (end)
 ---------------------------------------------------------------- panel scrolling (begin)
@@ -2026,6 +2029,25 @@ do
   check(#ns.Panel.VisibleResults() > 0, "the Find page still shows rows")
 end
 ---------------------------------------------------------------- cards (end)
+---------------------------------------------------------------- side panel (begin)
+do
+  io.write("side panel\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  ns.Panel.Search("foryou", "")
+  check(ns.Panel.IsShown() and not ns.Panel.SideShown(), "For you shows in the main window, side panel closed")
+  ns.Panel.SelectPage("quests")
+  check(ns.Panel.SideShown() and ns.Panel.IsShown(), "a list page opens in the side panel next to For you")
+  ns.Panel.CloseSide()
+  check(not ns.Panel.SideShown() and ns.Panel.IsShown(), "closing the side panel keeps the main window")
+  ns.Panel.Select(1)
+  check(ns.Panel.SideShown() and #ns.Panel.VisibleResults() > 0, "Find's categories open in the side panel")
+  ns.Panel.Search("quests", "redridge")
+  check(ns.Panel.SideShown(), "/wf quest and /wf item open the side panel with the search")
+  ns.Panel.Search("foryou", "")
+  check(not ns.Panel.SideShown(), "going back to For you closes the side panel")
+end
+---------------------------------------------------------------- side panel (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
