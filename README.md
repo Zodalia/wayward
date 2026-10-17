@@ -93,6 +93,14 @@ item has known sources (never in combat).
 
 ### For you
 
+The page is laid out like the Suggested Content tab of modern WoW's Adventure
+Guide: the top suggestion on a large card (icon, title, why, details, a Go or
+Start trip button, and arrows to step through the rest), the next two on
+smaller cards beside it. Forever has no Adventure Guide, so its card art is
+only used if the client has those textures; otherwise the cards are plain
+parchment. Hover a card for the full tooltip; shift-click adds it to your
+trip. Other pages keep the list layout (pages opt in with `layout = "cards"`).
+
 **For you** is the first tab (`/wf next` opens it): a handful of things to do
 next, each with a one-line why; click one for directions or a journey. Needs
 come first when due: spells you can train and afford (after one trainer
