@@ -21,10 +21,10 @@ local CLASS_BY_TRAINER_TITLE = {
 }
 
 local QUEST_FIELDS = { "name", "questLevel", "requiredLevel", "requiredRaces", "requiredClasses",
-  "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill" }
+  "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill", "zoneOrSort" }
 
 local lib, failure
-local areaToUiMap, trainersByClass, questIndex
+local areaToUiMap, trainersByClass, questIndex, dungeonList
 local giverNodes = {}
 
 -- Masks can exceed 32 bits (Skyborne), so test bits arithmetically.
@@ -145,6 +145,45 @@ function Bridge.ClassTrainers(class, faction, here)
   return out
 end
 
+---------------------------------------------------------------- dungeons
+
+-- Entrances from ZoneDB.private.dungeons, keyed by the dungeon's AreaID:
+-- { {areaID, name, alternativeAreaIds, nodes}, ... }. The Forever flavor
+-- stores them already converted to Forever maps, so they are not converted
+-- again (EraToForever is only for our own Era points, below).
+function Bridge.Dungeons()
+  if not Bridge.Available() then return {} end
+  if dungeonList then return dungeonList end
+  dungeonList = {}
+  local ok, zoneDB = pcall(lib.Support.Get, "ZoneDB")
+  local source = ok and zoneDB and zoneDB.private and zoneDB.private.dungeons
+  for areaID, d in pairs(type(source) == "table" and source or {}) do
+    if type(d) == "table" and type(d[1]) == "string" then
+      local spawns = {}
+      for _, loc in ipairs(type(d[4]) == "table" and d[4] or {}) do
+        if type(loc) == "table" and loc[1] then
+          spawns[loc[1]] = spawns[loc[1]] or {}
+          table.insert(spawns[loc[1]], { loc[2], loc[3] })
+        end
+      end
+      dungeonList[#dungeonList + 1] = { areaID = areaID, name = d[1],
+        alternativeAreaIds = type(d[2]) == "table" and d[2] or {}, nodes = spawnNodes(spawns, d[1] .. " entrance") }
+    end
+  end
+  return dungeonList
+end
+
+-- An Era (vanilla) map point in Forever coordinates (0-1), through QuestieDB's
+-- helper when it has one. Only Mulgore, Eastern Plaguelands, Redridge and
+-- Stormwind City change. Returns x, y, converted.
+function Bridge.EraToForever(uiMapID, x, y)
+  local convert = Bridge.Available() and lib.EraToForeverByUiMapId
+  if type(convert) ~= "function" then return x, y, false end
+  local ok, fx, fy = pcall(convert, uiMapID, x * 100, y * 100)
+  if not (ok and type(fx) == "number" and type(fy) == "number") then return x, y, false end
+  return fx / 100, fy / 100, true
+end
+
 ---------------------------------------------------------------- quests
 
 local function buildQuestIndex()
@@ -198,6 +237,22 @@ local function isTrivial(questLevel, level)
   return questLevel <= gray
 end
 
+local function playerProfile()
+  local _, class = UnitClass("player")
+  local _, _, raceID = UnitRace("player")
+  return {
+    level = UnitLevel("player"),
+    raceMask = lib.Enum.raceMaskById and lib.Enum.raceMaskById[raceID],
+    classMask = lib.Enum.classKeys and lib.Enum.classKeys[class],
+  }
+end
+
+-- Level <= 0 means "scales with you" in Questie data; show your level.
+local function displayLevel(q, p)
+  local level = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
+  return level > 0 and level or p.level
+end
+
 local function playerQuestState()
   local done, inLog = {}, {}
   for _, id in ipairs(C_QuestLog.GetAllCompletedQuestIDs() or {}) do done[id] = true end
@@ -242,14 +297,8 @@ end
 function Bridge.QuestHubs(here, limit)
   if not Bridge.Available() then return {} end
   if not questIndex then buildQuestIndex() end
-  local _, class = UnitClass("player")
-  local _, _, raceID = UnitRace("player")
   local faction = UnitFactionGroup("player")
-  local p = {
-    level = UnitLevel("player"),
-    raceMask = lib.Enum.raceMaskById and lib.Enum.raceMaskById[raceID],
-    classMask = lib.Enum.classKeys and lib.Enum.classKeys[class],
-  }
+  local p = playerProfile()
   local done, inLog = playerQuestState()
 
   local givers, order = {}, {}
@@ -271,15 +320,37 @@ function Bridge.QuestHubs(here, limit)
           givers[bestKey] = g
           order[#order + 1] = g
         end
-        -- Level <= 0 means "scales with you" in Questie data; show your level.
-        local level = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
-        g.quests[#g.quests + 1] = { id = q.id, name = q.name, level = level > 0 and level or p.level }
+        g.quests[#g.quests + 1] = { id = q.id, name = q.name, level = displayLevel(q, p) }
       end
     end
   end
 
   table.sort(order, function(a, b) return a.distance < b.distance end)
   return Bridge.Cluster(order, limit or 12)
+end
+
+-- Quests whose zoneOrSort is in `areaIDs` (a set; for a dungeon quest that is
+-- the dungeon's AreaID): { [areaID] = { available = {...}, inLog = {...} } }.
+function Bridge.QuestsForAreas(areaIDs)
+  if not Bridge.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  local p = playerProfile()
+  local done, inLog = playerQuestState()
+  local out = {}
+  for _, q in ipairs(questIndex) do
+    local area = q.zoneOrSort
+    if area and areaIDs[area] then
+      local group = out[area] or { available = {}, inLog = {} }
+      out[area] = group
+      local quest = { id = q.id, name = q.name, level = displayLevel(q, p) }
+      if inLog[q.id] then
+        table.insert(group.inLog, quest)
+      elseif eligible(q, p, done, inLog) then
+        table.insert(group.available, quest)
+      end
+    end
+  end
+  return out
 end
 
 local function addGiver(hub, g)
