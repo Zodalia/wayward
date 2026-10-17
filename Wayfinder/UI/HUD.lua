@@ -74,6 +74,8 @@ local function create()
   prev:SetPoint("RIGHT", nextB, "LEFT", -2, 0)
   local recalc = button(f, "R", function() ns.Nav.Recalculate() end, "Recalculate from here")
   recalc:SetPoint("TOP", stop, "BOTTOM", 0, -26)
+  f.list = button(f, "=", function() ns.JourneyOverview.Toggle() end, "All stops of this journey")
+  f.list:SetPoint("RIGHT", recalc, "LEFT", -2, 0)
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -90,6 +92,15 @@ local function facing()
   local value = GetPlayerFacing and GetPlayerFacing()
   if value == nil or (type(issecretvalue) == "function" and issecretvalue(value)) then return nil end
   return value
+end
+
+-- The first unfinished objective of a quest in your log, e.g. "4/8 Wolf Meat".
+function HUD.ObjectiveText(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  for _, o in ipairs(objectives or {}) do
+    if not o.finished and o.text then return o.text end
+  end
+  return nil
 end
 
 function HUD.Update()
@@ -110,7 +121,12 @@ function HUD.Update()
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = ns.FormatDuration(ns.Nav.RemainingSeconds(here))
-  if ns.Nav.Waiting() then
+  frame.list:SetShown(a.journey ~= nil)
+  local objective = step.stop and step.stop.action and step.stop.action.kind == "complete"
+    and HUD.ObjectiveText(step.stop.action.questID)
+  if objective then
+    frame.info:SetText(objective .. "  ·  " .. remaining .. " to go")
+  elseif ns.Nav.Waiting() then
     frame.info:SetText("|cff7fd1aeYou're here|r  ·  " .. remaining .. " to go")
   elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%d yd  ·  %s to go", math.floor(distance), remaining))
