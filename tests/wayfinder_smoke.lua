@@ -23,6 +23,10 @@ local function newObj()
     if type(k) == "string" and k:match("^%u") then
       return function(self, ...)
         if k == "SetScript" then local name, fn = ...; self.scripts[name] = fn
+        elseif k == "HookScript" then
+          local name, fn = ...
+          local old = self.scripts[name]
+          self.scripts[name] = old and function(...) old(...); fn(...) end or fn
         elseif k == "RegisterEvent" then events[(...)] = events[(...)] or {}; table.insert(events[(...)], self)
         elseif k == "SetText" then rawset(self, "text", (...))
         elseif k == "GetText" then return rawget(self, "text")
@@ -1594,6 +1598,126 @@ do
   ns.ForYou.Invalidate()
 end
 ---------------------------------------------------------------- for you: quest log (end)
+---------------------------------------------------------------- look (begin)
+io.write("look\n")
+do
+  -- CreateFrame that knows the children of the templates we use, can fail
+  -- some of them, and records which templates were asked for.
+  local savedCreate, asked = CreateFrame, {}
+  local failing, unknown = {}, {}
+  local CHILDREN = {
+    ButtonFrameTemplate = { "CloseButton", "TitleContainer", "Inset" },
+    TooltipBackdropTemplate = { "NineSlice" },
+    SearchBoxTemplate = { "Instructions" },
+    PanelTopTabButtonTemplate = { "Text", "Left", "Right" },
+  }
+  CreateFrame = function(frameType, name, parent, template)
+    asked[#asked + 1] = template or frameType
+    if template and failing[template] then error("Couldn't find inherited node \"" .. template .. "\"") end
+    local f = savedCreate()
+    for _, key in ipairs(CHILDREN[template] or {}) do rawset(f, key, newObj()) end
+    if rawget(f, "TitleContainer") then rawset(f.TitleContainer, "TitleText", newObj()) end
+    return f
+  end
+  C_XMLUtil = { GetTemplateInfo = function(name) if not unknown[name] then return {} end end }
+  local hidPortrait, selectedTab = 0, nil
+  ButtonFrameTemplate_HidePortrait = function() hidPortrait = hidPortrait + 1 end
+  PanelTemplates_SetTab = function(frame, id) frame.selectedTab = id; selectedTab = id end
+
+  -- Fresh copies of the four UI files (their frames are created once).
+  local function freshUI()
+    local ui = setmetatable({ pages = {}, listeners = {} }, { __index = ns })
+    function ui.RegisterPage(page) table.insert(ui.pages, page) end
+    function ui.Listen(message, fn)
+      ui.listeners[message] = ui.listeners[message] or {}
+      table.insert(ui.listeners[message], fn)
+    end
+    function ui.On() end
+    for _, page in ipairs(ns.pages) do
+      if page.id ~= "find" then ui.RegisterPage(page) end
+    end
+    for _, file in ipairs({ "CopyBox", "HUD", "JourneyOverview", "Panel" }) do
+      assert(loadfile(dir .. "/UI/" .. file .. ".lua"))("Wayfinder", ui)
+    end
+    return ui
+  end
+  local function count(list, value)
+    local n = 0
+    for _, v in ipairs(list) do if v == value then n = n + 1 end end
+    return n
+  end
+  local function openAll(ui)
+    asked = {}
+    local ok, err = pcall(function()
+      ui.Panel.Toggle()
+      ui.Panel.SelectPage("find")
+      ui.ShowCopyBox("Look", "text")
+      ui.JourneyOverview.Show()
+      ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Look",
+        stops = { { node = ns.Geo.Node(1433, 0.9, 0.9, "Lookout"), text = "Visit the lookout" } } }))
+      for _, fn in ipairs(ui.listeners.NAV_CHANGED) do fn() end
+      ns.Nav.Stop()
+    end)
+    if not ok then io.write("  ", tostring(err), "\n") end
+    return ok and ui.Panel.IsShown()
+  end
+
+  failing = { ButtonFrameTemplate = true, SearchBoxTemplate = true, PanelTopTabButtonTemplate = true }
+  unknown = { TooltipBackdropTemplate = true }
+  check(openAll(freshUI()), "windows open when the templates fail")
+  check(count(asked, "ButtonFrameTemplate") == 2 and count(asked, "BackdropTemplate") == 4
+    and count(asked, "TooltipBackdropTemplate") == 0 and count(asked, "InputBoxTemplate") == 1,
+    "a failing or unknown template falls back to the old look")
+  failing, unknown = {}, {}
+  local ui = freshUI()
+  check(openAll(ui), "windows open with the templates")
+  local findIndex
+  for i, page in ipairs(ui.pages) do if page.id == "find" then findIndex = i end end
+  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 2
+    and selectedTab == findIndex, "template windows, search box and tabs (tab " .. tostring(selectedTab) .. ")")
+
+  -- Without EllesmereUI the skin does nothing.
+  fire("PLAYER_LOGIN")
+  runTimers()
+  check(ns.Skin.Status() == nil, "no skin without EllesmereUI or ElvUI")
+
+  -- A stubbed EllesmereUI that calls back right away, as after login.
+  local calls, looksChanged, registeredAs = {}, nil, nil
+  local function record(name) return function() calls[name] = (calls[name] or 0) + 1 end end
+  local S = { apiVersion = 3, OnLooksChanged = function(fn) looksChanged = fn end }
+  for _, name in ipairs({ "Shell", "Panel", "Inset", "Button", "CloseButton", "EditBox", "Tab", "SetTabSelection",
+    "ScrollBar", "Font" }) do S[name] = record(name) end
+  EllesmereUI = { RegisterSkin = function(name, fn) registeredAs = name; fn(S) end }
+  fire("PLAYER_LOGIN")
+  runTimers()
+  check(ns.Skin.Status() == "EllesmereUI" and registeredAs == "Wayfinder", "EllesmereUI skin registered")
+  check((calls.Shell or 0) >= 4 and (calls.Panel or 0) >= 4 and (calls.Tab or 0) > 0 and (calls.EditBox or 0) >= 2
+    and (calls.Font or 0) > 0 and (calls.Inset or 0) >= 2, "windows made earlier get EllesmereUI's look")
+  local shells, boxes, fonts = calls.Shell, calls.Panel, calls.Font
+  openAll(freshUI())
+  check(calls.Shell == shells + 2 and calls.Panel == boxes + 2 and (calls.SetTabSelection or 0) > 0,
+    "new windows get it right away")
+  ns.Panel.Toggle()
+  ns.Panel.Toggle()
+  check(calls.Font > fonts, "the font is read again when a window shows")
+  fonts = calls.Font
+  if looksChanged then looksChanged() end
+  check(calls.Font > fonts, "and when EllesmereUI's looks change")
+
+  -- /wf skin
+  local said = #chat
+  SlashCmdList.WAYFINDER("skin")
+  shells = calls.Shell
+  openAll(freshUI())
+  check(ns.db.settings.skin == false and calls.Shell == shells, "/wf skin turns it off for new windows")
+  check(chat[said + 1]:find("skin off; /reload", 1, true) ~= nil, "and says a reload removes it from open ones")
+  SlashCmdList.WAYFINDER("skin")
+  check(ns.db.settings.skin == true and calls.Shell == shells + 2, "/wf skin again paints what was missed")
+
+  CreateFrame, C_XMLUtil, EllesmereUI = savedCreate, nil, nil
+  ButtonFrameTemplate_HidePortrait, PanelTemplates_SetTab = nil, nil
+end
+---------------------------------------------------------------- look (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

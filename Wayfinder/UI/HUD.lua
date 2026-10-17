@@ -21,11 +21,12 @@ local function button(parent, text, onClick, tooltip)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(b)
   return b
 end
 
 local function create()
-  local f = CreateFrame("Frame", "WayfinderHUD", UIParent, "BackdropTemplate")
+  local f = ns.Skin.CreateBox("WayfinderHUD")
   f:SetSize(320, 78)
   f:SetPoint("TOP", 0, -140)
   f:SetClampedToScreen(true)
@@ -37,16 +38,13 @@ local function create()
     self:StopMovingOrSizing()
     ns.SavePosition(self, "hudPos")
   end)
-  f:SetBackdrop({
-    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-  })
   f:SetBackdropColor(0, 0, 0, 0.8)
   ns.RestorePosition(f, "hudPos")
 
-  f.arrow = f:CreateTexture(nil, "ARTWORK")
+  -- On its own frame: skins fade every texture of the box itself.
+  local arrowHolder = CreateFrame("Frame", nil, f)
+  arrowHolder:SetAllPoints()
+  f.arrow = arrowHolder:CreateTexture(nil, "ARTWORK")
   f.arrow:SetSize(40, 40)
   f.arrow:SetPoint("LEFT", 10, 0)
   f.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
@@ -65,6 +63,9 @@ local function create()
   f.info = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.info:SetPoint("BOTTOMLEFT", 58, 9)
   f.info:SetJustifyH("LEFT")
+  ns.Skin.Text(f.title)
+  ns.Skin.Text(f.step)
+  ns.Skin.Text(f.info)
 
   local stop = button(f, "x", function() ns.Nav.Stop() end, "Stop directions")
   stop:SetPoint("TOPRIGHT", -6, -6)
@@ -85,6 +86,7 @@ local function create()
       HUD.Update()
     end
   end)
+  ns.Skin.Box(f)
   return f
 end
 
