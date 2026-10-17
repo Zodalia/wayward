@@ -109,6 +109,15 @@ says which. A need on the way to the best option becomes one journey ("Train
 in Stormwind, then pick up 3 quests in ..."), and dungeon rows pick up their
 quests before the entrance. `/wf debug` shows how long a refresh took.
 
+Quests already in your log count at full XP, with only the time left for
+them. Ones ready to hand in are grouped by where you hand them in ("Hand in 3
+quests in Lakeshire", 30 seconds each), so they usually rank first; a quest
+hub where you also hand quests in takes them along ("Pick up 3 quests and hand
+in 2 in Lakeshire", with a Hand in only button). Unfinished quests whose
+objectives are close together become one whole-quest trip ("Finish 2 quests
+near Lakeshire"), timed at 5 minutes times the share of objectives left (at
+least a quarter). A dungeon's quests in your log count toward its XP.
+
 Install the same way as WFProbe below, with the `Wayfinder` folder.
 
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,

@@ -1441,6 +1441,159 @@ do
   reload()
 end
 ---------------------------------------------------------------- quest log trips (end)
+---------------------------------------------------------------- for you: quest log (begin)
+do
+  io.write("for you: quest log\n")
+  ns.Nav.Stop()
+  local function rows()
+    ns.ForYou.Invalidate()
+    return ns.ForYou.Results()
+  end
+  local function find(list, prefix)
+    for i, r in ipairs(list) do
+      if r.title:sub(1, #prefix) == prefix then return r, i end
+    end
+  end
+  local function titles(list)
+    local out = {}
+    for _, r in ipairs(list) do out[#out + 1] = r.title end
+    return table.concat(out, " | ")
+  end
+  local function xpOf(row)
+    local n = row and row.details[1].text:match("~([%d,]+) XP")
+    return n and tonumber((n:gsub(",", ""))) or 0
+  end
+  local function actions(journey)
+    local out = {}
+    for _, st in ipairs(journey and journey.stops or {}) do
+      out[#out + 1] = st.action and (st.action.kind .. st.action.questID) or "arrive"
+    end
+    return table.concat(out, ",")
+  end
+
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  local savedMoney, zoneSupport = GetMoney, LibQuestieDB.Support.Get
+  GetMoney = function() return 0 end -- training not affordable: no need ahead of the XP options
+  local XP = { [1] = { 18, 1500 }, [7] = { 19, 1500 }, [11] = { 17, 1500 }, [15] = { 18, 1500 },
+    [6] = { 20, 1400 }, [14] = { 19, 1400 }, [20] = { 20, 1600 }, [10] = { 19, 1000 },
+    [50] = { 19, 1200 }, [51] = { 18, 1100 }, [52] = { 19, 900 }, [53] = { 19, 1300 }, [54] = { 20, 1400 } }
+  LibQuestieDB.Support.Get = function(name)
+    if name == "QuestXP" then return { db = XP } end
+    return zoneSupport(name)
+  end
+  -- 50, 51: done, handed in to a watcher out in the hills; 52: done, handed in
+  -- to Magistrate Solomon in Lakeshire; 53, 54: murlocs still to kill.
+  NPCS[6100] = { name = "Watcher Dodds", npcFlags = 2, friendlyToFaction = "A", spawns = { [44] = { { 70.0, 70.0 } } } }
+  QUESTS[50] = { name = "Watch Report", questLevel = 19, requiredLevel = 15, startedBy = { { 6100 } }, finishedBy = { { 6100 } } }
+  QUESTS[51] = { name = "Watch Supplies", questLevel = 18, requiredLevel = 15, startedBy = { { 6100 } }, finishedBy = { { 6100 } } }
+  QUESTS[52] = { name = "Solomon's Letter", questLevel = 19, requiredLevel = 15, startedBy = { { 6000 } }, finishedBy = { { 344 } } }
+  QUESTS[53] = { name = "Murloc Fins", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { { 345 } },
+    objectives = { { { 9101 } } } }
+  QUESTS[54] = { name = "Murloc Eyes", questLevel = 20, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { { 345 } },
+    objectives = { { { 9101 } } } }
+  reloadBridge()
+
+  local log, complete = { 10, 50, 51, 52, 53, 54 }, { [50] = true, [51] = true, [52] = true }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function(id) return complete[id] == true end
+  C_QuestLog.GetQuestObjectives = function(id)
+    if id == 53 then return { { text = "4/8 Murloc Fin", finished = false, numFulfilled = 4, numRequired = 8 } } end
+    if id == 54 then return { { text = "0/6 Murloc Eye", finished = false } } end
+    return {}
+  end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+
+  local started = os.clock()
+  local list = rows()
+  local ms = (os.clock() - started) * 1000
+  check(ms < 100, string.format("a refresh with log quests takes %.1f ms here", ms))
+
+  -- Hand-ins: full XP for only the trip, so they come first.
+  local handin, hi = find(list, "Hand in 2 quests to Watcher Dodds")
+  check(handin and hi == 1, "quests ready to hand in rank first (" .. titles(list) .. ")")
+  local best = true
+  for _, r in ipairs(list) do
+    if r ~= handin and r.rate and handin and r.rate >= handin.rate then best = false end
+  end
+  check(best and handin.subtitle:find("2 quests ready", 1, true) and xpOf(handin) == 2300,
+    "hand-ins: 1,200 + 1,100 XP, the best XP per minute: " .. tostring(handin and handin.subtitle))
+  check(handin and actions(handin.journey) == "turnin50,turnin51",
+    "the hand-in trip waits for each quest to be handed in (" .. actions(handin and handin.journey) .. ")")
+  check(handin and handin.details[1].text:find("2 x 30 s per hand-in", 1, true),
+    "tooltip times hand-ins: " .. tostring(handin and handin.details[1].text))
+
+  -- The Lakeshire hub also hands in Solomon's Letter, before picking up.
+  local hub = find(list, "Pick up 5 quests and hand in 1 in Lakeshire")
+  check(hub and hub.journey and actions(hub.journey) == "turnin52,arrive"
+    and hub.journey.stops[2].text:find("^Pick up quests here"),
+    "hub with a hand-in: hand in first, then pick up (" .. titles(list) .. " / " .. actions(hub and hub.journey) .. ")")
+  check(hub and xpOf(hub) == 7600 + 900 and hub.subtitle:find("5 quests + 1 to hand in", 1, true),
+    "hub XP counts the hand-in: " .. tostring(hub and hub.subtitle))
+  check(hub and hub.actions and hub.actions[1].label == "Hand in only", "a Hand in only button on the hub")
+  check(not find(list, "Hand in 1 quest in Lakeshire"), "the hub's hand-in isn't listed twice")
+  hub.actions[1].run(hub)
+  check(ns.Nav.active and actions(ns.Nav.active.journey) == "turnin52", "Hand in only: just the hand-in")
+  ns.Nav.Stop()
+
+  -- Unfinished quests near each other: one whole-quest trip (Journey.QuestStops).
+  local finish = find(list, "Finish 2 quests")
+  local trip = actions(finish and finish.journey)
+  check(finish and trip:find("complete53") and trip:find("complete54")
+    and trip:find("complete53.*turnin53") and trip:find("complete54.*turnin54"),
+    "finish trip: do each quest's objectives, then hand it in (" .. trip .. ")")
+  local resolved = finish and finish.journey.stops[1].resolve
+  check(resolved and resolved.kind == "objectives", "finish trip stops come from Journey.QuestStops")
+  check(finish and xpOf(finish) == 2700 and finish.details[1].text:find("left on 2 in your log", 1, true)
+    and finish.subtitle:find("2 quests in your log", 1, true),
+    "finish trip: full XP, time left only: " .. tostring(finish and finish.details[1].text))
+  local fins
+  for _, d in ipairs(finish and finish.details or {}) do
+    if d.text:find("Murloc Fins") then fins = d.text end
+  end
+  check(fins and fins:find("~50%% done"), "objective progress shows: " .. tostring(fins))
+  check(finish and finish.details[1].text:find("~8 min left", 1, true),
+    "half-done objectives: 2.5 + 5 min left, not two full quests")
+
+  -- Dungeon quests in your log count toward the dungeon, not a finish trip.
+  local deadmines = find(list, "Pick up 2 quests, then run The Deadmines")
+  local withLogged = xpOf(deadmines)
+  check(deadmines and deadmines.subtitle:find("3 quests (1 in your log)", 1, true) and not trip:find("10"),
+    "dungeon keeps its log quest: " .. tostring(deadmines and deadmines.subtitle))
+  -- Handed in already (out of the log, can't be taken again): 1,000 XP less.
+  local savedDone = C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 10 } end
+  log = { 50, 51, 52, 53, 54 }
+  local without = xpOf(find(rows(), "Pick up 2 quests, then run The Deadmines"))
+  check(withLogged - without == 1000, string.format("dungeon XP counts the logged quest (%d vs %d)", withLogged, without))
+  C_QuestLog.GetAllCompletedQuestIDs = savedDone
+
+  -- Ready to hand in: out of the dungeon, into the Lakeshire hand-ins (Foreman Oslow).
+  log = { 10, 50, 51, 52, 53, 54 }
+  complete[10] = true
+  list = rows()
+  deadmines = find(list, "Pick up 2 quests, then run The Deadmines")
+  hub = find(list, "Pick up 5 quests and hand in 2 in Lakeshire")
+  check(deadmines and not deadmines.subtitle:find("in your log") and hub and xpOf(hub) == 7600 + 900 + 1000,
+    "a done dungeon quest is a hand-in, not dungeon XP (" .. titles(list) .. ")")
+  check(ns.ForYou.SummaryText():find("Quest log counted at full XP: 4 ready to hand in, 2 to finish", 1, true),
+    "summary says how the log counts: " .. ns.ForYou.SummaryText())
+
+  -- A need on the way to hand-ins goes wherever it is quickest.
+  GetMoney = savedMoney
+  list = rows()
+  check(list[1] and list[1].title:find("Train") and #list <= 7, "training back first once affordable (" .. titles(list) .. ")")
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+  LibQuestieDB.Support.Get = zoneSupport
+  for id = 50, 54 do QUESTS[id] = nil end
+  NPCS[6100] = nil
+  reloadBridge()
+  ns.ForYou.Invalidate()
+end
+---------------------------------------------------------------- for you: quest log (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
