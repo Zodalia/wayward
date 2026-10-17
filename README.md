@@ -102,7 +102,7 @@ parchment. Hover a card for the full tooltip; shift-click adds it to your
 trip.
 
 The window keeps one size: For you is the main window, and **Find**,
-**Quests** and **Items** are icon tabs down its right edge that open a list
+**Quests** and **Items** are icon tabs inside its right edge that open a list
 panel docked beside them (click the tab again, or the panel's close button,
 to close it). If the cards ever show no text, `/wf debug cards` reports what
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other

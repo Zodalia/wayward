@@ -35,6 +35,8 @@ local ROW_HEIGHT = 42
 local MAX_DETAIL_LINES = 12
 local SEARCH_DELAY = 0.3
 local SIDE_TAB_SIZE = 32
+-- The tab column inside the main window's right edge.
+local TAB_COLUMN = SIDE_TAB_SIZE + 16
 local TAB_ICONS = {
   find = "Interface\\Icons\\INV_Misc_Spyglass_03",
   quests = "Interface\\Icons\\INV_Misc_Book_08",
@@ -278,8 +280,8 @@ local function createSide(parent)
   local s, templated = ns.Skin.CreateWindow("WayfinderSidePanel")
   s:SetParent(parent)
   s:SetSize(SIDE_WIDTH, HEIGHT)
-  -- To the right of the side tabs.
-  s:SetPoint("TOPLEFT", parent, "TOPRIGHT", SIDE_TAB_SIZE + 4, 0)
+  -- Flush against the main window; the side tabs sit inside it.
+  s:SetPoint("TOPLEFT", parent, "TOPRIGHT", 0, 0)
   s:EnableMouse(true)
 
   s.title = s.titleText
@@ -379,7 +381,7 @@ local function create()
   local f, templated = ns.Skin.CreateWindow("WayfinderPanel")
   mainPage = mainPage or defaultMain()
   local width = mainPage and mainPage.width or MAIN_WIDTH
-  f:SetSize(width, HEIGHT)
+  f:SetSize(width + TAB_COLUMN, HEIGHT)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
@@ -410,17 +412,17 @@ local function create()
     ns.Skin.Inset(f.Inset)
   end
 
-  -- Side tabs down the right edge for the list pages, Blizzard style (square
-  -- icons with the spellbook's tab border); each opens or closes the side panel.
+  -- Side tabs in a column inside the right edge for the list pages (square
+  -- icons in an action-button border); each opens or closes the side panel.
   f.tabs = {}
   for i, page in ipairs(listPages()) do
     local b = CreateFrame("CheckButton", nil, f)
     b:SetSize(SIDE_TAB_SIZE, SIDE_TAB_SIZE)
-    b:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -40 - (i - 1) * (SIDE_TAB_SIZE + 12))
-    local border = b:CreateTexture(nil, "BACKGROUND")
-    border:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
-    border:SetSize(SIDE_TAB_SIZE * 2, SIDE_TAB_SIZE * 2)
-    border:SetPoint("TOPLEFT", -3, 11)
+    b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -40 - (i - 1) * (SIDE_TAB_SIZE + 12))
+    local border = b:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    border:SetSize(SIDE_TAB_SIZE * 64 / 36, SIDE_TAB_SIZE * 64 / 36)
+    border:SetPoint("CENTER")
     b:SetNormalTexture(page.icon or TAB_ICONS[page.id] or "Interface\\Icons\\INV_Misc_Map_01")
     b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     -- SetCheckedTexture takes no blend mode; without ADD it covers the icon.
