@@ -36,6 +36,15 @@ What works in this MVP:
   copied into Wayfinder: it has no licence file, so we only read the copy the
   player installed. `/wf debug` shows the data source and first-scan times.
 
+- **Dungeons**: dungeons and raids that fit your level (3 under to 6 over; raids
+  only from their level), ranked by level fit and travel time to the entrance.
+  Levels come from the client's dungeon finder list, matched to our dungeons by
+  name. Entrances come from QuestieDB if installed, otherwise from
+  `Wayfinder/Data/Dungeons.lua`. Those are approximate vanilla positions, and
+  the Stockade, Stratholme and Naxxramas points are likely off in Forever
+  without QuestieDB. With QuestieDB, a row also counts the dungeon's quests you
+  can take or have in your log, and the tooltip lists them.
+
 Data limits to know about:
 
 - Without QuestieDB, trainer locations are only what you have visited, plus
