@@ -4,7 +4,7 @@ local _, ns = ...
 -- Clicking a quest goes to its quest giver, to where you hand it in, or to the
 -- start of its chain. Dungeon quests can be picked up in one trip that ends at
 -- the entrance (also offered on the Dungeons page). With an empty search it
--- lists your quest log; "Add" picks quests (log or search) for one trip.
+-- lists your quest log; "Add" puts a quest (log or search) into the current trip.
 -- Searching and directions need QuestieDB; the log list does not.
 
 local QuestsPage = { id = "quests", label = "Quests", order = 30, searchable = true,
@@ -122,49 +122,24 @@ local function dungeonRows(matches, start, net)
   return rows
 end
 
----------------------------------------------------------------- picked quests
+---------------------------------------------------------------- the current trip
 
--- Quests picked with "Add" for one trip, per character: [questID] = true.
--- Quests you have handed in drop out.
-local function picks()
-  ns.charDB.questPicks = ns.charDB.questPicks or {}
-  return ns.charDB.questPicks
-end
-
-function QuestsPage.IsPicked(questID)
-  return picks()[questID] == true
-end
-
-function QuestsPage.TogglePick(questID)
-  local p = picks()
-  p[questID] = not p[questID] or nil
-end
-
-function QuestsPage.ClearPicks()
-  ns.charDB.questPicks = {}
-end
-
--- The picked quest IDs, lowest first; drops the ones in `done` (a set).
-function QuestsPage.Picks(done)
-  local p, ids = picks(), {}
-  for id in pairs(p) do
-    if done and done[id] then p[id] = nil else ids[#ids + 1] = id end
+-- "Add" puts a quest (what's left of it: pick up, objectives, hand in) into the
+-- trip you're on, re-ordered from where you are; with no trip on it starts
+-- one. "In trip" takes it out again.
+local function tripAction(questID, name)
+  if ns.Nav.TripHasQuest(questID) then
+    return { label = "In trip", run = function() ns.Nav.RemoveQuest(questID) end }
   end
-  table.sort(ids)
-  return ids
-end
-
-ns.On("QUEST_TURNED_IN", function(questID)
-  local p = ns.charDB and ns.charDB.questPicks
-  if p and p[questID] then
-    p[questID] = nil
-    ns.Panel.Refresh()
-  end
-end)
-
-local function pickAction(questID)
-  return { label = QuestsPage.IsPicked(questID) and "Added" or "Add",
-    run = function() QuestsPage.TogglePick(questID) end }
+  return { label = "Add", run = function()
+    local here = ns.Geo.PlayerNode()
+    local stops = here and ns.Journey.QuestStops(questID, here) or {}
+    if #stops == 0 then
+      ns.print("no known places for " .. (name or "that quest") .. ".")
+      return
+    end
+    ns.Nav.AddToTrip(stops, name or ("quest " .. questID))
+  end }
 end
 
 ---------------------------------------------------------------- quest rows
@@ -249,7 +224,7 @@ local function questRow(m, start, net)
   if (q.requiredLevel or 0) > 0 then
     details[#details + 1] = { text = "Requires level " .. q.requiredLevel, color = { r = 0.7, g = 0.7, b = 0.7 } }
   end
-  local actions = (m.status == "available" or m.status == "inLog") and { pickAction(q.id) } or nil
+  local actions = (m.status == "available" or m.status == "inLog") and { tripAction(q.id, q.name) } or nil
   return { id = "quest" .. q.id, title = questTitle(q), subtitle = sub, journey = journey, details = details,
     actions = actions }
 end
@@ -358,7 +333,7 @@ local function logRow(entry, start, net)
   end
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
     subtitle = table.concat(parts, "  ·  "), journey = journey, details = details,
-    actions = ns.Questie.Available() and { pickAction(entry.id) } or nil }
+    actions = ns.Questie.Available() and { tripAction(entry.id, entry.title) } or nil }
 end
 
 -- Empty search: trip rows for picked and completed quests, then the log.
@@ -369,15 +344,6 @@ local function logResults()
   local net = available and start and ns.Network.Build() or nil
   local results = {}
   if available and start then
-    local done = ns.Questie.PlayerQuestState()
-    local picked = QuestsPage.Picks(done)
-    if #picked > 0 then
-      local row = tripRow("Plan a trip for " .. plural(#picked, "quest"), picked, start, net,
-        "Trip for " .. plural(#picked, "quest"))
-      row.id = "picked"
-      row.actions = { { label = "Clear", run = QuestsPage.ClearPicks } }
-      results[#results + 1] = row
-    end
     local complete = {}
     for _, entry in ipairs(log) do
       if entry.complete then complete[#complete + 1] = entry.id end
@@ -385,6 +351,12 @@ local function logResults()
     if #complete > 0 then
       local row = tripRow("Hand in " .. plural(#complete, "completed quest"), complete, start, net, "Hand in quests")
       row.id = "handin"
+      if row.journey and ns.Nav.active then
+        local journey = row.journey
+        row.actions = { { label = "Add", run = function()
+          ns.Nav.AddToTrip(ns.Journey.OpenStops(journey), "the hand-ins")
+        end } }
+      end
       results[#results + 1] = row
     end
   end
@@ -397,7 +369,7 @@ local function logResults()
     summary = string.format("Your quest log: %s. %s. Install QuestieDB for directions and to search quests.",
       plural(#log, "quest"), reason or "QuestieDB is not available")
   else
-    summary = string.format("Your quest log: %s. Click one for a trip, or Add several and plan one trip. "
+    summary = string.format("Your quest log: %s. Click one for a trip, or Add it to the trip you're on. "
       .. "Type to search all quests.", plural(#log, "quest"))
   end
   return results, nil, net
