@@ -1883,6 +1883,43 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- trip polish (end)
+---------------------------------------------------------------- flight knowledge (begin)
+do
+  io.write("flight knowledge\n")
+  ns.Nav.Stop()
+  local known, seen = ns.charDB.knownTaxi, ns.charDB.taxiSeen
+  ns.charDB.knownTaxi, ns.charDB.taxiSeen = {}, {}
+  check(not ns.Harvest.FlightsKnownOn(1414), "no flight map opened on Kalimdor: its flight paths are unknown")
+  ERR_NEWTAXIPATH = "New flight path discovered!"
+  player.mapID, player.x, player.y = 1414, 0.44, 0.25 -- at Auberdine's flight master
+  fire("UI_INFO_MESSAGE", 0, "New flight path discovered!")
+  check(ns.charDB.knownTaxi[26] and ns.Harvest.FlightsKnownOn(1414),
+    "'New flight path discovered!' marks the nearest flight path as known")
+  ns.charDB.knownTaxi, ns.charDB.taxiSeen = {}, {}
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local allNodes = C_TaxiMap.GetAllTaxiNodes
+  -- Like the real flight map: only this continent's flight paths.
+  C_TaxiMap.GetAllTaxiNodes = function() return { { nodeID = 5, state = 0 }, { nodeID = 2, state = 1 } } end
+  fire("TAXIMAP_OPENED")
+  C_TaxiMap.GetAllTaxiNodes = allNodes
+  check(ns.charDB.taxiSeen[1415] and ns.Harvest.FlightsKnownOn(1415) and not ns.Harvest.FlightsKnownOn(1414),
+    "opening a flight map tells Wayfinder about that continent only")
+  ns.charDB.knownTaxi, ns.charDB.taxiSeen = known, seen
+
+  -- TomTom waypoints say what to do, not the flight path's name.
+  local titles = {}
+  SlashCmdList.WAYFINDER("tomtom")
+  SlashCmdList.WAYFINDER("tomtom") -- off and on again: retries TomTom after the earlier failure
+  TomTom = { AddWaypoint = function(_, _, _, _, opts) titles[#titles + 1] = opts.title return { #titles } end,
+    RemoveWaypoint = function() end }
+  local trainer = ns.Trainers.Results()[1]
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  check(titles[1] == ns.Router.Describe(ns.Nav.active.route, 1) and titles[1]:find("^Go to the flight master"),
+    "TomTom's waypoint is titled with the step: " .. tostring(titles[1]))
+  ns.Nav.Stop()
+  TomTom = nil
+end
+---------------------------------------------------------------- flight knowledge (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
