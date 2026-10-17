@@ -82,6 +82,22 @@ Install the same way as WFProbe below, with the `Wayfinder` folder.
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
 harvesting and the panel against a fake two-continent world.
 
+### Building on Wayfinder: pages and journeys
+
+- **Pages** are the panel's tabs. A file that loads before `UI/Panel.lua`
+  calls `ns.RegisterPage(page)`. The page contract (id, label, order,
+  searchable, Summary/Empty/Results taking the search text, and the result
+  shape with `route` or `journey` and optional row `actions`) is documented
+  at the top of `UI/Panel.lua`. The lowest `order` opens by default; "Find"
+  (the categories) is order 20. `ns.Panel.Search(pageID, text)` opens a page
+  with a search, and shift-clicked links go into the search box.
+- **Journeys** are trips with several stops (`Journey.lua`): stops are put in
+  the quickest order, with an optional fixed final stop. A stop with
+  `action = { kind = "pickup" | "turnin", questID }` waits until that quest is
+  accepted or handed in; a quest done early is planned out of the rest of the
+  trip. Start one with `ns.Nav.StartJourney(ns.Journey.Plan(start, def))`, or
+  return it as a result's `journey`.
+
 ## WFProbe (dev tool)
 
 `WFProbe/` is a throwaway addon that records which APIs exist and return usable
