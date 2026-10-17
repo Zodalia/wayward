@@ -304,6 +304,25 @@ local function create()
   f.rows = {}
   for i = 1, MAX_ROWS do f.rows[i] = createRow(f, i) end
 
+  -- Scrolling: the mouse wheel anywhere on the panel, or these buttons.
+  f.down = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.down:SetSize(22, 18)
+  f.down:SetPoint("TOPRIGHT", f.rows[MAX_ROWS], "BOTTOMRIGHT", -4, -2)
+  f.down:SetText("v")
+  f.down:SetScript("OnClick", function() Panel.Scroll(-MAX_ROWS + 1) end)
+  f.up = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.up:SetSize(22, 18)
+  f.up:SetPoint("RIGHT", f.down, "LEFT", -2, 0)
+  f.up:SetText("^")
+  f.up:SetScript("OnClick", function() Panel.Scroll(MAX_ROWS - 1) end)
+  ns.Skin.Button(f.up)
+  ns.Skin.Button(f.down)
+  f.position = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.position:SetPoint("RIGHT", f.up, "LEFT", -6, 0)
+  ns.Skin.Text(f.position)
+  f:EnableMouseWheel(true)
+  f:SetScript("OnMouseWheel", function(_, delta) Panel.Scroll(delta) end)
+
   f.empty = f:CreateFontString(nil, "OVERLAY", "GameFontDisable")
   f.empty:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -16)
   f.empty:SetWidth(348)
@@ -372,17 +391,15 @@ local function footerText(net)
     flights == 1 and "" or "s")
 end
 
-function Panel.Refresh()
-  if not (frame and frame:IsShown()) then return end
-  local page = currentPage()
-  layout(page)
+local offset, listKey = 0, nil
 
-  local q = page.searchable and query or ""
-  local results, err, net = page.Results(q)
-  results = results or {}
-  frame.summary:SetText(page.SummaryText(q) or "")
+-- Draws the visible slice of the last results; scrolling only repaints.
+local function paint()
+  local results = frame.results or {}
+  local maxOffset = math.max(0, #results - MAX_ROWS)
+  if offset > maxOffset then offset = maxOffset end
   for i, row in ipairs(frame.rows) do
-    local r = results[i]
+    local r = results[offset + i]
     row.result = r
     if r then
       row.title:SetText(r.title)
@@ -395,6 +412,32 @@ function Panel.Refresh()
       row:Hide()
     end
   end
+  local scrolls = #results > MAX_ROWS
+  frame.up:SetShown(scrolls)
+  frame.down:SetShown(scrolls)
+  if scrolls then
+    frame.up:SetEnabled(offset > 0)
+    frame.down:SetEnabled(offset < maxOffset)
+    frame.position:SetText(string.format("%d-%d of %d", offset + 1, math.min(offset + MAX_ROWS, #results), #results))
+  else
+    frame.position:SetText("")
+  end
+end
+
+function Panel.Refresh()
+  if not (frame and frame:IsShown()) then return end
+  local page = currentPage()
+  layout(page)
+
+  local q = page.searchable and query or ""
+  local results, err, net = page.Results(q)
+  results = results or {}
+  -- A new page, category or search starts at the top; a data refresh keeps your place.
+  local key = page.id .. "|" .. selectedCategory .. "|" .. q
+  if key ~= listKey then offset, listKey = 0, key end
+  frame.results = results
+  frame.summary:SetText(page.SummaryText(q) or "")
+  paint()
 
   if err then
     frame.empty:SetText(err)
@@ -404,6 +447,22 @@ function Panel.Refresh()
     frame.empty:SetText("")
   end
   frame.footer:SetText(footerText(net or ns.Network.Build()))
+end
+
+-- Moves the result list: positive goes up (towards the first result).
+function Panel.Scroll(delta)
+  if not (frame and frame:IsShown() and frame.results) then return end
+  offset = math.max(0, offset - delta)
+  paint()
+end
+
+-- The results currently on screen (for tests and other modules).
+function Panel.VisibleResults()
+  local out = {}
+  for _, row in ipairs(frame and frame.rows or {}) do
+    if row.result then out[#out + 1] = row.result end
+  end
+  return out
 end
 
 -- Selects a page by id (pages from ns.RegisterPage).

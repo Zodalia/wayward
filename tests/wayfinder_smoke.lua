@@ -1718,6 +1718,31 @@ do
   ButtonFrameTemplate_HidePortrait, PanelTemplates_SetTab = nil, nil
 end
 ---------------------------------------------------------------- look (end)
+---------------------------------------------------------------- panel scrolling (begin)
+do
+  io.write("panel scrolling\n")
+  local many = {}
+  for i = 1, 12 do many[i] = { title = "R" .. i, subtitle = "row " .. i } end
+  ns.RegisterPage({ id = "many", label = "Many", order = 99, searchable = true,
+    SummaryText = function() return "" end, EmptyText = function() return "" end,
+    Results = function(q) return q == "" and many or { many[1] } end })
+  ns.Panel.Search("many", "")
+  local function first() local v = ns.Panel.VisibleResults() return v[1] and v[1].title, #v end
+  local top, count = first()
+  check(top == "R1" and count == 7, "seven results show, starting at the first")
+  ns.Panel.Scroll(-3)
+  check(first() == "R4", "scrolling down moves the list")
+  ns.Panel.Scroll(-50)
+  check(first() == "R6", "scrolling stops at the last page")
+  ns.Panel.Refresh()
+  check(first() == "R6", "a data refresh keeps your place")
+  ns.Panel.Scroll(50)
+  check(first() == "R1", "scrolling up returns to the top")
+  ns.Panel.Scroll(-2)
+  ns.Panel.Search("many", "x")
+  check(first() == "R1", "a new search starts at the top")
+end
+---------------------------------------------------------------- panel scrolling (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
