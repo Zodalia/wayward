@@ -118,6 +118,21 @@ objectives are close together become one whole-quest trip ("Finish 2 quests
 near Lakeshire"), timed at 5 minutes times the share of objectives left (at
 least a quarter). A dungeon's quests in your log count toward its XP.
 
+### Look
+
+Wayfinder's windows use Blizzard's standard templates (window, tabs, search
+box, tooltip-style boxes), so they follow UI addons that restyle those, and
+fall back to a plain look if a template is missing. Long result lists scroll
+with the mouse wheel or the arrows under the list.
+
+With [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) installed,
+Wayfinder also registers with its public skinning API (`EllesmereUI.RegisterSkin`)
+and takes on your theme, accent colour and font. This needs EllesmereUI's
+"Blizz UI Enhanced" module (`EllesmereUIBlizzardSkin`) turned on, with skins
+for other addons allowed. ElvUI's Skins module is used when present
+(unverified). `/wf skin` turns the skin off; windows already restyled keep it
+until `/reload`.
+
 Install the same way as WFProbe below, with the `Wayfinder` folder.
 
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
