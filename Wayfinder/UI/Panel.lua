@@ -176,8 +176,13 @@ function Panel.Refresh()
   end
 
   local flights = net and net.knownFlights or 0
-  frame.footer:SetText(string.format("%d known flight path%s on routes. Open any flight map to update. "
-    .. "Boat and zeppelin docks are approximate.", flights, flights == 1 and "" or "s"))
+  if flights == 0 then
+    frame.footer:SetText("|cffffd200No flight paths known yet, so routes are on foot. Talk to any "
+      .. "flight master once and routes will use your flight paths.|r")
+  else
+    frame.footer:SetText(string.format("%d known flight path%s on routes. Open any flight map to update. "
+      .. "Boat and zeppelin docks are approximate.", flights, flights == 1 and "" or "s"))
+  end
 end
 
 function Panel.Toggle()

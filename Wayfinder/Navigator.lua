@@ -35,6 +35,9 @@ end
 function Nav.Start(title, goal, route)
   Nav.active = { title = title, goal = goal, route = route, index = 1 }
   ns.print("directions to " .. title .. ": " .. ns.FormatDuration(route.seconds))
+  if next(ns.charDB.knownTaxi) == nil then
+    ns.print("tip: talk to a flight master once and Wayfinder will route you via your flight paths.")
+  end
   showStep()
 end
 
@@ -81,13 +84,40 @@ function Nav.Recalculate()
   showStep()
 end
 
-function Nav.RemainingSeconds()
+local function onTaxi()
+  return UnitOnTaxi and UnitOnTaxi("player") or false
+end
+
+-- The current step is re-measured from `here`; later steps use the plan.
+function Nav.RemainingSeconds(here)
   local a = Nav.active
   if not a then return nil end
   local total = 0
-  for i = a.index, #a.route.steps do total = total + a.route.steps[i].seconds end
+  for i = a.index, #a.route.steps do
+    local step = a.route.steps[i]
+    if i == a.index and here then
+      total = total + ns.Router.SecondsLeft(step, here, onTaxi())
+    else
+      total = total + step.seconds
+    end
+  end
   return total
 end
+
+-- Learning a flight path mid-trip (e.g. talking to a flight master you were
+-- walking past) can make a much faster route; switch to it.
+ns.Listen("FLIGHTS_CHANGED", function()
+  local a = Nav.active
+  if not a or onTaxi() then return end
+  local here = ns.Geo.PlayerNode()
+  local route = here and ns.Router.Plan(here, a.goal, ns.Network.Build())
+  local current = Nav.RemainingSeconds(here)
+  if route and current and route.seconds < current - 15 then
+    a.route, a.index = route, 1
+    ns.print("faster route with your flight paths: " .. ns.FormatDuration(route.seconds))
+    showStep()
+  end
+end)
 
 -- Called by the HUD several times a second. Returns your node and the step.
 function Nav.Tick()

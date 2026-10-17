@@ -128,11 +128,14 @@ local function readTaxi()
   local nodes = taxiMapID and C_TaxiMap.GetAllTaxiNodes(taxiMapID)
   if type(nodes) ~= "table" then return end
   local S = Enum.FlightPathState or { Current = 0, Reachable = 1 }
+  local learned = 0
   for _, n in ipairs(nodes) do
-    if n.state == S.Current or n.state == S.Reachable then
+    if (n.state == S.Current or n.state == S.Reachable) and not ns.charDB.knownTaxi[n.nodeID] then
       ns.charDB.knownTaxi[n.nodeID] = true
+      learned = learned + 1
     end
   end
+  if learned > 0 then ns.Fire("FLIGHTS_CHANGED", learned) end
   ns.Fire("DATA_CHANGED")
 end
 

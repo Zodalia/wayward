@@ -228,6 +228,25 @@ player.mapID, player.x, player.y = 1453, 0.3938, 0.8483
 ns.HUD.Update()
 check(ns.Nav.active == nil and waypoints[#waypoints] == "cleared", "arriving stops and clears our waypoint")
 
+io.write("live time and re-planning\n")
+ns.charDB.knownTaxi = {}
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+r = ns.Trainers.Results()[1]
+check(#r.route.steps == 1 and r.route.steps[1].mode == "walk", "no known flight paths: walk the whole way")
+ns.Nav.Start(r.title, r.goal, r.route)
+check(chat[#chat]:find("talk to a flight master"), "starting without flight paths prints the tip")
+local before = ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())
+player.x = 0.3 -- walk part of the way west toward Stormwind
+local after = ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())
+check(after < before - 5, string.format("remaining time drops while walking (%.0fs -> %.0fs)", before, after))
+player.x = 0.5 -- back at Lakeshire, talk to the flight master
+fire("TAXIMAP_OPENED")
+modes = {}
+for _, s in ipairs(ns.Nav.active.route.steps) do modes[#modes + 1] = s.mode end
+check(table.concat(modes, ",") == "walk,fly,walk",
+  "learning flight paths re-plans the active route (" .. table.concat(modes, ",") .. ")")
+ns.Nav.Stop()
+
 io.write("panel\n")
 ns.Panel.Toggle()
 check(true, "panel opens and refreshes without errors")

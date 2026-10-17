@@ -24,6 +24,19 @@ local function flyCost(a, b)
   return Router.FLY_OVERHEAD + d / Router.FLY_SPEED
 end
 
+-- Seconds left on a step from where you are now. Walking is re-measured; a
+-- flight is re-measured once airborne; boats and the like keep their estimate.
+function Router.SecondsLeft(step, here, onTaxi)
+  if step.mode == "walk" then
+    return walkCost(here, step.to) or step.seconds
+  end
+  if step.mode == "fly" and onTaxi then
+    local d = ns.Geo.Distance(here, step.to)
+    if d < math.huge then return d / Router.FLY_SPEED end
+  end
+  return step.seconds
+end
+
 -- Returns { steps = { {mode, from, to, seconds, kind} ... }, seconds } or nil.
 function Router.Plan(start, goal, net)
   local nodes = { start, goal }
