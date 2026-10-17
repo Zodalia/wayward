@@ -423,7 +423,10 @@ local function create()
     border:SetPoint("TOPLEFT", -3, 11)
     b:SetNormalTexture(page.icon or TAB_ICONS[page.id] or "Interface\\Icons\\INV_Misc_Map_01")
     b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight", "ADD")
+    -- SetCheckedTexture takes no blend mode; without ADD it covers the icon.
+    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+    local checked = b:GetCheckedTexture()
+    if checked then checked:SetBlendMode("ADD") end
     b:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetText(page.label)

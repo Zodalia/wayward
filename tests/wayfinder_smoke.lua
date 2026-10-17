@@ -36,6 +36,10 @@ local function newObj()
           if (...) ~= nil then rawset(self, "hasFont", true) end
         elseif k == "GetText" then return rawget(self, "text")
         elseif k == "SetRotation" then rawset(self, "rotation", (...))
+        -- Like the game: a masked texture can't take tex coords.
+        elseif k == "SetMask" then rawset(self, "masked", true)
+        elseif k == "SetTexCoord" then
+          if rawget(self, "masked") then error("Cannot set tex coords when texture has mask", 2) end
         elseif k == "Show" then rawset(self, "shown", true); if self.scripts.OnShow then self.scripts.OnShow(self) end
         elseif k == "Hide" then rawset(self, "shown", false)
         elseif k == "SetShown" then rawset(self, "shown", (...) and true or false)
@@ -1993,6 +1997,9 @@ do
       details = { { text = "rank" }, { text = "detail " .. i } }, kind = i == 1 and "dungeon" or "hub",
       icon = "Interface\\Icons\\INV_Misc_Key_14" }
   end
+  -- A class icon cut from a sheet: needs tex coords, which a masked icon can't take.
+  suggestions[2].icon = "Interface\\TargetingFrame\\UI-Classes-Circles"
+  suggestions[2].iconCoords = { 0, 0.25, 0, 0.25 }
   ns.RegisterPage({ id = "cardtest", label = "Cards", order = 98, layout = "cards", width = 730,
     SummaryText = function() return "cards" end, EmptyText = function() return "none" end,
     Results = function() return suggestions end })

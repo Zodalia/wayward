@@ -50,11 +50,17 @@ local function background(card, atlas)
   end
 end
 
--- The round icon with its ring.
+-- The round icon with its ring. Icons are masked round; a masked texture
+-- can't take tex coords, so icons cut from a sheet (class circles, already
+-- round) use a second, unmasked texture in the same place.
 local function icon(card, size, ringSize)
   card.icon = card:CreateTexture(nil, "ARTWORK")
   card.icon:SetSize(size, size)
   if card.icon.SetMask then pcall(card.icon.SetMask, card.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+  card.sheetIcon = card:CreateTexture(nil, "ARTWORK")
+  card.sheetIcon:SetSize(size, size)
+  card.sheetIcon:SetPoint("CENTER", card.icon)
+  card.sheetIcon:Hide()
   card.ring = card:CreateTexture(nil, "OVERLAY")
   card.ring:SetSize(ringSize, ringSize)
   card.ring:SetPoint("CENTER", card.icon)
@@ -220,8 +226,16 @@ local function fill(card, r, large)
     return
   end
   card:Show()
-  card.icon:SetTexture(r.icon or DEFAULT_ICON)
-  if r.iconCoords then card.icon:SetTexCoord((unpack or table.unpack)(r.iconCoords)) else card.icon:SetTexCoord(0, 1, 0, 1) end
+  if r.iconCoords then
+    card.sheetIcon:SetTexture(r.icon)
+    card.sheetIcon:SetTexCoord((unpack or table.unpack)(r.iconCoords))
+    card.sheetIcon:Show()
+    card.icon:Hide()
+  else
+    card.icon:SetTexture(r.icon or DEFAULT_ICON)
+    card.icon:Show()
+    card.sheetIcon:Hide()
+  end
   card.title:SetText(r.title)
   card.text:SetText(plain(r.subtitle))
   if large then
