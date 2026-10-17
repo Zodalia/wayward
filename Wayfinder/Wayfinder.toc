@@ -29,6 +29,7 @@ Dungeons.lua
 Vendors.lua
 ItemsPage.lua
 ForYou.lua
+UI\Skin.lua
 UI\CopyBox.lua
 UI\HUD.lua
 UI\JourneyOverview.lua
