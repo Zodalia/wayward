@@ -25,14 +25,10 @@ local function hasAtlas(name)
   return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
 end
 
--- Text with a standard font (the template always exists), switched to the
--- Adventure Guide's own font when the client has it. Forever lacks some of
--- them, and text without a font errors when set.
-local function text(parent, template, preferred)
-  local fs = parent:CreateFontString(nil, "ARTWORK", template)
-  local object = preferred and _G[preferred]
-  if object then pcall(fs.SetFontObject, fs, object) end
-  return fs
+-- Text with a standard Blizzard font. (The Adventure Guide's own fonts are
+-- missing or broken in Forever: text with them showed nothing.)
+local function text(parent, template)
+  return parent:CreateFontString(nil, "OVERLAY", template)
 end
 
 local function color(fs, c)
@@ -115,19 +111,19 @@ local function largeCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -18)
 
-  card.title = text(card, "GameFontNormalHuge", "DestinyFontHuge")
+  card.title = text(card, "GameFontNormalHuge")
   card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -18)
   card.title:SetWidth(264)
   card.title:SetJustifyH("CENTER")
   color(card.title, TITLE_COLOR)
 
-  card.text = text(card, "GameFontHighlight", "GameTooltipHeader")
+  card.text = text(card, "GameFontHighlight")
   card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -8)
   card.text:SetWidth(264)
   card.text:SetJustifyH("CENTER")
   color(card.text, TEXT_COLOR)
 
-  card.detail = text(card, "GameFontHighlightSmall", "SystemFont_Med1")
+  card.detail = text(card, "GameFontHighlightSmall")
   card.detail:SetPoint("TOP", card.text, "BOTTOM", 0, -10)
   card.detail:SetWidth(264)
   card.detail:SetJustifyH("CENTER")
@@ -155,7 +151,7 @@ local function largeCard(parent)
   card.next:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
   card.next:SetScript("OnClick", function() Cards.Step(-1) end)
 
-  card.position = text(card, "GameFontHighlightSmall", "SystemFont_Med1")
+  card.position = text(card, "GameFontHighlightSmall")
   card.position:SetPoint("BOTTOM", 0, 18)
   color(card.position, TEXT_COLOR)
   hover(card)
@@ -169,14 +165,14 @@ local function smallCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
-  card.title = text(card, "GameFontNormalLarge", "QuestFont_Huge")
+  card.title = text(card, "GameFontNormalLarge")
   card.title:SetPoint("TOPLEFT", 70, -14)
   card.title:SetWidth(260)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
   color(card.title, TITLE_COLOR)
 
-  card.text = text(card, "GameFontHighlightSmall", "SystemFont_Med1")
+  card.text = text(card, "GameFontHighlightSmall")
   card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
   card.text:SetWidth(240)
   card.text:SetJustifyH("LEFT")
@@ -246,6 +242,8 @@ local function safeFill(card, r, large)
   local ok, err = pcall(fill, card, r, large)
   if not ok and not reported then
     reported = true
+    -- In chat too: Lua errors are often switched off.
+    ns.print("couldn't draw a suggestion card: " .. tostring(err))
     geterrorhandler()(err)
   end
 end
@@ -304,4 +302,20 @@ function Cards.Drawn()
     end
   end
   return out
+end
+
+-- What each card holds and how its text is set up, for /wf debug cards.
+function Cards.Diagnose()
+  if not view then return { "cards not created yet: open /wf first" } end
+  local lines = {}
+  local names = { "large", "small 1", "small 2" }
+  for i, card in ipairs({ view.large, view.small[1], view.small[2] }) do
+    local fontFile, size = card.title:GetFont()
+    local r, g, b, a = card.title:GetTextColor()
+    lines[#lines + 1] = string.format("%s: shown=%s visible=%s result=%s title=%q font=%s size=%s colour=%.2f,%.2f,%.2f,%.2f width=%s",
+      names[i], tostring((card:IsShown())), tostring((card:IsVisible())), tostring(card.result ~= nil),
+      tostring((card.title:GetText())), tostring(fontFile), tostring(size), r or -1, g or -1, b or -1, a or -1,
+      tostring((card.title:GetStringWidth())))
+  end
+  return lines
 end

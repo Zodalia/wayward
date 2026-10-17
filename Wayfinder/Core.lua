@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 
-ns.VERSION = "0.1.0"
+ns.VERSION = "0.2.0"
 ns.data = {}
 
 function ns.print(msg)
@@ -148,7 +148,7 @@ local HELP = {
   "/wf where - print your map ID and coordinates (to report data fixes)",
   "/wf dock [boat|zeppelin|portal] - record a transport: once where you board, once where you get off",
   "/wf dock list - copy recorded transports",
-  "/wf debug - data sources and one-time QuestieDB scan times",
+  "/wf debug - version, data sources and scan times (/wf debug cards: the For you cards)",
 }
 
 SLASH_WAYFINDER1 = "/wf"
@@ -183,6 +183,11 @@ SlashCmdList.WAYFINDER = function(msg)
   elseif cmd == "dock" then
     ns.Docks.Command(rest)
   elseif cmd == "debug" then
+    ns.print("version " .. ns.VERSION)
+    if rest == "cards" then
+      for _, line in ipairs(ns.Cards.Diagnose()) do ns.print(line) end
+      return
+    end
     local available, reason = ns.Questie.Available()
     ns.print("QuestieDB: " .. (available and ns.Questie.StatusText() or tostring(reason)))
     local function count(t)
