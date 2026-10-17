@@ -130,6 +130,14 @@ are the Quest hubs rules (`ns.Questie.QuestStatus(id)` and
 `ns.Questie.ChainStart(id)` give the status, reason and first chain step).
 Needs QuestieDB.
 
+With an empty search the tab lists your quest log: level, zone and the first
+objective not done yet (or "ready to hand in"). Click a quest for a trip for
+what is left of it. "Add" (on log quests and search results) picks quests for
+one trip, saved per character until you hand them in; "Plan a trip for N
+quests" then does them together, each quest in its own order but interleaved
+by travel time. "Hand in N completed quests" visits every finisher in one
+trip. Without QuestieDB the log still lists, but without directions.
+
 ### Building on Wayfinder: pages and journeys
 
 - **Pages** are the panel's tabs. A file that loads before `UI/Panel.lua`
