@@ -333,6 +333,17 @@ local function routeTo(row, node, ctx)
   row.route = ns.Router.Plan(ctx.start, node, ctx.net)
 end
 
+-- A journey through a whole quest: pick it up, do the objectives, hand it in
+-- (only the parts still open). True when there is one.
+local function trackQuest(row, questID, title, ctx)
+  if not questID then return false end
+  local stops = ns.Journey.QuestStops(questID, ctx.start)
+  local journey = #stops > 0 and ns.Journey.Plan(ctx.start, { title = title, stops = stops }, ctx.net)
+  if not journey then return false end
+  row.journey, row.zone = journey, ns.MapName(journey.stops[1].node.mapID)
+  return true
+end
+
 ---------------------------------------------------------------- drops
 
 -- The level of a dungeon (or of its wing) nearest yours, and whether the client listed it.
@@ -587,13 +598,15 @@ local function questRow(q, status, ctx)
     row.title = row.title .. "  ·  in your log"
     line(who and ("In your quest log. Directions go to where you hand it in: " .. who .. ".")
       or "In your quest log.", GREEN)
-    routeTo(row, node, ctx)
+    if not trackQuest(row, q.id, name, ctx) then routeTo(row, node, ctx) end
     row.subtitle = not node and "In your quest log" or nil
     return row
   end
 
   local who, node = ns.Questie.QuestGiver(q.id, ctx.start)
   who = who or "the quest giver"
+  -- The quest to track from start to hand-in (nil: just directions to the giver).
+  local track = (status == "available" or status == "low") and q.id or nil
   if status == "available" then
     line("You can take it now from " .. who .. ".", GREEN)
   elseif status == "low" then
@@ -610,6 +623,7 @@ local function questRow(q, status, ctx)
     local stepID, stepState = ns.Questie.ChainStart(q.id)
     local step = stepID and ns.Questie.Quest(stepID)
     local stepName = step and step.name or (stepID and ("Quest " .. stepID))
+    track = stepID
     if stepState == "inLog" then
       local finisher
       finisher, node = questFinisher(stepID, ctx)
@@ -626,7 +640,7 @@ local function questRow(q, status, ctx)
       line("Needs earlier quests that you can't take yet.", ORANGE)
     end
   end
-  routeTo(row, node, ctx)
+  if not trackQuest(row, track, name, ctx) then routeTo(row, node, ctx) end
   if not node then row.subtitle = row.subtitle or "Quest giver location not known" end
   return row
 end
@@ -680,7 +694,8 @@ end
 ---------------------------------------------------------------- page
 
 local function score(r)
-  return r.tier * TIER_SECONDS + (r.route and r.route.seconds or TIER_SECONDS - 1)
+  local trip = (r.route and r.route.seconds) or (r.journey and r.journey.seconds)
+  return r.tier * TIER_SECONDS + (trip or TIER_SECONDS - 1)
 end
 
 local function sourcesFor(id, query, alsoMatching)

@@ -182,7 +182,15 @@ local function questRow(m, start, net)
   local q = m.q
   local details = { { text = m.reason or "" } }
   local stop, why = questStop(m, start)
-  local journey = stop and ns.Journey.Plan(start, { title = q.name, stops = { stop } }, net)
+  -- Track the whole quest (pick up, do it, hand it in); for a chain, its first step.
+  local target = m.status == "needsEarlier" and m.stepID or q.id
+  local stops = stop and ns.Journey.QuestStops(target, start) or {}
+  if #stops == 0 and stop then
+    stops = { stop }
+  elseif target ~= q.id and stops[1] then
+    stops[1].text = "Start the chain: " .. stops[1].text:gsub("^%u", string.lower)
+  end
+  local journey = #stops > 0 and ns.Journey.Plan(start, { title = q.name, stops = stops }, net) or nil
   local sub = rowStatus(m)
   if journey then
     sub = sub .. "  ·  " .. ns.FormatDuration(journey.seconds)
