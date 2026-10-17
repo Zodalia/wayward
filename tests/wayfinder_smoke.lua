@@ -249,7 +249,7 @@ ns.Nav.Stop()
 
 io.write("panel\n")
 ns.Panel.Toggle()
-check(true, "panel opens and refreshes without errors")
+check(ns.Panel.IsShown(), "first /wf opens the panel")
 
 io.write("without QuestieDB\n")
 local noHubs, noHubsErr = ns.QuestHubs.Results()
@@ -267,6 +267,8 @@ local NPCS = {
   [5002] = { name = "Some Mage", subName = "Mage Trainer", npcFlags = 16, friendlyToFaction = "A",
     spawns = { [1519] = { { 30, 30 } } } },
   [344] = { name = "Magistrate Solomon", npcFlags = 2, friendlyToFaction = "A", spawns = { [44] = { { 30.0, 45.0 } } } },
+  -- Same town, just beyond the hub radius from Solomon: merged by place name.
+  [345] = { name = "Foreman Oslow", npcFlags = 2, friendlyToFaction = "A", spawns = { [44] = { { 36.0, 30.0 } } } },
   [6000] = { name = "Stormwind Questgiver", npcFlags = 2, friendlyToFaction = "AH",
     spawns = { [1519] = { { 50.0, 50.0 } } } },
 }
@@ -281,6 +283,7 @@ local QUESTS = {
   [8] = { name = "Horde only", questLevel = 19, requiredLevel = 15, requiredRaces = 2, startedBy = { { 344 } } },
   [9] = { name = "Too high", questLevel = 30, requiredLevel = 28, startedBy = { { 344 } } },
   [10] = { name = "Already in log", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } } },
+  [11] = { name = "Bridge Footings", questLevel = 17, requiredLevel = 14, startedBy = { { 345 } } },
 }
 local function entity(rows, defaults)
   local E = {}
@@ -337,12 +340,14 @@ check(table.concat(names, ",") == "Demisette Cloyce,Ursula Deline",
 
 local hubs = ns.QuestHubs.Results()
 check(#hubs == 2, "two quest hubs (" .. #hubs .. ")")
-check(hubs[1] and hubs[1].title == "2 quests at Magistrate Solomon", "nearest hub first: " .. tostring(hubs[1] and hubs[1].title))
-check(hubs[2] and hubs[2].title == "1 quest at Stormwind Questgiver", "farther hub second")
+check(hubs[1] and hubs[1].title == "Lakeshire  ·  3 quests",
+  "nearest hub named after its town, both clusters merged: " .. tostring(hubs[1] and hubs[1].title))
+check(hubs[2] and hubs[2].title == "Stormwind  ·  1 quest", "farther hub second: " .. tostring(hubs[2] and hubs[2].title))
 local listed = {}
 for _, h in ipairs(hubs) do for _, d in ipairs(h.details) do listed[#listed + 1] = d.text end end
 local text = table.concat(listed, "\n")
-check(text:find("Redridge Goulash") and text:find("Lakeshire Logs") and text:find("Stormwind errand"),
+check(text:find("Redridge Goulash") and text:find("Lakeshire Logs") and text:find("Stormwind errand")
+  and text:find("Bridge Footings"),
   "eligible quests listed")
 local leaked = {}
 for _, name in ipairs({ "Already done", "Mages only", "Needs prequest", "Too easy", "Horde only", "Too high",
@@ -350,10 +355,36 @@ for _, name in ipairs({ "Already done", "Mages only", "Needs prequest", "Too eas
   if text:find(name, 1, true) then leaked[#leaked + 1] = name end
 end
 check(#leaked == 0, "ineligible quests filtered (leaked: " .. table.concat(leaked, ", ") .. ")")
-check(hubs[1] and hubs[1].route and ns.Router.Describe(hubs[1].route, #hubs[1].route.steps) == "Walk to Magistrate Solomon",
+check(hubs[1] and hubs[1].route and ns.Router.Describe(hubs[1].route, #hubs[1].route.steps) == "Walk to Lakeshire (Magistrate Solomon)",
   "hub has directions to its main quest giver")
 ns.Panel.Select(2)
-check(true, "panel shows quest hubs without errors")
+check(ns.Panel.IsShown(), "panel shows quest hubs without errors")
+
+io.write("dock recorder\n")
+local subZone = "Auberdine"
+GetSubZoneText = function() return subZone end
+player.mapID, player.x, player.y = 1439, 0.5, 0.5
+SlashCmdList.WAYFINDER("dock")
+check(ns.charDB.pendingDock and ns.charDB.pendingDock.a.label == "Auberdine", "first /wf dock starts recording at Auberdine")
+SlashCmdList.WAYFINDER("dock")
+check(#ns.db.transports == 0, "a second /wf dock without moving is refused")
+subZone = "Stormwind Harbor"
+player.mapID, player.x, player.y = 1453, 0.8, 0.5
+SlashCmdList.WAYFINDER("dock")
+local recorded = ns.db.transports[1]
+check(recorded and recorded.kind == "boat" and recorded.b.label == "Stormwind Harbor" and recorded.time >= 30,
+  "arriving saves the boat with its trip time")
+check(recorded and ns.Docks.LuaLine(recorded):find('label = "Stormwind Harbor"'), "recorded boat exports as a data line")
+player.mapID, player.x, player.y = 1439, 0.5, 0.5
+ns.Panel.Select(1)
+local viaNewBoat = ns.Trainers.Results()[1]
+local usesIt = false
+for _, st in ipairs(viaNewBoat and viaNewBoat.route and viaNewBoat.route.steps or {}) do
+  if st.mode == "transport" and st.to.label == "Stormwind Harbor" then usesIt = true end
+end
+check(usesIt, "Darkshore to Stormwind now takes the recorded boat (" .. ns.Router.Summary(viaNewBoat.route) .. ")")
+SlashCmdList.WAYFINDER("dock list")
+check(true, "/wf dock list opens the copy box")
 
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
