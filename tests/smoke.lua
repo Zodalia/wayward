@@ -100,7 +100,8 @@ C_QuestHub = { GetHubsForMap = function(mapID) assert(mapID, "needs map"); retur
 C_GameRules = { GetForeverExperiencePreset = function() return 2 end }
 C_TaxiMap.GetAllTaxiNodes = function() return { { name = "Auberdine", position = vec(0.42, 0.25) } } end
 GetPlayerFacing = function() return 1.5708 end
-C_CVar = { GetCVar = function(name) return name == "showInGameNavigation" and "0" or nil end }
+C_CVar = { GetCVar = function(name) return ({ showInGameNavigation = "0", questPOI = "0", foreverQuestHelpers = "1" })[name] end }
+ConsoleGetAllCommands = function() return { { command = "foreverQuestHelpers" }, { command = "gxMaxFPS" } } end
 C_SuperTrack = { IsSuperTrackingUserWaypoint = function() return true end }
 EJ_GetNumTiers = function() return 1 end
 EJ_GetCurrentTier = function() return 0 end
@@ -150,4 +151,7 @@ assert(text:find("preset = {"), "experience preset missing")
 assert(not ns.serialize({ position = vec(1, 2) }):find("GetXY"), "function fields not skipped")
 assert(text:find("diagManual"), "nav diag not stored")
 assert(text:find("playerFacingIsSecret = false"), "facing check missing")
+assert(text:find('foreverQuestHelpers = "1"'), "discovered cvar missing")
+assert(not text:find("gxMaxFPS"), "unrelated cvar included")
+assert(text:find('questPOI = "0"'), "known cvar missing")
 io.write("SMOKE OK\n")

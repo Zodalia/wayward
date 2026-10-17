@@ -41,6 +41,11 @@ character-select AddOns screen; the probe reports the new number.
    bank, a quest giver (open a quest and accept it), an NPC with a gossip menu.
    Each one is captured automatically ("captured …" in chat).
 6. `/wfprobe show`, then Ctrl+A, Ctrl+C, and paste the report back.
+7. Settings comparison: in the world map filter menu, turn on **Quest
+   Objectives** and **Low-Level Quests** (and any modern-experience options
+   Forever offers), `/wfprobe` again and paste that report too. Each run
+   records the experience preset and relevant settings, so we can tell API
+   limits apart from player settings.
 
 If copying fails, the same data is in
 `WTF/Account/<ACCOUNT>/SavedVariables/WFProbe.lua` after you log out.

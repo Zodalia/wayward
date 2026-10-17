@@ -112,7 +112,48 @@ probe("explore", "namespaces", function()
 end)
 
 probe("explore", "foreverExperiencePreset", function()
-  return { preset = try("C_GameRules.GetForeverExperiencePreset"), enum = Enum.ForeverExperiencePreset }
+  local preset = try("C_GameRules.GetForeverExperiencePreset")
+  ns.headline("experiencePreset", preset.status == "ok"
+    and ns.enumName(Enum.ForeverExperiencePreset, preset.value) or preset.status)
+  return { preset = preset, enum = Enum.ForeverExperiencePreset }
+end)
+
+-- World map filters ("Quest Objectives", "Low-Level Quests", ...) and Forever's
+-- classic-experience options may switch off the very data other probes look
+-- for, so record them with every run to compare runs with settings on and off.
+local KNOWN_CVARS = { "questPOI", "showInGameNavigation", "showQuestLevels", "questDifficultyColor",
+  "trackQuestSorting", "autoQuestWatch", "showTrackedItems", "worldQuestFilterEmissary" }
+local CVAR_PATTERNS = { "quest", "poi", "nav", "waypoint", "track", "forever", "classic", "preset", "objective" }
+
+probe("settings", "cvars", function()
+  local names, seen = {}, {}
+  local function add(name)
+    if type(name) == "string" and not seen[name] then seen[name] = true names[#names + 1] = name end
+  end
+  for _, name in ipairs(KNOWN_CVARS) do add(name) end
+
+  local getAll = (C_Console and C_Console.GetAllCommands) or ConsoleGetAllCommands
+  local discovered = "unavailable"
+  if type(getAll) == "function" then
+    local ok, commands = pcall(getAll)
+    if ok and type(commands) == "table" then
+      discovered = #commands .. " console commands scanned"
+      for _, c in ipairs(commands) do
+        local lname = type(c.command) == "string" and c.command:lower() or ""
+        for _, pattern in ipairs(CVAR_PATTERNS) do
+          if lname:find(pattern, 1, true) then add(c.command) break end
+        end
+      end
+    end
+  end
+
+  table.sort(names)
+  local values = {}
+  for i = 1, math.min(#names, 80) do
+    local v = get("C_CVar.GetCVar", names[i])
+    if v ~= nil then values[names[i]] = v end
+  end
+  return { discovery = discovered, values = values }
 end)
 
 probe("meta", "secretValues", function()
