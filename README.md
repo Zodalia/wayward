@@ -127,7 +127,14 @@ least a quarter). A dungeon's quests in your log count toward its XP.
   you've walked well away from the current target. Never during a flight,
   and at most every 10 seconds. The R button still re-plans on demand.
 - **TomTom**: when it's installed, Wayfinder puts each step on TomTom's arrow
-  and map pins instead of its own (`/wf tomtom` switches back).
+  and map pins instead of its own, titled with what to do there (`/wf tomtom`
+  switches back, or retries after TomTom failed).
+- **Flight paths** are learned per continent: a flight map only lists the
+  continent you're on, so open one once per continent. "New flight path
+  discovered!" also marks the nearest one as known.
+- **Waypoint height**: addons can only give the game a map position (the game
+  reports heights as 0 to addons in Forever), so the height of the in-world
+  marker is the game's own guess and can be off on multi-level places.
 - **Journey stops** show their zone in the overview and in previews.
 - **Class trainers** in the same room are one row ("3 warlock trainers in
   Stormwind City").
