@@ -17,6 +17,10 @@ ns.data.transports = {
   { kind = "boat", faction = "Alliance", time = 150, verified = false,
     a = { mapID = 1439, x = 0.330, y = 0.400, label = "Auberdine" },
     b = { mapID = 1438, x = 0.550, y = 0.970, label = "Rut'theran Village" } },
+  -- New in Forever. Recorded with /wf dock in the beta, 2026-10-17.
+  { kind = "boat", faction = "Alliance", time = 130, verified = true,
+    a = { mapID = 1439, x = 0.307, y = 0.410, label = "Auberdine (Mist's Edge)" },
+    b = { mapID = 1453, x = 0.226, y = 0.560, label = "Stormwind Harbor" } },
   { kind = "portal", faction = "Alliance", time = 15, verified = false,
     a = { mapID = 1438, x = 0.559, y = 0.896, label = "Rut'theran Village" },
     b = { mapID = 1457, x = 0.366, y = 0.500, label = "Darnassus" } },

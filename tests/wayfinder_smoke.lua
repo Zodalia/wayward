@@ -203,8 +203,8 @@ local far = ns.Trainers.Results()[1]
 local kinds = {}
 for _, s in ipairs(far and far.route and far.route.steps or {}) do kinds[#kinds + 1] = s.kind or s.mode end
 local plan = table.concat(kinds, ",")
-check(plan:find("boat") and plan:find("fly"), "Darkshore: boat across, then fly (" .. plan .. ")")
-check(far and ns.Router.Summary(far.route):find("boat to Menethil Harbor"), "summary mentions the boat")
+check(plan == "walk,boat,walk", "Darkshore: Forever's direct boat to Stormwind (" .. plan .. ")")
+check(far and ns.Router.Summary(far.route) == "boat to Stormwind Harbor", "summary mentions the boat")
 
 io.write("navigation\n")
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
@@ -368,19 +368,19 @@ SlashCmdList.WAYFINDER("dock")
 check(ns.charDB.pendingDock and ns.charDB.pendingDock.a.label == "Auberdine", "first /wf dock starts recording at Auberdine")
 SlashCmdList.WAYFINDER("dock")
 check(#ns.db.transports == 0, "a second /wf dock without moving is refused")
-subZone = "Stormwind Harbor"
+subZone = "Test Pier"
 player.mapID, player.x, player.y = 1453, 0.8, 0.5
 SlashCmdList.WAYFINDER("dock")
 local recorded = ns.db.transports[1]
-check(recorded and recorded.kind == "boat" and recorded.b.label == "Stormwind Harbor" and recorded.time >= 30,
+check(recorded and recorded.kind == "boat" and recorded.b.label == "Test Pier" and recorded.time >= 30,
   "arriving saves the boat with its trip time")
-check(recorded and ns.Docks.LuaLine(recorded):find('label = "Stormwind Harbor"'), "recorded boat exports as a data line")
+check(recorded and ns.Docks.LuaLine(recorded):find('label = "Test Pier"'), "recorded boat exports as a data line")
 player.mapID, player.x, player.y = 1439, 0.5, 0.5
 ns.Panel.Select(1)
 local viaNewBoat = ns.Trainers.Results()[1]
 local usesIt = false
 for _, st in ipairs(viaNewBoat and viaNewBoat.route and viaNewBoat.route.steps or {}) do
-  if st.mode == "transport" and st.to.label == "Stormwind Harbor" then usesIt = true end
+  if st.mode == "transport" and st.to.label == "Test Pier" then usesIt = true end
 end
 check(usesIt, "Darkshore to Stormwind now takes the recorded boat (" .. ns.Router.Summary(viaNewBoat.route) .. ")")
 SlashCmdList.WAYFINDER("dock list")
