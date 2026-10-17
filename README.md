@@ -26,10 +26,24 @@ What works in this MVP:
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
 
+- **QuestieDB (optional)**: if [QuestieDB](https://github.com/Questie/QuestieDB)
+  is installed, Wayfinder reads it at runtime through its public API (contract
+  4). Class trainer gains every trainer for your class, and **Quest hubs**
+  lists nearby quest givers you can take quests from (level, race, class,
+  prerequisites, not done, not in your log, not grey), grouped by place and
+  ranked by travel time. Hover a hub for its quests. Nothing from QuestieDB is
+  copied into Wayfinder: it has no licence file, so we only read the copy the
+  player installed. `/wf debug` shows the data source and first-scan times.
+
 Data limits to know about:
 
-- Trainer locations: only what you have visited, plus one seeded trainer
-  (Stormwind warlock trainer). The client has no trainer-location API.
+- Without QuestieDB, trainer locations are only what you have visited, plus
+  one seeded trainer (Stormwind warlock trainer). The client has no
+  trainer-location API.
+- Quest hub rules are a prototype: breadcrumbs, holiday and reputation quests
+  aren't handled, and quests needing a profession skill are left out.
+- Class trainers from QuestieDB are recognised by their English subtitle
+  ("Warlock Trainer").
 - Boat, zeppelin, tram and portal docks in `Wayfinder/Data/Transports.lua` are
   approximate. Stand where you board, run `/wf where`, and send the numbers.
 - "New spells" needs one visit to a trainer for your class first.
