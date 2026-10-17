@@ -9,6 +9,8 @@ ns.HUD = HUD
 
 local frame
 local UPDATE_INTERVAL = 0.1
+local MIN_HEIGHT = 78
+local PADDING = 9
 
 local function button(parent, text, onClick, tooltip)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -27,7 +29,7 @@ end
 
 local function create()
   local f = ns.Skin.CreateBox("WayfinderHUD")
-  f:SetSize(320, 78)
+  f:SetSize(340, MIN_HEIGHT)
   f:SetPoint("TOP", 0, -140)
   f:SetClampedToScreen(true)
   f:SetMovable(true)
@@ -56,12 +58,14 @@ local function create()
 
   f.step = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.step:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
-  f.step:SetPoint("RIGHT", -10, 0)
+  f.step:SetPoint("RIGHT", -86, 0)
   f.step:SetJustifyH("LEFT")
   f.step:SetWordWrap(true)
 
+  -- Under the step, so long titles and steps push it down instead of covering it.
   f.info = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.info:SetPoint("BOTTOMLEFT", 58, 9)
+  f.info:SetPoint("TOPLEFT", f.step, "BOTTOMLEFT", 0, -4)
+  f.info:SetPoint("RIGHT", -10, 0)
   f.info:SetJustifyH("LEFT")
   ns.Skin.Text(f.title)
   ns.Skin.Text(f.step)
@@ -135,6 +139,11 @@ function HUD.Update()
   else
     frame.info:SetText(remaining .. " to go")
   end
+
+  -- Grow to fit the text (titles and steps can wrap).
+  local function height(fs) return fs:GetStringHeight() or 12 end
+  frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + 4 + height(frame.step) + 4
+    + height(frame.info)))
 
   local heading = facing()
   -- TomTom draws the arrow when it's in use.
