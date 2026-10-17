@@ -286,6 +286,14 @@ function Journey.StopsDone(journey)
   return done
 end
 
+-- The zone a stop is in ("Stormwind City"), for lists of stops.
+function Journey.StopZone(stop)
+  local node = stop and stop.node
+  if not node then return nil end
+  local mapID = ns.Geo.ZoneAt(node.instance, node.wx, node.wy) or node.mapID
+  return mapID and ns.MapName(mapID) or nil
+end
+
 ---------------------------------------------------------------- saving
 
 local function saveNode(node)

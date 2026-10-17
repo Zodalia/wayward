@@ -12,9 +12,40 @@ ns.Nav = Nav
 local RADIUS = { walk = 20, fly = 120, transport = 150 }
 local GOAL_RADIUS = 10
 
+-- With TomTom installed (and /wf tomtom not off), its arrow and pins show the
+-- way instead of ours. Modern TomTom: AddWaypoint(uiMapID, x, y, opts) and
+-- RemoveWaypoint(uid); if that fails we fall back to our own arrow.
+local tomtomFailed
+
+function Nav.UsingTomTom()
+  return ns.db.settings.tomtom ~= false and not tomtomFailed and type(TomTom) == "table"
+    and type(TomTom.AddWaypoint) == "function"
+end
+
+local function clearTomTom()
+  if Nav.tomtomWaypoint and type(TomTom) == "table" and TomTom.RemoveWaypoint then
+    pcall(TomTom.RemoveWaypoint, TomTom, Nav.tomtomWaypoint)
+  end
+  Nav.tomtomWaypoint = nil
+end
+
+local function setTomTom(mapID, x, y, title)
+  clearTomTom()
+  local ok, uid = pcall(TomTom.AddWaypoint, TomTom, mapID, x, y,
+    { title = title, from = "Wayfinder", persistent = false, minimap = true, world = true, crazy = true })
+  if ok and uid then
+    Nav.tomtomWaypoint = uid
+    return true
+  end
+  tomtomFailed = true
+  ns.print("couldn't use TomTom's arrow; using Wayfinder's own.")
+  return false
+end
+
 local function setWaypoint(node)
   local mapID, x, y = ns.Geo.ZonePoint(node)
   if not (mapID and x and y) then return end
+  if Nav.UsingTomTom() and setTomTom(mapID, x, y, node.label or "Wayfinder") then return end
   if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then return end
   C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
   if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
@@ -44,6 +75,7 @@ end
 local function showStep()
   local step = Nav.CurrentStep()
   if step then setWaypoint(step.to) end
+  if Nav.active then Nav.active.closest = nil end
   save()
   ns.Fire("NAV_CHANGED")
 end
@@ -55,7 +87,7 @@ local function flightTip()
 end
 
 function Nav.Start(title, goal, route)
-  Nav.active = { title = title, goal = goal, route = route, index = 1 }
+  Nav.active = { title = title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1 }
   ns.print("directions to " .. title .. ": " .. ns.FormatDuration(route.seconds))
   flightTip()
   showStep()
@@ -66,7 +98,7 @@ end
 function Nav.StartJourney(journey, quiet)
   local last = journey.stops[#journey.stops]
   Nav.active = { title = journey.title, goal = last.node, journey = journey, index = 1,
-    route = { steps = journey.steps, seconds = journey.seconds } }
+    route = ns.Router.WithZoneSteps({ steps = journey.steps, seconds = journey.seconds }) }
   if not quiet then
     ns.print(string.format("journey: %s, %d stop%s, %s", journey.title, #journey.stops,
       #journey.stops == 1 and "" or "s", ns.FormatDuration(journey.seconds)))
@@ -80,6 +112,7 @@ function Nav.StartJourney(journey, quiet)
 end
 
 function Nav.Stop()
+  clearTomTom()
   if Nav.ownsWaypoint then
     C_Map.ClearUserWaypoint()
     Nav.ownsWaypoint = false
@@ -124,7 +157,7 @@ local function planFrom(a, here)
 end
 
 local function adopt(a, route, journey)
-  a.route, a.index = route, 1
+  a.route, a.index = ns.Router.WithZoneSteps(route), 1
   if journey then
     a.journey = journey
     a.goal = journey.stops[#journey.stops].node
@@ -266,7 +299,7 @@ function Nav.Resume()
     local goal = ns.Geo.Node(saved.goal.mapID, saved.goal.x, saved.goal.y, saved.goal.label)
     local route = goal and ns.Router.Plan(here, goal, ns.Network.Build())
     if route then
-      Nav.active = { title = saved.title, goal = goal, route = route, index = 1 }
+      Nav.active = { title = saved.title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1 }
       ns.print("resuming directions to " .. saved.title .. " (/wf stop to end them)")
       return showStep()
     end
@@ -283,12 +316,58 @@ function Nav.Waiting()
   return Nav.active ~= nil and Nav.active.waiting == true
 end
 
+-- Automatic re-routing: after a hearthstone or portal (a jump, or a loading
+-- screen), on the wrong continent, or when you have walked well away from the
+-- current target. Never on a flight path, and not more often than every 10 s.
+local JUMP_YARDS = 300
+local STRAY_YARDS = 250
+local REPLAN_COOLDOWN = 10
+
+local function autoReplan(a, here, reason)
+  local now = GetTime and GetTime()
+  if now and a.lastReplan and now - a.lastReplan < REPLAN_COOLDOWN then return false end
+  a.lastReplan = now
+  local route, journey = planFrom(a, here)
+  if not route then return false end
+  ns.print("re-routed from here (" .. reason .. ").")
+  adopt(a, route, journey)
+  return true
+end
+
+local function checkRoute(a, here, previous)
+  local step = a.route.steps[a.index]
+  if not step or onTaxi() then return false end
+  local distance = ns.Geo.Distance(here, step.to)
+  if previous and ns.Geo.Distance(previous, here) > JUMP_YARDS then
+    return autoReplan(a, here, "you moved a long way")
+  end
+  if here.instance ~= step.to.instance and here.instance ~= step.from.instance then
+    return autoReplan(a, here, "you're on another continent")
+  end
+  if step.mode == "walk" and distance < math.huge then
+    a.closest = math.min(a.closest or distance, distance)
+    if distance > a.closest + STRAY_YARDS then return autoReplan(a, here, "you went another way") end
+  end
+  return false
+end
+
+ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
+  if isLogin or isReload then return end
+  -- Tick compares with where you were before the loading screen.
+  C_Timer.After(1, function()
+    if Nav.active then Nav.Tick() end
+  end)
+end)
+
 -- Called by the HUD several times a second. Returns your node and the step.
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
   local here = ns.Geo.PlayerNode()
   if not here then return nil, Nav.CurrentStep() end
+  local previous = a.lastHere
+  a.lastHere = here
+  local startIndex = a.index
   local steps = a.route.steps
   -- Never jump past a stop that still waits for a quest action.
   local limit = #steps
@@ -303,7 +382,10 @@ function Nav.Tick()
   for k = limit, a.index, -1 do
     local step = steps[k]
     local radius = (k == #steps or step.stop) and GOAL_RADIUS or RADIUS[step.mode]
-    if ns.Geo.Distance(here, step.to) <= radius then
+    -- A zone entry counts once you're in that zone, wherever you crossed.
+    local reached = step.zoneEntry and (here.mapID == step.zoneEntry
+      or ns.Geo.ZoneAt(here.instance, here.wx, here.wy) == step.zoneEntry)
+    if reached or ns.Geo.Distance(here, step.to) <= radius then
       if ns.Journey.PendingAction(step) then
         a.waiting = true
         if a.index ~= k then
@@ -322,5 +404,7 @@ function Nav.Tick()
       break
     end
   end
-  return here, steps[a.index]
+  -- Only when nothing was reached: arriving by teleport still counts as arriving.
+  if a.index == startIndex and not a.waiting then checkRoute(a, here, previous) end
+  return here, a.route.steps[a.index]
 end

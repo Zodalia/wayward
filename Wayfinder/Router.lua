@@ -99,6 +99,58 @@ function Router.Plan(start, goal, net)
   return { steps = steps, seconds = dist[2] }
 end
 
+-- Walking into another zone becomes its own step ("Walk to Elwynn Forest"),
+-- found by sampling the straight line. Used for the route you follow and for
+-- previews, not while comparing routes (that would be wasted work).
+local ZONE_SAMPLE_YARDS = 40
+local MAX_ZONE_SAMPLES = 60
+local MIN_LEG_YARDS = 30
+
+local function zoneSteps(step)
+  local a, b = step.from, step.to
+  local distance = ns.Geo.Distance(a, b)
+  if distance == math.huge or distance < 2 * MIN_LEG_YARDS then return { step } end
+  local samples = math.min(MAX_ZONE_SAMPLES, math.ceil(distance / ZONE_SAMPLE_YARDS))
+  local current = ns.Geo.ZoneAt(a.instance, a.wx, a.wy) or a.mapID
+  local finalZone = ns.Geo.ZoneAt(b.instance, b.wx, b.wy)
+  local out, from, done = {}, a, 0
+  for i = 1, samples - 1 do
+    local t = i / samples
+    local wx, wy = a.wx + (b.wx - a.wx) * t, a.wy + (b.wy - a.wy) * t
+    local zone = ns.Geo.ZoneAt(a.instance, wx, wy)
+    if zone and zone ~= current then
+      current = zone
+      -- Skip a zone entry right before the destination; it adds nothing.
+      if zone ~= finalZone or (1 - t) * distance > MIN_LEG_YARDS then
+        local mapID, x, y = ns.Geo.ZonePoint({ instance = a.instance, wx = wx, wy = wy })
+        local node = { label = ns.MapName(zone), mapID = mapID, x = x, y = y, instance = a.instance, wx = wx, wy = wy }
+        out[#out + 1] = { mode = "walk", from = from, to = node, zoneEntry = zone, seconds = step.seconds * (t - done) }
+        from, done = node, t
+      end
+    end
+  end
+  if #out == 0 then return { step } end
+  local last = {}
+  for k, v in pairs(step) do last[k] = v end
+  last.from, last.seconds = from, step.seconds * (1 - done)
+  out[#out + 1] = last
+  return out
+end
+
+-- The same route with zone-entry steps added to its walks.
+function Router.WithZoneSteps(route)
+  if not route or route.zoned then return route end
+  local steps = {}
+  for _, step in ipairs(route.steps) do
+    if step.mode == "walk" then
+      for _, s in ipairs(zoneSteps(step)) do steps[#steps + 1] = s end
+    else
+      steps[#steps + 1] = step
+    end
+  end
+  return { steps = steps, seconds = route.seconds, zoned = true }
+end
+
 local TRANSPORT_VERB = {
   boat = "Take the boat to %s", zeppelin = "Take the zeppelin to %s",
   tram = "Ride the Deeprun Tram to %s", portal = "Take the portal to %s",

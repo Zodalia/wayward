@@ -7,14 +7,14 @@ local _, ns = ...
 local Overview = {}
 ns.JourneyOverview = Overview
 
-local MAX_ROWS = 14
-local ROW_HEIGHT = 18
+local MAX_ROWS = 10
+local ROW_HEIGHT = 30
 
 local frame
 
 local function create()
   local f = ns.Skin.CreateBox("WayfinderJourneyOverview")
-  f:SetSize(340, 64 + MAX_ROWS * ROW_HEIGHT)
+  f:SetSize(380, 64 + MAX_ROWS * ROW_HEIGHT)
   f:SetPoint("TOPLEFT", UIParent, "TOP", 170, -140)
   f:SetFrameStrata("MEDIUM")
   f:SetClampedToScreen(true)
@@ -46,12 +46,19 @@ local function create()
   f.rows = {}
   for i = 1, MAX_ROWS do
     local row = CreateFrame("Frame", nil, f)
-    row:SetSize(316, ROW_HEIGHT)
+    row:SetSize(356, ROW_HEIGHT)
     row:SetPoint("TOPLEFT", 12, -44 - (i - 1) * ROW_HEIGHT)
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.text:SetPoint("LEFT", 0, 0)
+    row.text:SetPoint("TOPLEFT", 0, -2)
     row.text:SetPoint("RIGHT", -24, 0)
     row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    -- Where the stop is, so a trip across several zones reads at a glance.
+    row.zone = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.zone:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
+    row.zone:SetPoint("RIGHT", -24, 0)
+    row.zone:SetJustifyH("LEFT")
+    ns.Skin.Text(row.zone)
     row.drop = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.drop:SetSize(20, 16)
     row.drop:SetPoint("RIGHT", 0, 0)
@@ -129,6 +136,8 @@ function Overview.Refresh()
     if r then
       local look = LOOK[r.state]
       row.text:SetText(look[1] .. (r.stop.text or (r.stop.node and r.stop.node.label) or "?"))
+      local zone = ns.Journey.StopZone(r.stop)
+      row.zone:SetText(zone and ("      " .. zone) or "")
       row.text:SetAlpha(look[2])
       row.drop:SetShown(r.state == "now" or r.state == "next")
       row:Show()

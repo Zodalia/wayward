@@ -144,6 +144,7 @@ local HELP = {
   "/wf - open or close the Wayfinder panel",
   "/wf stop - stop the current directions",
   "/wf arrow - toggle the on-screen arrow (text directions stay)",
+  "/wf tomtom - use TomTom's arrow when it's installed (on by default)",
   "/wf where - print your map ID and coordinates (to report data fixes)",
   "/wf dock [boat|zeppelin|portal] - record a transport: once where you board, once where you get off",
   "/wf dock list - copy recorded transports",
@@ -161,6 +162,10 @@ SlashCmdList.WAYFINDER = function(msg)
     ns.Panel.Toggle()
   elseif cmd == "stop" then
     ns.Nav.Stop()
+  elseif cmd == "tomtom" then
+    ns.db.settings.tomtom = ns.db.settings.tomtom == false
+    ns.print("TomTom arrow " .. (ns.db.settings.tomtom and "on (when TomTom is installed)" or "off"))
+    if ns.Nav.active then ns.Nav.Recalculate() end
   elseif cmd == "arrow" then
     ns.db.settings.showArrow = not ns.db.settings.showArrow
     ns.print("arrow " .. (ns.db.settings.showArrow and "on" or "off"))

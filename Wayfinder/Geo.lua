@@ -83,3 +83,10 @@ function Geo.ZonePoint(node)
   end
   return node.mapID, node.x, node.y
 end
+
+-- The zone (not continent) at a world position, or nil in between zones.
+function Geo.ZoneAt(instance, wx, wy)
+  local mapID = Geo.ZonePoint({ instance = instance, wx = wx, wy = wy })
+  if not mapID or Geo.Continents()[instance] == mapID then return nil end
+  return mapID
+end

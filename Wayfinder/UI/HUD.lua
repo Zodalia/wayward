@@ -137,7 +137,9 @@ function HUD.Update()
   end
 
   local heading = facing()
-  if ns.db.settings.showArrow and step.mode == "walk" and distance < math.huge and heading then
+  -- TomTom draws the arrow when it's in use.
+  if ns.db.settings.showArrow and not ns.Nav.UsingTomTom() and step.mode == "walk" and distance < math.huge
+    and heading then
     frame.arrow:SetRotation(ns.Geo.Bearing(here, step.to) - heading)
     frame.arrow:Show()
   else
