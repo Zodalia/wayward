@@ -30,8 +30,9 @@ What works in this MVP:
   is installed, Wayfinder reads it at runtime through its public API (contract
   4). Class trainer gains every trainer for your class, and **Quest hubs**
   lists nearby quest givers you can take quests from (level, race, class,
-  prerequisites, not done, not in your log, not grey), grouped by place and
-  ranked by travel time. Hover a hub for its quests. Nothing from QuestieDB is
+  prerequisites, not done, not in your log, not grey), grouped by place
+  ("Auberdine", named after the nearest flight path's town or an explored
+  subzone) and ranked by travel time. Hover a hub for its quests. Nothing from QuestieDB is
   copied into Wayfinder: it has no licence file, so we only read the copy the
   player installed. `/wf debug` shows the data source and first-scan times.
 
@@ -45,7 +46,10 @@ Data limits to know about:
 - Class trainers from QuestieDB are recognised by their English subtitle
   ("Warlock Trainer").
 - Boat, zeppelin, tram and portal docks in `Wayfinder/Data/Transports.lua` are
-  approximate. Stand where you board, run `/wf where`, and send the numbers.
+  approximate, and Forever's new routes (e.g. Auberdine - Stormwind) are
+  missing. Record one yourself: `/wf dock` where you board, ride, `/wf dock`
+  where you get off. Routes use it immediately; `/wf dock list` copies the
+  data line to add to `Data/Transports.lua` for everyone.
 - "New spells" needs one visit to a trainer for your class first.
 - Weapon masters are only recognised on English clients.
 
