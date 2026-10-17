@@ -1,7 +1,7 @@
 # WoW Forever levelling helper
 
-A "Google Maps for levelling" addon for WoW Forever: search or pick a category
-("Class trainer", "Quest hubs", "Dungeons", "Vendors"), get options ranked for
+A "Google Maps for levelling" addon for WoW Forever: search or pick a page
+(Quests, Vendors, Trainers, Dungeons, Items), get options ranked for
 your character (level fit, travel time, why it's worth going), then step-by-step
 directions including flight paths, boats and zeppelins.
 
@@ -101,10 +101,12 @@ Adventure Guide textures (Forever does); otherwise the cards are plain
 parchment. Hover a card for the full tooltip; shift-click adds it to your
 trip.
 
-The window keeps one size: For you is the main window, and **Find**,
-**Quests** and **Items** are icon tabs inside its right edge that open a list
-panel docked beside them (click the tab again, or the panel's close button,
-to close it). If the cards ever show no text, `/wf debug cards` reports what
+The window keeps one size: For you is the main window, and **Quests**
+(Journal: your quest log and quest search; Hubs), **Vendors**, **Trainers**
+(Class; Weapons: weapon masters, with the weapons they teach once visited),
+**Dungeons** and **Items** are icon tabs inside its right edge that open a
+list panel docked beside them (click the tab again, or the panel's close
+button, to close it). The search box filters any list. If the cards ever show no text, `/wf debug cards` reports what
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
 page is a list in the side panel.
 
@@ -215,8 +217,9 @@ panel to add it to the trip you're on.
   calls `ns.RegisterPage(page)`. The page contract (id, label, order,
   searchable, Summary/Empty/Results taking the search text, and the result
   shape with `route` or `journey` and optional row `actions`) is documented
-  at the top of `UI/Panel.lua`. The lowest `order` opens by default; "Find"
-  (the categories) is order 20. `ns.Panel.Search(pageID, text)` opens a page
+  at the top of `UI/Panel.lua`. The lowest `order` opens by default. Pages
+  with `categories` (Quests, Trainers) show them as buttons; `categoryPage` in
+  `UI/Panel.lua` builds such a page from providers. `ns.Panel.Search(pageID, text)` opens a page
   with a search, and shift-clicked links go into the search box.
 - **Journeys** are trips with several stops (`Journey.lua`): stops are put in
   the quickest order, with an optional fixed final stop. A stop with
@@ -235,7 +238,10 @@ panel to add it to the trip you're on.
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's `=` button
     opens an overview of every stop (done / now / next); a stop can be dropped
-    there, together with the stops that need it.
+    there, together with the stops that need it, or dragged up or down to
+    reorder the trip. A reordered trip keeps your order (`Journey.Move`);
+    stops added later go where they add the least travel, and a stop can't
+    move before one it needs (a hand-in before its pickup).
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/wf <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
 - **Quest helpers** on `ns.Questie`: `Quest(id)`, `AllQuests()`,
