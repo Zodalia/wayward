@@ -18,7 +18,8 @@ local _, ns = ...
 -- in; unfinished ones close together are one whole-quest trip ("Finish 2
 -- quests near Lakeshire"); a dungeon's quests in your log count toward it.
 
-local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false }
+-- Shown as Adventure Guide style cards (UI/Cards.lua) on a wider panel.
+local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
 ns.ForYou = ForYou
 
 local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip
@@ -748,7 +749,7 @@ local function needRow(need)
   local details = { { text = need.rank, color = GOLD } }
   for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
   return {
-    id = "need" .. need.kind, title = need.title,
+    id = "need" .. need.kind, kind = need.kind, title = need.title,
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
     goal = need.goal, route = need.route, details = details,
   }
@@ -858,7 +859,7 @@ local function optionRow(option, rank, total, ctx)
   why[#why + 1] = rateText(option, ctx)
 
   local row = {
-    id = option.kind .. (option.name or option.title), title = option.title,
+    id = option.kind .. (option.name or option.title), kind = option.kind, raid = option.raid, title = option.title,
     subtitle = string.format("%s  ·  %s  ·  %s", firstPart(option.zone),
       ns.FormatDuration(option.trip), table.concat(why, ", ")),
     goal = option.goal, route = option.route, details = details, rate = option.rate,
@@ -880,7 +881,7 @@ local function plainRow(option)
     or "Ranked by level fit and travel time. Install QuestieDB for its quests and XP.", color = GOLD } }
   for _, line in ipairs(r.details or {}) do details[#details + 1] = line end
   return {
-    id = "plain" .. (r.id or option.name), title = option.title,
+    id = "plain" .. (r.id or option.name), kind = "dungeon", raid = option.raid, title = option.title,
     subtitle = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone),
       ns.FormatDuration(option.trip)),
     goal = r.goal, route = r.route, details = details,
@@ -893,7 +894,7 @@ local function comboRow(need, option, journey, ctx)
   for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
   questLines(details, option, ctx)
   return {
-    id = "combo" .. need.kind, title = journey.title,
+    id = "combo" .. need.kind, kind = need.kind, title = journey.title,
     subtitle = string.format("%s  ·  %s, then %s", ns.FormatDuration(journey.seconds), need.why,
       rateText(option, ctx)),
     journey = journey, details = details, actions = { onlyAction(need) },
@@ -1010,11 +1011,32 @@ end
 
 -- Computed once per refresh and reused for CACHE_SECONDS: the providers plan
 -- many routes.
+-- Card icons by kind: classic-era icons, and the class circle for trainers.
+local ICONS = {
+  hub = "Interface\\Icons\\INV_Misc_Note_01", handin = "Interface\\Icons\\INV_Letter_15",
+  finish = "Interface\\Icons\\INV_Sword_04", dungeon = "Interface\\Icons\\INV_Misc_Key_14",
+  raid = "Interface\\Icons\\INV_Misc_Head_Dragon_01", flight = "Interface\\Icons\\Ability_Hunter_EagleEye",
+  repair = "Interface\\Icons\\Trade_BlackSmithing", food = "Interface\\Icons\\INV_Misc_Food_15",
+  ammo = "Interface\\Icons\\INV_Ammo_Arrow_01", reagents = "Interface\\Icons\\INV_Misc_Dust_02",
+}
+
+local function iconFor(r)
+  if r.kind == "train" then
+    local _, class = UnitClass("player")
+    local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
+    if coords then return "Interface\\TargetingFrame\\UI-Classes-Circles", coords end
+    return "Interface\\Icons\\INV_Misc_Book_09"
+  end
+  if r.kind == "dungeon" and r.raid then return ICONS.raid end
+  return ICONS[r.kind] or "Interface\\Icons\\INV_Misc_Map_01"
+end
+
 function ForYou.Results()
   local now = GetTime and GetTime()
   if cache and now and now - cache.at < CACHE_SECONDS then return cache.results, cache.err, cache.net end
   local started = debugprofilestop and debugprofilestop()
   local results, err, net = build()
+  for _, r in ipairs(results or {}) do r.icon, r.iconCoords = iconFor(r) end
   ForYou.runs = ForYou.runs + 1
   if started then
     ns.debugTimings = ns.debugTimings or {}
