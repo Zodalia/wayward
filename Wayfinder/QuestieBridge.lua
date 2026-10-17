@@ -98,6 +98,8 @@ local function spawnNodes(spawns, label)
   end
   return nodes
 end
+Bridge.SpawnNodes = spawnNodes
+Bridge.UiMapForArea = uiMapForArea
 
 function Bridge.Nearest(nodes, here)
   local best, bestDistance = nodes[1], math.huge

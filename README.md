@@ -55,6 +55,19 @@ Data limits to know about:
 - "New spells" needs one visit to a trainer for your class first.
 - Weapon masters are only recognised on English clients.
 
+### Vendors
+
+**Vendors** lists the vendors you need now, ranked by travel time: repairs,
+food & drink for your level, your class reagents, and ammo for your ranged
+weapon (hunters). Each row says what the vendor does for you; hover it for the
+goods. The fastest vendor for each need is always listed. When a piece of gear
+is at 50% durability or lower, the summary warns and the nearest repair comes
+first. Opening a merchant window records what that vendor sells and whether
+they repair. With QuestieDB, sellers come from its ItemDB (`vendors`), the NPC
+repair flag and English subtitles ("Food & Drink", "Bowyer"); without it, only
+vendors you visited are listed. Food, ammo and reagent tiers in
+`Data/VendorGoods.lua` are vanilla item IDs, not yet checked in Forever.
+
 Install the same way as WFProbe below, with the `Wayfinder` folder.
 
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
