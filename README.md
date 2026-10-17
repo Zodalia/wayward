@@ -5,10 +5,40 @@ A "Google Maps for levelling" addon for WoW Forever: search or pick a category
 your character (level fit, travel time, why it's worth going), then step-by-step
 directions including flight paths, boats and zeppelins.
 
-Status: **phase 0, API probe.** Forever runs the retail (Mainline 12.1.5) API
-with Midnight addon restrictions, and adds a lot of new content that no existing
-database covers. Before designing the data layer we need to know which client
-APIs actually return data in Forever.
+Status: **MVP, "Class trainer" with directions.** Phase 0 used the WFProbe
+dev addon (described below) to find out what the Forever client provides and
+what we have to ship or learn as you play.
+
+## Wayfinder (the addon)
+
+`Wayfinder/` is the levelling helper. `/wf` opens the panel.
+
+What works in this MVP:
+
+- **Class trainer**: trainers for your class, ranked by travel time from where
+  you stand, with what you can train now ("1 new spell to train for 10s · next:
+  4 spells at level 22"). Hover a row to preview the route, click for directions.
+- **Directions**: walking, flight paths you know, boats, zeppelins, the Deeprun
+  Tram and the Rut'theran portal. Each step places the map waypoint and moves on
+  when you get there. The directions box has its own arrow (`/wf arrow` hides
+  it), because Blizzard's on-screen navigation is off by default in Forever.
+- **Learning as you play**: talking to a trainer, vendor, flight master,
+  innkeeper or banker records where they are. Opening a flight map records
+  which flight paths you know. Your class spell list is read at the trainer.
+
+Data limits to know about:
+
+- Trainer locations: only what you have visited, plus one seeded trainer
+  (Stormwind warlock trainer). The client has no trainer-location API.
+- Boat, zeppelin, tram and portal docks in `Wayfinder/Data/Transports.lua` are
+  approximate. Stand where you board, run `/wf where`, and send the numbers.
+- "New spells" needs one visit to a trainer for your class first.
+- Weapon masters are only recognised on English clients.
+
+Install the same way as WFProbe below, with the `Wayfinder` folder.
+
+Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
+harvesting and the panel against a fake two-continent world.
 
 ## WFProbe (dev tool)
 
