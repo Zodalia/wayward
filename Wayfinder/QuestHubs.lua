@@ -54,9 +54,10 @@ function QuestHubs.Results()
   local results, total = {}, 0
   for i, hub in ipairs(named) do
     total = total + hub.count
-    local lowest, highest, details = math.huge, 0, {}
+    local lowest, highest, details, quests = math.huge, 0, {}, {}
     for _, giver in ipairs(hub.givers) do
       for _, q in ipairs(giver.quests) do
+        quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, giver = giver.name }
         lowest, highest = math.min(lowest, q.level), math.max(highest, q.level)
         details[#details + 1] = {
           text = string.format("[%d] %s  -  %s", q.level, q.name or ("Quest " .. q.id), giver.name or "?"),
@@ -78,6 +79,10 @@ function QuestHubs.Results()
       goal = goal,
       route = goal and ns.Router.Plan(start, goal, net),
       details = details,
+      -- For other pages (For you): the quests and place behind this row.
+      quests = quests,
+      place = hub.place,
+      anchorName = hub.anchor.name,
     }
   end
 

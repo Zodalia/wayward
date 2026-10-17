@@ -63,28 +63,15 @@ local function try(fn, ...)
   return nil
 end
 
--- Runs a provider while recording what ns.Questie[name] returns to it, so its
--- QuestieDB scan is reused rather than run twice. Quest hub and dungeon
--- results don't carry quest IDs yet, and XP needs them.
-local function withCapture(name, provider)
-  local bridge = ns.Questie
-  local original, captured = bridge[name], {}
-  if type(original) == "function" then
-    bridge[name] = function(...)
-      local value = original(...)
-      captured[#captured + 1] = value
-      return value
-    end
-  end
+-- Runs a provider, reporting an error instead of breaking the page.
+local function run(provider)
   local ok, results, _, net = pcall(provider)
-  bridge[name] = original
   if not ok then
     geterrorhandler()(results)
-    return {}, nil, captured
+    return {}
   end
-  return results or {}, net, captured
+  return results or {}, net
 end
-
 -- "Redridge Mountains" from "Redridge Mountains  ·  2 quests for you".
 local function firstPart(text)
   local i = text:find("  ·  ", 1, true)
@@ -346,33 +333,12 @@ end
 
 ---------------------------------------------------------------- XP options
 
--- The raw hub (with quest IDs) behind a Quest hubs result: same anchor as the
--- result's goal. A hub merged into another shares its anchor but has fewer quests.
-local function rawHub(r, captured)
-  local best
-  for _, hubs in ipairs(captured) do
-    for _, hub in ipairs(type(hubs) == "table" and hubs or {}) do
-      local a = hub.anchor and hub.anchor.node
-      if a and a.mapID == r.goal.mapID and a.x == r.goal.x and a.y == r.goal.y
-        and (not best or hub.count > best.count) then best = hub end
-    end
-  end
-  return best
-end
-
 local function hubOptions()
-  local results, _, captured = withCapture("QuestHubs", ns.QuestHubs.Results)
   local out = {}
-  for _, r in ipairs(results) do
-    local hub = r.goal and r.route and rawHub(r, captured)
-    if hub then
-      local quests = {}
-      for _, giver in ipairs(hub.givers) do
-        for _, q in ipairs(giver.quests) do
-          quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, giver = giver.name }
-        end
-      end
-      local where = hub.place and ("in " .. hub.place) or ("near " .. (hub.anchor.name or "?"))
+  for _, r in ipairs(run(ns.QuestHubs.Results)) do
+    if r.goal and r.route and r.quests then
+      local quests = r.quests
+      local where = r.place and ("in " .. r.place) or ("near " .. (r.anchorName or "?"))
       local doing = string.format("pick up %s %s", plural(#quests, "quest"), where)
       local names = {}
       for _, q in ipairs(quests) do names[#names + 1] = q.name or ("quest " .. q.id) end
@@ -387,25 +353,15 @@ local function hubOptions()
   return out
 end
 
--- Dungeons.lua's result ids are "dungeon" .. this.
-local function normalize(name)
-  return ((name or ""):lower():gsub("^the ", ""):gsub("[^%w]", ""))
-end
-
 -- Dungeons with their quests (available and in your log) as XP options, and
 -- the rest in Dungeons' own order (level fit and travel time).
 local function dungeonOptions()
   -- Dungeons.lua caches the dungeon finder list on first use; don't trigger
   -- that before the API exists.
   if type(GetLFGDungeonInfo) ~= "function" then return {}, {} end
-  local results, _, captured = withCapture("QuestsForAreas", ns.Dungeons.Results)
-  local byID = {}
-  for _, entry in ipairs(try(ns.Dungeons.Catalogue) or {}) do byID["dungeon" .. normalize(entry.name)] = entry end
-  local areaQuests = type(captured[1]) == "table" and captured[1] or {}
-
   local withQuests, plain = {}, {}
-  for _, r in ipairs(results) do
-    local entry = byID[r.id]
+  for _, r in ipairs(run(ns.Dungeons.Results)) do
+    local entry = r.dungeon
     local available, inLog, seen = {}, {}, {}
     local function add(list, q)
       if not seen[q.id] then
@@ -413,13 +369,8 @@ local function dungeonOptions()
         list[#list + 1] = q
       end
     end
-    for areaID in pairs(entry and entry.areaIDs or {}) do
-      local group = areaQuests[areaID]
-      if group then
-        for _, q in ipairs(group.available or {}) do add(available, q) end
-        for _, q in ipairs(group.inLog or {}) do add(inLog, q) end
-      end
-    end
+    for _, q in ipairs(r.quests and r.quests.available or {}) do add(available, q) end
+    for _, q in ipairs(r.quests and r.quests.inLog or {}) do add(inLog, q) end
     local quests = {}
     for _, q in ipairs(available) do quests[#quests + 1] = q end
     for _, q in ipairs(inLog) do quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, inLog = true } end
