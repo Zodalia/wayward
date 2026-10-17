@@ -1981,6 +1981,43 @@ do
   ns.JourneyOverview.Toggle()
 end
 ---------------------------------------------------------------- adding to a trip (end)
+---------------------------------------------------------------- reordering a trip (begin)
+do
+  io.write("reordering a trip\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1439, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local function stopAt(x, label) return { node = ns.Geo.Node(1439, x, 0.5, label), text = "Visit " .. label } end
+  local function labels()
+    local out = {}
+    for _, st in ipairs(ns.Nav.active.journey.stops) do out[#out + 1] = st.node.label end
+    return table.concat(out, ",")
+  end
+  local pickup = { node = ns.Geo.Node(1439, 0.56, 0.5, "Giver"), text = "Pick up Q", action = { kind = "pickup", questID = 881 } }
+  local turnin = { node = ns.Geo.Node(1439, 0.58, 0.5, "Finisher"), text = "Hand in Q", after = { pickup },
+    action = { kind = "turnin", questID = 881 } }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands",
+    stops = { stopAt(0.52, "A"), stopAt(0.54, "B"), pickup, turnin } }))
+  check(labels() == "A,B,Giver,Finisher", "planned nearest first: " .. labels())
+  ns.JourneyOverview.Show()
+  check(ns.JourneyOverview.Move(1, 2) and labels() == "B,A,Giver,Finisher", "dragging A below B swaps them: " .. labels())
+  check(ns.Nav.active.route.steps[#ns.Nav.active.route.steps].stop == turnin
+    and ns.Nav.active.route.steps[1].stop.node.label == "B", "the directions follow the new order")
+  check(not ns.JourneyOverview.Move(4, 1) and labels() == "B,A,Giver,Finisher",
+    "a hand-in can't go before its pickup")
+  check(ns.JourneyOverview.Move(3, 1) and labels() == "Giver,B,A,Finisher", "dragging up puts it before the target")
+  ns.Nav.AddToTrip({ stopAt(0.51, "Near") }, "Near")
+  check(labels() == "Near,Giver,B,A,Finisher", "an added stop finds its place, your order kept: " .. labels())
+  local saved = ns.Journey.Save(ns.Nav.active.journey)
+  local resumed = ns.Journey.Resume(ns.Journey.Load(saved), here)
+  local order = {}
+  for _, st in ipairs(resumed.stops) do order[#order + 1] = st.node.label end
+  -- (Near is close enough to count as visited.)
+  check(table.concat(order, ",") == "Giver,B,A,Finisher", "your order survives a reload: " .. table.concat(order, ","))
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+end
+---------------------------------------------------------------- reordering a trip (end)
 ---------------------------------------------------------------- cards (begin)
 do
   io.write("cards\n")

@@ -3,6 +3,7 @@ local _, ns = ...
 -- The whole journey at a glance: every stop with done / now / next, opened
 -- from the directions box (=) and when a journey with several stops starts.
 -- An open stop can be dropped (x); stops that need it are dropped with it.
+-- Drag an open stop up or down to reorder the trip.
 
 local Overview = {}
 ns.JourneyOverview = Overview
@@ -11,6 +12,40 @@ local MAX_ROWS = 10
 local ROW_HEIGHT = 30
 
 local frame
+local dragging -- the row being dragged
+
+-- The row under the cursor that a dragged stop can go to.
+local function rowUnderCursor()
+  for _, row in ipairs(frame.rows) do
+    if row:IsShown() and row.movable and row:IsMouseOver() then return row end
+  end
+  return nil
+end
+
+local function endDrag()
+  if not dragging then return end
+  local from = dragging
+  dragging = nil
+  frame:SetScript("OnUpdate", nil)
+  from.text:SetAlpha(1)
+  frame.marker:Hide()
+  local target = rowUnderCursor()
+  if target and target ~= from then Overview.Move(from.index, target.index) end
+end
+
+-- While dragging, a line shows where the stop will go.
+local function trackDrag()
+  local target = rowUnderCursor()
+  if not target or target == dragging then
+    frame.marker:Hide()
+    return
+  end
+  frame.marker:ClearAllPoints()
+  local below = target.index > dragging.index
+  frame.marker:SetPoint(below and "TOPLEFT" or "BOTTOMLEFT", target, below and "BOTTOMLEFT" or "TOPLEFT", 0, 0)
+  frame.marker:SetPoint(below and "TOPRIGHT" or "BOTTOMRIGHT", target, below and "BOTTOMRIGHT" or "TOPRIGHT", 0, 0)
+  frame.marker:Show()
+end
 
 local function create()
   local f = ns.Skin.CreateBox("WayfinderJourneyOverview")
@@ -66,8 +101,28 @@ local function create()
     row.drop:SetScript("OnClick", function() ns.Nav.Drop(row.stop) end)
     ns.Skin.Button(row.drop)
     ns.Skin.Text(row.text)
+    row.index = i
+    row:EnableMouse(true)
+    row:RegisterForDrag("LeftButton")
+    row:SetScript("OnDragStart", function(self)
+      if not self.movable then return end
+      dragging = self
+      self.text:SetAlpha(0.4)
+      f:SetScript("OnUpdate", trackDrag)
+    end)
+    row:SetScript("OnDragStop", endDrag)
+    row.hover = row:CreateTexture(nil, "BACKGROUND")
+    row.hover:SetAllPoints()
+    row.hover:SetColorTexture(1, 1, 1, 0.06)
+    row.hover:Hide()
+    row:SetScript("OnEnter", function(self) if self.movable then self.hover:Show() end end)
+    row:SetScript("OnLeave", function(self) self.hover:Hide() end)
     f.rows[i] = row
   end
+  f.marker = f:CreateTexture(nil, "OVERLAY")
+  f.marker:SetHeight(2)
+  f.marker:SetColorTexture(1, 0.82, 0, 0.9)
+  f.marker:Hide()
 
   f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.more:SetPoint("BOTTOMLEFT", 12, 8)
@@ -123,13 +178,15 @@ function Overview.Refresh()
     return
   end
   local rows = Overview.Rows()
+  local root = a.journey.root or a.journey.def
   local done = 0
   for _, r in ipairs(rows) do
     if r.state == "done" then done = done + 1 end
   end
   frame.title:SetText(a.title)
-  frame.info:SetText(string.format("%d of %d stops done  ·  %s to go", done, #rows,
-    ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode()))))
+  frame.info:SetText(string.format("%d of %d stops done  ·  %s to go%s", done, #rows,
+    ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())),
+    root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
   for i, row in ipairs(frame.rows) do
     local r = rows[i]
     row.stop = r and r.stop
@@ -139,6 +196,7 @@ function Overview.Refresh()
       local zone = ns.Journey.StopZone(r.stop)
       row.zone:SetText(zone and ("      " .. zone) or "")
       row.text:SetAlpha(look[2])
+      row.movable = (r.state == "now" or r.state == "next") and r.stop ~= root.finish
       row.drop:SetShown(r.state == "now" or r.state == "next")
       row:Show()
     else
@@ -146,6 +204,14 @@ function Overview.Refresh()
     end
   end
   frame.more:SetText(#rows > MAX_ROWS and string.format("... and %d more", #rows - MAX_ROWS) or "")
+end
+
+-- Moves the stop on row `from` to where row `to` is (what a drag does).
+function Overview.Move(from, to)
+  local rows = Overview.Rows()
+  local a, b = rows[from], rows[to]
+  if not (a and b) then return false end
+  return ns.Nav.MoveStop(a.stop, b.stop)
 end
 
 function Overview.Show()

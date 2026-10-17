@@ -333,6 +333,22 @@ function Nav.Drop(stop)
   adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
 end
 
+-- Moves a stop of the trip to where `target` is (the overview's drag and
+-- drop) and re-plans; the trip keeps your order from then on.
+function Nav.MoveStop(stop, target)
+  local a = Nav.active
+  if not (a and a.journey) then return false end
+  if not ns.Journey.Move(a.journey, stop, target) then
+    ns.print("can't move that stop there: it comes after another stop.")
+    return false
+  end
+  local here = ns.Geo.PlayerNode()
+  local journey = here and ns.Journey.Replan(a.journey, here)
+  if not journey then return false end
+  adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+  return true
+end
+
 -- Adds stops to the current trip and re-plans the order from where you are;
 -- plain directions become a trip with their destination as a stop. With no
 -- trip on, this starts one. Returns true when the trip changed.

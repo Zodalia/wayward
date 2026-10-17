@@ -201,6 +201,54 @@ local function orderStops(start, stops, net)
   return ordered
 end
 
+-- Stops in the player's own order (Journey.Move); stops added since (marked
+-- `unplaced`) go where they add the least travel time.
+local function validOrder(order, inPlan)
+  local placed = {}
+  for _, stop in ipairs(order) do
+    for _, before in ipairs(stop.after or {}) do
+      if inPlan[before] and not placed[before] then return false end
+    end
+    placed[stop] = true
+  end
+  return true
+end
+
+local function manualOrder(start, stops, net)
+  local order, extra, points, indexOf, inPlan = {}, {}, { start }, {}, {}
+  for i, stop in ipairs(stops) do
+    points[#points + 1] = stop.node
+    indexOf[stop] = i + 1
+    inPlan[stop] = true
+    if stop.unplaced then extra[#extra + 1] = stop else order[#order + 1] = stop end
+  end
+  if #extra == 0 then return order end
+  local cost = costTable(points, net)
+  local function total(o)
+    local sum, prev = 0, 1
+    for _, stop in ipairs(o) do sum, prev = sum + cost(prev, indexOf[stop]), indexOf[stop] end
+    return sum
+  end
+  for _, stop in ipairs(extra) do
+    local best, bestTotal
+    for pos = 1, #order + 1 do
+      local candidate = {}
+      for k = 1, pos - 1 do candidate[k] = order[k] end
+      candidate[pos] = stop
+      for k = pos, #order do candidate[k + 1] = order[k] end
+      local t = total(candidate)
+      if (not bestTotal or t < bestTotal) and validOrder(candidate, inPlan) then best, bestTotal = candidate, t end
+    end
+    if not best then
+      best = order
+      best[#best + 1] = stop
+    end
+    order = best
+    stop.unplaced = nil
+  end
+  return order
+end
+
 ---------------------------------------------------------------- planning
 
 -- Plans a journey from `start`. Returns
@@ -212,10 +260,26 @@ function Journey.Plan(start, def, net)
   net = net or ns.Network.Build()
   for _, stop in ipairs(def.stops or {}) do resolve(stop, start) end
   if def.finish then resolve(def.finish, start) end
-  local ordered = orderStops(start, def.stops or {}, net)
+  local root = def.root or def
+  local ordered
+  if root.manual then
+    ordered = manualOrder(start, def.stops or {}, net)
+    -- Keep the root in this order, so later re-plans start from it.
+    if root.stops and root.stops ~= def.stops then
+      local planned, stops = {}, {}
+      for _, stop in ipairs(ordered) do planned[stop] = true end
+      for _, stop in ipairs(root.stops) do
+        if not planned[stop] then stops[#stops + 1] = stop end
+      end
+      for _, stop in ipairs(ordered) do stops[#stops + 1] = stop end
+      root.stops = stops
+    end
+  else
+    ordered = orderStops(start, def.stops or {}, net)
+  end
   if def.finish then ordered[#ordered + 1] = def.finish end
 
-  local journey = { title = def.title, def = def, root = def.root or def, stops = {}, skipped = {}, steps = {},
+  local journey = { title = def.title, def = def, root = root, stops = {}, skipped = {}, steps = {},
     seconds = 0 }
   local from = start
   for _, stop in ipairs(ordered) do
@@ -276,12 +340,48 @@ function Journey.Extend(journey, stops)
   for _, stop in ipairs(stops) do
     local key = questKey(stop)
     if not (key and have[key]) then
+      -- In a trip you ordered yourself, the next plan finds it a place.
+      if root.manual then stop.unplaced = true end
       table.insert(root.stops, stop)
       added = added + 1
       if key then have[key] = true end
     end
   end
   return added
+end
+
+-- Moves an open stop to where `target` is in the current plan (after it when
+-- moving down, before it when moving up); from then on the journey keeps your
+-- order. Returns false, and changes nothing, when that would put a stop before
+-- one it needs (a hand-in before its pickup). Re-plan afterwards.
+function Journey.Move(journey, stop, target)
+  if not (stop and target) or stop == target then return false end
+  local root = journey.root or journey.def
+  if stop == root.finish then return false end
+  local order, from, to = {}, nil, nil
+  for _, s in ipairs(journey.stops) do
+    if open(s) and s ~= root.finish then
+      order[#order + 1] = s
+      if s == stop then from = #order end
+      if s == target then to = #order end
+    end
+  end
+  if target == root.finish then to = #order end
+  if not (from and to) then return false end
+  table.remove(order, from)
+  table.insert(order, to, stop)
+  local inPlan = {}
+  for _, s in ipairs(order) do inPlan[s] = true end
+  if not validOrder(order, inPlan) then return false end
+  local stops, moved = {}, {}
+  for _, s in ipairs(order) do moved[s] = true end
+  for _, s in ipairs(root.stops or {}) do
+    if not moved[s] then stops[#stops + 1] = s end
+  end
+  for _, s in ipairs(order) do stops[#stops + 1] = s end
+  root.stops = stops
+  root.manual = true
+  return true
 end
 
 -- A journey's open stops as plain stops to add elsewhere; its fixed final stop
@@ -361,7 +461,7 @@ function Journey.Save(journey)
     return { node = saveNode(stop.node), text = stop.text, action = stop.action, resolve = stop.resolve,
       done = stop.done, skipped = stop.skipped, after = #after > 0 and after or nil }
   end
-  local saved = { title = root.title, stops = {} }
+  local saved = { title = root.title, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
   if root.finish then saved.finish = save(root.finish) end
   return saved
@@ -369,7 +469,7 @@ end
 
 -- The definition back from Journey.Save; plan it with Journey.Plan.
 function Journey.Load(saved)
-  local def = { title = saved.title, stops = {} }
+  local def = { title = saved.title, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, action = s.action, resolve = s.resolve, done = s.done,
       skipped = s.skipped }
