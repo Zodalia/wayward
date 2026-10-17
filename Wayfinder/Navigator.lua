@@ -92,16 +92,14 @@ local function flightTip()
   end
 end
 
-function Nav.Start(title, goal, route)
+local function startRoute(title, goal, route)
   Nav.active = { title = title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1 }
   ns.print("directions to " .. title .. ": " .. ns.FormatDuration(route.seconds))
   flightTip()
   showStep()
 end
 
--- `journey` from ns.Journey.Plan. `quiet` skips the chat line and overview
--- (used when resuming after a login).
-function Nav.StartJourney(journey, quiet)
+local function startJourney(journey, quiet)
   local last = journey.stops[#journey.stops]
   Nav.active = { title = journey.title, goal = last.node, journey = journey, index = 1,
     route = ns.Router.WithZoneSteps({ steps = journey.steps, seconds = journey.seconds }) }
@@ -115,6 +113,51 @@ function Nav.StartJourney(journey, quiet)
   end
   showStep()
   if not quiet and #journey.stops > 1 then ns.Fire("JOURNEY_STARTED") end
+end
+
+-- Starting something new while a trip is on asks: add it to the trip, or
+-- replace the trip? (Replaces straight away where the game's dialogs aren't there.)
+local function ask(label, add, replace)
+  if not (StaticPopupDialogs and StaticPopup_Show) then return replace() end
+  StaticPopupDialogs.WAYFINDER_TRIP = StaticPopupDialogs.WAYFINDER_TRIP or {
+    text = "You're on a trip: %s.\n\nAdd \"%s\" to it, or replace the trip?",
+    button1 = "Add to trip", button2 = "Cancel", button3 = "Replace",
+    OnAccept = function(_, data) data.add() end,
+    OnAlt = function(_, data) data.replace() end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  StaticPopup_Show("WAYFINDER_TRIP", Nav.active.title, label, { add = add, replace = replace })
+end
+
+-- A stop for a plain destination (a trainer, a vendor, a hub).
+local function visitStop(title, goal)
+  return { node = goal, text = "Go to " .. (goal.label or title) }
+end
+
+-- A panel result's stops for adding to a trip: a journey's open stops, or a
+-- visit to a route's destination.
+function Nav.StopsFor(result)
+  if result.journey then return ns.Journey.OpenStops(result.journey) end
+  if result.goal then return { visitStop(result.title, result.goal) } end
+  return {}
+end
+
+function Nav.Start(title, goal, route)
+  if Nav.active then
+    return ask(title, function() Nav.AddToTrip({ visitStop(title, goal) }, title) end,
+      function() startRoute(title, goal, route) end)
+  end
+  startRoute(title, goal, route)
+end
+
+-- `journey` from ns.Journey.Plan. `quiet` skips the chat line and overview
+-- (used when resuming after a login) and never asks.
+function Nav.StartJourney(journey, quiet)
+  if Nav.active and not quiet then
+    return ask(journey.title, function() Nav.AddToTrip(ns.Journey.OpenStops(journey), journey.title) end,
+      function() startJourney(journey) end)
+  end
+  startJourney(journey, quiet)
 end
 
 function Nav.Stop()
@@ -288,6 +331,68 @@ function Nav.Drop(stop)
     return Nav.Stop()
   end
   adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+end
+
+-- Adds stops to the current trip and re-plans the order from where you are;
+-- plain directions become a trip with their destination as a stop. With no
+-- trip on, this starts one. Returns true when the trip changed.
+local TRIP_TITLE = "Your trip"
+
+function Nav.AddToTrip(stops, label)
+  local here = ns.Geo.PlayerNode()
+  if not here or #stops == 0 then return false end
+  local a = Nav.active
+  if not a then
+    local journey = ns.Journey.Plan(here, { title = label, stops = stops })
+    if not journey then
+      ns.print("no route to " .. label .. " from here.")
+      return false
+    end
+    startJourney(journey)
+    return true
+  end
+  local journey = a.journey or { root = { title = a.title, stops = { visitStop(a.title, a.goal) } } }
+  if ns.Journey.Extend(journey, stops) == 0 then
+    ns.print(label .. " is already in your trip.")
+    return false
+  end
+  local root = journey.root or journey.def
+  root.title = TRIP_TITLE
+  local planned = ns.Journey.Replan(journey, here)
+  if not planned then
+    ns.print("no route for the trip from here.")
+    return false
+  end
+  a.title = planned.title
+  adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
+  ns.print(string.format("added %s to your trip: %d stops, %s", label, #planned.stops,
+    ns.FormatDuration(planned.seconds)))
+  ns.Fire("JOURNEY_STARTED")
+  return true
+end
+
+-- True when the current trip still has an open stop for this quest.
+function Nav.TripHasQuest(questID)
+  local a = Nav.active
+  local root = a and a.journey and (a.journey.root or a.journey.def)
+  for _, stop in ipairs(root and root.stops or {}) do
+    if stop.action and stop.action.questID == questID and not stop.done and not stop.skipped then return true end
+  end
+  return false
+end
+
+-- Takes a quest's open stops out of the trip.
+function Nav.RemoveQuest(questID)
+  local a = Nav.active
+  if not (a and a.journey) then return end
+  local root = a.journey.root or a.journey.def
+  for _, stop in ipairs(root.stops or {}) do
+    if stop.action and stop.action.questID == questID and not stop.done then stop.skipped = true end
+  end
+  local here = ns.Geo.PlayerNode()
+  local planned = here and ns.Journey.Replan(a.journey, here)
+  if not planned then return Nav.Stop() end
+  adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
 end
 
 -- Picks up a saved trip after logging in, re-planned from where you are.

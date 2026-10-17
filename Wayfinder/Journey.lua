@@ -245,15 +245,61 @@ local function open(stop)
   return stop and not stop.done and not stop.skipped
 end
 
--- The same journey from here, without the stops already done or dropped.
+-- The same journey from here, without the stops already done or dropped. The
+-- original plan (root) is the source, so stops added since are included.
 function Journey.Replan(journey, start, net)
-  local def = journey.def
+  local root = journey.root or journey.def
   local remaining = {}
-  for _, stop in ipairs(def.stops or {}) do
+  for _, stop in ipairs(root.stops or {}) do
     if open(stop) then remaining[#remaining + 1] = stop end
   end
-  local finish = open(def.finish) and def.finish or nil
-  return Journey.Plan(start, { title = def.title, stops = remaining, finish = finish, root = journey.root }, net)
+  local finish = open(root.finish) and root.finish or nil
+  return Journey.Plan(start, { title = root.title, stops = remaining, finish = finish, root = root }, net)
+end
+
+local function questKey(stop)
+  local a = stop.action
+  return a and a.questID and (a.kind .. ":" .. a.questID) or nil
+end
+
+-- Adds stops to a journey's plan, skipping quest stops it already has open.
+-- Returns how many were added; re-plan afterwards (Journey.Replan).
+function Journey.Extend(journey, stops)
+  local root = journey.root or journey.def
+  root.stops = root.stops or {}
+  local have = {}
+  for _, stop in ipairs(root.stops) do
+    local key = questKey(stop)
+    if key and open(stop) then have[key] = true end
+  end
+  local added = 0
+  for _, stop in ipairs(stops) do
+    local key = questKey(stop)
+    if not (key and have[key]) then
+      table.insert(root.stops, stop)
+      added = added + 1
+      if key then have[key] = true end
+    end
+  end
+  return added
+end
+
+-- A journey's open stops as plain stops to add elsewhere; its fixed final stop
+-- (e.g. a dungeon entrance) comes after the rest.
+function Journey.OpenStops(journey)
+  local root = journey.root or journey.def
+  local out = {}
+  for _, stop in ipairs(root.stops or {}) do
+    if open(stop) then out[#out + 1] = stop end
+  end
+  if open(root.finish) then
+    local finish = root.finish
+    local after = {}
+    for _, stop in ipairs(out) do after[#after + 1] = stop end
+    finish.after = #after > 0 and after or finish.after
+    out[#out + 1] = finish
+  end
+  return out
 end
 
 -- Every stop of the original plan, in a stable order: the open ones as the
