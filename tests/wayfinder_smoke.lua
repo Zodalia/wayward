@@ -28,14 +28,24 @@ local function newObj()
           local old = self.scripts[name]
           self.scripts[name] = old and function(...) old(...); fn(...) end or fn
         elseif k == "RegisterEvent" then events[(...)] = events[(...)] or {}; table.insert(events[(...)], self)
-        elseif k == "SetText" then rawset(self, "text", (...))
+        elseif k == "SetText" then
+          -- Like the game: text on a font string with no font is an error.
+          if rawget(self, "fontString") and not rawget(self, "hasFont") then error("Font not set", 2) end
+          rawset(self, "text", (...))
+        elseif k == "SetFontObject" or k == "SetFont" then
+          if (...) ~= nil then rawset(self, "hasFont", true) end
         elseif k == "GetText" then return rawget(self, "text")
         elseif k == "SetRotation" then rawset(self, "rotation", (...))
         elseif k == "Show" then rawset(self, "shown", true); if self.scripts.OnShow then self.scripts.OnShow(self) end
         elseif k == "Hide" then rawset(self, "shown", false)
         elseif k == "SetShown" then rawset(self, "shown", (...) and true or false)
         elseif k == "IsShown" then return rawget(self, "shown")
-        elseif k == "CreateFontString" or k == "CreateTexture" then return newObj()
+        elseif k == "CreateFontString" then
+          local fs = newObj()
+          rawset(fs, "fontString", true)
+          rawset(fs, "hasFont", select(3, ...) ~= nil) -- a template brings its font
+          return fs
+        elseif k == "CreateTexture" then return newObj()
         elseif k == "GetPoint" then return "CENTER", nil, "CENTER", 0, 0
         end
       end
@@ -1989,6 +1999,8 @@ do
     return table.concat(out, ",")
   end
   check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "one large and two small cards: " .. titles())
+  check(table.concat(ns.Cards.Drawn(), ",") == "Suggestion 1|Go,Suggestion 2|Go,Suggestion 3|Go",
+    "every card shows its title and button text: " .. table.concat(ns.Cards.Drawn(), ","))
   ns.Cards.Step(-1)
   check(titles() == "Suggestion 2,Suggestion 3,Suggestion 4", "the arrows step through the suggestions")
   ns.Panel.Scroll(-10)

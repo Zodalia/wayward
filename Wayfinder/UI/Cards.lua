@@ -25,9 +25,14 @@ local function hasAtlas(name)
   return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
 end
 
-local function font(fs, name, fallback)
-  local object = _G[name] or _G[fallback]
-  if object then fs:SetFontObject(object) end
+-- Text with a standard font (the template always exists), switched to the
+-- Adventure Guide's own font when the client has it. Forever lacks some of
+-- them, and text without a font errors when set.
+local function text(parent, template, preferred)
+  local fs = parent:CreateFontString(nil, "ARTWORK", template)
+  local object = preferred and _G[preferred]
+  if object then pcall(fs.SetFontObject, fs, object) end
+  return fs
 end
 
 local function color(fs, c)
@@ -81,6 +86,7 @@ end
 local function extra(card)
   local b = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
   b:SetSize(96, 20)
+  b:Hide()
   b:SetScript("OnClick", function()
     local r = card.result
     local action = r and r.actions and r.actions[1]
@@ -109,22 +115,19 @@ local function largeCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -18)
 
-  card.title = card:CreateFontString(nil, "ARTWORK")
-  font(card.title, "DestinyFontHuge", "GameFontNormalHuge")
+  card.title = text(card, "GameFontNormalHuge", "DestinyFontHuge")
   card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -18)
   card.title:SetWidth(264)
   card.title:SetJustifyH("CENTER")
   color(card.title, TITLE_COLOR)
 
-  card.text = card:CreateFontString(nil, "ARTWORK")
-  font(card.text, "GameTooltipHeader", "GameFontHighlight")
+  card.text = text(card, "GameFontHighlight", "GameTooltipHeader")
   card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -8)
   card.text:SetWidth(264)
   card.text:SetJustifyH("CENTER")
   color(card.text, TEXT_COLOR)
 
-  card.detail = card:CreateFontString(nil, "ARTWORK")
-  font(card.detail, "SystemFont_Med1", "GameFontHighlightSmall")
+  card.detail = text(card, "GameFontHighlightSmall", "SystemFont_Med1")
   card.detail:SetPoint("TOP", card.text, "BOTTOM", 0, -10)
   card.detail:SetWidth(264)
   card.detail:SetJustifyH("CENTER")
@@ -152,8 +155,7 @@ local function largeCard(parent)
   card.next:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
   card.next:SetScript("OnClick", function() Cards.Step(-1) end)
 
-  card.position = card:CreateFontString(nil, "ARTWORK")
-  font(card.position, "SystemFont_Med1", "GameFontHighlightSmall")
+  card.position = text(card, "GameFontHighlightSmall", "SystemFont_Med1")
   card.position:SetPoint("BOTTOM", 0, 18)
   color(card.position, TEXT_COLOR)
   hover(card)
@@ -167,16 +169,14 @@ local function smallCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
-  card.title = card:CreateFontString(nil, "ARTWORK")
-  font(card.title, "QuestFont_Huge", "GameFontNormalLarge")
+  card.title = text(card, "GameFontNormalLarge", "QuestFont_Huge")
   card.title:SetPoint("TOPLEFT", 70, -14)
   card.title:SetWidth(260)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
   color(card.title, TITLE_COLOR)
 
-  card.text = card:CreateFontString(nil, "ARTWORK")
-  font(card.text, "SystemFont_Med1", "GameFontHighlightSmall")
+  card.text = text(card, "GameFontHighlightSmall", "SystemFont_Med1")
   card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
   card.text:SetWidth(240)
   card.text:SetJustifyH("LEFT")
@@ -240,13 +240,23 @@ local function fill(card, r, large)
   if action then card.extra:SetText(action.label) end
 end
 
+local reported
+
+local function safeFill(card, r, large)
+  local ok, err = pcall(fill, card, r, large)
+  if not ok and not reported then
+    reported = true
+    geterrorhandler()(err)
+  end
+end
+
 local function paint()
   if not view then return end
   local maxOffset = math.max(0, #results - 1)
   if offset > maxOffset then offset = maxOffset end
-  fill(view.large, results[offset + 1], true)
-  fill(view.small[1], results[offset + 2])
-  fill(view.small[2], results[offset + 3])
+  safeFill(view.large, results[offset + 1], true)
+  safeFill(view.small[1], results[offset + 2])
+  safeFill(view.small[2], results[offset + 3])
   view.large.prev:SetEnabled(offset > 0)
   view.large.next:SetEnabled(offset < maxOffset)
   view.large.position:SetText(#results > 1 and string.format("%d of %d", offset + 1, #results) or "")
@@ -280,6 +290,18 @@ function Cards.Visible()
   if not view then return out end
   for _, card in ipairs({ view.large, view.small[1], view.small[2] }) do
     if card.result then out[#out + 1] = card.result end
+  end
+  return out
+end
+
+-- The titles and button labels drawn on the cards (for tests).
+function Cards.Drawn()
+  local out = {}
+  if not view then return out end
+  for _, card in ipairs({ view.large, view.small[1], view.small[2] }) do
+    if card.result then
+      out[#out + 1] = (card.title:GetText() or "") .. "|" .. (card.button:GetText() or "")
+    end
   end
   return out
 end
