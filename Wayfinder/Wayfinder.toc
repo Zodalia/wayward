@@ -28,6 +28,7 @@ Docks.lua
 Dungeons.lua
 Vendors.lua
 ItemsPage.lua
+ForYou.lua
 UI\CopyBox.lua
 UI\HUD.lua
 UI\Panel.lua

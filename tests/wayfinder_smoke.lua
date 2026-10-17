@@ -1033,6 +1033,173 @@ do
   page.Results = realResults
 end
 ---------------------------------------------------------------- items page (end)
+---------------------------------------------------------------- for you (begin)
+
+io.write("for you\n")
+do
+  local function rows()
+    ns.ForYou.Invalidate()
+    return ns.ForYou.Results()
+  end
+  local function find(list, prefix)
+    for i, r in ipairs(list) do
+      if r.title:sub(1, #prefix) == prefix then return r, i end
+    end
+  end
+  local function titles(list)
+    local out = {}
+    for _, r in ipairs(list) do out[#out + 1] = r.title end
+    return table.concat(out, " | ")
+  end
+
+  local lowest
+  for _, page in ipairs(ns.pages) do
+    if page.id ~= "test" and (not lowest or page.order < lowest.order) then lowest = page end
+  end
+  check(lowest and lowest.id == "foryou" and ns.ForYou.runs >= 1,
+    "For you has the lowest order and was computed when /wf first opened")
+
+  -- QuestieDB quest XP: [questID] = { questLevel, xp }. Quest 21 has none.
+  local zoneSupport = LibQuestieDB.Support.Get
+  local XP = { [1] = { 18, 1500 }, [7] = { 19, 1500 }, [11] = { 17, 1500 }, [15] = { 18, 1500 },
+    [6] = { 20, 1400 }, [14] = { 19, 1400 }, [20] = { 20, 1600 }, [10] = { 19, 1000 } }
+  LibQuestieDB.Support.Get = function(name)
+    if name == "QuestXP" then return { db = XP } end
+    return zoneSupport(name)
+  end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local started = os.clock()
+  local list = rows()
+  local ms = (os.clock() - started) * 1000
+  check(ms < 100, string.format("a refresh takes %.1f ms here", ms))
+  check(list[1] and list[1].title == "Train 1 new spell in Stormwind" and list[1].route,
+    "trainable, affordable spell comes first with directions (" .. titles(list) .. ")")
+  local lakeshire, li = find(list, "Pick up 5 quests in Lakeshire")
+  local stormwind, si = find(list, "Pick up 3 quests in Stormwind")
+  local deadmines, di = find(list, "Pick up 2 quests, then run The Deadmines")
+  check(lakeshire and stormwind and deadmines and li < si and si < di,
+    "hubs and dungeons by XP per minute: Lakeshire, Stormwind, Deadmines (" .. titles(list) .. ")")
+  local sorted, rated = true, 0
+  for i = 2, #list do
+    if list[i].rate and list[i - 1].rate and list[i].rate > list[i - 1].rate then sorted = false end
+    if list[i].rate then rated = rated + 1 end
+  end
+  check(sorted and rated == 3, "XP options sorted by XP per minute")
+  check(lakeshire and lakeshire.subtitle:find("~299 XP/min", 1, true)
+    and lakeshire.details[1].text:find("7,600 XP", 1, true),
+    "hub XP is the sum of its quests over trip + 5 min each: " .. tostring(lakeshire and lakeshire.subtitle))
+  check(stormwind and stormwind.details[2].text:find("estimated for 1 quest"), "a quest without XP data is estimated")
+  check(#list <= 7 and find(list, "Run Hall of Testing"), "dungeons without quests fill the remaining rows")
+  check(ns.ForYou.SummaryText():find("1 thing due") and not ns.ForYou.SummaryText():find("quests per hour"),
+    "summary: " .. ns.ForYou.SummaryText())
+
+  -- Dungeon quests become one journey: pickups first, the entrance last.
+  local dj = deadmines and deadmines.journey
+  local last = dj and dj.stops[#dj.stops]
+  local picked = {}
+  for _, st in ipairs(dj and dj.stops or {}) do
+    if st.action then picked[#picked + 1] = st.action.kind .. st.action.questID end
+  end
+  table.sort(picked)
+  check(last and last.text == "Enter The Deadmines" and table.concat(picked, ",") == "pickup20,pickup21",
+    "dungeon journey picks up its quests, then goes to the entrance (" .. table.concat(picked, ",") .. ")")
+  check(deadmines and deadmines.subtitle:find("1 in your log"), "quests in your log count too")
+
+  -- Gear at 20%: repair before training.
+  durability = { 10, 50 }
+  list = rows()
+  check(list[1] and list[1].title:find("^Repair") and list[2] and list[2].title:find("^Train"),
+    "low durability: repair first, then training (" .. titles(list) .. ")")
+  durability = { 50, 50 }
+
+  -- A big XP quest in Stormwind: training there is on the way, so one journey.
+  XP[6] = { 20, 12000 }
+  list = rows()
+  local combo = list[1]
+  check(combo and combo.journey and combo.title == "Train in Stormwind, then pick up 3 quests in Stormwind",
+    "need on the way to the best option: one journey (" .. tostring(combo and combo.title) .. ")")
+  check(combo and #combo.journey.stops == 2 and combo.journey.stops[2].text:find("^Pick up quests here")
+    and combo.actions and combo.actions[1].label == "Train only", "train first, quests last, a Train only button")
+  local sw, swi = find(list, "Pick up 3 quests in Stormwind")
+  local _, lki = find(list, "Pick up 5 quests in Lakeshire")
+  check(sw and lki and swi < lki, "more XP per minute outranks the nearer hub (" .. titles(list) .. ")")
+  combo.actions[1].run(combo)
+  check(ns.Nav.active and ns.Nav.active.journey == nil and ns.Nav.active.title:find("^Train"),
+    "Train only gives plain directions to the trainer")
+  ns.Nav.Stop()
+  XP[6] = { 20, 1400 }
+
+  -- Without XP data: quests per hour, weighted by level fit.
+  LibQuestieDB.Support.Get = zoneSupport
+  list = rows()
+  check(ns.ForYou.SummaryText():find("No quest XP in your QuestieDB"), "summary explains the fallback")
+  local lk, lkIndex = find(list, "Pick up 5 quests in Lakeshire")
+  local _, swIndex = find(list, "Pick up 3 quests in Stormwind")
+  check(lk and lk.subtitle:find("quests/h") and not lk.subtitle:find("XP") and swIndex and lkIndex < swIndex,
+    "fallback ranks by quests per hour: " .. tostring(lk and lk.subtitle))
+
+  -- Without QuestieDB: needs and dungeons by level fit.
+  local savedLib = LibQuestieDB
+  LibQuestieDB = nil
+  reloadBridge()
+  list = rows()
+  check(ns.ForYou.SummaryText():find("Install QuestieDB"), "without QuestieDB the summary says so")
+  check(list[1] and list[1].title:find("^Train") and find(list, "Run The Deadmines") and not find(list, "Pick up"),
+    "without QuestieDB: training, then dungeons (" .. titles(list) .. ")")
+  LibQuestieDB = savedLib
+  LibQuestieDB.Support.Get = function(name)
+    if name == "QuestXP" then return { db = XP } end
+    return zoneSupport(name)
+  end
+  reloadBridge()
+
+  -- An undiscovered flight path where you stand.
+  ns.charDB.knownTaxi[5] = nil
+  list = rows()
+  check(find(list, "Learn the Lakeshire flight path"), "undiscovered flight path close by (" .. titles(list) .. ")")
+  ns.charDB.knownTaxi[5] = true
+
+  -- Low on food (2 Melon Juice in the bags).
+  C_Container = {
+    GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+    GetContainerItemInfo = function(bag, slot) if slot == 1 then return { itemID = 1205, stackCount = 2 } end end,
+  }
+  list = rows()
+  local food, fi = find(list, "Buy food & drink at")
+  check(food and fi <= 2 and food.subtitle:find("2 food & drink left"), "low on food: buy some (" .. titles(list) .. ")")
+  C_Container = nil
+
+  -- A hunter with a bow and no ammo.
+  UnitClass = function() return "Hunter", "HUNTER", 3 end
+  GetInventoryItemID = function(_, slot) return slot == 18 and 100 or nil end
+  list = rows()
+  local ammo = list[1]
+  check(ammo and ammo.title:find("^Buy ammo at Lakeshire Cook") and ammo.subtitle:find("no ammo left"),
+    "out of ammo: the nearest arrow seller first (" .. titles(list) .. ")")
+  UnitClass = function() return "Warlock", "WARLOCK", 9 end
+  GetInventoryItemID = function() return nil end
+
+  -- Cache: reused within a few seconds, recomputed on DATA_CHANGED.
+  local clock = 100
+  GetTime = function() return clock end
+  rows()
+  local runs = ns.ForYou.runs
+  ns.ForYou.Results()
+  clock = clock + 1
+  ns.ForYou.Results()
+  check(ns.ForYou.runs == runs, "a refresh within a few seconds is reused")
+  ns.Fire("DATA_CHANGED")
+  ns.ForYou.Results()
+  check(ns.ForYou.runs == runs + 1, "DATA_CHANGED recomputes")
+  GetTime = nil
+
+  runs = ns.ForYou.runs
+  SlashCmdList.WAYFINDER("next")
+  check(ns.Panel.IsShown() and ns.ForYou.runs > runs, "/wf next opens the panel on For you")
+  LibQuestieDB.Support.Get = zoneSupport
+end
+
+---------------------------------------------------------------- for you (end)
 
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then

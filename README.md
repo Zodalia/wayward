@@ -91,6 +91,24 @@ QuestieDB (ItemDB); without it only vendors you visited that sold the item are
 known. Item tooltips get a "Wayfinder: /wf item for directions" line when an
 item has known sources (never in combat).
 
+### For you
+
+**For you** is the first tab (`/wf next` opens it): a handful of things to do
+next, each with a one-line why; click one for directions or a journey. Needs
+come first when due: spells you can train and afford (after one trainer
+visit), repairs at 50% durability or lower, ammo under 200, food and drink
+under 5 (not mages, from level 6), and an undiscovered flight path within
+about 3 minutes. The rest is ranked by estimated XP per minute: quest hubs and
+dungeons with their quests, XP over the trip plus 5 minutes per quest
+(`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes from QuestieDB's quest XP
+table, with the vanilla penalty for quests below your level; quests it has no
+XP for (Forever-only ones) get the average for their level. Without that
+table the ranking falls back to quests per hour weighted by level fit, and
+without QuestieDB to dungeons by level fit and travel time; the summary line
+says which. A need on the way to the best option becomes one journey ("Train
+in Stormwind, then pick up 3 quests in ..."), and dungeon rows pick up their
+quests before the entrance. `/wf debug` shows how long a refresh took.
+
 Install the same way as WFProbe below, with the `Wayfinder` folder.
 
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
