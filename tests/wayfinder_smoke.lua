@@ -652,6 +652,67 @@ check(ns.Panel.IsShown(), "panel shows dungeons with QuestieDB")
 
 ---------------------------------------------------------------- dungeons (end)
 
+---------------------------------------------------------------- journeys + pages (foundation)
+io.write("journeys\n")
+ns.Nav.Stop()
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+local function stopAt(mapID, x, y, label, questID)
+  return { node = ns.Geo.Node(mapID, x, y, label),
+    text = questID and ("Pick up quest " .. questID .. " from " .. label) or ("Enter " .. label),
+    action = questID and { kind = "pickup", questID = questID } or nil }
+end
+local farStop = stopAt(1433, 0.95, 0.95, "Far camp", 101)
+local nearStop = stopAt(1433, 0.55, 0.55, "Near camp", 102)
+local midStop = stopAt(1433, 0.75, 0.75, "Middle camp", 103)
+local entrance = stopAt(1453, 0.5, 0.5, "Test Dungeon")
+local journey = ns.Journey.Plan(ns.Geo.PlayerNode(),
+  { title = "Test run", stops = { farStop, nearStop, midStop }, finish = entrance })
+local order = {}
+for _, st in ipairs(journey.stops) do order[#order + 1] = st.node.label end
+check(table.concat(order, ",") == "Near camp,Middle camp,Far camp,Test Dungeon",
+  "stops in the quickest order, finish last (" .. table.concat(order, ",") .. ")")
+local stopSteps = 0
+for _, st in ipairs(journey.steps) do if st.stop then stopSteps = stopSteps + 1 end end
+check(stopSteps == 4, "each leg ends on its stop")
+ns.Nav.StartJourney(journey)
+player.x, player.y = 0.55, 0.55
+ns.HUD.Update()
+check(ns.Nav.Waiting() and ns.Nav.CurrentStep().stop == nearStop, "waits at the first stop for its quest")
+check(ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index) == "Pick up quest 102 from Near camp",
+  "the stop says what to do there")
+ns.HUD.Update()
+check(ns.Nav.CurrentStep().stop == nearStop, "standing at the stop does not skip it")
+fire("QUEST_ACCEPTED", 102)
+check(nearStop.done and ns.Nav.CurrentStep().stop ~= nearStop, "accepting the quest moves the journey on")
+fire("QUEST_ACCEPTED", 101)
+check(farStop.done and #ns.Nav.active.journey.stops == 2, "a later quest picked up early is planned out")
+player.x, player.y = 0.75, 0.75
+ns.HUD.Update()
+fire("QUEST_ACCEPTED", 103)
+check(midStop.done, "middle stop done")
+player.mapID, player.x, player.y = 1453, 0.5, 0.5
+ns.HUD.Update()
+check(ns.Nav.active == nil, "reaching the final stop ends the journey")
+
+io.write("pages\n")
+local seenQuery
+ns.RegisterPage({ id = "test", label = "Test", order = 5, searchable = true, placeholder = "Find things",
+  SummaryText = function(q) return "summary " .. q end,
+  EmptyText = function() return "nothing" end,
+  Results = function(q)
+    seenQuery = q
+    return { { title = "Result " .. q, subtitle = "sub", journey = journey,
+      actions = { { label = "Go", run = function() end } } } }
+  end })
+ns.Panel.Search("test", "abc")
+check(seenQuery == "abc", "Panel.Search opens a page with its query")
+local findPage
+for _, page in ipairs(ns.pages) do if page.id == "find" then findPage = page end end
+ns.Panel.Select(2)
+local filtered = findPage.Results("lakeshire")
+check(#filtered == 1 and filtered[1].title:find("Lakeshire"), "the Find page filters results by text")
+check(#findPage.Results("") >= 2, "an empty filter shows everything")
+
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
