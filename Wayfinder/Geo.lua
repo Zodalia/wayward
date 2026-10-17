@@ -1,0 +1,85 @@
+local _, ns = ...
+
+-- Coordinate helpers. Map positions are 0-1 per uiMap (x east, y south).
+-- World positions are yards per instance (continent): world X points north,
+-- world Y points west. Both conventions were confirmed by WFProbe in the beta.
+
+local Geo = {}
+ns.Geo = Geo
+
+local AZEROTH = 947
+local atan2 = math.atan2 or math.atan
+
+local function vec(x, y)
+  return CreateVector2D(x, y)
+end
+
+function Geo.ToWorld(mapID, x, y)
+  if not (mapID and x and y) then return nil end
+  local instance, world = C_Map.GetWorldPosFromMapPos(mapID, vec(x, y))
+  if not (instance and world) then return nil end
+  local wx, wy = world:GetXY()
+  return instance, wx, wy
+end
+
+-- A route node: where something is, in both map and world terms.
+function Geo.Node(mapID, x, y, label)
+  local instance, wx, wy = Geo.ToWorld(mapID, x, y)
+  if not instance then return nil end
+  return { label = label, mapID = mapID, x = x, y = y, instance = instance, wx = wx, wy = wy }
+end
+
+function Geo.PlayerNode()
+  local mapID = C_Map.GetBestMapForUnit("player")
+  local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+  if not pos then return nil end
+  local x, y = pos:GetXY()
+  return Geo.Node(mapID, x, y, "You")
+end
+
+function Geo.Distance(a, b)
+  if not (a and b) or a.instance ~= b.instance then return math.huge end
+  local dx, dy = a.wx - b.wx, a.wy - b.wy
+  return math.sqrt(dx * dx + dy * dy)
+end
+
+-- Radians counter-clockwise from north: the same convention as GetPlayerFacing.
+function Geo.Bearing(from, to)
+  return atan2(to.wy - from.wy, to.wx - from.wx)
+end
+
+local continents
+
+-- Continent uiMaps (including any new Forever continents), keyed by instance.
+function Geo.Continents()
+  if continents then return continents end
+  continents = {}
+  local children = C_Map.GetMapChildrenInfo(AZEROTH, Enum.UIMapType.Continent, false) or {}
+  for _, info in ipairs(children) do
+    local instance = Geo.ToWorld(info.mapID, 0.5, 0.5)
+    if instance and not continents[instance] then continents[instance] = info.mapID end
+  end
+  return continents
+end
+
+-- Zone-level map point for a world position, for placing a user waypoint.
+function Geo.ZonePoint(node)
+  local continent = Geo.Continents()[node.instance]
+  local world = vec(node.wx, node.wy)
+  if continent then
+    local _, cpos = C_Map.GetMapPosFromWorldPos(node.instance, world, continent)
+    if cpos then
+      local cx, cy = cpos:GetXY()
+      local info = C_Map.GetMapInfoAtPosition(continent, cx, cy)
+      if info and info.mapID then
+        local _, zpos = C_Map.GetMapPosFromWorldPos(node.instance, world, info.mapID)
+        if zpos then
+          local zx, zy = zpos:GetXY()
+          return info.mapID, zx, zy
+        end
+      end
+      return continent, cx, cy
+    end
+  end
+  return node.mapID, node.x, node.y
+end
