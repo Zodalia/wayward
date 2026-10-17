@@ -1670,7 +1670,8 @@ do
   local ui = freshUI()
   check(openAll(ui), "windows open with the templates")
   check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 3
-    and selectedTab == "Find", "template windows, search box and tabs (tab " .. tostring(selectedTab) .. ")")
+    and ui.Panel.SelectedTab() == "find",
+    "template windows, search box and side tabs (tab " .. tostring(ui.Panel.SelectedTab()) .. ")")
 
   -- Without EllesmereUI the skin does nothing.
   fire("PLAYER_LOGIN")
@@ -1687,11 +1688,11 @@ do
   fire("PLAYER_LOGIN")
   runTimers()
   check(ns.Skin.Status() == "EllesmereUI" and registeredAs == "Wayfinder", "EllesmereUI skin registered")
-  check((calls.Shell or 0) >= 4 and (calls.Panel or 0) >= 4 and (calls.Tab or 0) > 0 and (calls.EditBox or 0) >= 2
+  check((calls.Shell or 0) >= 4 and (calls.Panel or 0) >= 4 and (calls.EditBox or 0) >= 2
     and (calls.Font or 0) > 0 and (calls.Inset or 0) >= 2, "windows made earlier get EllesmereUI's look")
   local shells, boxes, fonts = calls.Shell, calls.Panel, calls.Font
   openAll(freshUI())
-  check(calls.Shell == shells + 3 and calls.Panel == boxes + 2 and (calls.SetTabSelection or 0) > 0,
+  check(calls.Shell == shells + 3 and calls.Panel == boxes + 2,
     "new windows get it right away")
   ns.Panel.Toggle()
   ns.Panel.Toggle()
@@ -2004,6 +2005,11 @@ do
   check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "one large and two small cards: " .. titles())
   check(table.concat(ns.Cards.Drawn(), ",") == "Suggestion 1|Go,Suggestion 2|Go,Suggestion 3|Go",
     "every card shows its title and button text: " .. table.concat(ns.Cards.Drawn(), ","))
+  local said = #chat
+  SlashCmdList.WAYFINDER("debug cards")
+  check(chat[said + 1]:find("version 0.2.0", 1, true) and #chat == said + 4
+    and chat[said + 2]:find('large: shown=true', 1, true) and chat[said + 2]:find('title="Suggestion 1"', 1, true),
+    "/wf debug cards reports the version and what each card shows")
   ns.Cards.Step(-1)
   check(titles() == "Suggestion 2,Suggestion 3,Suggestion 4", "the arrows step through the suggestions")
   ns.Panel.Scroll(-10)
@@ -2037,9 +2043,11 @@ do
   ns.Panel.Search("foryou", "")
   check(ns.Panel.IsShown() and not ns.Panel.SideShown(), "For you shows in the main window, side panel closed")
   ns.Panel.SelectPage("quests")
-  check(ns.Panel.SideShown() and ns.Panel.IsShown(), "a list page opens in the side panel next to For you")
+  check(ns.Panel.SideShown() and ns.Panel.IsShown() and ns.Panel.SelectedTab() == "quests",
+    "a list page opens in the side panel; its side tab is selected")
   ns.Panel.CloseSide()
-  check(not ns.Panel.SideShown() and ns.Panel.IsShown(), "closing the side panel keeps the main window")
+  check(not ns.Panel.SideShown() and ns.Panel.IsShown() and ns.Panel.SelectedTab() == nil,
+    "closing the side panel keeps the main window and clears the tab")
   ns.Panel.Select(1)
   check(ns.Panel.SideShown() and #ns.Panel.VisibleResults() > 0, "Find's categories open in the side panel")
   ns.Panel.Search("quests", "redridge")
