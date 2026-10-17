@@ -2006,6 +2006,7 @@ do
     and lines[3]:find("^Stop 1 of 4") and lines[4]:find("yd", 1, true),
     "the directions box: trip and stops, the step, stop number, distance and time: " .. table.concat(lines, " | "))
   ns.JourneyOverview.Show()
+  check(ns.JourneyOverview.HandleCount() == 4, "every open stop has a drag handle")
   check(ns.JourneyOverview.Move(1, 2) and labels() == "B,A,Giver,Finisher", "dragging A below B swaps them: " .. labels())
   check(ns.Nav.active.route.steps[#ns.Nav.active.route.steps].stop == turnin
     and ns.Nav.active.route.steps[1].stop.node.label == "B", "the directions follow the new order")

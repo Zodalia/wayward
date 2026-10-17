@@ -245,8 +245,8 @@ panel to add it to the trip you're on.
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's book button
     opens an overview of every stop (done / now / next); a stop can be dropped
-    there, together with the stops that need it, or dragged up or down to
-    reorder the trip. A reordered trip keeps your order (`Journey.Move`);
+    there, together with the stops that need it, or dragged up or down by its
+    handle to reorder the trip. A reordered trip keeps your order (`Journey.Move`);
     stops added later go where they add the least travel, and a stop can't
     move before one it needs (a hand-in before its pickup).
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/wf <name>`; `run`
