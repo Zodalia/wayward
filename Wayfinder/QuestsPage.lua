@@ -3,7 +3,9 @@ local _, ns = ...
 -- "Quests" page: search quests by name and see whether you can take them.
 -- Clicking a quest goes to its quest giver, to where you hand it in, or to the
 -- start of its chain. Dungeon quests can be picked up in one trip that ends at
--- the entrance (also offered on the Dungeons page). Needs QuestieDB.
+-- the entrance (also offered on the Dungeons page). With an empty search it
+-- lists your quest log; "Add" picks quests (log or search) for one trip.
+-- Searching and directions need QuestieDB; the log list does not.
 
 local QuestsPage = { id = "quests", label = "Quests", order = 30, searchable = true,
   placeholder = "Quest name (or shift-click a quest link)" }
@@ -120,6 +122,51 @@ local function dungeonRows(matches, start, net)
   return rows
 end
 
+---------------------------------------------------------------- picked quests
+
+-- Quests picked with "Add" for one trip, per character: [questID] = true.
+-- Quests you have handed in drop out.
+local function picks()
+  ns.charDB.questPicks = ns.charDB.questPicks or {}
+  return ns.charDB.questPicks
+end
+
+function QuestsPage.IsPicked(questID)
+  return picks()[questID] == true
+end
+
+function QuestsPage.TogglePick(questID)
+  local p = picks()
+  p[questID] = not p[questID] or nil
+end
+
+function QuestsPage.ClearPicks()
+  ns.charDB.questPicks = {}
+end
+
+-- The picked quest IDs, lowest first; drops the ones in `done` (a set).
+function QuestsPage.Picks(done)
+  local p, ids = picks(), {}
+  for id in pairs(p) do
+    if done and done[id] then p[id] = nil else ids[#ids + 1] = id end
+  end
+  table.sort(ids)
+  return ids
+end
+
+ns.On("QUEST_TURNED_IN", function(questID)
+  local p = ns.charDB and ns.charDB.questPicks
+  if p and p[questID] then
+    p[questID] = nil
+    ns.Panel.Refresh()
+  end
+end)
+
+local function pickAction(questID)
+  return { label = QuestsPage.IsPicked(questID) and "Added" or "Add",
+    run = function() QuestsPage.TogglePick(questID) end }
+end
+
 ---------------------------------------------------------------- quest rows
 
 -- Where clicking a quest goes: a one-stop journey that waits for the pickup or
@@ -202,7 +249,158 @@ local function questRow(m, start, net)
   if (q.requiredLevel or 0) > 0 then
     details[#details + 1] = { text = "Requires level " .. q.requiredLevel, color = { r = 0.7, g = 0.7, b = 0.7 } }
   end
-  return { id = "quest" .. q.id, title = questTitle(q), subtitle = sub, journey = journey, details = details }
+  local actions = (m.status == "available" or m.status == "inLog") and { pickAction(q.id) } or nil
+  return { id = "quest" .. q.id, title = questTitle(q), subtitle = sub, journey = journey, details = details,
+    actions = actions }
+end
+
+---------------------------------------------------------------- quest log
+
+-- Progress on a logged quest: "Ready to hand in", the first objective not
+-- done yet ("3/8 Murloc Forager slain"), or nil.
+local function progress(questID, complete)
+  if complete then return GREEN .. "Ready to hand in|r" end
+  for _, o in ipairs(C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}) do
+    if not o.finished and o.text and o.text ~= "" then return o.text end
+  end
+  return nil
+end
+
+-- The quests in your log, in log order:
+--   { id, title, level, zone (the log header above it), complete, progress }
+function QuestsPage.LogQuests()
+  local out, zone = {}, nil
+  for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+    local info = C_QuestLog.GetInfo(i)
+    if info and info.isHeader then
+      zone = info.title
+    elseif info and info.questID and not info.isHidden then
+      local id = info.questID
+      local q = ns.Questie.Quest(id)
+      local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) or false
+      out[#out + 1] = { id = id, title = info.title or (q and q.name) or ("Quest " .. id),
+        level = (info.level or 0) > 0 and info.level or ns.Questie.QuestLevel(id) or 0,
+        zone = zone, complete = complete, progress = progress(id, complete) }
+    end
+  end
+  return out
+end
+
+-- One trip for several quests: each quest's own stops keep their order (their
+-- `after` links) while the planner interleaves quests by travel time.
+-- Returns the journey (or nil) and the IDs with no known places.
+function QuestsPage.TripFor(questIDs, title, start, net)
+  local stops, missing = {}, {}
+  for _, id in ipairs(questIDs) do
+    local questStops = ns.Journey.QuestStops(id, start)
+    if #questStops == 0 then missing[#missing + 1] = id end
+    for _, stop in ipairs(questStops) do stops[#stops + 1] = stop end
+  end
+  if #stops == 0 then return nil, missing end
+  return ns.Journey.Plan(start, { title = title, stops = stops }, net), missing
+end
+
+local function questName(id)
+  local q = ns.Questie.Quest(id)
+  return q and q.name or (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)) or ("Quest " .. id)
+end
+
+local function plural(n, word)
+  return n .. " " .. word .. (n == 1 and "" or "s")
+end
+
+-- "Plan a trip for N quests" and "Hand in N completed quests" rows.
+local function tripRow(title, ids, start, net, tripTitle)
+  local journey, missing = QuestsPage.TripFor(ids, tripTitle, start, net)
+  local unplaced = {}
+  for _, id in ipairs(missing) do unplaced[id] = true end
+  local details = {}
+  for _, id in ipairs(ids) do
+    details[#details + 1] = unplaced[id]
+      and { text = questName(id) .. " (no known places)", color = { r = 1, g = 0.5, b = 0.25 } }
+      or { text = questName(id) }
+  end
+  local sub
+  if journey then
+    sub = string.format("%sOne trip|r  ·  %s  ·  %s", GREEN, ns.FormatDuration(journey.seconds),
+      plural(#journey.stops, "stop"))
+    if #missing > 0 then sub = sub .. string.format("  ·  %s%d without known places|r", RED, #missing) end
+  else
+    sub = RED .. "No known places for " .. (#ids == 1 and "this quest" or "these quests") .. "|r"
+  end
+  return { title = title, subtitle = sub, journey = journey, details = details }
+end
+
+-- A quest from your log: progress, and a trip for what is left of it (no
+-- pickup: it is already in your log).
+local function logRow(entry, start, net)
+  local parts = {}
+  if entry.zone then parts[#parts + 1] = entry.zone end
+  parts[#parts + 1] = entry.progress or (YELLOW .. "In progress|r")
+  local journey
+  if not ns.Questie.Available() then
+    parts[#parts + 1] = GREY .. "directions need QuestieDB|r"
+  elseif start then
+    local stops = ns.Journey.QuestStops(entry.id, start)
+    journey = #stops > 0 and ns.Journey.Plan(start, { title = entry.title, stops = stops }, net) or nil
+    if journey then
+      parts[#parts + 1] = ns.FormatDuration(journey.seconds)
+      if stops[#stops].action.kind ~= "turnin" then parts[#parts + 1] = "hand-in place unknown" end
+    else
+      parts[#parts + 1] = #stops > 0 and "no route found from here" or "no known places for it"
+    end
+  end
+  local details = {}
+  for _, o in ipairs(C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(entry.id) or {}) do
+    if o.text and o.text ~= "" then
+      details[#details + 1] = { text = o.text, color = o.finished and { r = 0.6, g = 0.6, b = 0.6 } or nil }
+    end
+  end
+  return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
+    subtitle = table.concat(parts, "  ·  "), journey = journey, details = details,
+    actions = ns.Questie.Available() and { pickAction(entry.id) } or nil }
+end
+
+-- Empty search: trip rows for picked and completed quests, then the log.
+local function logResults()
+  local log = QuestsPage.LogQuests()
+  local available = ns.Questie.Available()
+  local start = ns.Geo.PlayerNode()
+  local net = available and start and ns.Network.Build() or nil
+  local results = {}
+  if available and start then
+    local done = ns.Questie.PlayerQuestState()
+    local picked = QuestsPage.Picks(done)
+    if #picked > 0 then
+      local row = tripRow("Plan a trip for " .. plural(#picked, "quest"), picked, start, net,
+        "Trip for " .. plural(#picked, "quest"))
+      row.id = "picked"
+      row.actions = { { label = "Clear", run = QuestsPage.ClearPicks } }
+      results[#results + 1] = row
+    end
+    local complete = {}
+    for _, entry in ipairs(log) do
+      if entry.complete then complete[#complete + 1] = entry.id end
+    end
+    if #complete > 0 then
+      local row = tripRow("Hand in " .. plural(#complete, "completed quest"), complete, start, net, "Hand in quests")
+      row.id = "handin"
+      results[#results + 1] = row
+    end
+  end
+  for _, entry in ipairs(log) do results[#results + 1] = logRow(entry, start, net) end
+
+  if #log == 0 then
+    summary = nil
+  elseif not available then
+    local _, reason = ns.Questie.Available()
+    summary = string.format("Your quest log: %s. %s. Install QuestieDB for directions and to search quests.",
+      plural(#log, "quest"), reason or "QuestieDB is not available")
+  else
+    summary = string.format("Your quest log: %s. Click one for a trip, or Add several and plan one trip. "
+      .. "Type to search all quests.", plural(#log, "quest"))
+  end
+  return results, nil, net
 end
 
 ---------------------------------------------------------------- search
@@ -224,21 +422,28 @@ local function parse(text)
 end
 
 function QuestsPage.SummaryText(query)
-  if not ns.Questie.Available() then return unavailableText() end
-  if parse(query) == "" then return "Find a quest: whether you can take it, and where to go." end
+  local available = ns.Questie.Available()
+  if parse(query) == "" then
+    return summary or (available and "Find a quest: whether you can take it, and where to go." or unavailableText())
+  end
+  if not available then return unavailableText() end
   return summary or ""
 end
 
 function QuestsPage.EmptyText(query)
   local text = parse(query)
+  if text == "" then
+    return "Your quest log is empty." .. (ns.Questie.Available() and " Type a quest name to search." or "")
+  end
   if #text < MIN_LENGTH then return "Type a quest name (at least " .. MIN_LENGTH .. " letters)." end
   return string.format("No quest called \"%s\" in QuestieDB.", text)
 end
 
 function QuestsPage.Results(query)
   summary = nil
-  if not ns.Questie.Available() then return {}, unavailableText() end
   local text, linkedID, linkedName = parse(query)
+  if text == "" then return logResults() end
+  if not ns.Questie.Available() then return {}, unavailableText() end
   if not linkedID and #text < MIN_LENGTH then return {} end
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
