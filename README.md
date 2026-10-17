@@ -102,6 +102,7 @@ harvesting and the panel against a fake two-continent world.
 - **Quest helpers** on `ns.Questie`: `Quest(id)`, `AllQuests()`,
   `PlayerQuestState()`, `IsQuestAvailable(id)` (the Quest hubs rules) and
   `QuestGiver(id, here)`.
+- **Dungeons** for other pages: `ns.Dungeons.Catalogue()` and `ns.Dungeons.ForArea(areaID)`.
 
 ## WFProbe (dev tool)
 

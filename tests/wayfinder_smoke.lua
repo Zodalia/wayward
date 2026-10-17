@@ -723,6 +723,11 @@ check(ns.Questie.IsQuestAvailable(1) and not ns.Questie.IsQuestAvailable(2), "Is
 check(ns.Questie.Quest(14) and ns.Questie.Quest(14).nextQuestInChain == 13, "Quest(id) returns the quest row")
 local giverName = ns.Questie.QuestGiver(1, ns.Geo.PlayerNode())
 check(giverName == "Magistrate Solomon", "QuestGiver finds the nearest starter")
+local catalogue = ns.Dungeons.Catalogue()
+local someArea
+for areaID in pairs(catalogue[1] and catalogue[1].areaIDs or {}) do someArea = areaID break end
+check(someArea and ns.Dungeons.ForArea(someArea) and ns.Dungeons.ForArea(someArea).name == catalogue[1].name,
+  "Dungeons.ForArea finds a dungeon by area ID")
 
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then

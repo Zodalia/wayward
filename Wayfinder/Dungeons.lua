@@ -224,3 +224,17 @@ function Dungeons.Results()
   end
   return results, nil, net
 end
+
+-- For other pages: every known dungeon/raid as
+-- { name, areaIDs = set, raid, faction, entrances = {route nodes}, fromQuestie, levels = {{name, level}} }.
+function Dungeons.Catalogue()
+  return catalogue()
+end
+
+-- The dungeon an AreaID belongs to (e.g. where a boss spawns), or nil.
+function Dungeons.ForArea(areaID)
+  for _, entry in ipairs(catalogue()) do
+    if entry.areaIDs[areaID] then return entry end
+  end
+  return nil
+end
