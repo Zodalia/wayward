@@ -17,9 +17,9 @@ local LARGE_W, LARGE_H = 335, 337
 local SMALL_W, SMALL_H = 344, 161
 local GAP = 11
 -- Ink on parchment, darkest for titles.
-local TITLE_COLOR = { 0.24, 0.12, 0.02 }
-local TEXT_COLOR = { 0.30, 0.20, 0.10 }
-local DETAIL_COLOR = { 0.40, 0.30, 0.18 }
+local TITLE_COLOR = { 0.20, 0.10, 0.02 }
+local TEXT_COLOR = { 0.22, 0.14, 0.06 }
+local DETAIL_COLOR = { 0.28, 0.19, 0.09 }
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
 
@@ -27,16 +27,16 @@ local function hasAtlas(name)
   return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
 end
 
--- Fonts of the old quest log: Morpheus titles, Friz Quadrata body text, no
--- shadow (with one, everything on parchment looks bold). The template is the
--- fallback if the file can't be set. (The Adventure Guide's own fonts are
--- missing or broken in Forever: text with them showed nothing.)
-local TITLE_FONT = "Fonts\\MORPHEUS.TTF"
-local BODY_FONT = "Fonts\\FRIZQT__.TTF"
+-- Friz Quadrata in ink colours, no shadow or outline (with them, everything on
+-- parchment looks bold). Morpheus was tried for titles: in Forever it's all
+-- decorative small caps, hard to read. The template is the fallback if the
+-- file can't be set. (The Adventure Guide's own fonts are missing or broken
+-- in Forever: text with them showed nothing.)
+local FONT = "Fonts\\FRIZQT__.TTF"
 
-local function text(parent, template, file, size, c)
+local function text(parent, template, size, c)
   local fs = parent:CreateFontString(nil, "OVERLAY", template)
-  local ok, set = pcall(fs.SetFont, fs, file, size, "")
+  local ok, set = pcall(fs.SetFont, fs, FONT, size, "")
   if not ok or set == false then fs:SetFontObject(template) end
   fs:SetShadowOffset(0, 0)
   fs:SetTextColor(c[1], c[2], c[3])
@@ -127,21 +127,21 @@ local function largeCard(parent)
 
   -- Title and subtitle centred under the icon; the details below read as a
   -- left-aligned paragraph.
-  card.title = text(card, "GameFontNormalHuge", TITLE_FONT, 22, TITLE_COLOR)
+  card.title = text(card, "GameFontNormalHuge", 18, TITLE_COLOR)
   card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -16)
-  card.title:SetWidth(280)
+  card.title:SetWidth(264)
   card.title:SetJustifyH("CENTER")
   if card.title.SetMaxLines then card.title:SetMaxLines(2) end
 
-  card.text = text(card, "GameFontHighlight", BODY_FONT, 12, TEXT_COLOR)
+  card.text = text(card, "GameFontHighlight", 12, TEXT_COLOR)
   card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -6)
   card.text:SetWidth(264)
   card.text:SetJustifyH("CENTER")
   card.text:SetSpacing(2)
 
-  card.detail = text(card, "GameFontHighlightSmall", BODY_FONT, 11, DETAIL_COLOR)
+  card.detail = text(card, "GameFontHighlightSmall", 11, DETAIL_COLOR)
   card.detail:SetPoint("TOP", card.text, "BOTTOM", 0, -12)
-  card.detail:SetWidth(264)
+  card.detail:SetWidth(250)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(3)
   if card.detail.SetMaxLines then card.detail:SetMaxLines(5) end
@@ -168,7 +168,7 @@ local function largeCard(parent)
   card.next:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
   card.next:SetScript("OnClick", function() Cards.Step(-1) end)
 
-  card.position = text(card, "GameFontHighlightSmall", BODY_FONT, 10, DETAIL_COLOR)
+  card.position = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
   card.position:SetPoint("BOTTOM", 0, 18)
   hover(card)
   return card
@@ -181,13 +181,13 @@ local function smallCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
-  card.title = text(card, "GameFontNormalLarge", TITLE_FONT, 18, TITLE_COLOR)
+  card.title = text(card, "GameFontNormalLarge", 14, TITLE_COLOR)
   card.title:SetPoint("TOPLEFT", 72, -16)
   card.title:SetWidth(256)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
 
-  card.text = text(card, "GameFontHighlightSmall", BODY_FONT, 11, TEXT_COLOR)
+  card.text = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
   card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -6)
   card.text:SetWidth(256)
   card.text:SetJustifyH("LEFT")
@@ -245,8 +245,12 @@ local function fill(card, r, large)
     card.icon:Show()
     card.sheetIcon:Hide()
   end
-  card.title:SetText(r.title)
-  card.text:SetText(plain(r.subtitle))
+  -- "Run The Stockade  ·  level 23": the level reads better in the subtitle.
+  local title, level = (r.title or ""):match("^(.-)%s+·%s+(level %d+)$")
+  card.title:SetText(title or r.title)
+  local subtitle = plain(r.subtitle)
+  if level then subtitle = level:gsub("^l", "L") .. "  ·  " .. subtitle end
+  card.text:SetText(subtitle)
   if large then
     local lines = {}
     for i = 2, math.min(#(r.details or {}), 5) do lines[#lines + 1] = plain(r.details[i].text) end

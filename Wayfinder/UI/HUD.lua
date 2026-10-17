@@ -24,7 +24,7 @@ local STOP_ICONS = {
 local MODE_ICONS = {
   fly = "Interface\\Icons\\Ability_Hunter_EagleEye",
   transport = "Interface\\Icons\\INV_Misc_Map_01",
-  walk = "Interface\\Icons\\INV_Misc_Map_01",
+  walk = "Interface\\Icons\\Ability_Rogue_Sprint",
 }
 local DISTANCE_ICON = "|TInterface\\Icons\\Ability_Tracking:13:13:0:0:64:64:5:59:5:59|t"
 local TIME_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:13:13:0:0:64:64:5:59:5:59|t"

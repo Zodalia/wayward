@@ -2080,6 +2080,9 @@ do
   IsShiftKeyDown = nil
   ns.Nav.Stop()
 
+  ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City", route = { steps = {} } } }, "", true)
+  check(ns.Cards.Drawn()[1] == "Run The Stockade|Go", "a dungeon's level moves from the card title to the subtitle")
+
   -- Other pages keep rows at the normal width.
   ns.Panel.SelectPage("trainers", 1)
   check(#ns.Panel.VisibleResults() > 0, "the Trainers page still shows rows")
