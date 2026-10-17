@@ -10,6 +10,7 @@
 
 Core.lua
 Geo.lua
+Data\Dungeons.lua
 Data\Transports.lua
 Data\Seed.lua
 Harvest.lua
@@ -21,6 +22,7 @@ Trainers.lua
 QuestHubs.lua
 Navigator.lua
 Docks.lua
+Dungeons.lua
 UI\CopyBox.lua
 UI\HUD.lua
 UI\Panel.lua

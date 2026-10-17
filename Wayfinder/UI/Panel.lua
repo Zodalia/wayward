@@ -9,7 +9,7 @@ ns.Panel = Panel
 local CATEGORIES = {
   { label = "Class trainer", provider = ns.Trainers },
   { label = "Quest hubs", provider = ns.QuestHubs },
-  { label = "Dungeons" },
+  { label = "Dungeons", provider = ns.Dungeons },
   { label = "Vendors" },
 }
 local MAX_ROWS = 7
