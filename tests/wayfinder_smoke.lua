@@ -894,7 +894,7 @@ do
   ITEMS[9002] = { name = "Murloc Fin", itemLevel = 15, npcDrops = { 9101, 9102, 9103 } }
   ITEMS[9003] = { name = "Shiny Pearl", objectDrops = { 9200 }, itemDrops = { 9007 } }
   ITEMS[9007] = { name = "Big-mouth Clam", npcDrops = { 9101 } }
-  ITEMS[9004] = { name = "Goulash Ring", questRewards = { 1, 4, 10, 2, 3, 9 } }
+  ITEMS[9004] = { name = "Goulash Ring", questRewards = { 1, 4, 10, 2, 3, 9, 13 } }
   ITEMS[9005] = { name = "Fine Longbow", vendors = { 7004, 7001 }, npcDrops = { 9105 } }
   QUESTS[10].finishedBy = { { 345 } }
   LibQuestieDB.Meta.QuestMeta.questKeys.finishedBy = 3
@@ -961,16 +961,21 @@ do
   check(list[1] and list[1].title == "Reward from Redridge Goulash" and list[1].route
     and detailText(list[1]):find("take it now from Magistrate Solomon", 1, true),
     "available quest first, routed to its giver: " .. all)
-  local inLog, chain, high
+  local inLog, chain, closed, high
   for _, r in ipairs(list) do
     if r.title:find("Already in log", 1, true) then inLog = r end
-    if r.title:find("Needs prequest", 1, true) then chain = r end
+    if r.title:find("Chain part 2", 1, true) then chain = r end
+    if r.title:find("Needs prequest", 1, true) then closed = r end
     if r.title:find("Too high", 1, true) then high = r end
   end
   check(inLog and inLog.title:find("in your log") and inLog.route and inLog.goal.label == "Foreman Oslow",
     "quest in your log: says so, routes to where you hand it in")
-  check(chain and chain.title:find("needs earlier quests") and chain.route and chain.goal.label == "Magistrate Solomon",
-    "quest needing earlier quests: says so, routes to its giver anyway")
+  check(chain and chain.title:find("needs earlier quests") and chain.route
+    and chain.goal.label == "Stormwind Questgiver"
+    and detailText(chain):find("Start the chain: pick up Chain part 1 from Stormwind Questgiver", 1, true),
+    "quest needing earlier quests: routes to the start of its chain")
+  check(closed and not closed.route and closed.subtitle == "Needs earlier quests you can't take yet",
+    "no open chain step: says so, no route")
   check(high and high.title:find("from level 28"), "quest above your level: says from which level")
   check(list[#list].title:find("Already done  ·  done", 1, true) and not list[#list].route, "done quest last, no route")
   check(not all:find("Mages only"), "another class's quest is hidden")

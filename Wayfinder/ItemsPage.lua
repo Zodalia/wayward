@@ -605,14 +605,29 @@ local function questRow(q, status, ctx)
     row.title, row.tier = row.title .. "  ·  level " .. level, LATER
     line(string.format("Quest level %d: too hard for now. It starts at %s.", level, who), ORANGE)
   else
-    -- TODO(quest chains): route to the first quest of the chain you still
-    -- need once the Quests page's chain helper is on ns.Questie; until then
-    -- directions go to this quest's own giver.
+    -- Directions go to the first quest of the chain you can act on now.
     row.title, row.tier = row.title .. "  ·  needs earlier quests", LATER
-    line("Needs earlier quests first. Directions go to this quest's giver, " .. who .. ".", ORANGE)
+    local stepID, stepState = ns.Questie.ChainStart(q.id)
+    local step = stepID and ns.Questie.Quest(stepID)
+    local stepName = step and step.name or (stepID and ("Quest " .. stepID))
+    if stepState == "inLog" then
+      local finisher
+      finisher, node = questFinisher(stepID, ctx)
+      line(string.format("Needs earlier quests first. Finish %s: hand it in to %s.", stepName,
+        finisher or "its quest giver"), ORANGE)
+    elseif stepID then
+      local giver
+      giver, node = ns.Questie.QuestGiver(stepID, ctx.start)
+      line(string.format("Needs earlier quests first. Start the chain: pick up %s from %s.", stepName,
+        giver or "its quest giver"), ORANGE)
+    else
+      node = nil
+      row.subtitle = "Needs earlier quests you can't take yet"
+      line("Needs earlier quests that you can't take yet.", ORANGE)
+    end
   end
   routeTo(row, node, ctx)
-  if not node then row.subtitle = "Quest giver location not known" end
+  if not node then row.subtitle = row.subtitle or "Quest giver location not known" end
   return row
 end
 
