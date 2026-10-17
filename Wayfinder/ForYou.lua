@@ -11,6 +11,12 @@ local _, ns = ...
 -- it, options are ranked by quests per hour weighted by level fit, and the
 -- summary line says so. Without QuestieDB there are no hubs or dungeon quests,
 -- so dungeons are ranked by level fit and travel time, as on the Find page.
+--
+-- Quests already in your log count too, at their full XP; only the time left
+-- for them is counted. Ones ready to hand in are trips of their own ("Hand in
+-- 3 quests in Lakeshire") or ride along with the quest hub where you hand them
+-- in; unfinished ones close together are one whole-quest trip ("Finish 2
+-- quests near Lakeshire"); a dungeon's quests in your log count toward it.
 
 local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false }
 ns.ForYou = ForYou
@@ -26,6 +32,12 @@ local FOOD_FROM_LEVEL = 6       -- below this, eating and drinking between fight
 local FLIGHT_NEAR_SECONDS = 180 -- an undiscovered flight path this close (by route) is worth the detour
 local COMBINE_SLACK = 30        -- seconds a combined journey may add over the two trips apart
 local MAX_PICKUPS = 4           -- dungeon quest givers visited on the way to the entrance
+local HANDIN_SECONDS = 30       -- handing in one quest, on top of the trip
+local MIN_SHARE_LEFT = 0.25     -- an unfinished quest takes at least this share of SECONDS_PER_QUEST
+local FINISH_RADIUS = 600       -- yards between objective areas done in one "Finish" trip
+local MAX_FINISH = 3            -- log quests per "Finish" trip (up to two stops each)
+local FINISH_TRIPS = 3          -- nearest groups of unfinished log quests offered
+local HANDIN_AT_HUB = 350       -- yards: hand-ins this close to a hub's quest giver join the hub
 
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
@@ -87,6 +99,28 @@ local function copyStop(stop)
   local c = {}
   for k, v in pairs(stop) do c[k] = v end
   return c
+end
+
+-- Copies of a list of stops, with `after` pointing at the copies.
+local function copyStops(stops, into)
+  into = into or {}
+  local copies = {}
+  for _, s in ipairs(stops) do
+    copies[s] = copyStop(s)
+    into[#into + 1] = copies[s]
+  end
+  for _, s in ipairs(stops) do
+    if s.after then
+      local after = {}
+      for _, before in ipairs(s.after) do after[#after + 1] = copies[before] or before end
+      copies[s].after = after
+    end
+  end
+  return into
+end
+
+local function zoneName(node)
+  return ns.MapName((ns.Geo.ZonePoint(node)))
 end
 
 ---------------------------------------------------------------- quest XP
@@ -152,16 +186,18 @@ local function questValue(q, ctx)
   return xp * factor, estimated
 end
 
--- value: XP (or quests) for the option; rate: per minute, trip included.
+-- value: XP (or quests) for the option; rate: per minute, trip included. A
+-- quest takes SECONDS_PER_QUEST unless it says otherwise (log quests: q.seconds).
 local function score(option, ctx)
   option.value, option.estimated = 0, 0
+  option.seconds = option.trip
   for _, q in ipairs(option.quests) do
     local v, estimated = questValue(q, ctx)
     q.value = v
     option.value = option.value + v
+    option.seconds = option.seconds + (q.seconds or SECONDS_PER_QUEST)
     if estimated then option.estimated = option.estimated + 1 end
   end
-  option.seconds = option.trip + #option.quests * SECONDS_PER_QUEST
   option.rate = option.value / math.max(option.seconds / 60, 1)
 end
 
@@ -331,6 +367,178 @@ local function flightNeed(ctx, start, net)
   }
 end
 
+---------------------------------------------------------------- quest log
+
+-- Share of a quest still to do, from its objectives ("3/8 Murloc Forager
+-- slain"): 1 without objective data, never under MIN_SHARE_LEFT (finding the
+-- last mobs, walking back out).
+local function shareLeft(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  if type(objectives) ~= "table" or #objectives == 0 then return 1 end
+  local done = 0
+  for _, o in ipairs(objectives) do
+    local have, need = tonumber(o.numFulfilled), tonumber(o.numRequired)
+    if not (need and need > 0) and type(o.text) == "string" then
+      local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
+      have, need = tonumber(a), tonumber(b)
+    end
+    if o.finished then
+      done = done + 1
+    elseif need and need > 0 then
+      done = done + math.min(have or 0, need) / need
+    end
+  end
+  return math.max(MIN_SHARE_LEFT, 1 - done / #objectives)
+end
+
+-- Quests in your log: { id, row (QuestieDB), name, level, complete, left }.
+local function readLog()
+  local out = {}
+  if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return out end
+  for i = 1, C_QuestLog.GetNumQuestLogEntries() or 0 do
+    local info = C_QuestLog.GetInfo(i)
+    local id = info and not info.isHeader and not info.isHidden and info.questID
+    if id then
+      local row = ns.Questie.Quest(id)
+      local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) and true or false
+      out[#out + 1] = { id = id, row = row, name = row and row.name or info.title,
+        level = ns.Questie.QuestLevel(id) or info.level, complete = complete,
+        left = complete and 0 or shareLeft(id) }
+    end
+  end
+  return out
+end
+
+-- A log quest as an option's quest: full XP, only the time left counted.
+local function logQuest(e)
+  return { id = e.id, name = e.name, level = e.level, inLog = true, handin = e.complete, left = e.left,
+    seconds = e.complete and HANDIN_SECONDS or SECONDS_PER_QUEST * e.left }
+end
+
+-- Quests done inside a dungeon count toward its option instead. Dungeons.lua
+-- caches the dungeon finder list on first use, so not before the API exists.
+local function dungeonQuest(row)
+  if not row or type(GetLFGDungeonInfo) ~= "function" then return false end
+  local area = tonumber(row.zoneOrSort)
+  return area ~= nil and area > 0 and ns.Dungeons.ForArea(area) ~= nil
+end
+
+-- Quests ready to hand in, grouped by where you hand them in: their
+-- finishers clustered like quest hubs, then merged by place.
+local function handinOptions(ctx, start, net)
+  local givers, order = {}, {}
+  for _, e in ipairs(ctx.log) do
+    if e.complete then
+      local name, node, distance = ns.Questie.QuestFinisher(e.id, start)
+      if node then
+        local key = string.format("%s@%d:%.4f:%.4f", name or "?", node.mapID, node.x, node.y)
+        local g = givers[key]
+        if not g then
+          g = { name = name, node = node, distance = distance, quests = {} }
+          givers[key] = g
+          order[#order + 1] = g
+        end
+        g.quests[#g.quests + 1] = e
+      else
+        ctx.unplaced = ctx.unplaced + 1
+      end
+    end
+  end
+  if #order == 0 then return {} end
+  table.sort(order, function(a, b) return a.distance < b.distance end)
+
+  local named, byPlace = {}, {}
+  for _, hub in ipairs(ns.Questie.Cluster(order, math.huge)) do
+    local place = ns.Places.NameFor(hub.anchor.node)
+    local key = place and (place .. "@" .. hub.anchor.node.mapID)
+    if key and byPlace[key] then
+      for _, g in ipairs(hub.givers) do table.insert(byPlace[key].givers, g) end
+    else
+      hub.place = place
+      named[#named + 1] = hub
+      if key then byPlace[key] = hub end
+    end
+  end
+
+  local out = {}
+  for _, hub in ipairs(named) do
+    local quests, stops = {}, {}
+    for _, g in ipairs(hub.givers) do
+      for _, e in ipairs(g.quests) do
+        local q = logQuest(e)
+        q.giver = g.name
+        quests[#quests + 1] = q
+        stops[#stops + 1] = { node = g.node, group = "turnin", action = { kind = "turnin", questID = e.id },
+          text = string.format("Hand in %s to %s", e.name or ("quest " .. e.id), g.name or "the quest giver") }
+      end
+    end
+    local goal = hub.anchor.node
+    local route = ns.Router.Plan(start, goal, net)
+    if route then
+      local where = hub.place and ("in " .. hub.place) or ("to " .. (hub.anchor.name or "the quest giver"))
+      out[#out + 1] = {
+        kind = "handin", place = hub.place,
+        title = capitalize(string.format("hand in %s %s", plural(#quests, "quest"), where)),
+        zone = zoneName(goal), goal = goal, route = route, trip = route.seconds,
+        quests = quests, stops = stops, handinStops = stops,
+      }
+    end
+  end
+  return out
+end
+
+-- Unfinished log quests close together as one whole-quest trip ("Finish 2
+-- quests near Lakeshire"), nearest first. Dungeon quests count toward their
+-- dungeon; quests without a known objective area are left out.
+local function finishOptions(ctx, start, net)
+  local open = {}
+  for _, e in ipairs(ctx.log) do
+    if not e.complete and not dungeonQuest(e.row) then
+      local node = ns.Questie.ObjectiveNode(e.id, start)
+      if node then
+        open[#open + 1] = { entry = e, node = node, distance = ns.Geo.Distance(start, node) }
+      else
+        ctx.unplaced = ctx.unplaced + 1
+      end
+    end
+  end
+  table.sort(open, function(a, b) return a.distance < b.distance end)
+
+  local groups = {}
+  for _, o in ipairs(open) do
+    local joined
+    for _, g in ipairs(groups) do
+      if #g < MAX_FINISH and ns.Geo.Distance(g[1].node, o.node) <= FINISH_RADIUS then
+        g[#g + 1] = o
+        joined = true
+        break
+      end
+    end
+    if not joined and #groups < FINISH_TRIPS then groups[#groups + 1] = { o } end
+  end
+
+  local out = {}
+  for _, g in ipairs(groups) do
+    local anchor = g[1].node
+    local route = ns.Router.Plan(start, anchor, net)
+    if route then
+      local quests, stops = {}, {}
+      for _, o in ipairs(g) do
+        quests[#quests + 1] = logQuest(o.entry)
+        for _, s in ipairs(ns.Journey.QuestStops(o.entry.id, start)) do stops[#stops + 1] = s end
+      end
+      local place = ns.Places.NameFor(anchor)
+      local where = place and ("near " .. place) or ("in " .. zoneName(anchor))
+      out[#out + 1] = {
+        kind = "finish", title = capitalize(string.format("finish %s %s", plural(#quests, "quest"), where)),
+        zone = zoneName(anchor), goal = anchor, route = route, trip = route.seconds,
+        quests = quests, stops = stops,
+      }
+    end
+  end
+  return out
+end
+
 ---------------------------------------------------------------- XP options
 
 local function hubOptions()
@@ -343,7 +551,7 @@ local function hubOptions()
       local names = {}
       for _, q in ipairs(quests) do names[#names + 1] = q.name or ("quest " .. q.id) end
       out[#out + 1] = {
-        kind = "hub", title = capitalize(doing), zone = ns.MapName(r.goal.mapID),
+        kind = "hub", title = capitalize(doing), zone = ns.MapName(r.goal.mapID), place = r.place, where = where,
         goal = r.goal, route = r.route, trip = r.route.seconds, quests = quests,
         stops = {},
         finish = { node = r.goal, phrase = doing, text = "Pick up quests here: " .. table.concat(names, ", ") },
@@ -353,12 +561,42 @@ local function hubOptions()
   return out
 end
 
+-- A hub where you also hand quests in takes them along ("Pick up 3 quests and
+-- hand in 2 in Lakeshire"), handing in first. Returns the hand-ins left alone.
+local function mergeHandins(hubs, handins)
+  local alone = {}
+  for _, h in ipairs(handins) do
+    local target
+    for _, hub in ipairs(hubs) do
+      local d = ns.Geo.Distance(h.goal, hub.goal)
+      if not hub.handins and ((h.place and h.place == hub.place and d < math.huge) or d <= HANDIN_AT_HUB) then
+        target = hub
+        break
+      end
+    end
+    if target then
+      target.title = capitalize(string.format("pick up %s and hand in %d %s", plural(#target.quests, "quest"),
+        #h.quests, target.where))
+      target.handins = #h.quests
+      for _, q in ipairs(h.quests) do target.quests[#target.quests + 1] = q end
+      target.stops, target.handinStops = h.stops, h.stops
+    else
+      alone[#alone + 1] = h
+    end
+  end
+  return alone
+end
+
 -- Dungeons with their quests (available and in your log) as XP options, and
--- the rest in Dungeons' own order (level fit and travel time).
-local function dungeonOptions()
+-- the rest in Dungeons' own order (level fit and travel time). Log quests
+-- count at full XP with the time left for them; ones ready to hand in are
+-- hand-in options instead.
+local function dungeonOptions(ctx)
   -- Dungeons.lua caches the dungeon finder list on first use; don't trigger
   -- that before the API exists.
   if type(GetLFGDungeonInfo) ~= "function" then return {}, {} end
+  local logged = {}
+  for _, e in ipairs(ctx.log) do logged[e.id] = e end
   local withQuests, plain = {}, {}
   for _, r in ipairs(run(ns.Dungeons.Results)) do
     local entry = r.dungeon
@@ -370,10 +608,16 @@ local function dungeonOptions()
       end
     end
     for _, q in ipairs(r.quests and r.quests.available or {}) do add(available, q) end
-    for _, q in ipairs(r.quests and r.quests.inLog or {}) do add(inLog, q) end
+    for _, q in ipairs(r.quests and r.quests.inLog or {}) do
+      if not (logged[q.id] and logged[q.id].complete) then add(inLog, q) end
+    end
     local quests = {}
     for _, q in ipairs(available) do quests[#quests + 1] = q end
-    for _, q in ipairs(inLog) do quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, inLog = true } end
+    for _, q in ipairs(inLog) do
+      local e = logged[q.id]
+      quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, inLog = true, left = e and e.left,
+        seconds = e and SECONDS_PER_QUEST * e.left }
+    end
     local name = entry and entry.name or r.title
     local option = {
       kind = "dungeon", name = name, raid = entry and entry.raid, result = r,
@@ -416,6 +660,18 @@ local function dungeonJourney(option, ctx, start, net)
   score(option, ctx)
 end
 
+-- Hand-ins, unfinished log quests, and a hub with hand-ins: one journey over
+-- their stops, ranked again with its real trip time.
+local function questJourney(option, ctx, start, net)
+  local def = { title = option.title, stops = copyStops(option.stops),
+    finish = option.finish and copyStop(option.finish) }
+  local journey = ns.Journey.Plan(start, def, net)
+  if not journey then return end
+  option.journey = journey
+  option.trip = journey.seconds
+  score(option, ctx)
+end
+
 -- "Pick up 2 quests, then run The Deadmines"; pickups in a row are counted.
 local function journeyTitle(stops)
   local parts, pickups = {}, 0
@@ -437,15 +693,27 @@ end
 
 -- A due need and the best option in one journey, when the need is on the way:
 -- the journey takes no longer than the two trips apart. The option's quests or
--- entrance come last, so you train or shop first, then quest.
+-- entrance come last, so you train or shop first, then quest. Hand-ins and
+-- unfinished log quests have no fixed end: the need goes wherever it is quickest.
 local function combine(need, option, start, net)
-  if not (need.stop and option.finish) then return nil end
-  local def = { stops = { copyStop(need.stop) }, finish = copyStop(option.finish) }
-  for _, s in ipairs(option.stops) do def.stops[#def.stops + 1] = copyStop(s) end
+  if not (need.stop and (option.finish or #option.stops > 0)) then return nil end
+  local needStop = copyStop(need.stop)
+  local def = { stops = copyStops(option.stops, { needStop }), finish = option.finish and copyStop(option.finish) }
   local journey = ns.Journey.Plan(start, def, net)
   if not journey or #journey.skipped > 0 then return nil end
   if journey.seconds > seconds(need.route) + option.trip + COMBINE_SLACK then return nil end
-  journey.title = journeyTitle(journey.stops)
+  if option.kind == "dungeon" then
+    journey.title = journeyTitle(journey.stops)
+  else
+    local doing = option.title:sub(1, 1):lower() .. option.title:sub(2)
+    if journey.stops[1] == needStop then
+      journey.title = capitalize(needStop.phrase .. ", then " .. doing)
+    elseif journey.stops[#journey.stops] == needStop then
+      journey.title = string.format("%s, then %s", option.title, needStop.phrase)
+    else
+      journey.title = string.format("%s, %s on the way", option.title, needStop.phrase)
+    end
+  end
   def.title = journey.title
   return journey
 end
@@ -469,10 +737,44 @@ local function needRow(need)
   }
 end
 
+local function logText(q)
+  if q.handin then return "  (ready to hand in)" end
+  local done = q.left and math.floor((1 - q.left) * 100 + 0.5) or 0
+  if done > 0 then return string.format("  (in your log, ~%d%% done)", done) end
+  return "  (in your log)"
+end
+
+-- New quests, log quests to finish (and their minutes left), and hand-ins.
+local function questCounts(option)
+  local fresh, logged, handins, left = 0, 0, 0, 0
+  for _, q in ipairs(option.quests) do
+    if q.handin then
+      handins = handins + 1
+    elseif q.inLog then
+      logged, left = logged + 1, left + (q.seconds or SECONDS_PER_QUEST)
+    else
+      fresh = fresh + 1
+    end
+  end
+  return fresh, logged, handins, left
+end
+
+-- "trip ~4 min + 3 x 5 min per quest + ~4 min left on 2 in your log + 2 x 30 s per hand-in"
+local function timeText(option)
+  local fresh, logged, handins, left = questCounts(option)
+  local parts = { "trip " .. ns.FormatDuration(option.trip) }
+  if fresh > 0 then parts[#parts + 1] = string.format("%d x %d min per quest", fresh, SECONDS_PER_QUEST / 60) end
+  if logged > 0 then
+    parts[#parts + 1] = string.format("%s left on %d in your log", ns.FormatDuration(left), logged)
+  end
+  if handins > 0 then parts[#parts + 1] = string.format("%d x %d s per hand-in", handins, HANDIN_SECONDS) end
+  return table.concat(parts, " + ")
+end
+
 local function questLines(details, option, ctx)
   for _, q in ipairs(option.quests) do
     local value = ctx.xpMode and string.format("  -  %s XP", formatNumber(q.value)) or ""
-    local who = q.inLog and "  (in your log)" or (q.giver and ("  (" .. q.giver .. ")") or "")
+    local who = q.inLog and logText(q) or (q.giver and ("  (" .. q.giver .. ")") or "")
     details[#details + 1] = {
       text = string.format("[%d] %s%s%s", q.level or 0, q.name or ("Quest " .. q.id), value, who),
       color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level),
@@ -480,15 +782,38 @@ local function questLines(details, option, ctx)
   end
 end
 
+-- Hand in only the quests that are ready, leaving the hub's new quests.
+local function handinOnly(option)
+  return { label = "Hand in only", run = function()
+    local start = ns.Geo.PlayerNode()
+    local title = string.format("Hand in %s", plural(#option.handinStops, "quest"))
+    local journey = start and ns.Journey.Plan(start, { title = title, stops = copyStops(option.handinStops) })
+    if not journey then return end
+    ns.Nav.StartJourney(journey)
+    if ns.Panel.IsShown() then ns.Panel.Toggle() end
+  end }
+end
+
 local function optionRow(option, rank, total, ctx)
   local count = #option.quests
+  local fresh, logged, handins = questCounts(option)
   local amount = ctx.xpMode and (formatNumber(option.value) .. " XP") or plural(count, "quest")
   local details = { {
-    text = string.format("#%d of %d by %s: ~%s in %s (trip %s + %d x %d min per quest).", rank, total,
+    text = string.format("#%d of %d by %s: ~%s in %s (%s).", rank, total,
       ctx.xpMode and "XP per minute" or "quests per hour", amount, ns.FormatDuration(option.seconds),
-      ns.FormatDuration(option.trip), count, SECONDS_PER_QUEST / 60),
+      timeText(option)),
     color = GOLD,
   } }
+  if logged + handins > 0 then
+    local how = {}
+    if handins > 0 then how[#how + 1] = string.format("handing one in takes ~%d s", HANDIN_SECONDS) end
+    if logged > 0 then
+      how[#how + 1] = string.format("unfinished ones take %d min times the share of objectives left",
+        SECONDS_PER_QUEST / 60)
+    end
+    details[#details + 1] = { text = "Quests in your log count at full XP; " .. table.concat(how, ", ") .. ".",
+      color = GREY }
+  end
   if option.estimated > 0 then
     details[#details + 1] = { text = string.format("XP estimated for %s QuestieDB has no XP for.",
       plural(option.estimated, "quest")), color = GREY }
@@ -506,6 +831,12 @@ local function optionRow(option, rank, total, ctx)
   if option.kind == "dungeon" then
     if #option.inLog > 0 then why[1] = why[1] .. string.format(" (%d in your log)", #option.inLog) end
     why[#why + 1] = option.raid and "raid" or "group"
+  elseif option.kind == "handin" then
+    why[1] = plural(handins, "quest") .. " ready"
+  elseif option.kind == "finish" then
+    why[1] = plural(logged, "quest") .. " in your log"
+  elseif handins > 0 then
+    why[1] = string.format("%s + %d to hand in", plural(fresh, "quest"), handins)
   end
   why[#why + 1] = rateText(option, ctx)
 
@@ -521,6 +852,7 @@ local function optionRow(option, rank, total, ctx)
     option.journey.title = row.title
     option.journey.def.title = row.title
   end
+  if option.kind == "hub" and option.handinStops then row.actions = { handinOnly(option) } end
   return row
 end
 
@@ -569,6 +901,20 @@ local function summaryFor(ctx, needs)
   elseif not ctx.db then
     parts[#parts + 1] = "No quest XP in your QuestieDB: ranked by quests per hour, weighted by level fit."
   end
+  local ready, unfinished = 0, 0
+  for _, e in ipairs(ctx.log) do
+    if e.complete then ready = ready + 1 else unfinished = unfinished + 1 end
+  end
+  if ready + unfinished > 0 then
+    local counted = {}
+    if ready > 0 then counted[#counted + 1] = string.format("%d ready to hand in", ready) end
+    if unfinished > 0 then counted[#counted + 1] = string.format("%d to finish (timed by objectives left)", unfinished) end
+    parts[#parts + 1] = string.format("Quest log counted at full XP: %s.", table.concat(counted, ", "))
+    if ctx.unplaced > 0 then
+      parts[#parts + 1] = string.format("%s in your log can't be placed on the map%s.", plural(ctx.unplaced, "quest"),
+        ctx.questie and "" or " without QuestieDB")
+    end
+  end
   for _, note in ipairs(ctx.notes) do parts[#parts + 1] = note end
   return table.concat(parts, " ")
 end
@@ -583,7 +929,8 @@ local function build()
   local level = UnitLevel("player")
   local db = xpTable()
   local ctx = { level = level, db = db, xpMode = db ~= nil and level < MAX_LEVEL,
-    questie = ns.Questie.Available() and true or false, notes = {} }
+    questie = ns.Questie.Available() and true or false, notes = {}, unplaced = 0 }
+  ctx.log = try(readLog) or {}
 
   local needs = {}
   local function addNeed(n) if n then needs[#needs + 1] = n end end
@@ -593,10 +940,14 @@ local function build()
   table.sort(needs, function(a, b) return PRIORITY[a.kind] < PRIORITY[b.kind] end)
   while #needs > MAX_RESULTS - MIN_XP_ROWS do table.remove(needs) end
 
-  -- Options by XP per minute; dungeon journeys (with pickups) are planned only
-  -- for the ones listed, then those are ranked again with the real trip time.
+  -- Options by XP per minute; journeys (dungeon pickups, log quests) are
+  -- planned only for the ones listed, then those are ranked again with the
+  -- real trip time.
   local options = try(hubOptions) or {}
-  local dungeons, plain = try(dungeonOptions)
+  local handins = try(handinOptions, ctx, start, net) or {}
+  for _, option in ipairs(mergeHandins(options, handins)) do options[#options + 1] = option end
+  for _, option in ipairs(try(finishOptions, ctx, start, net) or {}) do options[#options + 1] = option end
+  local dungeons, plain = try(dungeonOptions, ctx)
   for _, option in ipairs(dungeons or {}) do options[#options + 1] = option end
   for _, option in ipairs(options) do score(option, ctx) end
   local function byRate(a, b)
@@ -608,7 +959,11 @@ local function build()
   local listed = {}
   for i = 1, math.min(#options, MAX_RESULTS - #needs) do listed[i] = options[i] end
   for _, option in ipairs(listed) do
-    if option.kind == "dungeon" then try(dungeonJourney, option, ctx, start, net) end
+    if option.kind == "dungeon" then
+      try(dungeonJourney, option, ctx, start, net)
+    elseif #option.stops > 0 then
+      try(questJourney, option, ctx, start, net)
+    end
   end
   table.sort(listed, byRate)
 
