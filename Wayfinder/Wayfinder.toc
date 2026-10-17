@@ -11,6 +11,7 @@
 Core.lua
 Geo.lua
 Data\Transports.lua
+Data\VendorGoods.lua
 Data\Seed.lua
 Harvest.lua
 Network.lua
@@ -21,6 +22,7 @@ Trainers.lua
 QuestHubs.lua
 Navigator.lua
 Docks.lua
+Vendors.lua
 UI\CopyBox.lua
 UI\HUD.lua
 UI\Panel.lua

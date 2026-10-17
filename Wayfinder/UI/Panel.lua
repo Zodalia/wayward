@@ -10,7 +10,7 @@ local CATEGORIES = {
   { label = "Class trainer", provider = ns.Trainers },
   { label = "Quest hubs", provider = ns.QuestHubs },
   { label = "Dungeons" },
-  { label = "Vendors" },
+  { label = "Vendors", provider = ns.Vendors },
 }
 local MAX_ROWS = 7
 local ROW_HEIGHT = 42
