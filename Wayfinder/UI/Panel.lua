@@ -634,6 +634,8 @@ function Panel.SelectPage(id, category)
           query = ""
           side.search:SetText("")
         end
+        -- The side panel and a card's breakdown dock in the same place.
+        ns.Cards.HideBreakdown()
         side:Show()
       end
     end

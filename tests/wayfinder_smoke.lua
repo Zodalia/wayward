@@ -1667,14 +1667,15 @@ do
   failing = { ButtonFrameTemplate = true, SearchBoxTemplate = true, PanelTopTabButtonTemplate = true }
   unknown = { TooltipBackdropTemplate = true }
   check(openAll(freshUI()), "windows open when the templates fail")
-  -- Windows: the main window, its side panel and the copy box; plus the HUD and overview boxes.
-  check(count(asked, "ButtonFrameTemplate") == 3 and count(asked, "BackdropTemplate") == 5
+  -- Windows: the main window, its side panel, the card breakdown and the copy box; plus the HUD and
+  -- overview boxes.
+  check(count(asked, "ButtonFrameTemplate") == 4 and count(asked, "BackdropTemplate") == 6
     and count(asked, "TooltipBackdropTemplate") == 0 and count(asked, "InputBoxTemplate") == 1,
     "a failing or unknown template falls back to the old look")
   failing, unknown = {}, {}
   local ui = freshUI()
   check(openAll(ui), "windows open with the templates")
-  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 3
+  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 4
     and ui.Panel.SelectedTab() == "trainers",
     "template windows, search box and side tabs (tab " .. tostring(ui.Panel.SelectedTab()) .. ")")
 
@@ -1697,7 +1698,7 @@ do
     and (calls.Font or 0) > 0 and (calls.Inset or 0) >= 2, "windows made earlier get EllesmereUI's look")
   local shells, boxes, fonts = calls.Shell, calls.Panel, calls.Font
   openAll(freshUI())
-  check(calls.Shell == shells + 3 and calls.Panel == boxes + 2,
+  check(calls.Shell == shells + 4 and calls.Panel == boxes + 2,
     "new windows get it right away")
   ns.Panel.Toggle()
   ns.Panel.Toggle()
@@ -1714,7 +1715,7 @@ do
   check(ns.db.settings.skin == false and calls.Shell == shells, "/wf skin turns it off for new windows")
   check(chat[said + 1]:find("skin off; /reload", 1, true) ~= nil, "and says a reload removes it from open ones")
   SlashCmdList.WAYFINDER("skin")
-  check(ns.db.settings.skin == true and calls.Shell == shells + 3, "/wf skin again paints what was missed")
+  check(ns.db.settings.skin == true and calls.Shell == shells + 4, "/wf skin again paints what was missed")
 
   CreateFrame, C_XMLUtil, EllesmereUI = savedCreate, nil, nil
   ButtonFrameTemplate_HidePortrait, PanelTemplates_SetTab = nil, nil
@@ -2099,7 +2100,13 @@ do
   local shown = ns.Cards.BreakdownShown()
   check(shown and #shown == #lines, "the breakdown shows in place of the cards")
   ns.Cards.HideBreakdown()
-  check(ns.Cards.BreakdownShown() == nil, "Back returns to the cards")
+  check(ns.Cards.BreakdownShown() == nil, "closing it leaves the cards")
+  ns.Panel.SelectPage("trainers")
+  ns.Cards.ShowBreakdown(tripCard)
+  check(ns.Cards.BreakdownOpen() and not ns.Panel.SideShown(), "the breakdown docks where the side panel was, closing it")
+  ns.Panel.SelectPage("trainers")
+  check(ns.Panel.SideShown() and not ns.Cards.BreakdownOpen(), "a side tab closes the breakdown again")
+  ns.Panel.CloseSide()
   local routeLines = ns.Cards.Breakdown(suggestions[1])
   check(routeLines[#routeLines][2] == "note" and routeLines[3][2] == "step", "directions list their steps too")
 
