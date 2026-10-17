@@ -96,10 +96,16 @@ item has known sources (never in combat).
 The page is laid out like the Suggested Content tab of modern WoW's Adventure
 Guide: the top suggestion on a large card (icon, title, why, details, a Go or
 Start trip button, and arrows to step through the rest), the next two on
-smaller cards beside it. Forever has no Adventure Guide, so its card art is
-only used if the client has those textures; otherwise the cards are plain
+smaller cards beside it. The card art comes from the client when it has the
+Adventure Guide textures (Forever does); otherwise the cards are plain
 parchment. Hover a card for the full tooltip; shift-click adds it to your
-trip. Other pages keep the list layout (pages opt in with `layout = "cards"`).
+trip.
+
+The window keeps one size: For you is the main window, and **Find**,
+**Quests** and **Items** are buttons in its header that open a list panel
+docked on its right (click the button again, or the panel's close button, to
+close it). Pages opt into the main window with `layout = "cards"`; every other
+page is a list in the side panel.
 
 **For you** is the first tab (`/wf next` opens it): a handful of things to do
 next, each with a one-line why; click one for directions or a journey. Needs
