@@ -1743,6 +1743,42 @@ do
   check(first() == "R1", "a new search starts at the top")
 end
 ---------------------------------------------------------------- panel scrolling (end)
+---------------------------------------------------------------- caches (begin)
+do
+  io.write("caches\n")
+  QUESTS[41] = { name = "Forager Count", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 344 } }, objectives = { { { 9101 } } } }
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local clock, reads = 100, 0
+  GetTime = function() return clock end
+  local realCompleted = C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.GetAllCompletedQuestIDs = function() reads = reads + 1 return realCompleted() end
+  ns.Questie.PlayerQuestState()
+  ns.Questie.PlayerQuestState()
+  check(reads == 1, "quest state is read once per moment")
+  fire("QUEST_LOG_UPDATE")
+  ns.Questie.PlayerQuestState()
+  check(reads == 2, "a quest event starts a fresh read")
+  clock = clock + 2
+  ns.Questie.PlayerQuestState()
+  check(reads == 3, "and so does time passing")
+  C_QuestLog.GetAllCompletedQuestIDs = realCompleted
+  GetTime = nil
+
+  local realGet, spawnReads = NpcDB.Get, 0
+  NpcDB.Get = function(id, key)
+    if key == "spawns" and id == 9101 then spawnReads = spawnReads + 1 end
+    return realGet(id, key)
+  end
+  local here = ns.Geo.PlayerNode()
+  local a = ns.Questie.ObjectiveNode(41, here)
+  local b = ns.Questie.ObjectiveNode(41, here)
+  check(a and b and spawnReads == 1, "a quest's objective places are built once")
+  NpcDB.Get = realGet
+  QUESTS[41] = nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- caches (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

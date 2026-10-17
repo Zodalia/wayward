@@ -269,14 +269,29 @@ local function displayLevel(q, p)
   return level > 0 and level or p.level
 end
 
+-- One read of your quests per moment: For you, Quest hubs and journeys all ask
+-- many times in one refresh. Any quest event starts a fresh read. The sets are
+-- shared, so treat them as read-only.
+local QUEST_STATE_SECONDS = 1
+local questState -- { done, inLog, at }
+
 local function playerQuestState()
+  local now = GetTime and GetTime()
+  if questState and now and now - questState.at < QUEST_STATE_SECONDS then
+    return questState.done, questState.inLog
+  end
   local done, inLog = {}, {}
   for _, id in ipairs(C_QuestLog.GetAllCompletedQuestIDs() or {}) do done[id] = true end
   for i = 1, C_QuestLog.GetNumQuestLogEntries() do
     local info = C_QuestLog.GetInfo(i)
     if info and not info.isHeader and info.questID then inLog[info.questID] = true end
   end
+  questState = now and { done = done, inLog = inLog, at = now } or nil
   return done, inLog
+end
+
+for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE" }) do
+  ns.On(event, function() questState = nil end)
 end
 
 local function canEverDo(q, p)
@@ -602,14 +617,23 @@ local function objectiveNodes(q, label)
   return nodes
 end
 
+-- QuestieDB's objective places don't change, so each quest's list is built
+-- once; the game's own marker is read fresh every time.
+local objectiveCache = {}
+
 function Bridge.ObjectiveNode(questID, here)
   local q = Bridge.Quest(questID)
   local label = q and q.name or ("Quest " .. questID)
   local area = logArea(questID, label)
   if area then return area, "log" end
   if not q then return nil end
-  local ok, nodes = pcall(objectiveNodes, q, label)
-  if not ok or #nodes == 0 then return nil end
+  local nodes = objectiveCache[questID]
+  if not nodes then
+    local ok, built = pcall(objectiveNodes, q, label)
+    nodes = ok and built or {}
+    objectiveCache[questID] = nodes
+  end
+  if #nodes == 0 then return nil end
   return Bridge.Nearest(nodes, here), "QuestieDB"
 end
 
