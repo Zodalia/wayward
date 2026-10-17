@@ -21,6 +21,7 @@ Places.lua
 QuestieBridge.lua
 Trainers.lua
 QuestHubs.lua
+QuestsPage.lua
 Journey.lua
 Navigator.lua
 Docks.lua
