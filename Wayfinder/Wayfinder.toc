@@ -1,0 +1,20 @@
+## Interface: 16001
+## Title: Wayfinder
+## Notes: Levelling helper: find class trainers (and more soon) and get step-by-step directions.
+## Author: Zodalia
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+## SavedVariables: WayfinderDB
+## SavedVariablesPerCharacter: WayfinderCharDB
+
+Core.lua
+Geo.lua
+Data\Transports.lua
+Data\Seed.lua
+Harvest.lua
+Network.lua
+Router.lua
+Trainers.lua
+Navigator.lua
+UI\HUD.lua
+UI\Panel.lua
