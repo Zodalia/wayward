@@ -43,6 +43,16 @@ function ns.Fire(message, ...)
   end
 end
 
+---------------------------------------------------------------- panel pages
+
+-- Pages register themselves from their own files; UI/Panel.lua (loaded last)
+-- turns them into tabs. See the page contract at the top of UI/Panel.lua.
+ns.pages = {}
+
+function ns.RegisterPage(page)
+  table.insert(ns.pages, page)
+end
+
 ---------------------------------------------------------------- saved data
 
 local DEFAULTS = {
