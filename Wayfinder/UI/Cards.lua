@@ -16,8 +16,10 @@ ns.Cards = Cards
 local LARGE_W, LARGE_H = 335, 337
 local SMALL_W, SMALL_H = 344, 161
 local GAP = 11
-local TITLE_COLOR = { 0, 0, 0 }
-local TEXT_COLOR = { 0.2824, 0.0157, 0.0157 }
+-- Ink on parchment, darkest for titles.
+local TITLE_COLOR = { 0.24, 0.12, 0.02 }
+local TEXT_COLOR = { 0.30, 0.20, 0.10 }
+local DETAIL_COLOR = { 0.40, 0.30, 0.18 }
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
 
@@ -25,14 +27,20 @@ local function hasAtlas(name)
   return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
 end
 
--- Text with a standard Blizzard font. (The Adventure Guide's own fonts are
+-- Fonts of the old quest log: Morpheus titles, Friz Quadrata body text, no
+-- shadow (with one, everything on parchment looks bold). The template is the
+-- fallback if the file can't be set. (The Adventure Guide's own fonts are
 -- missing or broken in Forever: text with them showed nothing.)
-local function text(parent, template)
-  return parent:CreateFontString(nil, "OVERLAY", template)
-end
+local TITLE_FONT = "Fonts\\MORPHEUS.TTF"
+local BODY_FONT = "Fonts\\FRIZQT__.TTF"
 
-local function color(fs, c)
+local function text(parent, template, file, size, c)
+  local fs = parent:CreateFontString(nil, "OVERLAY", template)
+  local ok, set = pcall(fs.SetFont, fs, file, size, "")
+  if not ok or set == false then fs:SetFontObject(template) end
+  fs:SetShadowOffset(0, 0)
   fs:SetTextColor(c[1], c[2], c[3])
+  return fs
 end
 
 -- Card background: the Adventure Guide pane, or parchment.
@@ -117,23 +125,26 @@ local function largeCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -18)
 
-  card.title = text(card, "GameFontNormalHuge")
-  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -18)
-  card.title:SetWidth(264)
+  -- Title and subtitle centred under the icon; the details below read as a
+  -- left-aligned paragraph.
+  card.title = text(card, "GameFontNormalHuge", TITLE_FONT, 22, TITLE_COLOR)
+  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -16)
+  card.title:SetWidth(280)
   card.title:SetJustifyH("CENTER")
-  color(card.title, TITLE_COLOR)
+  if card.title.SetMaxLines then card.title:SetMaxLines(2) end
 
-  card.text = text(card, "GameFontHighlight")
-  card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -8)
+  card.text = text(card, "GameFontHighlight", BODY_FONT, 12, TEXT_COLOR)
+  card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -6)
   card.text:SetWidth(264)
   card.text:SetJustifyH("CENTER")
-  color(card.text, TEXT_COLOR)
+  card.text:SetSpacing(2)
 
-  card.detail = text(card, "GameFontHighlightSmall")
-  card.detail:SetPoint("TOP", card.text, "BOTTOM", 0, -10)
+  card.detail = text(card, "GameFontHighlightSmall", BODY_FONT, 11, DETAIL_COLOR)
+  card.detail:SetPoint("TOP", card.text, "BOTTOM", 0, -12)
   card.detail:SetWidth(264)
-  card.detail:SetJustifyH("CENTER")
-  color(card.detail, TEXT_COLOR)
+  card.detail:SetJustifyH("LEFT")
+  card.detail:SetSpacing(3)
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(5) end
 
   card.button = button(card, 116, 32, true)
   card.button:SetPoint("BOTTOM", 0, 31)
@@ -157,9 +168,8 @@ local function largeCard(parent)
   card.next:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
   card.next:SetScript("OnClick", function() Cards.Step(-1) end)
 
-  card.position = text(card, "GameFontHighlightSmall")
+  card.position = text(card, "GameFontHighlightSmall", BODY_FONT, 10, DETAIL_COLOR)
   card.position:SetPoint("BOTTOM", 0, 18)
-  color(card.position, TEXT_COLOR)
   hover(card)
   return card
 end
@@ -171,20 +181,19 @@ local function smallCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
-  card.title = text(card, "GameFontNormalLarge")
-  card.title:SetPoint("TOPLEFT", 70, -14)
-  card.title:SetWidth(260)
+  card.title = text(card, "GameFontNormalLarge", TITLE_FONT, 18, TITLE_COLOR)
+  card.title:SetPoint("TOPLEFT", 72, -16)
+  card.title:SetWidth(256)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
-  color(card.title, TITLE_COLOR)
 
-  card.text = text(card, "GameFontHighlightSmall")
-  card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
-  card.text:SetWidth(240)
+  card.text = text(card, "GameFontHighlightSmall", BODY_FONT, 11, TEXT_COLOR)
+  card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -6)
+  card.text:SetWidth(256)
   card.text:SetJustifyH("LEFT")
   card.text:SetWordWrap(true)
-  if card.text.SetMaxLines then card.text:SetMaxLines(4) end
-  color(card.text, TEXT_COLOR)
+  card.text:SetSpacing(2)
+  if card.text.SetMaxLines then card.text:SetMaxLines(3) end
 
   card.button = button(card, 116, 24)
   card.button:SetPoint("BOTTOMLEFT", 70, 14)
