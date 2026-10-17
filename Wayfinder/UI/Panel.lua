@@ -1,12 +1,15 @@
 local _, ns = ...
 
--- The main window: tabs for pages (For you, Find, Quests, Items, ...), a search
--- box, and ranked results; click a result to get directions.
+-- The Wayfinder window. The main window shows the card page (For you) and
+-- never changes size; the other pages (Find, Quests, Items, ...) open in a
+-- side panel docked to its right, from buttons in the main window's header.
 --
 -- Page contract (register with ns.RegisterPage(page) from any file that loads
 -- before this one):
---   page.id, page.label        -- tab
---   page.order                 -- tab position, lowest first; the first tab opens by default
+--   page.id, page.label        -- header button / side panel title
+--   page.order                 -- button order, lowest first
+--   page.layout = "cards"      -- shown in the main window as cards (UI/Cards.lua), with
+--   page.width                 --   this window width; other pages are lists in the side panel
 --   page.searchable            -- show the search box (shift-clicked links go in it too)
 --   page.placeholder           -- search box hint
 --   page.SummaryText(query)    -- line under the search box
@@ -24,13 +27,16 @@ local Panel = {}
 ns.Panel = Panel
 
 local MAX_ROWS = 7
-local DEFAULT_WIDTH = 384
+local MAIN_WIDTH = 730 -- when no card page says otherwise
+local SIDE_WIDTH = 384
+local HEIGHT = 520
 local ROW_HEIGHT = 42
 local MAX_DETAIL_LINES = 12
 local SEARCH_DELAY = 0.3
 
-local frame
-local selectedPage, selectedCategory = nil, 1
+local frame, side
+local mainPage, sidePage = nil, nil
+local selectedCategory = 1
 local query = ""
 
 ---------------------------------------------------------------- Find page
@@ -70,7 +76,37 @@ end
 
 ns.RegisterPage(findPage)
 
----------------------------------------------------------------- rows
+---------------------------------------------------------------- pages
+
+local function sortedPages()
+  table.sort(ns.pages, function(a, b)
+    if (a.order or 100) ~= (b.order or 100) then return (a.order or 100) < (b.order or 100) end
+    return a.label < b.label
+  end)
+  return ns.pages
+end
+
+local function isCards(page)
+  return page.layout == "cards"
+end
+
+-- The card page the main window opens on: the first one by order.
+local function defaultMain()
+  for _, page in ipairs(sortedPages()) do
+    if isCards(page) then return page end
+  end
+  return nil
+end
+
+local function listPages()
+  local out = {}
+  for _, page in ipairs(sortedPages()) do
+    if not isCards(page) then out[#out + 1] = page end
+  end
+  return out
+end
+
+---------------------------------------------------------------- results
 
 local function addDetails(r)
   for i, line in ipairs(r.details or {}) do
@@ -106,6 +142,24 @@ function Panel.ShowTooltip(owner, r)
     if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
   end
   GameTooltip:Show()
+end
+
+-- What clicking a result does (rows and cards): start its directions or
+-- journey; with shift held during a trip, add it to the trip instead.
+function Panel.Activate(r)
+  if ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then
+    local stops = ns.Nav.StopsFor(r)
+    if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
+    Panel.Refresh()
+    return
+  end
+  if r.journey then
+    ns.Nav.StartJourney(r.journey)
+    frame:Hide()
+  elseif r.route then
+    ns.Nav.Start(r.title, r.goal, r.route)
+    frame:Hide()
+  end
 end
 
 local function subtitle(r)
@@ -160,24 +214,6 @@ local function createRow(parent, index)
   return row
 end
 
--- What clicking a result does (rows and cards): start its directions or
--- journey; with shift held during a trip, add it to the trip instead.
-function Panel.Activate(r)
-  if ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then
-    local stops = ns.Nav.StopsFor(r)
-    if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
-    Panel.Refresh()
-    return
-  end
-  if r.journey then
-    ns.Nav.StartJourney(r.journey)
-    frame:Hide()
-  elseif r.route then
-    ns.Nav.Start(r.title, r.goal, r.route)
-    frame:Hide()
-  end
-end
-
 ---------------------------------------------------------------- search
 
 local pendingSearch = 0
@@ -194,11 +230,11 @@ end
 -- its link there (both hook points exist on some clients, hence the guard).
 local lastLink, lastLinkTime
 local function insertLink(text)
-  if not (frame and frame:IsShown() and frame.search:HasFocus() and type(text) == "string") then return end
+  if not (side and side:IsVisible() and side.search:HasFocus() and type(text) == "string") then return end
   local now = GetTime and GetTime() or 0
   if text == lastLink and lastLinkTime == now then return end
   lastLink, lastLinkTime = text, now
-  frame.search:Insert(text)
+  side.search:Insert(text)
 end
 
 local function hookLinks()
@@ -208,21 +244,134 @@ local function hookLinks()
   end
 end
 
----------------------------------------------------------------- frame
+---------------------------------------------------------------- footer
 
-local function sortedPages()
-  table.sort(ns.pages, function(a, b)
-    if (a.order or 100) ~= (b.order or 100) then return (a.order or 100) < (b.order or 100) end
-    return a.label < b.label
-  end)
-  return ns.pages
+local function footerText(net)
+  local source = ns.Questie.StatusText()
+  source = source and ("Data: " .. source .. " + places you visited. ")
+    or "Data: places you visited (install QuestieDB for more). "
+  local flights = net and net.knownFlights or 0
+  if flights == 0 then
+    return source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight "
+      .. "master once and routes will use your flight paths.|r"
+  end
+  local here = ns.Geo.PlayerNode()
+  local continent = here and ns.Geo.Continents()[here.instance]
+  if continent and not ns.Harvest.FlightsKnownOn(continent) then
+    return source .. string.format("|cffffd200Open any flight map in %s once so Wayfinder knows your flight "
+      .. "paths here.|r", ns.MapName(continent))
+  end
+  return source .. string.format("%d known flight path%s. Boat and zeppelin docks are approximate.", flights,
+    flights == 1 and "" or "s")
 end
+
+---------------------------------------------------------------- side panel
+
+local function createSide(parent)
+  local s, templated = ns.Skin.CreateWindow("WayfinderSidePanel")
+  s:SetParent(parent)
+  s:SetSize(SIDE_WIDTH, HEIGHT)
+  s:SetPoint("TOPLEFT", parent, "TOPRIGHT", -2, 0)
+  s:EnableMouse(true)
+
+  s.title = s.titleText
+  if not s.title then
+    s.title = s:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    s.title:SetPoint("TOPLEFT", 18, -16)
+  end
+  ns.Skin.Text(s.title)
+  ns.Skin.CloseButton(s.close)
+  s.close:SetScript("OnClick", function() Panel.CloseSide() end)
+  if templated then
+    s.Inset:ClearAllPoints()
+    s.Inset:SetPoint("TOPLEFT", 4, -26)
+    s.Inset:SetPoint("BOTTOMRIGHT", -6, 4)
+    ns.Skin.Inset(s.Inset)
+  end
+
+  local searchTemplate
+  s.search, searchTemplate = ns.Skin.CreateSearchBox(s)
+  s.search:SetSize(338, 22)
+  s.search:SetPoint("TOPLEFT", 24, -34)
+  s.search:SetAutoFocus(false)
+  -- Hook rather than replace the template's handler (clear button, hint).
+  local onText = searchTemplate and s.search.HookScript or s.search.SetScript
+  onText(s.search, "OnTextChanged", function(self, userInput)
+    query = self:GetText() or ""
+    self.hint:SetShown(query == "")
+    -- The clear button empties the box without user input.
+    if userInput or (searchTemplate and query == "") then scheduleSearch() end
+  end)
+  ns.Skin.EditBox(s.search)
+  s.search:SetScript("OnEnterPressed", function(self)
+    self:ClearFocus()
+    Panel.Refresh()
+  end)
+  s.search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+  -- Category buttons (Find page).
+  s.categoryButtons = {}
+  local previous
+  for i, cat in ipairs(findPage.categories) do
+    local b = CreateFrame("Button", nil, s, "UIPanelButtonTemplate")
+    b:SetSize(84, 22)
+    b:SetText(cat.label)
+    if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", 18, -62) end
+    b:SetScript("OnClick", function() Panel.Select(i) end)
+    ns.Skin.Button(b)
+    s.categoryButtons[i] = b
+    previous = b
+  end
+
+  s.summary = s:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  s.summary:SetWidth(SIDE_WIDTH - 36)
+  s.summary:SetJustifyH("LEFT")
+  s.summary:SetWordWrap(true)
+
+  s.rows = {}
+  for i = 1, MAX_ROWS do s.rows[i] = createRow(s, i) end
+
+  -- Scrolling: the mouse wheel anywhere on the side panel, or these buttons.
+  s.down = CreateFrame("Button", nil, s, "UIPanelButtonTemplate")
+  s.down:SetSize(22, 18)
+  s.down:SetPoint("TOPRIGHT", s.rows[MAX_ROWS], "BOTTOMRIGHT", -4, -2)
+  s.down:SetText("v")
+  s.down:SetScript("OnClick", function() Panel.Scroll(-MAX_ROWS + 1) end)
+  s.up = CreateFrame("Button", nil, s, "UIPanelButtonTemplate")
+  s.up:SetSize(22, 18)
+  s.up:SetPoint("RIGHT", s.down, "LEFT", -2, 0)
+  s.up:SetText("^")
+  s.up:SetScript("OnClick", function() Panel.Scroll(MAX_ROWS - 1) end)
+  ns.Skin.Button(s.up)
+  ns.Skin.Button(s.down)
+  s.position = s:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  s.position:SetPoint("RIGHT", s.up, "LEFT", -6, 0)
+  ns.Skin.Text(s.position)
+  s:EnableMouseWheel(true)
+  s:SetScript("OnMouseWheel", function(_, delta) Panel.Scroll(delta) end)
+
+  s.empty = s:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+  s.empty:SetPoint("TOPLEFT", s.summary, "BOTTOMLEFT", 0, -16)
+  s.empty:SetWidth(SIDE_WIDTH - 36)
+  s.empty:SetJustifyH("LEFT")
+  s.empty:SetWordWrap(true)
+  ns.Skin.Text(s.summary)
+  ns.Skin.Text(s.empty)
+
+  ns.Skin.Window(s)
+  s:Hide()
+  return s
+end
+
+---------------------------------------------------------------- main window
 
 local function create()
   -- ButtonFrameTemplate is Blizzard's standard window (title bar, close button,
   -- inset), so UI suites that restyle Blizzard windows know it too.
   local f, templated = ns.Skin.CreateWindow("WayfinderPanel")
-  f:SetSize(DEFAULT_WIDTH, 520)
+  mainPage = mainPage or defaultMain()
+  local width = mainPage and mainPage.width or MAIN_WIDTH
+  f:SetSize(width, HEIGHT)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
@@ -246,114 +395,51 @@ local function create()
   ns.Skin.Text(title)
   ns.Skin.CloseButton(f.close)
   if templated then
-    -- The tabs stand on the inset; the footer stays inside it.
+    -- The header buttons stand on the inset; the footer stays inside it.
     f.Inset:ClearAllPoints()
     f.Inset:SetPoint("TOPLEFT", 4, -62)
     f.Inset:SetPoint("BOTTOMRIGHT", -6, 4)
     ns.Skin.Inset(f.Inset)
   end
 
-  -- Page tabs, bottom edge 62 below the top. Template tabs size themselves on
-  -- show between the window's min/maxTabWidth.
-  local pages = sortedPages()
-  local tabWidth = math.min(math.floor((348 - 4 * (#pages - 1)) / math.max(#pages, 1)), 110)
-  f.minTabWidth, f.maxTabWidth = tabWidth, tabWidth
+  -- Header buttons for the list pages: each opens (or closes) the side panel.
   f.tabs = {}
-  f.templateTabs = true
   local previous
-  for i, page in ipairs(pages) do
+  for i, page in ipairs(listPages()) do
     local b, tab = ns.Skin.CreateTab(f)
-    f.templateTabs = f.templateTabs and tab
     b:SetID(i)
-    b:SetWidth(tabWidth)
+    b:SetWidth(110)
     if not tab then b:SetHeight(22) end
     b:SetText(page.label)
     if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 18, -62) end
-    b:SetScript("OnClick", function() Panel.SelectPage(page.id) end)
+    b:SetScript("OnClick", function()
+      if sidePage == page and side:IsShown() then Panel.CloseSide() else Panel.SelectPage(page.id) end
+    end)
     ns.Skin.Tab(b)
-    f.tabs[i] = { button = b, page = page }
-    previous = b
-  end
-  f.numTabs = #pages -- for PanelTemplates_SetTab
-
-  local searchTemplate
-  f.search, searchTemplate = ns.Skin.CreateSearchBox(f)
-  f.search:SetSize(338, 22)
-  f.search:SetPoint("TOPLEFT", 24, -68)
-  f.search:SetAutoFocus(false)
-  -- Hook rather than replace the template's handler (clear button, hint).
-  local onText = searchTemplate and f.search.HookScript or f.search.SetScript
-  onText(f.search, "OnTextChanged", function(self, userInput)
-    query = self:GetText() or ""
-    self.hint:SetShown(query == "")
-    -- The clear button empties the box without user input.
-    if userInput or (searchTemplate and query == "") then scheduleSearch() end
-  end)
-  ns.Skin.EditBox(f.search)
-  f.search:SetScript("OnEnterPressed", function(self)
-    self:ClearFocus()
-    Panel.Refresh()
-  end)
-  f.search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-
-  -- Category buttons (Find page).
-  f.categoryButtons = {}
-  previous = nil
-  for i, cat in ipairs(findPage.categories) do
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    b:SetSize(84, 22)
-    b:SetText(cat.label)
-    if previous then b:SetPoint("LEFT", previous, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", 18, -96) end
-    b:SetScript("OnClick", function() Panel.Select(i) end)
-    ns.Skin.Button(b)
-    f.categoryButtons[i] = b
+    f.tabs[i] = { button = b, page = page, template = tab }
     previous = b
   end
 
   f.summary = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  f.summary:SetWidth(348)
+  f.summary:SetPoint("TOPLEFT", 18, -70)
+  f.summary:SetWidth(width - 36)
   f.summary:SetJustifyH("LEFT")
   f.summary:SetWordWrap(true)
 
-  f.rows = {}
-  for i = 1, MAX_ROWS do f.rows[i] = createRow(f, i) end
   f.cards = ns.Cards.Create(f)
-  f.cards:Hide()
-
-  -- Scrolling: the mouse wheel anywhere on the panel, or these buttons.
-  f.down = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  f.down:SetSize(22, 18)
-  f.down:SetPoint("TOPRIGHT", f.rows[MAX_ROWS], "BOTTOMRIGHT", -4, -2)
-  f.down:SetText("v")
-  f.down:SetScript("OnClick", function() Panel.Scroll(-MAX_ROWS + 1) end)
-  f.up = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  f.up:SetSize(22, 18)
-  f.up:SetPoint("RIGHT", f.down, "LEFT", -2, 0)
-  f.up:SetText("^")
-  f.up:SetScript("OnClick", function() Panel.Scroll(MAX_ROWS - 1) end)
-  ns.Skin.Button(f.up)
-  ns.Skin.Button(f.down)
-  f.position = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.position:SetPoint("RIGHT", f.up, "LEFT", -6, 0)
-  ns.Skin.Text(f.position)
+  f.cards:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -12)
   f:EnableMouseWheel(true)
-  f:SetScript("OnMouseWheel", function(_, delta) Panel.Scroll(delta) end)
-
-  f.empty = f:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-  f.empty:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -16)
-  f.empty:SetWidth(348)
-  f.empty:SetJustifyH("LEFT")
-  f.empty:SetWordWrap(true)
+  f:SetScript("OnMouseWheel", function(_, delta) ns.Cards.Step(delta) end)
 
   f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.footer:SetPoint("BOTTOMLEFT", 18, 16)
-  f.footer:SetWidth(348)
+  f.footer:SetWidth(width - 36)
   f.footer:SetJustifyH("LEFT")
   f.footer:SetWordWrap(true)
   ns.Skin.Text(f.summary)
-  ns.Skin.Text(f.empty)
   ns.Skin.Text(f.footer)
 
+  side = createSide(f)
   hookLinks()
   f:SetScript("OnShow", function() Panel.Refresh() end)
   ns.Skin.Window(f)
@@ -364,84 +450,29 @@ end
 
 ---------------------------------------------------------------- refresh
 
-local function currentPage()
-  if not selectedPage then selectedPage = sortedPages()[1] end
-  return selectedPage
-end
-
-local function layout(page)
-  for i, tab in ipairs(frame.tabs) do
-    local selected = tab.page == page
-    if frame.templateTabs then
-      if selected and PanelTemplates_SetTab then PanelTemplates_SetTab(frame, i) end
+local function markTabs()
+  for _, tab in ipairs(frame.tabs) do
+    local selected = side:IsShown() and tab.page == sidePage
+    local b = tab.button
+    if tab.template and PanelTemplates_SelectTab and PanelTemplates_DeselectTab then
+      if selected then PanelTemplates_SelectTab(b) else PanelTemplates_DeselectTab(b) end
     elseif selected then
-      tab.button:LockHighlight()
+      b:LockHighlight()
     else
-      tab.button:UnlockHighlight()
+      b:UnlockHighlight()
     end
-    ns.Skin.SetTabSelected(tab.button, selected)
+    ns.Skin.SetTabSelected(b, selected)
   end
-  if page.searchable then frame.search:Show() else frame.search:Hide() end
-  frame.search.hint:SetText(page.placeholder or "Search")
-  local showCategories = page.categories ~= nil
-  for i, b in ipairs(frame.categoryButtons) do
-    b:SetShown(showCategories)
-    if i == selectedCategory then b:LockHighlight() else b:UnlockHighlight() end
-  end
-  local top = page.searchable and -96 or -68
-  if showCategories then top = top - 28 end
-  frame.summary:ClearAllPoints()
-  frame.summary:SetPoint("TOPLEFT", 18, top)
-
-  -- A page can ask for its own width and for cards instead of rows.
-  local width = page.width or DEFAULT_WIDTH
-  frame:SetWidth(width)
-  frame.summary:SetWidth(width - 36)
-  frame.footer:SetWidth(width - 36)
-  frame.empty:SetWidth(width - 36)
-  local cards = page.layout == "cards"
-  for _, row in ipairs(frame.rows) do
-    if cards then row:Hide() end
-  end
-  if cards then
-    frame.up:Hide()
-    frame.down:Hide()
-    frame.position:SetText("")
-    frame.cards:ClearAllPoints()
-    frame.cards:SetPoint("TOPLEFT", frame.summary, "BOTTOMLEFT", 0, -12)
-    frame.cards:Show()
-  else
-    frame.cards:Hide()
-  end
-end
-
-local function footerText(net)
-  local source = ns.Questie.StatusText()
-  source = source and ("Data: " .. source .. " + places you visited. ")
-    or "Data: places you visited (install QuestieDB for more). "
-  local flights = net and net.knownFlights or 0
-  if flights == 0 then
-    return source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight "
-      .. "master once and routes will use your flight paths.|r"
-  end
-  local here = ns.Geo.PlayerNode()
-  local continent = here and ns.Geo.Continents()[here.instance]
-  if continent and not ns.Harvest.FlightsKnownOn(continent) then
-    return source .. string.format("|cffffd200Open any flight map in %s once so Wayfinder knows your flight "
-      .. "paths here.|r", ns.MapName(continent))
-  end
-  return source .. string.format("%d known flight path%s. Boat and zeppelin docks are approximate.", flights,
-    flights == 1 and "" or "s")
 end
 
 local offset, listKey = 0, nil
 
 -- Draws the visible slice of the last results; scrolling only repaints.
 local function paint()
-  local results = frame.results or {}
+  local results = side.results or {}
   local maxOffset = math.max(0, #results - MAX_ROWS)
   if offset > maxOffset then offset = maxOffset end
-  for i, row in ipairs(frame.rows) do
+  for i, row in ipairs(side.rows) do
     local r = results[offset + i]
     row.result = r
     if r then
@@ -456,73 +487,113 @@ local function paint()
     end
   end
   local scrolls = #results > MAX_ROWS
-  frame.up:SetShown(scrolls)
-  frame.down:SetShown(scrolls)
+  side.up:SetShown(scrolls)
+  side.down:SetShown(scrolls)
   if scrolls then
-    frame.up:SetEnabled(offset > 0)
-    frame.down:SetEnabled(offset < maxOffset)
-    frame.position:SetText(string.format("%d-%d of %d", offset + 1, math.min(offset + MAX_ROWS, #results), #results))
+    side.up:SetEnabled(offset > 0)
+    side.down:SetEnabled(offset < maxOffset)
+    side.position:SetText(string.format("%d-%d of %d", offset + 1, math.min(offset + MAX_ROWS, #results), #results))
   else
-    frame.position:SetText("")
+    side.position:SetText("")
   end
 end
 
-function Panel.Refresh()
-  if not (frame and frame:IsShown()) then return end
-  local page = currentPage()
-  layout(page)
+local cardKey
+
+local function refreshMain()
+  if not mainPage then return nil end
+  local results, err, net = mainPage.Results("")
+  results = results or {}
+  local fresh = mainPage.id ~= cardKey
+  cardKey = mainPage.id
+  frame.summary:SetText(mainPage.SummaryText("") or "")
+  ns.Cards.Show(results, err or (#results == 0 and mainPage.EmptyText("")) or "", fresh)
+  return net
+end
+
+local function refreshSide()
+  local page = sidePage
+  side.title:SetText(page.label)
+  if page.searchable then side.search:Show() else side.search:Hide() end
+  side.search.hint:SetText(page.placeholder or "Search")
+  local showCategories = page.categories ~= nil
+  for i, b in ipairs(side.categoryButtons) do
+    b:SetShown(showCategories)
+    if i == selectedCategory then b:LockHighlight() else b:UnlockHighlight() end
+  end
+  local top = page.searchable and -62 or -34
+  if showCategories then top = top - 28 end
+  side.summary:ClearAllPoints()
+  side.summary:SetPoint("TOPLEFT", 18, top)
 
   local q = page.searchable and query or ""
   local results, err, net = page.Results(q)
   results = results or {}
   -- A new page, category or search starts at the top; a data refresh keeps your place.
   local key = page.id .. "|" .. selectedCategory .. "|" .. q
-  local fresh = key ~= listKey
-  if fresh then offset, listKey = 0, key end
-  frame.results = results
-  frame.summary:SetText(page.SummaryText(q) or "")
-  if page.layout == "cards" then
-    ns.Cards.Show(results, err or (#results == 0 and page.EmptyText(q)) or "", fresh)
-    frame.empty:SetText("")
-    frame.footer:SetText(footerText(net or ns.Network.Build()))
-    return
-  end
+  if key ~= listKey then offset, listKey = 0, key end
+  side.results = results
+  side.summary:SetText(page.SummaryText(q) or "")
   paint()
-
   if err then
-    frame.empty:SetText(err)
+    side.empty:SetText(err)
   elseif #results == 0 then
-    frame.empty:SetText(page.EmptyText(q) or "")
+    side.empty:SetText(page.EmptyText(q) or "")
   else
-    frame.empty:SetText("")
+    side.empty:SetText("")
   end
+  return net
+end
+
+function Panel.Refresh()
+  if not (frame and frame:IsShown()) then return end
+  local net = refreshMain()
+  if side:IsShown() and sidePage then net = refreshSide() or net end
+  markTabs()
   frame.footer:SetText(footerText(net or ns.Network.Build()))
 end
 
--- Moves the result list: positive goes up (towards the first result).
+-- Moves the side panel's list (positive goes up, towards the first result),
+-- or steps through the cards when the side panel is closed.
 function Panel.Scroll(delta)
-  if not (frame and frame:IsShown() and frame.results) then return end
-  if currentPage().layout == "cards" then return ns.Cards.Step(delta) end
+  if not (frame and frame:IsShown()) then return end
+  if not side:IsShown() then return ns.Cards.Step(delta) end
   offset = math.max(0, offset - delta)
   paint()
 end
 
--- The results currently on screen (for tests and other modules).
+-- The side panel's results currently on screen (for tests and other modules).
 function Panel.VisibleResults()
   local out = {}
-  for _, row in ipairs(frame and frame.rows or {}) do
+  if not (side and side:IsShown()) then return out end
+  for _, row in ipairs(side.rows) do
     if row.result then out[#out + 1] = row.result end
   end
   return out
 end
 
--- Selects a page by id (pages from ns.RegisterPage).
+function Panel.CloseSide()
+  if side then side:Hide() end
+  Panel.Refresh()
+end
+
+-- Selects a page by id: a card page shows in the main window (and closes the
+-- side panel), any other page opens in the side panel.
 function Panel.SelectPage(id)
+  frame = frame or create()
   for _, page in ipairs(sortedPages()) do
-    if page.id == id and page ~= selectedPage then
-      selectedPage = page
-      query = ""
-      if frame then frame.search:SetText("") end
+    if page.id == id then
+      if isCards(page) then
+        mainPage = page
+        side:Hide()
+      else
+        if page ~= sidePage then
+          sidePage = page
+          query = ""
+          side.search:SetText("")
+        end
+        side:Show()
+      end
     end
   end
   Panel.Refresh()
@@ -534,18 +605,24 @@ function Panel.Select(index)
   Panel.SelectPage("find")
 end
 
--- Opens the panel on a page with a search, e.g. from /wf item <link>.
+-- Opens the window on a page with a search, e.g. from /wf item <link>.
 function Panel.Search(id, text)
   frame = frame or create()
   if not frame:IsShown() then frame:Show() end
   Panel.SelectPage(id)
-  query = text or ""
-  frame.search:SetText(query)
+  if side:IsShown() then
+    query = text or ""
+    side.search:SetText(query)
+  end
   Panel.Refresh()
 end
 
 function Panel.IsShown()
   return frame ~= nil and frame:IsShown()
+end
+
+function Panel.SideShown()
+  return side ~= nil and side:IsShown()
 end
 
 function Panel.Toggle()
