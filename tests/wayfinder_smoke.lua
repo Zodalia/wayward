@@ -33,6 +33,7 @@ local function newObj()
         elseif k == "SetRotation" then rawset(self, "rotation", (...))
         elseif k == "Show" then rawset(self, "shown", true); if self.scripts.OnShow then self.scripts.OnShow(self) end
         elseif k == "Hide" then rawset(self, "shown", false)
+        elseif k == "SetShown" then rawset(self, "shown", (...) and true or false)
         elseif k == "IsShown" then return rawget(self, "shown")
         elseif k == "CreateFontString" or k == "CreateTexture" then return newObj()
         elseif k == "GetPoint" then return "CENTER", nil, "CENTER", 0, 0
@@ -1779,6 +1780,109 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- caches (end)
+---------------------------------------------------------------- trip polish (begin)
+do
+  io.write("trip polish\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+
+  -- Trainers in one room are one row.
+  NPCS[5003] = { name = "Gakin the Darkbinder", subName = "Warlock Trainer", npcFlags = 16, friendlyToFaction = "A",
+    spawns = { [1519] = { { 39.40, 84.86 } } } }
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local grouped
+  for _, r in ipairs(ns.Trainers.Results()) do
+    if r.title:find("warlock trainers", 1, true) then grouped = r end
+  end
+  check(grouped and grouped.title:find("^2 warlock trainers in ") and #grouped.details == 2,
+    "trainers in the same room are one row: " .. tostring(grouped and grouped.title))
+  NPCS[5003] = nil
+
+  -- Walking into another zone is its own step.
+  -- On foot only: no flight paths, and not the quick boat the dock test recorded.
+  local known, recorded = ns.charDB.knownTaxi, ns.db.transports
+  ns.charDB.knownTaxi, ns.db.transports = {}, {}
+  local here = ns.Geo.PlayerNode()
+  local goal = ns.Geo.Node(1437, 0.5, 0.5, "Wetlands camp")
+  local route = ns.Router.WithZoneSteps(ns.Router.Plan(here, goal, ns.Network.Build()))
+  local entry
+  for _, st in ipairs(route.steps) do if st.zoneEntry then entry = st end end
+  check(entry and entry.zoneEntry == 1437 and ns.Router.Describe(route, 1) == "Walk to Wetlands",
+    "a walk into another zone gets a 'Walk to Wetlands' step")
+  check(ns.Journey.StopZone({ node = goal }) == "Wetlands", "stops know their zone")
+  ns.Nav.Start("Wetlands camp", goal, ns.Router.Plan(here, goal, ns.Network.Build()))
+  check(ns.Nav.CurrentStep().zoneEntry == 1437, "the zone step comes first")
+  player.mapID, player.x, player.y = 1437, 0.5, 0.97
+  ns.HUD.Update()
+  check(ns.Nav.active and not ns.Nav.CurrentStep().zoneEntry, "being in the zone completes that step")
+
+  -- Re-routing: walking away from the target.
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1437, 0.5, 0.5
+  goal = ns.Geo.Node(1437, 0.5, 0.9, "South shore")
+  ns.Nav.Start("South shore", goal, ns.Router.Plan(ns.Geo.PlayerNode(), goal, ns.Network.Build()))
+  ns.HUD.Update()
+  local before = #chat
+  player.y = 0.375
+  ns.HUD.Update()
+  player.y = 0.25
+  ns.HUD.Update()
+  check(#chat > before and chat[#chat]:find("re%-routed from here %(you went another way%)"),
+    "walking well away from the target re-routes")
+
+  -- Re-routing: a hearthstone-style jump.
+  ns.charDB.knownTaxi, ns.db.transports = known, recorded
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local trainer = ns.Trainers.Results()[1]
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  ns.HUD.Update()
+  before = #chat
+  player.mapID, player.x, player.y = 1453, 0.6, 0.6
+  ns.HUD.Update()
+  check(chat[#chat]:find("re%-routed from here %(you moved a long way%)", 1) and ns.Nav.CurrentStep().mode == "walk"
+    and ns.Nav.active.route.steps[1].from.mapID == 1453, "a hearth re-routes from where you land")
+  ns.Nav.Stop()
+
+  -- TomTom.
+  local added, removed = {}, 0
+  TomTom = {
+    AddWaypoint = function(_, mapID, x, y, opts) added[#added + 1] = { mapID = mapID, opts = opts } return { #added } end,
+    RemoveWaypoint = function() removed = removed + 1 end,
+  }
+  local blizzard = #waypoints
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  trainer = ns.Trainers.Results()[1]
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  check(ns.Nav.UsingTomTom() and #added == 1 and added[1].opts.crazy and #waypoints == blizzard,
+    "with TomTom, its arrow shows the way instead of ours")
+  ns.Nav.Next()
+  check(#added == 2 and removed == 1, "each step replaces the TomTom waypoint")
+  ns.Nav.Stop()
+  check(removed == 2, "stopping clears it")
+  SlashCmdList.WAYFINDER("tomtom")
+  check(not ns.Nav.UsingTomTom(), "/wf tomtom turns it off")
+  SlashCmdList.WAYFINDER("tomtom")
+  TomTom.AddWaypoint = function() error("old TomTom") end
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  check(not ns.Nav.UsingTomTom() and #waypoints > blizzard, "a TomTom that fails falls back to our own arrow")
+  ns.Nav.Stop()
+  TomTom = nil
+
+  -- Minimap button and addon compartment.
+  Minimap = CreateFrame("Frame")
+  GetCursorPosition = function() return 0, 0 end
+  fire("PLAYER_LOGIN")
+  check(ns.MinimapButton.IsShown(), "a minimap button appears")
+  SlashCmdList.WAYFINDER("minimap")
+  check(not ns.MinimapButton.IsShown(), "/wf minimap hides it")
+  SlashCmdList.WAYFINDER("minimap")
+  local wasShown = ns.Panel.IsShown()
+  Wayfinder_OnAddonCompartmentClick(nil, "LeftButton")
+  check(ns.Panel.IsShown() ~= wasShown, "the addon compartment entry opens the panel")
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- trip polish (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
