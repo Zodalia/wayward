@@ -1,0 +1,13 @@
+## Interface: 16001, 120105
+## Title: WF Probe
+## Notes: Dev tool: records which WoW Forever APIs return usable data for the levelling helper.
+## Author: Zodalia
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
+## SavedVariables: WFProbeDB
+
+Core.lua
+Serialize.lua
+Probes.lua
+Events.lua
+Export.lua
