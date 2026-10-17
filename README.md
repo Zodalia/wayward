@@ -34,7 +34,9 @@ character-select AddOns screen; the probe reports the new number.
 2. `/reload` once (this tests whether SavedVariables survive a reload).
 3. `/wfprobe` runs all probes and opens the report window.
 4. `/wfprobe waypoint` places a test waypoint. Note whether the map pin and the
-   on-screen arrow appear. `/wfprobe waypoint clear` removes it.
+   on-screen arrow appear. `/wfprobe nav` explains a missing arrow (setting,
+   frame, target state, and whether player facing is readable for our own
+   arrow). `/wfprobe waypoint clear` removes it.
 5. Visit and interact with: a class trainer, a vendor, a flight master, the
    bank, a quest giver (open a quest and accept it), an NPC with a gossip menu.
    Each one is captured automatically ("captured …" in chat).

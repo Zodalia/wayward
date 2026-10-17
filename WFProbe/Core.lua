@@ -204,6 +204,7 @@ local HELP = {
   "/wfprobe - run all probes and open the report",
   "/wfprobe show - reopen the report",
   "/wfprobe waypoint - test the built-in waypoint arrow (/wfprobe waypoint clear)",
+  "/wfprobe nav - diagnose why the waypoint arrow is or isn't showing",
   "/wfprobe clear - delete stored probe data",
 }
 
@@ -221,6 +222,8 @@ SlashCmdList.WFPROBE = function(msg)
     ns.ShowExport()
   elseif cmd == "waypoint" then
     ns.TestWaypoint(arg == "clear")
+  elseif cmd == "nav" then
+    ns.NavDiag()
   elseif cmd == "clear" then
     WFProbeDB.chars = {}
     ns.print("stored probe data cleared.")

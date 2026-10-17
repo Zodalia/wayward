@@ -255,6 +255,57 @@ probe("navigation", "waypointAPIs", function()
   }
 end)
 
+-- v0.1: the user waypoint showed on the map but no on-screen arrow appeared.
+-- This separates "setting off" from "frame missing or hidden" from "target state",
+-- and checks whether we could draw our own arrow from the player's facing.
+local function frameInfo(f)
+  if not f then return "<missing>" end
+  local ok, info = pcall(function()
+    return { shown = f:IsShown(), visible = f:IsVisible(), alpha = f:GetAlpha() }
+  end)
+  return ok and info or ("<error: " .. tostring(info) .. ">")
+end
+
+local function navDiag()
+  local state = try("C_Navigation.GetTargetState")
+  if state.status == "ok" then state.name = ns.enumName(Enum.NavigationState, state.value) end
+  local facing = try("GetPlayerFacing")
+  return {
+    cvarShowInGameNavigation = try("C_CVar.GetCVar", "showInGameNavigation"),
+    hasUserWaypoint = try("C_Map.HasUserWaypoint"),
+    isSuperTrackingUserWaypoint = try("C_SuperTrack.IsSuperTrackingUserWaypoint"),
+    highestPriorityType = try("C_SuperTrack.GetHighestPrioritySuperTrackingType"),
+    navigationFrame = frameInfo(get("C_Navigation.GetFrame")),
+    superTrackedFrame = frameInfo(_G.SuperTrackedFrame),
+    targetState = state,
+    hasValidScreenPosition = try("C_Navigation.HasValidScreenPosition"),
+    wasClampedToScreen = try("C_Navigation.WasClampedToScreen"),
+    distance = try("C_Navigation.GetDistance"),
+    playerFacing = facing,
+    playerFacingIsSecret = ns.isSecret(facing.value),
+  }
+end
+
+probe("navigation", "diag", navDiag)
+
+function ns.NavDiag()
+  local data = ns.charData()
+  local ok, out = pcall(navDiag)
+  if not ok then
+    ns.print("nav diag error: " .. tostring(out))
+    return
+  end
+  data.probes.navigation = data.probes.navigation or {}
+  data.probes.navigation.diagManual = { status = "ok", value = out }
+  local frame = out.superTrackedFrame
+  ns.print(string.format("nav: setting=%s, waypoint=%s, arrow frame shown=%s, state=%s, facing=%s",
+    tostring(out.cvarShowInGameNavigation.value), tostring(out.isSuperTrackingUserWaypoint.value),
+    type(frame) == "table" and tostring(frame.shown) or tostring(frame),
+    tostring(out.targetState.name or out.targetState.status),
+    out.playerFacingIsSecret and "secret" or out.playerFacing.status))
+  ns.RefreshExportIfShown()
+end
+
 ---------------------------------------------------------------- travel
 
 probe("travel", "taxiNodesForMap", function()
@@ -584,6 +635,8 @@ function ns.TestWaypoint(clear)
   C_Timer.After(1, function()
     out.isSuperTracking = try("C_SuperTrack.IsSuperTrackingUserWaypoint")
     out.distance = try("C_Navigation.GetDistance")
+    local diagOk, diag = pcall(navDiag)
+    out.diag = diagOk and diag or tostring(diag)
     local data = ns.charData()
     data.probes.navigation = data.probes.navigation or {}
     data.probes.navigation.waypointTest = { status = "ok", value = out }

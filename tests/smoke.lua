@@ -99,6 +99,9 @@ C_QuestHub = { GetHubsForMap = function(mapID) assert(mapID, "needs map"); retur
   AcceptSomething = function() error("explorer must not call non-read functions") end }
 C_GameRules = { GetForeverExperiencePreset = function() return 2 end }
 C_TaxiMap.GetAllTaxiNodes = function() return { { name = "Auberdine", position = vec(0.42, 0.25) } } end
+GetPlayerFacing = function() return 1.5708 end
+C_CVar = { GetCVar = function(name) return name == "showInGameNavigation" and "0" or nil end }
+C_SuperTrack = { IsSuperTrackingUserWaypoint = function() return true end }
 EJ_GetNumTiers = function() return 1 end
 EJ_GetCurrentTier = function() return 0 end
 EJ_GetTierInfo = function() return "Classic" end
@@ -128,6 +131,7 @@ fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 5)
 fire("QUEST_ACCEPTED", 33)
 SlashCmdList.WFPROBE("waypoint")
 runTimers()
+SlashCmdList.WFPROBE("nav")
 SlashCmdList.WFPROBE("show")
 
 for _, line in ipairs(out) do io.write("[chat] ", line, "\n") end
@@ -144,4 +148,6 @@ assert(text:find('calls = "a_none=error b_zone=ok%(table:1%)'), "explorer did no
 assert(not text:find("AcceptSomething"), "explorer touched a non-read function")
 assert(text:find("preset = {"), "experience preset missing")
 assert(not ns.serialize({ position = vec(1, 2) }):find("GetXY"), "function fields not skipped")
+assert(text:find("diagManual"), "nav diag not stored")
+assert(text:find("playerFacingIsSecret = false"), "facing check missing")
 io.write("SMOKE OK\n")
