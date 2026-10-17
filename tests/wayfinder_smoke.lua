@@ -1667,15 +1667,14 @@ do
   failing = { ButtonFrameTemplate = true, SearchBoxTemplate = true, PanelTopTabButtonTemplate = true }
   unknown = { TooltipBackdropTemplate = true }
   check(openAll(freshUI()), "windows open when the templates fail")
-  -- Windows: the main window, its side panel, the card breakdown and the copy box; plus the HUD and
-  -- overview boxes.
-  check(count(asked, "ButtonFrameTemplate") == 4 and count(asked, "BackdropTemplate") == 6
+  -- Windows: the main window, its side panel and the copy box; plus the HUD and overview boxes.
+  check(count(asked, "ButtonFrameTemplate") == 3 and count(asked, "BackdropTemplate") == 5
     and count(asked, "TooltipBackdropTemplate") == 0 and count(asked, "InputBoxTemplate") == 1,
     "a failing or unknown template falls back to the old look")
   failing, unknown = {}, {}
   local ui = freshUI()
   check(openAll(ui), "windows open with the templates")
-  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 4
+  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 3
     and ui.Panel.SelectedTab() == "trainers",
     "template windows, search box and side tabs (tab " .. tostring(ui.Panel.SelectedTab()) .. ")")
 
@@ -1698,7 +1697,7 @@ do
     and (calls.Font or 0) > 0 and (calls.Inset or 0) >= 2, "windows made earlier get EllesmereUI's look")
   local shells, boxes, fonts = calls.Shell, calls.Panel, calls.Font
   openAll(freshUI())
-  check(calls.Shell == shells + 4 and calls.Panel == boxes + 2,
+  check(calls.Shell == shells + 3 and calls.Panel == boxes + 2,
     "new windows get it right away")
   ns.Panel.Toggle()
   ns.Panel.Toggle()
@@ -1715,7 +1714,7 @@ do
   check(ns.db.settings.skin == false and calls.Shell == shells, "/wf skin turns it off for new windows")
   check(chat[said + 1]:find("skin off; /reload", 1, true) ~= nil, "and says a reload removes it from open ones")
   SlashCmdList.WAYFINDER("skin")
-  check(ns.db.settings.skin == true and calls.Shell == shells + 4, "/wf skin again paints what was missed")
+  check(ns.db.settings.skin == true and calls.Shell == shells + 3, "/wf skin again paints what was missed")
 
   CreateFrame, C_XMLUtil, EllesmereUI = savedCreate, nil, nil
   ButtonFrameTemplate_HidePortrait, PanelTemplates_SetTab = nil, nil
@@ -2082,42 +2081,11 @@ do
   IsShiftKeyDown = nil
   ns.Nav.Stop()
 
-  -- Details marked `more` stay off the cards but are in the breakdown.
+  -- Details marked `more` stay off the cards (the tooltip has them).
   ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "rank" },
     { text = "Quests in your log count at full XP; ...", more = true }, { text = "shown" } } } }, "", true)
   check(ns.Cards.Detail(1) == "shown", "a card leaves out details marked more: " .. tostring(ns.Cards.Detail(1)))
-  local noted = ns.Cards.Breakdown(ns.Cards.Visible()[1])
-  check(noted[2][1]:find("full XP", 1, true), "the breakdown still has them")
   ns.Cards.Show(suggestions, "", true)
-
-  -- The "?" button: every stop and step in place of the cards.
-  local here = ns.Geo.PlayerNode()
-  local trip = ns.Journey.Plan(here, { title = "Two stops", stops = {
-    { node = ns.Geo.Node(1433, 0.55, 0.5, "First"), text = "Visit First" },
-    { node = ns.Geo.Node(1433, 0.6, 0.5, "Second"), text = "Visit Second" } } })
-  local tripCard = { title = "Two stops", subtitle = "why", journey = trip, details = { { text = "rank line" } } }
-  local lines = ns.Cards.Breakdown(tripCard)
-  local texts = {}
-  for _, line in ipairs(lines) do texts[#texts + 1] = line[2] .. ":" .. line[1] end
-  local joined = table.concat(texts, " / ")
-  check(joined:find("why:rank line", 1, true) and joined:find("stop:1. Visit First", 1, true)
-    and joined:find("stop:2. Visit Second", 1, true) and joined:find("step:      Walk to First", 1, true)
-    and joined:find("note:2 stops", 1, true), "a trip's breakdown: why, each stop, then how to get there: " .. joined)
-  local first = joined:find("stop:1. Visit First", 1, true)
-  check(first < joined:find("step:      Walk to First", 1, true), "a stop comes before the steps that lead to it")
-  ns.Cards.ShowBreakdown(tripCard)
-  local shown = ns.Cards.BreakdownShown()
-  check(shown and #shown == #lines, "the breakdown shows in place of the cards")
-  ns.Cards.HideBreakdown()
-  check(ns.Cards.BreakdownShown() == nil, "closing it leaves the cards")
-  ns.Panel.SelectPage("trainers")
-  ns.Cards.ShowBreakdown(tripCard)
-  check(ns.Cards.BreakdownOpen() and not ns.Panel.SideShown(), "the breakdown docks where the side panel was, closing it")
-  ns.Panel.SelectPage("trainers")
-  check(ns.Panel.SideShown() and not ns.Cards.BreakdownOpen(), "a side tab closes the breakdown again")
-  ns.Panel.CloseSide()
-  local routeLines = ns.Cards.Breakdown(suggestions[1])
-  check(routeLines[#routeLines][2] == "note" and routeLines[3][2] == "step", "directions list their steps too")
 
   ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City", route = { steps = {} } } }, "", true)
   check(ns.Cards.Drawn()[1] == "Run The Stockade|Go", "a dungeon's level moves from the card title to the subtitle")
