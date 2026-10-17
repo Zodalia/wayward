@@ -386,6 +386,125 @@ check(usesIt, "Darkshore to Stormwind now takes the recorded boat (" .. ns.Route
 SlashCmdList.WAYFINDER("dock list")
 check(true, "/wf dock list opens the copy box")
 
+---------------------------------------------------------------- dungeons (begin)
+
+io.write("dungeons\n")
+-- Client dungeon finder list: names without area IDs, one level each.
+local LFG = {
+  [1] = { name = "Wailing Caverns", level = 17 },
+  [2] = { name = "Scholomance", level = 57 },
+  [5] = { name = "Deadmines", level = 20 },
+  [10] = { name = "Molten Core", level = 60, players = 40 },
+  [12] = { name = "Warsong Gulch", level = 10, type = 5 },
+  [15] = { name = "Stormwind Stockade", level = 22 },
+  [20] = { name = "Hall of Testing", level = 21 },
+}
+GetLFGDungeonInfo = function(id)
+  local d = LFG[id]
+  if d then return d.name, d.type or 0, 0, d.level, d.level, d.level, d.level, d.level, 0, 0, "", 1, d.players or 5 end
+end
+ns.data.dungeons = {
+  { areaID = 1581, name = "The Deadmines", level = 18,
+    entrances = { { mapID = 1439, x = 0.5, y = 0.9 }, { mapID = 1433, x = 0.6, y = 0.5 } } },
+  { areaID = 718, name = "Wailing Caverns", level = 17, entrances = { { mapID = 1433, x = 0.55, y = 0.5 } } },
+  { areaID = 717, name = "The Stockade", aliases = { "Stormwind Stockade" }, level = 24, faction = "Alliance",
+    entrances = { { mapID = 1453, x = 0.5, y = 0.5 } } },
+  { areaID = 2437, name = "Ragefire Chasm", level = 18, faction = "Horde", entrances = { { mapID = 1433, x = 0.4, y = 0.5 } } },
+  { areaID = 721, name = "Gnomeregan", level = 29, entrances = { { mapID = 1437, x = 0.5, y = 0.5 } } },
+  { areaID = 209, name = "Shadowfang Keep", level = 22, entrances = { { mapID = 1437, x = 0.3, y = 0.3 } } },
+  { areaID = 2057, name = "Scholomance", level = 50, entrances = { { mapID = 1437, x = 0.6, y = 0.6 } } },
+  { areaID = 2717, name = "Molten Core", level = 60, raid = true, entrances = { { mapID = 1437, x = 0.5, y = 0.6 } } },
+}
+local function reloadBridge() assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns) end
+local function titles(list)
+  local out = {}
+  for _, d in ipairs(list) do out[#out + 1] = d.title end
+  return table.concat(out, " | ")
+end
+local function find(list, prefix)
+  for _, d in ipairs(list) do
+    if d.title:sub(1, #prefix) == prefix then return d end
+  end
+end
+
+-- Without QuestieDB: entrances from Data/Dungeons.lua, levels from the client.
+local savedLib, savedLevel = LibQuestieDB, UnitLevel
+LibQuestieDB = nil
+reloadBridge()
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+local dungeons = ns.Dungeons.Results()
+local all = titles(dungeons)
+check(not ns.Questie.Available() and ns.Dungeons.SummaryText():find("Install QuestieDB"),
+  "without QuestieDB: summary suggests installing it")
+check(dungeons[1] and dungeons[1].title == "The Deadmines  ·  level 20",
+  "client level wins over data, matched by name without \"The\" (" .. all .. ")")
+local deadmines, wc = find(dungeons, "The Deadmines"), find(dungeons, "Wailing Caverns")
+check(deadmines and wc and deadmines.score < wc.score and wc.route.seconds < deadmines.route.seconds,
+  "level fit outranks a slightly shorter trip (Deadmines level 20 before nearer Wailing Caverns level 17)")
+check(deadmines and deadmines.goal.mapID == 1433 and deadmines.route
+  and ns.Router.Describe(deadmines.route, #deadmines.route.steps) == "Walk to The Deadmines entrance",
+  "route to the nearer of two entrances")
+local stockade = find(dungeons, "The Stockade")
+check(stockade and stockade.title == "The Stockade  ·  level 22" and stockade.route
+  and math.abs(stockade.goal.x - 0.5) < 1e-6, "alias \"Stormwind Stockade\" matched; a route into Stormwind")
+local sfk = find(dungeons, "Shadowfang Keep")
+check(sfk and sfk.details[1].text:find("Wayfinder estimate"), "no client entry: data level, marked as an estimate")
+check(sfk and sfk.details[2].text:find("approximate"), "data entrances are marked approximate")
+check(not all:find("Ragefire") and not all:find("Gnomeregan") and not all:find("Scholomance")
+  and not all:find("Molten Core") and not all:find("Warsong"),
+  "other faction's capital, too high, raids and battlegrounds hidden at level 20")
+ns.Panel.Select(3)
+check(ns.Panel.IsShown(), "panel shows dungeons without errors")
+
+UnitLevel = function() return 58 end
+all = titles(ns.Dungeons.Results())
+check(all:find("Scholomance") and not all:find("Molten Core"), "level 58: Scholomance yes, level 60 raid not yet")
+UnitLevel = function() return 60 end
+all = titles(ns.Dungeons.Results())
+check(all:find("Molten Core %(raid%)") and not all:find("Deadmines"), "level 60: raids show, low dungeons don't")
+UnitLevel = savedLevel
+
+-- With QuestieDB: its entrances (already Forever coordinates), dungeon quests,
+-- and dungeons only it knows when the client lists them.
+LibQuestieDB = savedLib
+LibQuestieDB.Meta.QuestMeta.questKeys.zoneOrSort = 17
+LibQuestieDB.EraToForeverByUiMapId = function(mapID, x, y)
+  if mapID == 1453 then return x + 10, y end
+  return x, y
+end
+LibQuestieDB.Support.Get = function()
+  return { private = { areaIdToUiMapId = "return { [44] = 1433, [1519] = 1453 }", dungeons = {
+    [1581] = { "The Deadmines", { 10029 }, 40, { { 44, 70, 40 } } },
+    [99001] = { "Hall of Testing", nil, 44, { { 44, 40, 60 } } },
+    [3562] = { "Hellfire Ramparts", nil, 3483, { { 3483, 47.7, 53.6 } } },
+  } } }
+end
+QUESTS[20] = { name = "Defias Ledger", questLevel = 20, requiredLevel = 14, zoneOrSort = 1581, startedBy = { { 344 } } }
+QUESTS[21] = { name = "Red Silk Bandanas", questLevel = 21, requiredLevel = 15, zoneOrSort = 10029, startedBy = { { 6000 } } }
+QUESTS[22] = { name = "Deadmines Too High", questLevel = 30, requiredLevel = 28, zoneOrSort = 1581, startedBy = { { 344 } } }
+QUESTS[10].zoneOrSort = 1581 -- "Already in log"
+reloadBridge()
+dungeons = ns.Dungeons.Results()
+all = titles(dungeons)
+deadmines = find(dungeons, "The Deadmines")
+check(deadmines and deadmines.zone == "Redridge Mountains  ·  2 quests for you  ·  1 in your log",
+  "dungeon quests counted, alternative area IDs included (" .. tostring(deadmines and deadmines.zone) .. ")")
+check(deadmines and math.abs(deadmines.goal.x - 0.7) < 1e-6 and math.abs(deadmines.goal.y - 0.4) < 1e-6,
+  "QuestieDB entrance used as is (no Era conversion)")
+local listedQuests = {}
+for _, d in ipairs(deadmines and deadmines.details or {}) do listedQuests[#listedQuests + 1] = d.text end
+local questText = table.concat(listedQuests, "\n")
+check(questText:find("Defias Ledger") and questText:find("Red Silk Bandanas") and questText:find("Already in log")
+  and not questText:find("Too High") and not questText:find("approximate"), "tooltip lists the dungeon's quests")
+check(find(dungeons, "Hall of Testing") and not all:find("Hellfire"),
+  "QuestieDB-only dungeon shows when the client lists it; later expansions don't")
+stockade = find(dungeons, "The Stockade")
+check(stockade and math.abs(stockade.goal.x - 0.6) < 1e-6, "our Era Stormwind point converted with EraToForever")
+ns.Panel.Select(3)
+check(ns.Panel.IsShown(), "panel shows dungeons with QuestieDB")
+
+---------------------------------------------------------------- dungeons (end)
+
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
