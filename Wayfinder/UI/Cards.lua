@@ -9,7 +9,8 @@ local _, ns = ...
 -- client has those atlases; otherwise a plain parchment look.
 --
 -- A page opts in with `layout = "cards"` (and `width`); results are the usual
--- panel results, plus optional `icon` (file) / `iconCoords` and `kind`.
+-- panel results, plus optional `icon` (file) / `iconCoords`, `kind`, and
+-- `place` / `stats` (see the page contract in Panel.lua).
 
 local Cards = {}
 ns.Cards = Cards
@@ -121,33 +122,102 @@ local function hover(card)
   end)
 end
 
+-- A row of up to three numbers, label over value ("TRAVEL / ~5 min"), split
+-- evenly across `width` with thin rules between them.
+local MAX_STATS = 3
+local RULE = { 0.35, 0.22, 0.08, 0.35 }
+
+local function statStrip(card, width, labelSize, valueSize, justify)
+  local strip = CreateFrame("Frame", nil, card)
+  strip:SetSize(width, labelSize + valueSize + 8)
+  strip.width, strip.justify = width, justify
+  strip.columns, strip.rules = {}, {}
+  for i = 1, MAX_STATS do
+    local label = text(strip, "GameFontHighlightSmall", labelSize, DETAIL_COLOR)
+    label:SetJustifyH(justify)
+    label:SetWordWrap(false)
+    local value = text(strip, "GameFontNormal", valueSize, TITLE_COLOR)
+    value:SetJustifyH(justify)
+    value:SetWordWrap(false)
+    strip.columns[i] = { label = label, value = value }
+    if i > 1 then
+      local rule = strip:CreateTexture(nil, "ARTWORK")
+      rule:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
+      rule:SetSize(1, labelSize + valueSize + 4)
+      strip.rules[i] = rule
+    end
+  end
+  return strip
+end
+
+local function fillStats(strip, stats)
+  local count = math.min(#stats, MAX_STATS)
+  local width = strip.width / math.max(count, 1)
+  for i, col in ipairs(strip.columns) do
+    local stat = stats[i]
+    local shown = stat ~= nil and i <= count
+    col.label:SetShown(shown)
+    col.value:SetShown(shown)
+    if shown then
+      local inset = strip.justify == "LEFT" and (i > 1 and 8 or 0) or 4
+      col.label:ClearAllPoints()
+      col.label:SetPoint("TOPLEFT", (i - 1) * width + inset, 0)
+      col.label:SetWidth(width - inset - 4)
+      col.label:SetText(string.upper(stat[1]))
+      col.value:ClearAllPoints()
+      col.value:SetPoint("TOPLEFT", col.label, "BOTTOMLEFT", 0, -3)
+      col.value:SetWidth(width - inset - 4)
+      col.value:SetText(stat[2])
+    end
+    local rule = strip.rules[i]
+    if rule then
+      rule:SetShown(shown)
+      rule:ClearAllPoints()
+      rule:SetPoint("TOPLEFT", (i - 1) * width, 0)
+    end
+  end
+end
+
+-- A thin rule across a card, between its blocks.
+local function divider(card, width)
+  local line = card:CreateTexture(nil, "ARTWORK")
+  line:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
+  line:SetSize(width, 1)
+  return line
+end
+
+-- Large card, top to bottom: icon, title, where; the numbers; a rule; the
+-- quests and notes; the button. Fixed gaps, so every card lines up the same.
+local LARGE_TEXT_W = 270
+
 local function largeCard(parent)
   local card = CreateFrame("Frame", nil, parent)
   card:SetSize(LARGE_W, LARGE_H)
   background(card, "adventureguide-pane-large")
   icon(card, 64, 94)
-  card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -18)
+  card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -16)
 
-  -- Title and subtitle centred under the icon; the details below read as a
-  -- left-aligned paragraph.
   card.title = text(card, "GameFontNormalHuge", 18, TITLE_COLOR)
-  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -14)
-  card.title:SetWidth(264)
+  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -12)
+  card.title:SetWidth(LARGE_TEXT_W)
   card.title:SetJustifyH("CENTER")
   if card.title.SetMaxLines then card.title:SetMaxLines(2) end
 
   card.text = text(card, "GameFontHighlight", 12, TEXT_COLOR)
-  card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -6)
-  card.text:SetWidth(264)
+  card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -4)
+  card.text:SetWidth(LARGE_TEXT_W)
   card.text:SetJustifyH("CENTER")
   card.text:SetSpacing(2)
+  if card.text.SetMaxLines then card.text:SetMaxLines(2) end
 
-  card.detail = text(card, "GameFontHighlightSmall", 11, DETAIL_COLOR)
-  card.detail:SetPoint("TOP", card.text, "BOTTOM", 0, -12)
-  card.detail:SetWidth(250)
+  card.stats = statStrip(card, LARGE_TEXT_W, 10, 15, "CENTER")
+  card.rule = divider(card, LARGE_TEXT_W - 20)
+
+  card.detail = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
+  card.detail:SetWidth(LARGE_TEXT_W - 12)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(3)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(9) end
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(6) end
 
   card.button = button(card, 116, 32, true)
   card.button:SetPoint("BOTTOM", 0, 22)
@@ -157,6 +227,9 @@ local function largeCard(parent)
   return card
 end
 
+-- Small card: the same blocks beside the icon, one line each.
+local SMALL_LEFT, SMALL_TEXT_W = 74, 254
+
 local function smallCard(parent)
   local card = CreateFrame("Frame", nil, parent)
   card:SetSize(SMALL_W, SMALL_H)
@@ -165,28 +238,27 @@ local function smallCard(parent)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
   card.title = text(card, "GameFontNormalLarge", 14, TITLE_COLOR)
-  card.title:SetPoint("TOPLEFT", 72, -16)
-  card.title:SetWidth(222)
+  card.title:SetPoint("TOPLEFT", SMALL_LEFT, -16)
+  card.title:SetWidth(SMALL_TEXT_W)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
 
   card.text = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
-  card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -6)
-  card.text:SetWidth(256)
+  card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
+  card.text:SetWidth(SMALL_TEXT_W)
   card.text:SetJustifyH("LEFT")
-  card.text:SetWordWrap(true)
-  card.text:SetSpacing(2)
-  if card.text.SetMaxLines then card.text:SetMaxLines(2) end
+  card.text:SetWordWrap(false)
+
+  card.stats = statStrip(card, SMALL_TEXT_W, 9, 12, "LEFT")
 
   card.detail = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
-  card.detail:SetPoint("TOPLEFT", card.text, "BOTTOMLEFT", 0, -6)
-  card.detail:SetWidth(256)
+  card.detail:SetWidth(SMALL_TEXT_W)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(2)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(4) end
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(2) end
 
   card.button = button(card, 116, 24)
-  card.button:SetPoint("BOTTOMLEFT", 70, 14)
+  card.button:SetPoint("BOTTOMLEFT", SMALL_LEFT - 2, 14)
   card.extra = extra(card)
   card.extra:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
   hover(card)
@@ -256,20 +328,46 @@ local function fill(card, r, large)
     card.icon:Show()
     card.sheetIcon:Hide()
   end
-  -- "Run The Stockade  ·  level 23": the level reads better in the subtitle.
-  local title, level = (r.title or ""):match("^(.-)%s+·%s+(level %d+)$")
+  -- "Run The Stockade  ·  level 23": the level is one of the numbers.
+  local title, level = (r.title or ""):match("^(.-)%s+·%s+level (%d+)$")
   card.title:SetText(title or r.title)
-  local subtitle = plain(r.subtitle)
-  if level then subtitle = level:gsub("^l", "L") .. "  ·  " .. subtitle end
-  card.text:SetText(subtitle)
-  -- The why (details after the ranking line, without those marked `more`);
-  -- the breakdown has the rest.
-  local lines, room = {}, large and 9 or 4
+
+  -- Where, then the numbers; rows without them show their subtitle instead.
+  local stats = r.stats
+  if not stats and level then stats = { { "Level", level } } end
+  card.text:SetText(plain(r.place or r.subtitle))
+  local below = card.text
+  if stats and #stats > 0 then
+    fillStats(card.stats, stats)
+    card.stats:ClearAllPoints()
+    card.stats:SetPoint("TOP", card.text, "BOTTOM", 0, large and -14 or -8)
+    if not large then
+      card.stats:ClearAllPoints()
+      card.stats:SetPoint("TOPLEFT", card.text, "BOTTOMLEFT", 0, -8)
+    end
+    card.stats:Show()
+    below = card.stats
+  else
+    card.stats:Hide()
+  end
+
+  -- The quests and notes (details after the ranking line, without those
+  -- marked `more`); the tooltip has everything.
+  local lines, room = {}, large and 6 or 2
   for i = 2, #(r.details or {}) do
     if #lines >= room then break end
     if not r.details[i].more then lines[#lines + 1] = plain(r.details[i].text) end
   end
   card.detail:SetText(table.concat(lines, "\n"))
+  card.detail:ClearAllPoints()
+  if large then
+    card.rule:ClearAllPoints()
+    card.rule:SetPoint("TOP", below, "BOTTOM", 0, -10)
+    card.rule:SetShown(#lines > 0)
+    card.detail:SetPoint("TOP", card.rule, "BOTTOM", 0, -10)
+  else
+    card.detail:SetPoint("TOPLEFT", below, "BOTTOMLEFT", 0, -8)
+  end
   card.button:SetText(r.journey and "Start trip" or "Go")
   card.button:SetEnabled(r.journey ~= nil or r.route ~= nil)
   local action = r.actions and r.actions[1]
@@ -347,6 +445,17 @@ end
 function Cards.Detail(index)
   local card = view and ({ view.large, view.small[1], view.small[2] })[index]
   return card and card.detail:GetText()
+end
+
+-- A card's numbers as drawn, "LABEL=value" (1 = large), for tests.
+function Cards.Stats(index)
+  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
+  local out = {}
+  if not (card and card.stats:IsShown()) then return out end
+  for _, col in ipairs(card.stats.columns) do
+    if col.label:IsShown() then out[#out + 1] = col.label:GetText() .. "=" .. col.value:GetText() end
+  end
+  return out
 end
 
 -- The titles and button labels drawn on the cards (for tests).

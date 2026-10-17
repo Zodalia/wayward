@@ -1119,6 +1119,15 @@ do
     and lakeshire.details[1].text:find("7,600 XP", 1, true),
     "hub XP is the sum of its quests over trip + 5 min each: " .. tostring(lakeshire and lakeshire.subtitle))
   check(stormwind and stormwind.details[2].text:find("estimated for 1 quest"), "a quest without XP data is estimated")
+  local function statText(r)
+    local out = {}
+    for _, st in ipairs(r and r.stats or {}) do out[#out + 1] = st[1] .. "=" .. st[2] end
+    return table.concat(out, ",")
+  end
+  check(lakeshire and lakeshire.place and statText(lakeshire):find("^Travel=.-,Quests=5,XP/min=~299$"),
+    "a hub's card numbers: travel, quests, XP per minute: " .. statText(lakeshire))
+  check(list[1].stats and list[1].stats[1][1] == "Where" and list[1].place:find("spell"),
+    "a need's card: why as the place line, then where and travel: " .. tostring(list[1].place))
   check(#list <= 7 and find(list, "Run Hall of Testing"), "dungeons without quests fill the remaining rows")
   check(ns.ForYou.SummaryText():find("1 thing due") and not ns.ForYou.SummaryText():find("quests per hour"),
     "summary: " .. ns.ForYou.SummaryText())
@@ -2087,7 +2096,11 @@ do
   check(ns.Cards.Detail(1) == "shown", "a card leaves out details marked more: " .. tostring(ns.Cards.Detail(1)))
   ns.Cards.Show(suggestions, "", true)
 
-  ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City", route = { steps = {} } } }, "", true)
+  ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City  ·  ~5 min  ·  1 quest",
+    place = "Stormwind City  ·  Group", stats = { { "Level", "23" }, { "Travel", "~5 min" }, { "XP/min", "~281" } },
+    route = { steps = {} } } }, "", true)
+  check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=23,TRAVEL=~5 min,XP/MIN=~281",
+    "a card shows its numbers as labelled blocks: " .. table.concat(ns.Cards.Stats(1), ","))
   check(ns.Cards.Drawn()[1] == "Run The Stockade|Go", "a dungeon's level moves from the card title to the subtitle")
 
   -- Other pages keep rows at the normal width.

@@ -207,6 +207,12 @@ local function rateText(option, ctx)
   return string.format("~%.1f quests/h", option.rate * 60)
 end
 
+-- The rate as a card stat: { label, value }.
+local function rateStat(option, ctx)
+  if ctx.xpMode then return { "XP/min", "~" .. formatNumber(option.rate) } end
+  return { "Quests/h", string.format("~%.1f", option.rate * 60) }
+end
+
 ---------------------------------------------------------------- needs
 
 local function trainingNeed(ctx)
@@ -751,6 +757,7 @@ local function needRow(need)
   return {
     id = "need" .. need.kind, kind = need.kind, title = need.title,
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
+    place = capitalize(need.why), stats = { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
     goal = need.goal, route = need.route, details = details,
   }
 end
@@ -795,7 +802,7 @@ local function questLines(details, option, ctx)
     local who = q.inLog and logText(q) or (q.giver and ("  (" .. q.giver .. ")") or "")
     details[#details + 1] = {
       text = string.format("[%d] %s%s%s", q.level or 0, q.name or ("Quest " .. q.id), value, who),
-      color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level),
+      color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true,
     }
   end
 end
@@ -841,8 +848,9 @@ local function optionRow(option, rank, total, ctx)
     details[#details + 1] = { text = "No quest XP data: quests count by level fit.", color = GREY }
   end
   if option.kind == "dungeon" then
+    -- Cards say "Group" / "Raid" by the place instead.
     details[#details + 1] = { text = option.raid and "Raid: needs a raid group." or "Dungeon: bring a group.",
-      color = GREY }
+      color = GREY, more = true }
   end
   questLines(details, option, ctx)
 
@@ -859,10 +867,28 @@ local function optionRow(option, rank, total, ctx)
   end
   why[#why + 1] = rateText(option, ctx)
 
+  -- For the cards: where, then up to three numbers.
+  local place = firstPart(option.zone)
+  local stats = {}
+  local level = option.title and option.title:match("level (%d+)$")
+  if level then stats[#stats + 1] = { "Level", level } end
+  stats[#stats + 1] = { "Travel", ns.FormatDuration(option.trip) }
+  if option.kind == "dungeon" then
+    place = string.format("%s  ·  %s  ·  %s", place, option.raid and "Raid" or "Group", why[1])
+  elseif option.kind == "handin" then
+    stats[#stats + 1] = { "Ready", tostring(handins) }
+  elseif option.kind == "finish" then
+    stats[#stats + 1] = { "In your log", tostring(logged) }
+  else
+    stats[#stats + 1] = { "Quests", handins > 0 and string.format("%d + %d ready", fresh, handins) or tostring(fresh) }
+  end
+  stats[#stats + 1] = rateStat(option, ctx)
+
   local row = {
     id = option.kind .. (option.name or option.title), kind = option.kind, raid = option.raid, title = option.title,
     subtitle = string.format("%s  ·  %s  ·  %s", firstPart(option.zone),
       ns.FormatDuration(option.trip), table.concat(why, ", ")),
+    place = place, stats = stats,
     goal = option.goal, route = option.route, details = details, rate = option.rate,
   }
   if option.journey then
@@ -881,10 +907,16 @@ local function plainRow(option)
   local details = { { text = ns.Questie.Available() and "No quests for it: ranked by level fit and travel time."
     or "Ranked by level fit and travel time. Install QuestieDB for its quests and XP.", color = GOLD } }
   for _, line in ipairs(r.details or {}) do details[#details + 1] = line end
+  local stats = {}
+  local level = option.title and option.title:match("level (%d+)$")
+  if level then stats[1] = { "Level", level } end
+  stats[#stats + 1] = { "Travel", ns.FormatDuration(option.trip) }
   return {
     id = "plain" .. (r.id or option.name), kind = "dungeon", raid = option.raid, title = option.title,
     subtitle = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone),
       ns.FormatDuration(option.trip)),
+    place = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone), option.raid and "Raid" or "Group"),
+    stats = stats,
     goal = r.goal, route = r.route, details = details,
   }
 end
@@ -898,6 +930,8 @@ local function comboRow(need, option, journey, ctx)
     id = "combo" .. need.kind, kind = need.kind, title = journey.title,
     subtitle = string.format("%s  ·  %s, then %s", ns.FormatDuration(journey.seconds), need.why,
       rateText(option, ctx)),
+    place = capitalize(need.why) .. ", then " .. option.title,
+    stats = { { "Trip", ns.FormatDuration(journey.seconds) }, { "Stops", tostring(#journey.stops) }, rateStat(option, ctx) },
     journey = journey, details = details, actions = { onlyAction(need) },
   }
 end
