@@ -33,8 +33,26 @@ function QuestHubs.Results()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
 
+  -- Name each hub after its place, and merge hubs that turn out to be the same
+  -- place (a town's quest givers can be spread over more than one cluster).
+  local named, byPlace = {}, {}
+  for _, hub in ipairs(ns.Questie.QuestHubs(start, ROUTED_HUBS)) do
+    local place = ns.Places.NameFor(hub.anchor.node)
+    local key = place and (place .. "@" .. hub.anchor.node.mapID)
+    local existing = key and byPlace[key]
+    if existing then
+      for _, giver in ipairs(hub.givers) do table.insert(existing.givers, giver) end
+      existing.count = existing.count + hub.count
+      if #hub.anchor.quests > #existing.anchor.quests then existing.anchor = hub.anchor end
+    else
+      hub.place = place
+      named[#named + 1] = hub
+      if key then byPlace[key] = hub end
+    end
+  end
+
   local results, total = {}, 0
-  for i, hub in ipairs(ns.Questie.QuestHubs(start, ROUTED_HUBS)) do
+  for i, hub in ipairs(named) do
     total = total + hub.count
     local lowest, highest, details = math.huge, 0, {}
     for _, giver in ipairs(hub.givers) do
@@ -46,14 +64,19 @@ function QuestHubs.Results()
         }
       end
     end
-    local goal = hub.anchor.node
+    local anchor = hub.anchor.node
+    local place = hub.place or ("Near " .. (hub.anchor.name or "?"))
+    -- Directions end at the main quest giver, labelled with the place.
+    local goal = ns.Geo.Node(anchor.mapID, anchor.x, anchor.y,
+      hub.place and string.format("%s (%s)", hub.place, hub.anchor.name or "?") or hub.anchor.name)
     local levels = lowest == highest and ("level " .. lowest) or string.format("levels %d-%d", lowest, highest)
     results[#results + 1] = {
       id = "hub" .. i,
-      title = string.format("%d quest%s at %s", hub.count, hub.count == 1 and "" or "s", hub.anchor.name or "?"),
-      zone = ns.MapName(goal.mapID) .. "  ·  " .. levels,
+      title = string.format("%s  ·  %d quest%s", place, hub.count, hub.count == 1 and "" or "s"),
+      zone = string.format("%s  ·  %s  ·  %d quest giver%s", ns.MapName(anchor.mapID), levels, #hub.givers,
+        #hub.givers == 1 and "" or "s"),
       goal = goal,
-      route = ns.Router.Plan(start, goal, net),
+      route = goal and ns.Router.Plan(start, goal, net),
       details = details,
     }
   end

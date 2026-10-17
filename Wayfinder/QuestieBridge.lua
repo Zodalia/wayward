@@ -11,7 +11,7 @@ local Bridge = {}
 ns.Questie = Bridge
 
 local CONTRACT = 4
-local HUB_RADIUS = 150 -- yards: quest givers this close together form one hub
+local HUB_RADIUS = 120 -- yards between neighbouring quest givers in one hub
 
 -- English trainer subtitles (read with GetRaw, which skips localisation).
 local CLASS_BY_TRAINER_TITLE = {
@@ -279,21 +279,42 @@ function Bridge.QuestHubs(here, limit)
   end
 
   table.sort(order, function(a, b) return a.distance < b.distance end)
+  return Bridge.Cluster(order, limit or 12)
+end
+
+local function addGiver(hub, g)
+  table.insert(hub.givers, g)
+  hub.count = hub.count + #g.quests
+  if #g.quests > #hub.anchor.quests then hub.anchor = g end
+end
+
+-- Single linkage: a giver joins every hub it is near any member of, and the
+-- hubs it bridges merge. Past `limit`, givers can still join existing hubs.
+function Bridge.Cluster(givers, limit)
   local hubs = {}
-  for _, g in ipairs(order) do
-    local hub
-    for _, h in ipairs(hubs) do
-      if ns.Geo.Distance(h.anchor.node, g.node) <= HUB_RADIUS then hub = h break end
+  for _, g in ipairs(givers) do
+    local near = {}
+    for i, h in ipairs(hubs) do
+      for _, member in ipairs(h.givers) do
+        if ns.Geo.Distance(member.node, g.node) <= HUB_RADIUS then
+          near[#near + 1] = i
+          break
+        end
+      end
     end
-    if not hub and #hubs < (limit or 12) then
-      hub = { anchor = g, givers = {}, count = 0 }
-      hubs[#hubs + 1] = hub
-    end
-    -- Past the limit, farther givers can still join a hub that already exists.
-    if hub then
-      table.insert(hub.givers, g)
-      hub.count = hub.count + #g.quests
-      if #g.quests > #hub.anchor.quests then hub.anchor = g end
+    if #near == 0 then
+      if #hubs < limit then
+        local hub = { anchor = g, givers = {}, count = 0 }
+        addGiver(hub, g)
+        hubs[#hubs + 1] = hub
+      end
+    else
+      local target = hubs[near[1]]
+      addGiver(target, g)
+      for k = #near, 2, -1 do
+        for _, member in ipairs(hubs[near[k]].givers) do addGiver(target, member) end
+        table.remove(hubs, near[k])
+      end
     end
   end
   return hubs

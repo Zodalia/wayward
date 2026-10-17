@@ -45,6 +45,8 @@ function Harvest.RecordNPC(kind, extra)
   npc.name = UnitName("npc") or npc.name
   npc.faction = UnitFactionGroup("npc")
   npc.mapID, npc.x, npc.y = here.mapID, here.x, here.y
+  local subZone = GetSubZoneText and GetSubZoneText()
+  npc.subZone = subZone ~= "" and subZone or nil
   npc.kinds[kind] = true
   npc.seen = time()
   for k, v in pairs(extra or {}) do npc[k] = v end

@@ -15,6 +15,7 @@ Data\Seed.lua
 Harvest.lua
 Network.lua
 Router.lua
+Places.lua
 QuestieBridge.lua
 Trainers.lua
 QuestHubs.lua
