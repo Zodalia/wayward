@@ -23,7 +23,7 @@ local CLASS_BY_TRAINER_TITLE = {
 local QUEST_FIELDS = { "name", "questLevel", "requiredLevel", "requiredRaces", "requiredClasses",
   "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill", "nextQuestInChain",
   "parentQuest", "requiredMaxLevel", "availableUntilCompleted", "availableStartingWith", "disabledByQuest",
-  "breadcrumbForQuestId", "zoneOrSort", "finishedBy" }
+  "breadcrumbForQuestId", "zoneOrSort", "finishedBy", "objectives", "triggerEnd" }
 
 local RED_LEVELS = 5 -- a quest this many levels above you shows red
 
@@ -557,6 +557,60 @@ function Bridge.QuestFinisher(questID, here)
   if not (q and q.finishedBy) then return nil end
   local name, node, distance = nearestOf(q.finishedBy, here, UnitFactionGroup("player"))
   return name, node, distance
+end
+
+-- Where to work on a quest's objectives: the nearest place, as a route node.
+-- In your log, the game's own quest-area marker (C_QuestLog.GetQuestsOnMap);
+-- otherwise QuestieDB: creatures to kill, objects to use, mobs that drop the
+-- items you need, and places to explore. Returns node, source or nil.
+local MAX_DROPPERS = 6
+
+local function logArea(questID, label)
+  if not (C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(questID)) then return nil end
+  for _, continent in pairs(ns.Geo.Continents()) do
+    for _, poi in ipairs(C_QuestLog.GetQuestsOnMap(continent) or {}) do
+      if poi.questID == questID and poi.x and poi.y then
+        local node = ns.Geo.Node(continent, poi.x, poi.y, label)
+        if node then return node end
+      end
+    end
+  end
+  return nil
+end
+
+local function objectiveNodes(q, label)
+  local nodes = {}
+  local function add(spawns)
+    for _, node in ipairs(spawnNodes(spawns, label)) do nodes[#nodes + 1] = node end
+  end
+  local groups = type(q.objectives) == "table" and q.objectives or {}
+  for _, creature in ipairs(groups[1] or {}) do add(NpcDB.Get(creature[1], "spawns")) end
+  for _, object in ipairs(groups[2] or {}) do add(ObjectDB.Get(object[1], "spawns")) end
+  if ItemDB then
+    for _, item in ipairs(groups[3] or {}) do
+      for i, npcID in ipairs(ItemDB.Get(item[1], "npcDrops") or {}) do
+        if i > MAX_DROPPERS then break end
+        add(NpcDB.Get(npcID, "spawns"))
+      end
+      for i, objectID in ipairs(ItemDB.Get(item[1], "objectDrops") or {}) do
+        if i > MAX_DROPPERS then break end
+        add(ObjectDB.Get(objectID, "spawns"))
+      end
+    end
+  end
+  if type(q.triggerEnd) == "table" then add(q.triggerEnd[2]) end
+  return nodes
+end
+
+function Bridge.ObjectiveNode(questID, here)
+  local q = Bridge.Quest(questID)
+  local label = q and q.name or ("Quest " .. questID)
+  local area = logArea(questID, label)
+  if area then return area, "log" end
+  if not q then return nil end
+  local ok, nodes = pcall(objectiveNodes, q, label)
+  if not ok or #nodes == 0 then return nil end
+  return Bridge.Nearest(nodes, here), "QuestieDB"
 end
 
 -- The level shown for a quest (your level for quests that scale with you).
