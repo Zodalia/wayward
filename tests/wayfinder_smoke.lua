@@ -1340,7 +1340,6 @@ do
     return {}
   end
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
-  ns.QuestsPage.ClearPicks()
 
   local function byID(rows, id)
     for _, row in ipairs(rows) do if row.id == id then return row end end
@@ -1374,54 +1373,39 @@ do
     and handin.journey.stops[2].action.kind == "turnin", "one row hands in every completed quest")
   check(rows[1] == handin, "trip rows come before the log")
 
-  -- Pick and unpick.
+  -- Add puts a quest into the trip you're on, or starts one.
+  ns.Nav.Stop()
   check(cull.actions and cull.actions[1].label == "Add", "log rows have an Add action")
   cull.actions[1].run(cull)
-  check(WayfinderCharDB.questPicks and WayfinderCharDB.questPicks[50] == true, "the pick is saved per character")
+  check(ns.Nav.active and ns.Nav.TripHasQuest(50), "with no trip on, Add starts one with that quest")
   rows = ns.QuestsPage.Results("")
-  check(byID(rows, "log50").actions[1].label == "Added", "a picked quest says Added")
-  check(byID(rows, "picked") and byID(rows, "picked").title == "Plan a trip for 1 quest" and rows[1].id == "picked",
-    "picking shows a trip row at the top")
-  byID(rows, "log50").actions[1].run()
-  rows = ns.QuestsPage.Results("")
-  check(not byID(rows, "picked") and byID(rows, "log50").actions[1].label == "Add", "clicking Added unpicks it")
+  check(byID(rows, "log50").actions[1].label == "In trip" and not byID(rows, "picked"),
+    "a quest in the trip says In trip; no separate pile of picks")
 
-  -- Picking from a search, then one trip for both.
-  ns.QuestsPage.TogglePick(50)
+  -- Adding from a search joins the same trip, re-ordered from here.
   local found = byID(ns.QuestsPage.Results("gnoll patrol"), "quest53")
   check(found and found.actions and found.actions[1].label == "Add", "search results have the Add action too")
   found.actions[1].run(found)
   local done = byID(ns.QuestsPage.Results("already done"), "quest2")
   check(done and not done.actions, "no Add on a quest you have done")
-  rows = ns.QuestsPage.Results("")
-  local picked = byID(rows, "picked")
-  check(picked and picked.title == "Plan a trip for 2 quests" and picked.journey, "trip row for 2 picked quests")
+  local stops = ns.Nav.active.journey.stops
   local order = {}
-  for i, st in ipairs(picked and picked.journey.stops or {}) do order[st.action.kind .. st.action.questID] = i end
-  check(#picked.journey.stops == 5 and order.pickup53 < order.complete53 and order.complete53 < order.turnin53
+  for i, st in ipairs(stops) do order[st.action.kind .. st.action.questID] = i end
+  check(#stops == 5 and order.pickup53 < order.complete53 and order.complete53 < order.turnin53
     and order.complete50 < order.turnin50 and not order.pickup50,
-    "the combined trip keeps each quest's own order: " .. kinds(picked.journey.stops))
-  check(#picked.details == 2 and picked.actions[1].label == "Clear", "the tooltip names the quests; Clear empties it")
-  ns.Panel.Search("quests", "")
-  check(ns.Panel.IsShown(), "panel shows the quest log with trip rows")
-  ns.Nav.StartJourney(picked.journey, true) -- what clicking the row does
-  check(ns.Nav.active and #ns.Nav.active.journey.stops == 5, "the combined trip starts as one journey")
+    "added quests keep their own order inside the one trip: " .. kinds(stops))
+  check(ns.Nav.active.title == "Your trip", "the trip is called Your trip once it holds more")
+
+  -- In trip takes it out; the hand-in row can join too.
+  byID(ns.QuestsPage.Results(""), "log50").actions[1].run()
+  check(not ns.Nav.TripHasQuest(50) and ns.Nav.TripHasQuest(53), "In trip takes the quest out again")
+  local handinRow = byID(ns.QuestsPage.Results(""), "handin")
+  check(handinRow.actions and handinRow.actions[1].label == "Add", "with a trip on, the hand-in row can be added")
+  handinRow.actions[1].run()
+  check(ns.Nav.TripHasQuest(51) and ns.Nav.TripHasQuest(52) and ns.Nav.TripHasQuest(53), "its hand-ins join the trip")
   ns.Nav.Stop()
 
-  -- Done quests leave the picks.
-  completed = { 2, 53 }
-  rows = ns.QuestsPage.Results("")
-  check(byID(rows, "picked").title == "Plan a trip for 1 quest" and not WayfinderCharDB.questPicks[53],
-    "a quest you have done leaves the picks")
-  fire("QUEST_TURNED_IN", 50)
-  check(next(WayfinderCharDB.questPicks) == nil and not byID(ns.QuestsPage.Results(""), "picked"),
-    "handing in the last picked quest clears the trip row")
-  ns.QuestsPage.TogglePick(50)
-  byID(ns.QuestsPage.Results(""), "picked").actions[1].run()
-  check(next(WayfinderCharDB.questPicks) == nil, "Clear empties the picks")
-
   -- Without QuestieDB: the log still shows, without trips.
-  ns.QuestsPage.TogglePick(50)
   local savedLib = LibQuestieDB
   LibQuestieDB = nil
   reload()
@@ -1438,7 +1422,6 @@ do
   check(#rows == 0 and ns.QuestsPage.EmptyText(""):find("quest log is empty"), "an empty log says so")
   LibQuestieDB = savedLib
 
-  ns.QuestsPage.ClearPicks()
   C_QuestLog.GetAllCompletedQuestIDs, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
     C_QuestLog.GetQuestObjectives = savedLog[1], savedLog[2], savedLog[3], savedLog[4], savedLog[5]
   for id = 50, 53 do QUESTS[id] = nil end
@@ -1920,6 +1903,65 @@ do
   TomTom = nil
 end
 ---------------------------------------------------------------- flight knowledge (end)
+---------------------------------------------------------------- adding to a trip (begin)
+do
+  io.write("adding to a trip\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1439, 0.5, 0.5 -- Darkshore
+  local here = ns.Geo.PlayerNode()
+  local function stopAt(mapID, x, y, label) return { node = ns.Geo.Node(mapID, x, y, label), text = "Visit " .. label } end
+  local function labels()
+    local out = {}
+    for _, st in ipairs(ns.Nav.active.journey.stops) do out[#out + 1] = st.node.label end
+    return table.concat(out, ",")
+  end
+
+  -- A trip to Stormwind is on; adding something near you puts it first.
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
+  ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
+  check(labels() == "Shore camp,Bank", "an added stop goes where it fits best, here first: " .. labels())
+  check(ns.Nav.active.title == "Your trip" and ns.JourneyOverview.IsShown(), "the trip is renamed and the overview shows it")
+  ns.Nav.Stop()
+
+  -- Starting something while a trip is on asks: add, replace or cancel.
+  local shown
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, a, b, data) shown = { which = which, trip = a, label = b, data = data } end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
+  local other = ns.Journey.Plan(here, { title = "Shore run", stops = { stopAt(1439, 0.55, 0.5, "Shore camp") } })
+  ns.Nav.StartJourney(other)
+  check(shown and shown.which == "WAYFINDER_TRIP" and shown.trip == "Stormwind errands" and shown.label == "Shore run",
+    "starting a journey during a trip asks first")
+  check(ns.Nav.active.title == "Stormwind errands", "nothing changes until you answer (Cancel keeps the trip)")
+  shown.data.add()
+  check(labels() == "Shore camp,Bank", "Add to trip merges it into the current trip")
+  shown = nil
+  local trainer = ns.Trainers.Results()[1]
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  check(shown and shown.label == trainer.title, "plain directions ask too")
+  shown.data.replace()
+  check(ns.Nav.active.title == trainer.title and not ns.Nav.active.journey, "Replace starts the new directions instead")
+
+  -- Plain directions become a trip when something is added.
+  shown = nil
+  ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
+  check(not shown and ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2,
+    "adding to plain directions makes a trip with both: " .. (ns.Nav.active.journey and labels() or "-"))
+
+  -- The same quest isn't added twice; a row's stops can be added (shift-click).
+  ns.Nav.Stop()
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  local quest = { node = ns.Geo.Node(1439, 0.6, 0.5, "Giver"), text = "Pick up X", action = { kind = "pickup", questID = 777 } }
+  ns.Nav.AddToTrip({ quest }, "X")
+  check(ns.Nav.TripHasQuest(777) and not ns.Nav.AddToTrip({ { node = quest.node, text = "again",
+    action = { kind = "pickup", questID = 777 } } }, "X"), "a quest already in the trip isn't added again")
+  local row = { title = "Row", goal = ns.Geo.Node(1439, 0.4, 0.5, "Row spot") }
+  check(#ns.Nav.StopsFor(row) == 1 and ns.Nav.AddToTrip(ns.Nav.StopsFor(row), row.title)
+    and #ns.Nav.active.journey.stops == 2, "a panel row's destination can be added (shift-click)")
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+end
+---------------------------------------------------------------- adding to a trip (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
