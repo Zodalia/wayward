@@ -835,7 +835,7 @@ local function optionRow(option, rank, total, ctx)
   end
   if option.estimated > 0 then
     details[#details + 1] = { text = string.format("XP estimated for %s QuestieDB has no XP for.",
-      plural(option.estimated, "quest")), color = GREY }
+      plural(option.estimated, "quest")), color = GREY, more = true }
   end
   if not ctx.xpMode then
     details[#details + 1] = { text = "No quest XP data: quests count by level fit.", color = GREY }
