@@ -145,6 +145,18 @@ Needs QuestieDB.
   accepted or handed in; a quest done early is planned out of the rest of the
   trip. Start one with `ns.Nav.StartJourney(ns.Journey.Plan(start, def))`, or
   return it as a result's `journey`.
+  - A stop can list `after = { otherStop }` (it must come later), and
+    `resolve = { kind = "objectives", questID }` to find its place at planning
+    time. Action kinds: `pickup`, `complete` (the objectives; done when the game
+    reports the quest complete) and `turnin`.
+  - `ns.Journey.QuestStops(questID, here)` gives the stops for a whole quest
+    from where it stands now: pick it up, do the objectives (the game's quest
+    area marker once it's in your log, else QuestieDB's objective mobs, objects,
+    item drops and explore points), hand it in.
+  - The current trip is saved per character and resumed after a login or
+    reload, re-planned from where you are. The directions box's `=` button
+    opens an overview of every stop (done / now / next); a stop can be dropped
+    there, together with the stops that need it.
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/wf <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
 - **Quest helpers** on `ns.Questie`: `Quest(id)`, `AllQuests()`,
