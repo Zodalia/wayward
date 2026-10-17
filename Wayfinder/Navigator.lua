@@ -17,6 +17,11 @@ local GOAL_RADIUS = 10
 -- RemoveWaypoint(uid); if that fails we fall back to our own arrow.
 local tomtomFailed
 
+-- Try TomTom again (e.g. after updating it); /wf tomtom calls this.
+function Nav.ResetTomTom()
+  tomtomFailed = nil
+end
+
 function Nav.UsingTomTom()
   return ns.db.settings.tomtom ~= false and not tomtomFailed and type(TomTom) == "table"
     and type(TomTom.AddWaypoint) == "function"
@@ -42,10 +47,11 @@ local function setTomTom(mapID, x, y, title)
   return false
 end
 
-local function setWaypoint(node)
+-- `title` says what to do there (the step text), for TomTom's arrow and pin.
+local function setWaypoint(node, title)
   local mapID, x, y = ns.Geo.ZonePoint(node)
   if not (mapID and x and y) then return end
-  if Nav.UsingTomTom() and setTomTom(mapID, x, y, node.label or "Wayfinder") then return end
+  if Nav.UsingTomTom() and setTomTom(mapID, x, y, title or node.label or "Wayfinder") then return end
   if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then return end
   C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
   if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
@@ -74,7 +80,7 @@ end
 
 local function showStep()
   local step = Nav.CurrentStep()
-  if step then setWaypoint(step.to) end
+  if step then setWaypoint(step.to, ns.Router.Describe(Nav.active.route, Nav.active.index)) end
   if Nav.active then Nav.active.closest = nil end
   save()
   ns.Fire("NAV_CHANGED")

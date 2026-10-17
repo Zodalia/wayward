@@ -164,6 +164,7 @@ SlashCmdList.WAYFINDER = function(msg)
     ns.Nav.Stop()
   elseif cmd == "tomtom" then
     ns.db.settings.tomtom = ns.db.settings.tomtom == false
+    ns.Nav.ResetTomTom()
     ns.print("TomTom arrow " .. (ns.db.settings.tomtom and "on (when TomTom is installed)" or "off"))
     if ns.Nav.active then ns.Nav.Recalculate() end
   elseif cmd == "arrow" then
