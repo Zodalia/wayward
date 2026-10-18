@@ -49,12 +49,32 @@ local function text(parent, template, size, c)
   return fs
 end
 
+-- The large pane's art has a reward ribbon in its top-left corner (retail
+-- shows a reward there); we have none, so that corner is covered with the
+-- art's own top-right corner, mirrored: the same torn edge, no ribbon.
+local RIBBON_PATCH = { w = 48, h = 70 }
+
+local function hideRibbon(card, atlas)
+  local info = C_Texture.GetAtlasInfo(atlas)
+  if not (info and info.file and info.leftTexCoord and info.rightTexCoord and info.topTexCoord
+    and info.bottomTexCoord and info.width and info.height and info.width > 0 and info.height > 0) then return end
+  local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+  local w, h = card:GetWidth() or LARGE_W, card:GetHeight() or LARGE_H
+  local patch = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+  patch:SetTexture(info.file)
+  patch:SetSize(RIBBON_PATCH.w, RIBBON_PATCH.h)
+  patch:SetPoint("TOPLEFT")
+  -- Left > right flips it.
+  patch:SetTexCoord(r, r - (r - l) * RIBBON_PATCH.w / w, t, t + (b - t) * RIBBON_PATCH.h / h)
+end
+
 -- Card background: the Adventure Guide pane, or parchment.
 local function background(card, atlas)
   local bg = card:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
   if hasAtlas(atlas) then
     bg:SetAtlas(atlas)
+    if atlas == "adventureguide-pane-large" then pcall(hideRibbon, card, atlas) end
   else
     bg:SetColorTexture(PARCHMENT[1], PARCHMENT[2], PARCHMENT[3], PARCHMENT[4])
     local edge = card:CreateTexture(nil, "BORDER")
