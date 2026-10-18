@@ -217,7 +217,17 @@ check(r and r.title == "Demisette Cloyce" and r.route, "Redridge: seeded trainer
 local modes = {}
 for _, s in ipairs(r.route.steps) do modes[#modes + 1] = s.mode end
 check(table.concat(modes, ",") == "walk,fly,walk", "Redridge: walk, fly, walk (" .. table.concat(modes, ",") .. ")")
-check(ns.Router.Describe(r.route, 1) == "Go to the flight master at Lakeshire, Redridge", "step 1 text")
+check(ns.Router.Describe(r.route, 1) == "Talk to the flight master at Lakeshire, Redridge", "step 1 text")
+do
+  local fm = r.route.steps[1].to
+  ns.db.npcs[990002] = { name = "Ariena Stormfeather", kinds = { flightMaster = true }, mapID = fm.mapID, x = fm.x, y = fm.y }
+  ns.Fire("DATA_CHANGED")
+  local named = ns.Trainers.Results()[1]
+  check(ns.Router.Describe(named.route, 1) == "Talk to Ariena Stormfeather, the flight master at Lakeshire, Redridge",
+    "a flight master you've met is named: " .. ns.Router.Describe(named.route, 1))
+  ns.db.npcs[990002] = nil
+  ns.Fire("DATA_CHANGED")
+end
 check(ns.Router.Describe(r.route, 2) == "Fly to Stormwind, Elwynn", "step 2 text")
 
 player.mapID, player.x, player.y = 1439, 0.5, 0.5
@@ -304,7 +314,11 @@ check(ns.Nav.active.index == 1, "starts at step 1")
 local fp = r.route.steps[1].to
 player.mapID, player.x, player.y = fp.mapID, fp.x, fp.y
 ns.HUD.Update()
-check(ns.Nav.active.index == 2, "reaching the flight master advances to the flight")
+check(ns.Nav.active.index == 1 and ns.Nav.Waiting() and ns.Nav.Interaction() == "talk",
+  "at the flight master: talk to them first")
+fire("TAXIMAP_OPENED")
+check(ns.Nav.active.index == 2 and ns.Nav.Interaction() == "fly", "the flight map opens: now the flight")
+check(ns.HUD.Lines()[4]:find("Pick Stormwind", 1, true), "the box says what to pick: " .. ns.HUD.Lines()[4])
 -- Land in Stormwind.
 local landing = r.route.steps[2].to
 player.mapID, player.x, player.y = landing.mapID, landing.x, landing.y
@@ -314,7 +328,29 @@ check(ns.Nav.active.index == 3, "landing advances to the final walk")
 -- Arrive at the trainer.
 player.mapID, player.x, player.y = 1453, 0.3938, 0.8483
 ns.HUD.Update()
-check(ns.Nav.active == nil and waypoints[#waypoints] == "cleared", "arriving stops and clears our waypoint")
+check(ns.Nav.active and ns.Nav.Waiting() and ns.Nav.TargetNPC() == r.goal.npc and r.goal.npc,
+  "at the trainer: talk to them (" .. tostring(r.goal.npc) .. ")")
+local savedUnitName = UnitName
+UnitName = function(unit) if unit == "npc" or unit == "mouseover" then return r.goal.npc end return "Me" end
+local marks = {}
+UnitExists = function() return true end
+UnitIsPlayer = function() return false end
+SetRaidTarget = function(unit, index) marks[#marks + 1] = unit .. ":" .. index end
+GetRaidTargetIndex = function() return nil end
+fire("UPDATE_MOUSEOVER_UNIT")
+check(marks[1] == "mouseover:1", "the trainer gets a star when you mouse over them")
+SlashCmdList.WAYFINDER("marker")
+fire("UPDATE_MOUSEOVER_UNIT")
+check(#marks == 1 and ns.db.settings.markNPCs == false, "/wf marker turns that off")
+SlashCmdList.WAYFINDER("marker")
+UnitName = function(unit) if unit == "npc" then return r.goal.npc end return "Someone else" end
+fire("UPDATE_MOUSEOVER_UNIT")
+check(#marks == 1, "someone else doesn't")
+UnitName = function(unit) if unit == "npc" then return r.goal.npc end return "Me" end
+UnitExists, UnitIsPlayer, SetRaidTarget, GetRaidTargetIndex = nil, nil, nil, nil
+fire("GOSSIP_SHOW")
+UnitName = savedUnitName
+check(ns.Nav.active == nil and waypoints[#waypoints] == "cleared", "talking to them ends it and clears our waypoint")
 
 io.write("live time and re-planning\n")
 ns.charDB.knownTaxi = {}
@@ -2264,7 +2300,7 @@ do
     RemoveWaypoint = function() end }
   local trainer = ns.Trainers.Results()[1]
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
-  check(titles[1] == ns.Router.Describe(ns.Nav.active.route, 1) and titles[1]:find("^Go to the flight master"),
+  check(titles[1] == ns.Router.Describe(ns.Nav.active.route, 1) and titles[1]:find("^Talk to the flight master"),
     "TomTom's waypoint is titled with the step: " .. tostring(titles[1]))
   ns.Nav.Stop()
   TomTom = nil

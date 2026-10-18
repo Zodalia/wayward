@@ -19,6 +19,7 @@ end
 -- keeps its worked-out paths on it): your known flight paths, the recorded
 -- and bundled transports, your faction.
 local cached, cachedKey
+local FLIGHT_MASTER_RADIUS = 60 -- yards from a flight path's map position
 
 local function signature()
   local known, count = ns.charDB.knownTaxi, 0
@@ -41,6 +42,9 @@ function Network.Build()
         local node = ns.Geo.Node(continent, t.position.x, t.position.y, t.name)
         if node then
           node.isFlight, node.nodeID = true, t.nodeID
+          -- Who you talk to there: one you've met, else QuestieDB's.
+          node.npc = ns.Harvest.NPCNear("flightMaster", node, FLIGHT_MASTER_RADIUS)
+            or ns.Questie.FlightMasterNear(node, FLIGHT_MASTER_RADIUS)
           net.flights[#net.flights + 1] = node
         end
       end
@@ -66,3 +70,5 @@ function Network.Build()
 end
 
 ns.Listen("FLIGHTS_CHANGED", function() cached = nil end)
+-- A newly met flight master names their flight path.
+ns.Listen("DATA_CHANGED", function() cached = nil end)

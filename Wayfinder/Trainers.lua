@@ -93,6 +93,7 @@ local function results(trainers, plural, start, net)
         details[#details + 1] = { text = #g > 1 and line and (t.name .. ": " .. line) or line or t.name }
       end
     end
+    goal.npc = g[1].name
     out[#out + 1] = {
       id = g[1].id,
       title = title,
@@ -263,6 +264,7 @@ function WeaponMasters.Results()
           if t ~= best then others[#others + 1] = t.master.name end
         end
         if #others > 0 then details[#details + 1] = { text = "Also taught by " .. table.concat(others, ", ") .. "." } end
+        best.master.node.npc = best.master.name
         rows[#rows + 1] = {
           id = "weapon" .. w.weapon.spell, title = string.format("%s  %s(%s)|r", w.weapon.name, GREY, best.master.name),
           subtitle = string.format("%s  ·  %s  ·  %s", ns.MapName(best.master.node.mapID), price,

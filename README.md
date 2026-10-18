@@ -26,6 +26,14 @@ What works in this MVP:
   flight). It also shows the trip, a bar of stops done, the step, which stop
   you're on, and distance and time left, with Blizzard's square buttons for
   previous / next step, all stops, recalculate and stop.
+- **Talking to NPCs** is a step of its own. At a flight path it's "Talk to
+  Ariena Stormfeather, the flight master at Lakeshire" (named once you've met
+  them, or from QuestieDB) until the flight map opens, then "Fly to
+  Stormwind" ("Pick Stormwind on the flight map" until you take off). A
+  trainer or vendor you're heading for is done when you talk to them, not on
+  arrival. The NPC the step is for (flight master, quest giver, the one you
+  hand in to, trainer, vendor) gets a star raid marker when you see them
+  near there (`/wf marker` or the options turn that off).
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.

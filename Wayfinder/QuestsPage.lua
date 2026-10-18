@@ -160,7 +160,7 @@ local function questStop(m, start)
   elseif status == "inLog" then
     local finisher, node = ns.Questie.QuestFinisher(q.id, start)
     if node then
-      return { node = node, text = string.format("Hand in %s to %s", q.name, finisher or "?"),
+      return { node = node, npc = finisher, text = string.format("Hand in %s to %s", q.name, finisher or "?"),
         action = { kind = "turnin", questID = q.id } }
     end
     return nil, "no known place to hand it in"

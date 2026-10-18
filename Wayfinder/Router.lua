@@ -221,11 +221,14 @@ function Router.Describe(route, index)
     return string.format(TRANSPORT_VERB[step.kind] or "Travel to %s", step.to.label)
   end
   if nextStep and nextStep.mode == "fly" then
-    return "Go to the flight master at " .. step.to.label
+    if step.to.npc then return string.format("Talk to %s, the flight master at %s", step.to.npc, step.to.label) end
+    return "Talk to the flight master at " .. step.to.label
   end
   if nextStep and nextStep.mode == "transport" then
     return string.format("Go to %s (%s to %s)", step.to.label, nextStep.kind, nextStep.to.label)
   end
+  -- The destination is someone to talk to (a trainer, a vendor).
+  if not nextStep and step.to.npc then return "Talk to " .. step.to.npc end
   return "Walk to " .. step.to.label
 end
 

@@ -17,7 +17,8 @@ local _, ns = ...
 --     text = "Pick up Red Silk Bandanas from Scout Riell",  -- shown on arrival
 --     action = { kind = "pickup" | "complete" | "turnin", questID = 123 },  -- optional; also
 --       { kind = "item", itemID, questID } (collect an item a quest needs) and
---       { kind = "manual", questID } (a step of a quest you confirm with next)
+--       { kind = "manual", questID } (a step of a quest you confirm with next) and
+--       { kind = "talk", npc } (done when you talk to them: a trainer, a vendor)
 --     after = { stop, ... },   -- optional: stops that must come first
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
 --   }
@@ -133,7 +134,7 @@ function Journey.QuestStops(questID, here)
 
   local finisher, node = ns.Questie.QuestFinisher(questID, here)
   if node then
-    stops[#stops + 1] = { node = node, text = string.format("Hand in %s to %s", name, finisher or "the quest giver"),
+    stops[#stops + 1] = { node = node, npc = finisher, text = string.format("Hand in %s to %s", name, finisher or "the quest giver"),
       after = previous and { previous } or nil, action = { kind = "turnin", questID = questID } }
   end
   return stops
@@ -455,7 +456,8 @@ end
 -- Stop that a step arrives at, if it still waits for a quest action.
 function Journey.PendingAction(step)
   local stop = step and step.stop
-  return stop and stop.action and stop.action.questID and not stop.done and not stop.skipped and stop or nil
+  local action = stop and stop.action
+  return action and (action.questID or action.kind == "talk") and not stop.done and not stop.skipped and stop or nil
 end
 
 function Journey.StopsDone(journey)
@@ -492,7 +494,7 @@ function Journey.Save(journey)
   local function save(stop)
     local after = {}
     for _, before in ipairs(stop.after or {}) do after[#after + 1] = index[before] end
-    return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, action = stop.action, resolve = stop.resolve,
+    return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, npc = stop.npc, action = stop.action, resolve = stop.resolve,
       done = stop.done, passed = stop.passed, skipped = stop.skipped, after = #after > 0 and after or nil }
   end
   local saved = { title = root.title, manual = root.manual, stops = {} }
@@ -505,7 +507,7 @@ end
 function Journey.Load(saved)
   local def = { title = saved.title, manual = saved.manual, stops = {} }
   local function load(s)
-    return { node = loadNode(s.node), text = s.text, giver = s.giver, action = s.action, resolve = s.resolve, done = s.done,
+    return { node = loadNode(s.node), text = s.text, giver = s.giver, npc = s.npc, action = s.action, resolve = s.resolve, done = s.done,
       passed = s.passed, skipped = s.skipped }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end

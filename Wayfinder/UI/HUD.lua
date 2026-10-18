@@ -256,6 +256,11 @@ function HUD.Update()
     frame.info:SetText("|cff7fd1aeIn the area|r  ·  " .. objective .. "     " .. remaining)
   elseif objective then
     frame.info:SetText(objective .. "     " .. remaining)
+  elseif ns.Nav.Interaction() == "fly" then
+    frame.info:SetText(string.format("Pick %s on the flight map     %s", step.to.label, remaining))
+  elseif ns.Nav.Interaction() == "talk" and not (step.stop and step.stop.action and step.stop.action.kind == "manual") then
+    local name = ns.Nav.TargetNPC()
+    frame.info:SetText(string.format("|cff7fd1aeYou're here:|r talk to %s     %s", name or "them", remaining))
   elseif ns.Nav.Waiting() then
     -- A quest step only you can tell is done.
     local manual = step.stop and step.stop.action and step.stop.action.kind == "manual"

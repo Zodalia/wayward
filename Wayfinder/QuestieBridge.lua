@@ -120,13 +120,20 @@ end
 -- Weapon masters are kept with the class trainers, under this key.
 local WEAPON_MASTER = "WEAPON_MASTER"
 
+local flightMasters -- { {name, nodes}, ... }, built with the trainers
+
 local function buildTrainers()
-  trainersByClass = {}
+  trainersByClass, flightMasters = {}, {}
   local started = now()
   local trainerFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.TRAINER
+  local flightFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.FLIGHT_MASTER
   if not trainerFlag then return end
   for _, id in ipairs(NpcDB.GetAllIds()) do
     local flags = NpcDB.Get(id, "npcFlags") or 0
+    if flightFlag and flags ~= 0 and hasBit(flags, flightFlag) then
+      local name = NpcDB.Get(id, "name")
+      flightMasters[#flightMasters + 1] = { name = name, nodes = spawnNodes(NpcDB.Get(id, "spawns"), name) }
+    end
     if flags ~= 0 and hasBit(flags, trainerFlag) then
       local subName = NpcDB.GetRaw(id, "subName") or ""
       local class = CLASS_BY_TRAINER_TITLE[subName] or (subName == "Weapon Master" and WEAPON_MASTER) or nil
@@ -139,6 +146,21 @@ local function buildTrainers()
   end
   ns.debugTimings = ns.debugTimings or {}
   ns.debugTimings.questieTrainers = now() - started
+end
+
+-- The name of the flight master within `radius` yards of a node (a flight
+-- path), or nil.
+function Bridge.FlightMasterNear(node, radius)
+  if not Bridge.Available() then return nil end
+  if not trainersByClass then buildTrainers() end
+  local best, bestDistance
+  for _, fm in ipairs(flightMasters or {}) do
+    for _, n in ipairs(fm.nodes) do
+      local d = ns.Geo.Distance(node, n)
+      if d <= radius and d < (bestDistance or math.huge) then best, bestDistance = fm.name, d end
+    end
+  end
+  return best
 end
 
 -- { {id, name, node}, ... } for your class and faction, nearest spawn each.

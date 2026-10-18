@@ -55,6 +55,19 @@ function Harvest.RecordNPC(kind, extra)
   return npc
 end
 
+-- The name of a recorded NPC of `kind` within `radius` yards of a node, or nil.
+function Harvest.NPCNear(kind, node, radius)
+  local best, bestDistance
+  for _, npc in pairs(Harvest.AllNPCs()) do
+    if npc.kinds and npc.kinds[kind] then
+      local at = ns.Geo.Node(npc.mapID, npc.x, npc.y)
+      local d = at and ns.Geo.Distance(node, at)
+      if d and d <= radius and d < (bestDistance or math.huge) then best, bestDistance = npc.name, d end
+    end
+  end
+  return best
+end
+
 function Harvest.AllNPCs()
   local all = {}
   for id, npc in pairs(ns.data.seedNPCs) do all[id] = npc end

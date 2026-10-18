@@ -27,6 +27,7 @@ QuestHubs.lua
 QuestsPage.lua
 Journey.lua
 Navigator.lua
+Marker.lua
 Docks.lua
 Dungeons.lua
 Vendors.lua

@@ -148,8 +148,12 @@ local function ask(label, add, replace)
   StaticPopup_Show("WAYFINDER_TRIP", Nav.active.title, label, { add = add, replace = replace })
 end
 
--- A stop for a plain destination (a trainer, a vendor, a hub).
+-- A stop for a plain destination (a trainer, a vendor, a hub); someone to
+-- talk to is done when you talk to them.
 local function visitStop(title, goal)
+  if goal.npc then
+    return { node = goal, npc = goal.npc, text = "Talk to " .. goal.npc, action = { kind = "talk", npc = goal.npc } }
+  end
   return { node = goal, text = "Go to " .. (goal.label or title) }
 end
 
@@ -192,6 +196,46 @@ function Nav.Stop()
   Nav.active = nil
   save()
   ns.Fire("NAV_CHANGED")
+end
+
+-- Walking to a flight master: the step after is the flight.
+local function flightTalk(steps, k)
+  local step, nextStep = steps[k], steps[k + 1]
+  return step ~= nil and step.mode == "walk" and nextStep ~= nil and nextStep.mode == "fly"
+end
+
+local function onTaxi()
+  return UnitOnTaxi and UnitOnTaxi("player") and true or false
+end
+
+-- The NPC the current step leads to, and where: the flight master, the quest
+-- giver or the one to hand in to, the trainer or vendor you're going to.
+function Nav.TargetNPC()
+  local a = Nav.active
+  local step = a and a.route.steps[a.index]
+  if not step then return nil end
+  if flightTalk(a.route.steps, a.index) then return step.to.npc, step.to end
+  local stop = step.stop
+  if stop then
+    local action = stop.action
+    if action and action.kind == "talk" then return action.npc, stop.node end
+    if action and action.kind == "pickup" then return stop.giver, stop.node end
+    if action and action.kind == "turnin" then return stop.npc, stop.node end
+    return nil
+  end
+  if a.index == #a.route.steps then return step.to.npc, step.to end
+  return nil
+end
+
+-- What you do where you are now ("talk", "fly", or nil), for the directions box.
+function Nav.Interaction()
+  local a = Nav.active
+  if not a then return nil end
+  if flightTalk(a.route.steps, a.index) then return a.waiting and "talk" or nil end
+  local step = a.route.steps[a.index]
+  if step and step.mode == "fly" and not onTaxi() then return "fly" end
+  if a.waiting and Nav.TargetNPC() then return "talk" end
+  return nil
 end
 
 local function arrive()
@@ -377,6 +421,42 @@ ns.Listen("QUESTS_OFFERED", function(npcName, ids)
     if Nav.active then Nav.Drop(stop) end
   end
 end)
+
+-- Talking to someone. The flight map opening moves on to the flight; any
+-- window of the NPC a stop or the destination is for (or of anyone where it
+-- is, when names don't match, e.g. another language) finishes it.
+local TALK_RADIUS = 15
+
+ns.On("TAXIMAP_OPENED", function()
+  local a = Nav.active
+  if a and flightTalk(a.route.steps, a.index) then
+    a.index = a.index + 1
+    a.waiting = false
+    showStep()
+  end
+end)
+
+function Nav.Talked(npcName)
+  local a = Nav.active
+  local here = ns.Geo.PlayerNode()
+  if not (a and here) then return end
+  local name, node = Nav.TargetNPC()
+  local close = node and ns.Geo.Distance(here, node) <= TALK_RADIUS
+  if not ((name and npcName == name) or close) then return end
+  local step = a.route.steps[a.index]
+  local stop = step and step.stop
+  if stop and stop.action and stop.action.kind == "talk" then
+    finishStop(function(action) return action == stop.action end)
+  elseif not stop and a.index == #a.route.steps and step.to.npc then
+    a.talked = true
+    arrive()
+  end
+end
+
+for _, event in ipairs({ "GOSSIP_SHOW", "MERCHANT_SHOW", "TRAINER_SHOW", "QUEST_GREETING", "QUEST_DETAIL",
+  "BANKFRAME_OPENED", "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" }) do
+  ns.On(event, function() Nav.Talked(UnitName("npc")) end)
+end
 
 -- Collecting an item a quest needs.
 ns.On("BAG_UPDATE_DELAYED", function()
@@ -675,6 +755,20 @@ function Nav.Tick()
           a.index = k
           showStep()
         end
+      elseif flightTalk(steps, k) and not onTaxi() then
+        -- At the flight master: the flight starts when you open their map.
+        a.waiting = true
+        if a.index ~= k then
+          a.index = k
+          showStep()
+        end
+      elseif k == #steps and not step.stop and step.to.npc and not a.talked then
+        -- At the trainer or vendor: done when you talk to them.
+        a.waiting = true
+        if a.index ~= k then
+          a.index = k
+          showStep()
+        end
       elseif k == #steps then
         if step.stop then step.stop.done, step.stop.passed = true, nil end
         arrive()
@@ -686,6 +780,11 @@ function Nav.Tick()
       end
       break
     end
+  end
+  -- Already in the air (a flight map we didn't see open): on to the flight.
+  if flightTalk(steps, a.index) and onTaxi() then
+    a.index = a.index + 1
+    showStep()
   end
   -- In an objective area there's nothing to point at.
   if Nav.InArea() and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end

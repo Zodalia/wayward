@@ -551,7 +551,7 @@ local function handinOptions(ctx, start, net)
         q.giver = g.name
         quests[#quests + 1] = q
         stops[#stops + 1] = { node = g.node, group = "turnin", action = { kind = "turnin", questID = e.id },
-          text = string.format("Hand in %s to %s", e.name or ("quest " .. e.id), g.name or "the quest giver") }
+          npc = g.name, text = string.format("Hand in %s to %s", e.name or ("quest " .. e.id), g.name or "the quest giver") }
       end
     end
     local goal = hub.anchor.node

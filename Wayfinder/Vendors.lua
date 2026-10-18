@@ -437,6 +437,7 @@ function Vendors.Results()
   for id, v in pairs(vendors) do
     v.id, v.covers = id, coverage(v, p)
     v.distance = ns.Geo.Distance(start, v.node)
+    v.node.npc = v.node.npc or v.name
     if next(v.covers) or (v.visited and not v.known) then list[#list + 1] = v end
   end
   table.sort(list, function(a, b)
