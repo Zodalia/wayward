@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- Suggestion cards in the style of modern WoW's Adventure Guide ("Suggested
 -- Content"): one large featured card on the left, two smaller ones stacked on
--- the right, arrows under them to step through the rest; hover a card for
+-- the right, arrows under them to page through the rest, three at a time (so
+-- no suggestion shows twice); hover a card for
 -- every detail and step. Sizes, fonts and colours follow
 -- Blizzard's own frame (Blizzard_EncounterJournal, AdventureJournal templates).
 -- The Adventure Guide isn't in Forever, so its art is used only when the
@@ -24,7 +25,7 @@ local NAV_HEIGHT = 34      -- the arrows under the cards
 local TITLE_COLOR = { 0.20, 0.10, 0.02 }
 local TEXT_COLOR = { 0.22, 0.14, 0.06 }
 local DETAIL_COLOR = { 0.28, 0.19, 0.09 }
-local TAG_COLOR = { 0.55, 0.12, 0.05 } -- the card's kind ("BEST QUEST"), a deep red
+local TAG_COLOR = { 0.45, 0.06, 0.02 } -- the card's kind ("BEST QUEST"), a deep red
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
 
@@ -243,8 +244,9 @@ local function smallCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
-  card.tag = text(card, "GameFontHighlightSmall", 9, TAG_COLOR)
-  card.tag:SetPoint("TOPLEFT", SMALL_LEFT, -12)
+  -- Clear of the pane's worn top edge, and no smaller than the large card's.
+  card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
+  card.tag:SetPoint("TOPLEFT", SMALL_LEFT, -15)
   card.tag:SetWidth(SMALL_TEXT_W)
   card.tag:SetJustifyH("LEFT")
 
@@ -404,19 +406,22 @@ local function safeFill(card, r, large)
   end
 end
 
+local PER_PAGE = 3
+
 local function paint()
   if not view then return end
-  local maxOffset = math.max(0, #results - 1)
+  local pages = math.max(1, math.ceil(#results / PER_PAGE))
+  local maxOffset = (pages - 1) * PER_PAGE
   if offset > maxOffset then offset = maxOffset end
   safeFill(view.large, results[offset + 1], true)
   safeFill(view.small[1], results[offset + 2])
   safeFill(view.small[2], results[offset + 3])
-  local several = #results > 1
+  local several = pages > 1
   view.prev:SetShown(several)
   view.next:SetShown(several)
   view.prev:SetEnabled(offset > 0)
   view.next:SetEnabled(offset < maxOffset)
-  view.position:SetText(several and string.format("%d of %d", offset + 1, #results) or "")
+  view.position:SetText(several and string.format("Page %d of %d", offset / PER_PAGE + 1, pages) or "")
   view.empty:SetShown(#results == 0)
 end
 
@@ -437,9 +442,9 @@ function Cards.Hide()
   if view then view:Hide() end
 end
 
--- Steps through the suggestions: positive goes back towards the first.
+-- Pages through the suggestions: positive goes back towards the first.
 function Cards.Step(delta)
-  offset = math.max(0, offset - delta)
+  offset = math.max(0, offset - delta * PER_PAGE)
   paint()
 end
 

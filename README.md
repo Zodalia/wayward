@@ -104,7 +104,7 @@ smaller cards beside it. The card art comes from the client when it has the
 Adventure Guide textures (Forever does); otherwise the cards are plain
 parchment. Each card shows the trip's key numbers (level, travel time,
 quests, XP per minute) and its quests; hover it for every detail and step.
-The arrows under the cards step through the rest; shift-click adds a card to
+The arrows under the cards page through the rest, three at a time; shift-click adds a card to
 your trip.
 
 The window keeps one size: For you is the main window, and **Quests**

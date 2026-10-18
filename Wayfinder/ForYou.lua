@@ -1105,6 +1105,7 @@ local ICONS = {
   raid = "Interface\\Icons\\INV_Misc_Head_Dragon_01", flight = "Interface\\Icons\\Ability_Hunter_EagleEye",
   repair = "Interface\\Icons\\Trade_BlackSmithing", food = "Interface\\Icons\\INV_Misc_Food_15",
   ammo = "Interface\\Icons\\INV_Ammo_Arrow_01", reagents = "Interface\\Icons\\INV_Misc_Dust_02",
+  quest = "Interface\\Icons\\INV_Scroll_03",
 }
 
 local function iconFor(r)
