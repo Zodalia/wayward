@@ -98,6 +98,7 @@ local function readService(index)
   end
   s.levelReq = GetTrainerServiceLevelReq(index)
   s.cost = GetTrainerServiceCost(index)
+  if GetTrainerServiceSkillLine then s.skillLine = GetTrainerServiceSkillLine(index) end
   return s
 end
 
@@ -108,6 +109,8 @@ local function classify(services)
   if (trainerType ~= nil and trainerType == T.Tradeskills) or (IsTradeskillTrainer and IsTradeskillTrainer()) then
     return "professionTrainer"
   end
+  -- Recipes and "Journeyman Tailoring": a profession trainer.
+  if ns.Professions and ns.Professions.FromServices(services) then return "professionTrainer" end
   for _, s in ipairs(services) do
     if not WEAPON_SKILLS[s.name] then return "classTrainer" end
   end
@@ -129,6 +132,16 @@ local function readTrainer()
   local extra
   if kind == "classTrainer" then
     extra = { class = class }
+  elseif kind == "professionTrainer" then
+    -- Which profession, and the ranks on offer ("Journeyman Tailoring").
+    local profession = ns.Professions and ns.Professions.FromServices(services)
+    local ranks = {}
+    for _, s in ipairs(services) do
+      for _, r in ipairs(ns.Professions and ns.Professions.RANKS or {}) do
+        if profession and s.name == r.name .. " " .. profession then ranks[#ranks + 1] = r.name end
+      end
+    end
+    extra = { profession = profession, ranks = #ranks > 0 and ranks or nil }
   elseif kind == "weaponMaster" then
     -- What they teach depends on your class (the list only has what you can
     -- learn), so it's kept per class, with the cost and whether you know it.

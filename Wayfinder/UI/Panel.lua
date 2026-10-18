@@ -97,6 +97,7 @@ categoryPage({ id = "vendors", label = "Vendors", order = 30, categories = {
 categoryPage({ id = "trainers", label = "Trainers", order = 40, categories = {
   { label = "Class", provider = ns.Trainers },
   { label = "Weapons", provider = ns.WeaponMasters },
+  { label = "Professions", provider = ns.Professions },
 } })
 categoryPage({ id = "dungeons", label = "Dungeons", order = 50, categories = {
   { label = "Dungeons", provider = ns.Dungeons },

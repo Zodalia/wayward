@@ -23,6 +23,7 @@ Router.lua
 Places.lua
 QuestieBridge.lua
 Trainers.lua
+Professions.lua
 QuestHubs.lua
 QuestsPage.lua
 Journey.lua

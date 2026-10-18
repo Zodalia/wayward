@@ -121,9 +121,10 @@ end
 local WEAPON_MASTER = "WEAPON_MASTER"
 
 local flightMasters -- { {name, nodes}, ... }, built with the trainers
+local professionTrainers -- [profession] = { {id, name, friendly, rank} }
 
 local function buildTrainers()
-  trainersByClass, flightMasters = {}, {}
+  trainersByClass, flightMasters, professionTrainers = {}, {}, {}
   local started = now()
   local trainerFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.TRAINER
   local flightFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.FLIGHT_MASTER
@@ -137,6 +138,12 @@ local function buildTrainers()
     if flags ~= 0 and hasBit(flags, trainerFlag) then
       local subName = NpcDB.GetRaw(id, "subName") or ""
       local class = CLASS_BY_TRAINER_TITLE[subName] or (subName == "Weapon Master" and WEAPON_MASTER) or nil
+      local profession, rank = ns.Professions.FromSubtitle(subName)
+      if profession then
+        professionTrainers[profession] = professionTrainers[profession] or {}
+        table.insert(professionTrainers[profession], { id = id, name = NpcDB.Get(id, "name"),
+          friendly = NpcDB.Get(id, "friendlyToFaction"), rank = rank })
+      end
       if class then
         trainersByClass[class] = trainersByClass[class] or {}
         table.insert(trainersByClass[class], { id = id, name = NpcDB.Get(id, "name"),
@@ -172,6 +179,21 @@ function Bridge.ClassTrainers(class, faction, here)
     if friendlyTo(t.friendly, faction) then
       local node = Bridge.Nearest(spawnNodes(NpcDB.Get(t.id, "spawns"), t.name), here)
       if node then out[#out + 1] = { id = t.id, name = t.name, node = node } end
+    end
+  end
+  return out
+end
+
+-- Trainers of a profession for your faction: { {id, name, node, rank?} }, where
+-- rank is the one their subtitle names ("Expert Tailor").
+function Bridge.ProfessionTrainers(profession, faction, here)
+  if not Bridge.Available() then return {} end
+  if not trainersByClass then buildTrainers() end
+  local out = {}
+  for _, t in ipairs(professionTrainers[profession] or {}) do
+    if friendlyTo(t.friendly, faction) then
+      local node = Bridge.Nearest(spawnNodes(NpcDB.Get(t.id, "spawns"), t.name), here)
+      if node then out[#out + 1] = { id = t.id, name = t.name, node = node, rank = t.rank } end
     end
   end
   return out

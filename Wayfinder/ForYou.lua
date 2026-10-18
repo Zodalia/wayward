@@ -60,7 +60,7 @@ local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
 
 -- Lower comes first among needs; soft ones ("Worth a visit") after all of these.
-local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5 }
+local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5, profession = 6 }
 local SOFT_PRIORITY = 10
 
 local cache, summary
@@ -385,6 +385,43 @@ local function vendorNeeds(ctx)
       stop = { node = r.goal, text = string.format("%s at %s", capitalize(what), name),
         phrase = string.format("%s at %s", what, name) },
     }
+  end
+  return out
+end
+
+-- A profession's next rank you can train now: due when you're at your cap
+-- (you can't skill up any more), worth a visit before that.
+local function professionNeeds(start, net)
+  local mine = ns.Professions.Mine()
+  if not mine then return {} end
+  local out = {}
+  for _, p in ipairs(ns.Professions.LIST) do
+    local have = mine[p.name]
+    local rank, state = nil, nil
+    if have then rank, state = ns.Professions.NextRank(have) end
+    if rank and state == "ready" then
+      local trainer, route, sure = ns.Professions.NearestTrainer(p.name, rank.name, start, net)
+      if trainer and route then
+        local capped = have.rank >= have.cap
+        local place = placeName(trainer.node, ns.MapName(trainer.node.mapID))
+        trainer.node.npc = trainer.name
+        local details = { { text = string.format("Trainer: %s, %s.", trainer.name, place) } }
+        if not sure then
+          details[#details + 1] = { text = "Not every trainer teaches " .. rank.name .. "; if this one doesn't, the Professions tab lists others.", more = true }
+        end
+        out[#out + 1] = {
+          kind = "profession", soft = not capped, icon = p.icon,
+          title = string.format("Train %s %s in %s", rank.name, p.name, place),
+          zone = ns.MapName(trainer.node.mapID), goal = trainer.node, route = route,
+          why = string.format("%s %d/%d%s", p.name, have.rank, have.cap, capped and ", at your cap" or ""),
+          stats = { { "Skill", string.format("%d/%d", have.rank, have.cap) }, { "Next", rank.name },
+            { "Travel", ns.FormatDuration(route.seconds) } },
+          rank = capped and string.format("Needs come first: %s is at its cap; %s lets it go up to %d.", p.name, rank.name, rank.cap)
+            or string.format("Worth a visit: you can train %s %s (up to %d skill).", rank.name, p.name, rank.cap),
+          details = details,
+        }
+      end
+    end
   end
   return out
 end
@@ -913,7 +950,8 @@ local function needRow(need)
   local details = { { text = need.rank, color = GOLD } }
   for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
   return {
-    id = "need" .. need.kind, kind = need.kind, category = need.soft and "Worth a visit" or "Due now", title = need.title,
+    id = "need" .. need.kind .. (need.icon or ""), kind = need.kind, professionIcon = need.icon,
+    category = need.soft and "Worth a visit" or "Due now", title = need.title,
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
     place = capitalize(need.why),
     stats = need.stats or { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
@@ -1187,6 +1225,7 @@ local function build()
   for _, n in ipairs(timed("vendors", vendorNeeds, ctx) or {}) do addNeed(n) end
   addNeed(timed("flight", flightNeed, ctx, start, net))
   addNeed(timed("repair", repairSoonNeed))
+  for _, n in ipairs(timed("professions", professionNeeds, start, net) or {}) do addNeed(n) end
   local function priority(n) return (n.soft and SOFT_PRIORITY or 0) + PRIORITY[n.kind] end
   table.sort(needs, function(a, b) return priority(a) < priority(b) end)
   while #needs > MAX_NEEDS do table.remove(needs) end
@@ -1311,6 +1350,7 @@ local ICONS = {
 }
 
 local function iconFor(r)
+  if r.kind == "profession" and r.professionIcon then return r.professionIcon end
   if r.kind == "train" then
     local _, class = UnitClass("player")
     local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]

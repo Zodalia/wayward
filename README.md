@@ -131,7 +131,9 @@ The window keeps one size: For you is the main window, and **Quests**
 (Class; Weapons: one row per weapon your class can learn and you don't know,
 "Polearms (Woo Ping)", with the nearest weapon master who teaches it to your
 class and the cost against your purse; weapon masters list what they teach
-when you visit, so ones not seen yet point to a master you haven't visited),
+when you visit, so ones not seen yet point to a master you haven't visited;
+Professions: each of your professions with its skill, the next rank and the
+nearest trainer for it, then the ones you could still learn),
 **Dungeons** and **Items** are icon tabs inside its right edge that open a
 list panel docked beside them (click the tab again, or the panel's close
 button, to close it). The search box filters any list. If the cards ever show no text, `/wf debug cards` reports what
@@ -146,6 +148,10 @@ things to do next, one card per kind of thing, each labelled with its kind:
   (after one trainer visit), repairs at 50% durability or lower, ammo under
   200, food and drink under 5 (not mages, from level 6), and an undiscovered
   flight path within about 3 minutes.
+- **Profession**: the next rank of a profession you can train now
+  (Journeyman at 50 skill and level 10, Expert at 125 and 20, Artisan at 200
+  and 35), at the nearest trainer known to teach it; due when you're at your
+  cap, worth a visit before that.
 - **Worth a visit** (sharing those two slots, after what's due): your class
   trainer at an even level (when classes get new spells) before your first
   visit or two levels after the last one, and a repair when your gear is at

@@ -1436,6 +1436,71 @@ do
 end
 
 ---------------------------------------------------------------- for you (end)
+---------------------------------------------------------------- professions (begin)
+do
+  io.write("professions\n")
+  ns.Nav.Stop()
+  local P = ns.Professions
+  local prof, rank = P.FromSubtitle("Expert Tailor")
+  check(prof == "Tailoring" and rank == "Expert" and P.FromSubtitle("Tailoring Trainer") == "Tailoring"
+    and P.FromSubtitle("Tailoring Supplies") == nil, "trainer subtitles name the profession and rank")
+  check(P.FromServices({ { name = "Linen Cloak" }, { name = "Journeyman Tailoring" } }) == "Tailoring",
+    "a trainer's services say which profession")
+
+  -- Tailoring 73/75 (Journeyman ready), Herbalism 40/75 (not enough skill yet).
+  local skills = { { "Professions", true }, { "Tailoring", false, 73, 75 }, { "Herbalism", false, 40, 75 } }
+  local savedNum, savedInfo = GetNumSkillLines, GetSkillLineInfo
+  GetNumSkillLines = function() return #skills end
+  GetSkillLineInfo = function(i) local l = skills[i]; return l[1], l[2], true, l[3], 0, 0, l[4] end
+  local mine = P.Mine()
+  check(mine.Tailoring.rank == 73 and mine.Herbalism.cap == 75 and not mine.Professions, "your professions and skill")
+  local r1, s1 = P.NextRank(mine.Tailoring)
+  local r2, s2 = P.NextRank(mine.Herbalism)
+  check(r1.name == "Journeyman" and s1 == "ready" and r2.name == "Journeyman" and s2 == "skill",
+    "the next rank: Tailoring can train Journeyman, Herbalism needs 50 skill first")
+
+  -- A tailor you visited (teaches up to Journeyman) and one from QuestieDB.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  ns.db.npcs[990010] = { name = "Georgio Bolero", kinds = { professionTrainer = true }, profession = "Tailoring",
+    ranks = { "Apprentice", "Journeyman" }, mapID = 1433, x = 0.52, y = 0.5 }
+  NPCS[990011] = { name = "Expert Seamstress", subName = "Expert Tailor", npcFlags = 16, friendlyToFaction = "A",
+    spawns = { [1519] = { { 50, 50 } } } }
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local qt = ns.Questie.ProfessionTrainers("Tailoring", "Alliance", here)
+  check(#qt == 1 and qt[1].rank == "Expert", "QuestieDB's tailors, with the rank their subtitle names")
+
+  ns.Panel.SelectPage("trainers", 3)
+  local rows = P.Results()
+  local first = rows[1] and rows[1].title:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  check(first == "Tailoring  (Georgio Bolero)" and rows[1].subtitle:find("train Journeyman now", 1, true),
+    "Professions tab: what you can train now first, with the trainer: " .. tostring(first))
+  local primary, secondary
+  for _, r in ipairs(rows) do
+    if r.title:find("^Learn Alchemy") then primary = true end
+    if r.title:find("^Learn Cooking") then secondary = true end
+  end
+  check(not primary and secondary, "two primary professions already: only secondary ones to learn")
+
+  ns.ForYou.Invalidate()
+  local list = ns.ForYou.Results()
+  local card
+  for _, r in ipairs(list) do if r.title:find("^Train Journeyman Tailoring") then card = r end end
+  check(card and card.category == "Worth a visit" and card.stats[1][2] == "73/75",
+    "a For you card to train Journeyman Tailoring (worth a visit below your cap)")
+  skills[2][3] = 75
+  ns.ForYou.Invalidate()
+  list = ns.ForYou.Results()
+  card = nil
+  for _, r in ipairs(list) do if r.title:find("^Train Journeyman Tailoring") then card = r end end
+  check(card and card.category == "Due now", "at your cap it's due")
+
+  GetNumSkillLines, GetSkillLineInfo = savedNum, savedInfo
+  ns.db.npcs[990010], NPCS[990011] = nil, nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  ns.ForYou.Invalidate()
+end
+---------------------------------------------------------------- professions (end)
 
 ---------------------------------------------------------------- trips (begin)
 do
