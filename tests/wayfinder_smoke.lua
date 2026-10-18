@@ -1536,6 +1536,40 @@ do
   ns.JourneyOverview.Toggle()
 end
 ---------------------------------------------------------------- quests not offered (end)
+---------------------------------------------------------------- inferred chains (begin)
+do
+  io.write("inferred chains\n")
+  -- Forever's own quests with no chain data: the Return the Statuette series.
+  QUESTS[285] = { name = "Search More Hovels", questLevel = 20, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  QUESTS[286] = { name = "Return the Statuette", questLevel = 20, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, preQuestSingle = { 285 } }
+  QUESTS[98189] = { name = "Return the Statuette", questLevel = 20, requiredLevel = 15, startedBy = { { 345 } }, finishedBy = { { 345 } } }
+  QUESTS[98190] = { name = "A Friend of the Family", questLevel = 20, requiredLevel = 15, startedBy = { { 345 } }, finishedBy = { { 344 } } }
+  QUESTS[98191] = { name = "A Friend of the Family", questLevel = 20, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  -- Same name, one per faction: the Horde one can't hold up the Alliance one.
+  QUESTS[98300] = { name = "Report In", questLevel = 20, requiredLevel = 15, requiredRaces = 2, startedBy = { { 344 } } }
+  QUESTS[98301] = { name = "Report In", questLevel = 20, requiredLevel = 15, requiredRaces = 1, startedBy = { { 344 } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy = 3
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local function after(id) return ns.Questie.Quest(id).inferredAfter end
+  check(after(98189) == 286 and after(98191) == 98190, "a Forever quest named like an earlier one comes after it")
+  check(after(98190) == 98189, "a Forever quest given by whoever takes the previous one comes after it")
+  check(after(286) == nil and after(285) == nil, "Era quests keep their own data")
+  check(not ns.Questie.IsQuestAvailable(98189) and not ns.Questie.IsQuestAvailable(98190)
+    and not ns.Questie.IsQuestAvailable(98191), "the whole series waits for the original chain")
+  check(ns.Questie.IsQuestAvailable(98301), "the other faction's quest of the same name doesn't hold it up")
+  local _, reason = ns.Questie.QuestStatus(98190)
+  check(reason and reason:find("Search More Hovels", 1, true), "its chain starts where the data's chain does: " .. tostring(reason))
+  local savedDone = C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 285, 286 } end
+  check(ns.Questie.IsQuestAvailable(98189) and not ns.Questie.IsQuestAvailable(98190),
+    "after the original: the next part opens, the one after it doesn't yet")
+  C_QuestLog.GetAllCompletedQuestIDs = savedDone
+  for _, id in ipairs({ 285, 286, 98189, 98190, 98191, 98300, 98301 }) do QUESTS[id] = nil end
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- inferred chains (end)
 ---------------------------------------------------------------- quest log trips (begin)
 do
   io.write("quest log trips\n")

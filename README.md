@@ -273,6 +273,12 @@ panel to add it to the trip you're on.
     its hand-in), and that quest counts as locked everywhere until you hand
     something in or level up. `/wf debug quest <name or ID>` prints what
     QuestieDB says about a quest's chain.
+  - Forever's own quests (IDs from 90000) often have no chain data at all,
+    like the second Return the Statuette (98189) after the original 286.
+    For those, the earlier quest is inferred: one of the same name with a
+    lower ID, else the quest one ID lower when its hand-in NPC starts this
+    one. An inferred link only counts while you could do that earlier quest
+    (so the other faction's quest of the same name never holds one up).
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's book button
     opens an overview of every stop (done / now / next; finished stops fold

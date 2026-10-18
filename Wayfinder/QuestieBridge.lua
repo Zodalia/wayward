@@ -205,6 +205,56 @@ local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
 local questByID -- [questID] = quest row (every quest, with or without a starter)
 local nameIndex -- { {lowercase name, quest row}, ... }, built on the first search
 
+-- Forever adds quests QuestieDB knows nothing about the chains of (e.g. a
+-- second "Return the Statuette", 98189, after the original 286). For those
+-- (IDs from FOREVER_QUEST_IDS; Era's stop well below) with no chain data at
+-- all, the earlier quest is inferred (q.inferredAfter):
+--   a quest of the same name with a lower ID (the highest such one), else
+--   the quest one ID lower, when you hand that one in to whoever starts this.
+-- Used only while you could ever do the earlier quest (see blocker).
+local FOREVER_QUEST_IDS = 90000
+
+local function noChainData(q)
+  return not (q.preQuestSingle and #q.preQuestSingle > 0) and not (q.preQuestGroup and #q.preQuestGroup > 0)
+    and not predecessors[q.id] and (q.parentQuest or 0) == 0 and (q.availableStartingWith or 0) == 0
+end
+
+local function npcSet(ends)
+  local set = {}
+  for _, id in ipairs(ends and ends[1] or {}) do set[id] = true end
+  return set
+end
+
+local function inferChains()
+  local byName = {}
+  for id, q in pairs(questByID) do
+    if type(q.name) == "string" then
+      byName[q.name] = byName[q.name] or {}
+      table.insert(byName[q.name], id)
+    end
+  end
+  for id, q in pairs(questByID) do
+    if id >= FOREVER_QUEST_IDS and noChainData(q) then
+      local after
+      for _, other in ipairs(byName[q.name] or {}) do
+        if other < id and (not after or other > after) then after = other end
+      end
+      local prev = not after and questByID[id - 1]
+      if prev then
+        local finishers = npcSet(prev.finishedBy)
+        for npc in pairs(npcSet(q.startedBy)) do
+          if finishers[npc] then after = prev.id break end
+        end
+      end
+      local exclusive = false
+      for _, x in ipairs(q.exclusiveTo or {}) do
+        if x == after then exclusive = true end
+      end
+      if after and not exclusive then q.inferredAfter = after end
+    end
+  end
+end
+
 local function buildQuestIndex()
   questIndex, predecessors, questByID = {}, {}, {}
   local started = now()
@@ -230,6 +280,7 @@ local function buildQuestIndex()
       end
     end
   end
+  inferChains()
   ns.debugTimings = ns.debugTimings or {}
   ns.debugTimings.questieQuests = now() - started
 end
@@ -343,6 +394,12 @@ local function chainReached(q, p, done)
   return not possible
 end
 
+-- An inferred earlier quest (see inferChains) you could do but haven't.
+local function inferredOpen(q, p, done)
+  local before = q.inferredAfter and questByID[q.inferredAfter]
+  return before ~= nil and not done[before.id] and canEverDo(before, p)
+end
+
 local function active(id, done, inLog)
   return id ~= 0 and (done[id] or inLog[id])
 end
@@ -394,7 +451,8 @@ local function blocker(q, p, done, inLog)
   if (q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest] and done[q.parentQuest] then
     return "unavailable", "Part of " .. questName(q.parentQuest) .. ", which you did."
   end
-  if (q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done))
+  if inferredOpen(q, p, done)
+    or (q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done))
     or (q.preQuestGroup and not allDone(q.preQuestGroup, done))
     or not chainReached(q, p, done)
     or ((q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest])
@@ -434,6 +492,7 @@ local function requirements(q, p, done, inLog)
     end
   end
   if (q.parentQuest or 0) ~= 0 and not inLog[q.parentQuest] then out[#out + 1] = q.parentQuest end
+  if inferredOpen(q, p, done) then out[#out + 1] = q.inferredAfter end
   local starting = q.availableStartingWith or 0
   if starting ~= 0 and not active(starting, done, inLog) then out[#out + 1] = starting end
   return out
@@ -780,6 +839,7 @@ function Bridge.Describe(questID)
     string.format("  after (preQuestSingle): %s  ·  after all (preQuestGroup): %s", list(q.preQuestSingle), list(q.preQuestGroup)),
     string.format("  chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s",
       list(before), tostring(q.nextQuestInChain), tostring(q.parentQuest), tostring(q.breadcrumbForQuestId), list(q.exclusiveTo)),
+    string.format("  inferred: comes after %s", q.inferredAfter and tostring(q.inferredAfter) or "-"),
     string.format("  status: %s (%s)%s", status, reason or "",
       ns.charDB.notOffered and ns.charDB.notOffered[questID] and "  ·  its giver didn't offer it" or ""),
   }
