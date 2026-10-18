@@ -1169,6 +1169,32 @@ do
     "low durability: repair first, then training (" .. titles(list) .. ")")
   durability = { 50, 50 }
 
+  -- Gear at 70%: worth a repair when a repairer is close; never before what's due.
+  durability = { 35, 50 }
+  list = rows()
+  local soon = find(list, "Repair at")
+  check(soon and soon.category == "Worth a visit" and list[1].category == "Due now",
+    "gear at 70% with a repairer close by: worth a visit, after what's due (" .. titles(list) .. ")")
+  check(ns.ForYou.SummaryText():find("1 thing due"), "worth-a-visit cards aren't counted as due")
+  durability = { 50, 50 }
+
+  -- No spell list yet, at an even level: a visit to the trainer is worth it.
+  local savedSpells = ns.charDB.classSpells
+  ns.charDB.classSpells = nil
+  list = rows()
+  local visit = find(list, "Visit your trainer in")
+  check(visit and visit.category == "Worth a visit" and visit.place:find("level 20"),
+    "never visited a trainer, level 20: new spells likely (" .. titles(list) .. ")")
+  UnitLevel = function() return 21 end
+  check(not find(rows(), "Visit your trainer in"), "odd levels don't")
+  UnitLevel = function() return 20 end
+  -- Last visit two levels ago, nothing left to learn then: likely again.
+  ns.charDB.classSpells = { updated = 0, level = 18, services = { { name = "Old", type = "used", levelReq = 16 } } }
+  check(find(rows(), "Visit your trainer in"), "two levels since the last visit: worth another")
+  ns.charDB.classSpells = { updated = 0, level = 20, services = { { name = "Old", type = "used", levelReq = 16 } } }
+  check(not find(rows(), "Visit your trainer in"), "just visited: no")
+  ns.charDB.classSpells = savedSpells
+
   -- A big XP quest in Stormwind becomes the best quest; needs stay their own cards.
   XP[6] = { 20, 12000 }
   list = rows()

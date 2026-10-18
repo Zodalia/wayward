@@ -123,6 +123,10 @@ things to do next, one card per kind of thing, each labelled with its kind:
   (after one trainer visit), repairs at 50% durability or lower, ammo under
   200, food and drink under 5 (not mages, from level 6), and an undiscovered
   flight path within about 3 minutes.
+- **Worth a visit** (sharing those two slots, after what's due): your class
+  trainer at an even level (when classes get new spells) before your first
+  visit or two levels after the last one, and a repair when your gear is at
+  75% or lower and a repairer is under 2 minutes away.
 - **Hand in**: the best group of quests ready to hand in, grouped by where you
   hand them in (30 seconds each).
 - **Finish**: the best group of unfinished quests in your log whose

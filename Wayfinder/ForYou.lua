@@ -30,7 +30,10 @@ ns.ForYou = ForYou
 
 local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip
 local MAX_RESULTS = 8           -- cards the page shows
-local MAX_NEEDS = 2             -- "Due now" cards
+local MAX_NEEDS = 2             -- "Due now" and "Worth a visit" cards
+local REPAIR_SOON = 0.75        -- gear at or under this: repair if a vendor is close
+local REPAIR_NEAR_SECONDS = 120 -- "close" for that
+local TRAIN_LEVELS_STALE = 2    -- levels since your last trainer visit before new spells are likely
 local HUB_MIN_QUESTS = 4        -- quests for you a hub needs for its own card
 local MAX_HUB_ZONES = 3         -- zones with a "Quest hub" card
 local CACHE_SECONDS = 5         -- a refresh is reused this long (cleared early on data or zone changes)
@@ -49,8 +52,9 @@ local FINISH_TRIPS = 3          -- nearest groups of unfinished log quests offer
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
 
--- Lower comes first among needs.
+-- Lower comes first among needs; soft ones ("Worth a visit") after all of these.
 local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5 }
+local SOFT_PRIORITY = 10
 
 local cache, summary
 ForYou.runs = 0 -- refreshes computed, not served from the cache
@@ -221,9 +225,28 @@ end
 
 ---------------------------------------------------------------- needs
 
+-- Without a fresh spell list: at an even level (when classes get new ranks),
+-- before your first trainer visit or a couple of levels after the last one.
+local function likelyTraining(ctx, s)
+  if ctx.level < 2 or ctx.level % 2 ~= 0 then return nil end
+  if s and ctx.level < (s.level or 0) + TRAIN_LEVELS_STALE then return nil end
+  local best = (try(ns.Trainers.Results) or {})[1]
+  if not (best and best.route) then return nil end
+  local place = placeName(best.goal, best.zone)
+  local since = s and string.format("you're level %d, %d levels since your last visit", ctx.level, ctx.level - s.level)
+    or string.format("you're level %d and haven't visited a trainer yet", ctx.level)
+  return {
+    kind = "train", soft = true, title = string.format("Visit your trainer in %s", place),
+    zone = best.zone, goal = best.goal, route = best.route,
+    why = string.format("new spells likely at level %d", ctx.level),
+    rank = string.format("Worth a visit: %s; classes get new spells at even levels.", since),
+    details = { { text = "Trainer: " .. best.title } },
+  }
+end
+
 local function trainingNeed(ctx)
   local s = ns.Trainers.SpellSummary()
-  if not (s and s.trainable > 0) then return nil end
+  if not (s and s.trainable > 0) then return likelyTraining(ctx, s) end
   local spells = plural(s.trainable, "new spell")
   if GetMoney() < s.cost then
     ctx.notes[#ctx.notes + 1] = string.format("%s to train once you have %s.", capitalize(spells),
@@ -346,6 +369,28 @@ local function vendorNeeds(ctx)
     }
   end
   return out
+end
+
+-- Gear wearing down (not yet at the 50% that makes repairs due): worth it
+-- when a repair vendor is a short trip away.
+local function repairSoonNeed()
+  local p = ns.Vendors.Needs()
+  if p.urgent or not (p.durability and p.durability <= REPAIR_SOON) then return nil end
+  local best
+  for _, r in ipairs(try(ns.Vendors.Results) or {}) do
+    if r.covers and r.covers.repair and r.route and seconds(r.route) < seconds(best and best.route) then best = r end
+  end
+  if not (best and seconds(best.route) <= REPAIR_NEAR_SECONDS) then return nil end
+  local name = best.goal.label or best.title
+  local percent = math.floor(p.durability * 100 + 0.5)
+  return {
+    kind = "repair", soft = true, title = "Repair at " .. name,
+    zone = ns.MapName(best.goal.mapID), goal = best.goal, route = best.route,
+    why = string.format("gear at %d%%, a repairer close by", percent),
+    rank = string.format("Worth a visit: your gear is at %d%% and a repairer is %s away.", percent,
+      ns.FormatDuration(best.route.seconds)),
+    details = best.details,
+  }
 end
 
 -- C_TaxiMap node.faction: 1 = Horde, 2 = Alliance, anything else is neutral.
@@ -754,7 +799,7 @@ local function needRow(need)
   local details = { { text = need.rank, color = GOLD } }
   for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
   return {
-    id = "need" .. need.kind, kind = need.kind, category = "Due now", title = need.title,
+    id = "need" .. need.kind, kind = need.kind, category = need.soft and "Worth a visit" or "Due now", title = need.title,
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
     place = capitalize(need.why), stats = { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
     goal = need.goal, route = need.route, details = details,
@@ -974,7 +1019,9 @@ local function build()
   addNeed(try(trainingNeed, ctx))
   for _, n in ipairs(try(vendorNeeds, ctx) or {}) do addNeed(n) end
   addNeed(try(flightNeed, ctx, start, net))
-  table.sort(needs, function(a, b) return PRIORITY[a.kind] < PRIORITY[b.kind] end)
+  addNeed(try(repairSoonNeed))
+  local function priority(n) return (n.soft and SOFT_PRIORITY or 0) + PRIORITY[n.kind] end
+  table.sort(needs, function(a, b) return priority(a) < priority(b) end)
   while #needs > MAX_NEEDS do table.remove(needs) end
 
   -- Every option, ranked by XP per minute (the rank shown on each card); then
@@ -1034,7 +1081,9 @@ local function build()
   -- No dungeon with quests for you: the best one by level fit and travel time.
   if not dungeon and plain and plain[1] and #results < MAX_RESULTS then results[#results + 1] = plainRow(plain[1]) end
 
-  summary = summaryFor(ctx, #needs)
+  local due = 0
+  for _, need in ipairs(needs) do if not need.soft then due = due + 1 end end
+  summary = summaryFor(ctx, due)
   return results, nil, net
 end
 

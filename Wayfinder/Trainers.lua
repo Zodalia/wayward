@@ -17,7 +17,7 @@ function Trainers.SpellSummary()
   local cs = ns.charDB.classSpells
   if not cs then return nil end
   local level = UnitLevel("player")
-  local out = { trainable = 0, cost = 0, nextCount = 0, updated = cs.updated }
+  local out = { trainable = 0, cost = 0, nextCount = 0, updated = cs.updated, level = cs.level }
   for _, s in ipairs(cs.services) do
     if s.type ~= "used" and s.levelReq then
       if s.levelReq <= level then
