@@ -103,7 +103,10 @@ C_Map = {
   GetMapPosFromWorldPos = function(instance, w, mapID)
     local cx, cy = (4000 - w.y) / 8000, (4000 - w.x) / 12000
     if CONTINENTS[mapID] then return mapID, vec(cx, cy) end
+    -- The world map (947): each continent on its own half.
+    if mapID == 947 then return mapID, vec((instance % 2) * 0.5 + cx * 0.5, cy) end
     local z = ZONES[mapID]
+    if not z then return nil end
     return mapID, vec((cx - z.x0) / z.w, (cy - z.y0) / z.h)
   end,
   GetMapInfoAtPosition = function(cont, cx, cy)
@@ -2342,6 +2345,33 @@ do
   check(not ns.Panel.SideShown(), "going back to For you closes the side panel")
 end
 ---------------------------------------------------------------- side panel (end)
+---------------------------------------------------------------- route map (begin)
+do
+  io.write("route map\n")
+  -- Without the map art API: no map, no error.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local goal = ns.Geo.Node(1433, 0.6, 0.5, "Camp")
+  local r = { title = "Camp", goal = goal, route = ns.Router.Plan(here, goal, ns.Network.Build()) }
+  check(ns.RouteMap.Show(r) == false, "no map art API: no route map")
+  C_Map.GetMapArtLayers = function() return { { tileWidth = 256, tileHeight = 256, layerWidth = 1002, layerHeight = 668 } } end
+  C_Map.GetMapArtLayerTextures = function() return { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 } end
+  ns.Panel.ShowTooltip(UIParent, r)
+  check(ns.RouteMap.mapID == 1433 and ns.RouteMap.lines >= 1 and ns.RouteMap.marks == 2,
+    string.format("hovering shows the zone map with the route (map %s, %s lines, %s marks)",
+      tostring(ns.RouteMap.mapID), tostring(ns.RouteMap.lines), tostring(ns.RouteMap.marks)))
+  -- A trip across the sea: the world map, or the destination's continent without its art.
+  player.mapID, player.x, player.y = 1439, 0.5, 0.5
+  local sw = ns.Geo.Node(1453, 0.5, 0.5, "Stormwind")
+  local trip = ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Over the sea", stops = {
+    { node = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), text = "Visit Shore" }, { node = sw, text = "Visit Stormwind" } } })
+  check(trip and ns.RouteMap.Show({ title = "Over the sea", journey = trip }) and ns.RouteMap.mapID == 947,
+    "a trip over the sea uses the world map: " .. tostring(ns.RouteMap.mapID))
+  check(ns.RouteMap.marks >= 2, "you, its stops and the destination are marked")
+  C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
+  ns.RouteMap.Hide()
+end
+---------------------------------------------------------------- route map (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

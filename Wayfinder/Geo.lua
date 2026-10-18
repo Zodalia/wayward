@@ -84,6 +84,14 @@ function Geo.ZonePoint(node)
   return node.mapID, node.x, node.y
 end
 
+-- Where a node is on a given map (0-1), or nil when that map doesn't hold it.
+function Geo.MapPos(node, mapID)
+  if not (node and node.instance and mapID) then return nil end
+  local _, pos = C_Map.GetMapPosFromWorldPos(node.instance, vec(node.wx, node.wy), mapID)
+  if not pos then return nil end
+  return pos:GetXY()
+end
+
 -- The zone (not continent) at a world position, or nil in between zones.
 function Geo.ZoneAt(instance, wx, wy)
   local mapID = Geo.ZonePoint({ instance = instance, wx = wx, wy = wy })

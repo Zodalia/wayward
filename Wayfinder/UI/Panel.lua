@@ -168,6 +168,8 @@ function Panel.ShowTooltip(owner, r)
     if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
   end
   GameTooltip:Show()
+  -- The route on a small map under the tooltip.
+  if ns.RouteMap then pcall(ns.RouteMap.Show, r, GameTooltip) end
 end
 
 -- What clicking a result does (rows and cards): start its directions or
