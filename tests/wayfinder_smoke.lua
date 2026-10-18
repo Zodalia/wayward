@@ -332,22 +332,41 @@ check(ns.Nav.active and ns.Nav.Waiting() and ns.Nav.TargetNPC() == r.goal.npc an
   "at the trainer: talk to them (" .. tostring(r.goal.npc) .. ")")
 local savedUnitName = UnitName
 UnitName = function(unit) if unit == "npc" or unit == "mouseover" then return r.goal.npc end return "Me" end
-local marks = {}
+local raidMarks = 0
 UnitExists = function() return true end
 UnitIsPlayer = function() return false end
-SetRaidTarget = function(unit, index) marks[#marks + 1] = unit .. ":" .. index end
-GetRaidTargetIndex = function() return nil end
-fire("UPDATE_MOUSEOVER_UNIT")
-check(marks[1] == "mouseover:1", "the trainer gets a star when you mouse over them")
+SetRaidTarget = function() raidMarks = raidMarks + 1 end
+-- The star over their nameplate (friendly NPC nameplates on).
+local plate = CreateFrame("Frame")
+C_NamePlate = { GetNamePlateForUnit = function() return plate end,
+  GetNamePlates = function() return { { namePlateUnitToken = "nameplate1" } } end }
+UnitName = function(unit) if unit == "npc" or unit == "nameplate1" or unit == "mouseover" then return r.goal.npc end return "Me" end
+check(ns.Marker.Try("nameplate1") and raidMarks == 0, "the trainer's nameplate gets a star (no raid marker: those are protected)")
+check(ns.Marker.TooltipLine("mouseover") == "Wayfinder: Talk to " .. r.goal.npc, "and their tooltip a line: "
+  .. tostring(ns.Marker.TooltipLine("mouseover")))
 SlashCmdList.WAYFINDER("marker")
-fire("UPDATE_MOUSEOVER_UNIT")
-check(#marks == 1 and ns.db.settings.markNPCs == false, "/wf marker turns that off")
+check(not ns.Marker.Try("nameplate1") and ns.Marker.TooltipLine("mouseover") == nil, "/wf marker turns both off")
 SlashCmdList.WAYFINDER("marker")
 UnitName = function(unit) if unit == "npc" then return r.goal.npc end return "Someone else" end
-fire("UPDATE_MOUSEOVER_UNIT")
-check(#marks == 1, "someone else doesn't")
+check(not ns.Marker.Try("nameplate1"), "someone else doesn't get one")
 UnitName = function(unit) if unit == "npc" then return r.goal.npc end return "Me" end
-UnitExists, UnitIsPlayer, SetRaidTarget, GetRaidTargetIndex = nil, nil, nil, nil
+-- The target button by the directions box: /target <them>.
+local hud = ns.HUD.Frame()
+rawset(hud, "GetRight", function() return 600 end)
+rawset(hud, "GetTop", function() return 700 end)
+ns.TargetButton.Sync()
+check(ns.TargetButton.Macro() == "/target " .. r.goal.npc, "the target button targets them: " .. tostring(ns.TargetButton.Macro()))
+InCombatLockdown = function() return true end
+ns.Nav.Stop()
+ns.TargetButton.Sync()
+check(ns.TargetButton.Macro() == "/target " .. r.goal.npc, "in combat it waits")
+InCombatLockdown = nil
+fire("PLAYER_REGEN_ENABLED")
+check(ns.TargetButton.Macro() == nil, "and changes once combat ends")
+ns.Nav.Start(r.title, r.goal, r.route)
+player.mapID, player.x, player.y = 1453, 0.3938, 0.8483
+ns.HUD.Update()
+UnitExists, UnitIsPlayer, SetRaidTarget, C_NamePlate = nil, nil, nil, nil
 fire("GOSSIP_SHOW")
 UnitName = savedUnitName
 check(ns.Nav.active == nil and waypoints[#waypoints] == "cleared", "talking to them ends it and clears our waypoint")

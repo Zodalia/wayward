@@ -32,8 +32,13 @@ What works in this MVP:
   Stormwind" ("Pick Stormwind on the flight map" until you take off). A
   trainer or vendor you're heading for is done when you talk to them, not on
   arrival. The NPC the step is for (flight master, quest giver, the one you
-  hand in to, trainer, vendor) gets a star raid marker when you see them
-  near there (`/wf marker` or the options turn that off).
+  hand in to, trainer, vendor) is easy to find near there: a star over their
+  nameplate (friendly NPC nameplates have to be on; the options can switch
+  the game's setting), a Wayfinder line in their tooltip, and a target button
+  beside the directions box that targets them (`/target`, with a key binding
+  under Key Bindings > AddOns > Wayfinder). Raid markers would be simpler,
+  but addons may not set them. `/wf marker` or the options turn the star and
+  the tooltip line off.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.

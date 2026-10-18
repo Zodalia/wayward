@@ -75,6 +75,7 @@ local function create()
   f:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     ns.SavePosition(self, "hudPos")
+    ns.Fire("HUD_MOVED")
   end)
   f:SetBackdropColor(0, 0, 0, 0.8)
   ns.RestorePosition(f, "hudPos")
@@ -291,6 +292,9 @@ function HUD.Update()
     frame.icon:Show()
   end
 end
+
+-- The directions box (the target button sits beside it).
+function HUD.Frame() return frame end
 
 -- Whether the compass circle shows, and the box's width (for tests).
 function HUD.CompassShown() return frame ~= nil and frame.holder:IsShown() end

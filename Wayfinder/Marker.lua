@@ -1,16 +1,20 @@
 local _, ns = ...
 
--- A raid target marker (a star) on the NPC the current step leads to (see
--- Nav.TargetNPC): the flight master, the quest giver, the trainer. Set when
--- you see them (their nameplate, your mouseover, your target), and only near
--- where the step goes, so a namesake elsewhere isn't marked. Off with the
--- option or /wf marker.
+-- Showing you the NPC the current step is for (Nav.TargetNPC: the flight
+-- master, the quest giver, the trainer), within what addons may do: raid
+-- markers are protected, so instead
+--   * a star over their nameplate (friendly NPC nameplates have to be on: the
+--     options can turn the game's setting on), and
+--   * a line in their tooltip when you mouse over them;
+-- both only near where the step goes, so a namesake elsewhere isn't picked.
+-- The directions box's target button (UI/HUD.lua) targets them for you.
+-- /wf marker or the options turn the star and the tooltip line off.
 
 local Marker = {}
 ns.Marker = Marker
 
-local STAR = 1
 local NEAR = 100 -- yards from the step's place
+local STAR = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
 
 local function secret(v)
   return type(issecretvalue) == "function" and issecretvalue(v)
@@ -20,23 +24,47 @@ local function enabled()
   return ns.db and ns.db.settings.markNPCs ~= false
 end
 
--- Marks `unit` when it's who the step is for. Returns true when it did.
-function Marker.Try(unit)
-  if not (enabled() and SetRaidTarget and UnitExists and UnitExists(unit)) then return false end
-  if UnitIsPlayer and UnitIsPlayer(unit) then return false end
+-- True when `unit` is who the current step is for.
+function Marker.IsTarget(unit)
+  if not (UnitExists and UnitExists(unit)) or (UnitIsPlayer and UnitIsPlayer(unit)) then return false end
   local name, node = ns.Nav.TargetNPC()
   if not (name and node) then return false end
   local unitName = UnitName(unit)
   if secret(unitName) or unitName ~= name then return false end
   local here = ns.Geo.PlayerNode()
-  if not (here and ns.Geo.Distance(here, node) <= NEAR) then return false end
-  if GetRaidTargetIndex and GetRaidTargetIndex(unit) == STAR then return true end
-  local ok = pcall(SetRaidTarget, unit, STAR)
-  if ok then Marker.marked = name end
-  return ok
+  return here ~= nil and ns.Geo.Distance(here, node) <= NEAR
 end
 
-local function scanNameplates()
+---------------------------------------------------------------- nameplates
+
+local stars = {} -- [nameplate frame] = texture
+
+local function plateFor(unit)
+  local plate = C_NamePlate and C_NamePlate.GetNamePlateForUnit and C_NamePlate.GetNamePlateForUnit(unit)
+  if not plate or (plate.IsForbidden and plate:IsForbidden()) then return nil end
+  return plate
+end
+
+-- Puts the star over `unit`'s nameplate when it's who the step is for (and
+-- takes it off when not). Returns true when the star shows.
+function Marker.Try(unit)
+  local plate = plateFor(unit)
+  if not plate then return false end
+  local show = enabled() and Marker.IsTarget(unit)
+  local star = stars[plate]
+  if show and not star then
+    star = plate:CreateTexture(nil, "OVERLAY")
+    star:SetTexture(STAR)
+    star:SetSize(22, 22)
+    star:SetPoint("BOTTOM", plate, "TOP", 0, 2)
+    stars[plate] = star
+  end
+  if star then star:SetShown(show) end
+  return show
+end
+
+local function scan()
+  for plate, star in pairs(stars) do star:Hide() end
   if not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
   for _, plate in ipairs(C_NamePlate.GetNamePlates() or {}) do
     if plate.namePlateUnitToken then Marker.Try(plate.namePlateUnitToken) end
@@ -44,11 +72,51 @@ local function scanNameplates()
 end
 
 ns.On("NAME_PLATE_UNIT_ADDED", function(unit) Marker.Try(unit) end)
-ns.On("UPDATE_MOUSEOVER_UNIT", function() Marker.Try("mouseover") end)
-ns.On("PLAYER_TARGET_CHANGED", function() Marker.Try("target") end)
-ns.Listen("NAV_CHANGED", scanNameplates)
+ns.On("NAME_PLATE_UNIT_REMOVED", function(unit)
+  local plate = plateFor(unit)
+  if plate and stars[plate] then stars[plate]:Hide() end
+end)
+ns.Listen("NAV_CHANGED", scan)
+ns.Listen("SETTINGS_CHANGED", scan)
 
-ns.RegisterCommand("marker", "/wf marker - the star marker on the NPC you're heading for on or off", function()
+-- The game's own setting: friendly NPCs' nameplates. Off by default.
+function Marker.FriendlyNameplates()
+  return GetCVarBool and GetCVarBool("nameplateShowFriendlyNPCs") or false
+end
+
+function Marker.SetFriendlyNameplates(on)
+  if InCombatLockdown and InCombatLockdown() then
+    ns.print("can't change nameplates in combat; try again after.")
+    return
+  end
+  if SetCVar then SetCVar("nameplateShowFriendlyNPCs", on and "1" or "0") end
+end
+
+---------------------------------------------------------------- tooltips
+
+-- The line added to their tooltip, or nil.
+function Marker.TooltipLine(unit)
+  if not (enabled() and Marker.IsTarget(unit)) then return nil end
+  local step = ns.Nav.CurrentStep()
+  local what = step and ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index) or "this step"
+  return "Wayfinder: " .. what
+end
+
+local function onUnitTooltip(tooltip)
+  if tooltip ~= GameTooltip then return end
+  local _, unit = tooltip:GetUnit()
+  local line = unit and Marker.TooltipLine(unit)
+  if line then tooltip:AddLine(line, 0.5, 0.82, 0.68) end
+end
+
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+  TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, onUnitTooltip)
+elseif GameTooltip and GameTooltip.HookScript then
+  pcall(GameTooltip.HookScript, GameTooltip, "OnTooltipSetUnit", onUnitTooltip)
+end
+
+ns.RegisterCommand("marker", "/wf marker - the star over the NPC you're heading for, and their tooltip line, on or off", function()
   ns.SetSetting("markNPCs", not enabled())
-  ns.print("NPC marker " .. (enabled() and "on" or "off"))
+  ns.print("NPC star and tooltip line " .. (enabled() and "on" or "off")
+    .. (enabled() and not Marker.FriendlyNameplates() and " (the star needs friendly NPC nameplates: see /wf options)" or ""))
 end)
