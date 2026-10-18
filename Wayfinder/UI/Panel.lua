@@ -184,10 +184,10 @@ function Panel.Activate(r)
   end
   if r.journey then
     ns.Nav.StartJourney(r.journey)
-    frame:Hide()
+    if frame then frame:Hide() end
   elseif r.route then
     ns.Nav.Start(r.title, r.goal, r.route)
-    frame:Hide()
+    if frame then frame:Hide() end
   end
 end
 

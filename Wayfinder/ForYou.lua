@@ -1374,12 +1374,66 @@ function ForYou.Results()
     ForYou.lastParts = parts and table.concat(parts, ", ") or nil
   end
   cache = now and { at = now, results = results, err = err, net = net } or nil
+  pcall(ForYou.CheckNew, results)
   return results, err, net
 end
 
 function ForYou.Invalidate()
   cache = nil
 end
+
+---------------------------------------------------------------- new journeys
+
+-- Major suggestions: somewhere to quest, a dungeon, spells to train, a
+-- profession's next rank. One the character hasn't been shown before pops up
+-- as "New journey available" (UI/Fanfare.lua). The first look only learns
+-- what's there, so an update doesn't bring a flood.
+local function major(r)
+  return r.category == "Questing zone" or r.category == "Dungeon" or r.category == "Raid"
+    or r.kind == "train" or r.kind == "profession"
+end
+
+function ForYou.CheckNew(results)
+  local first = ns.charDB.seenCards == nil
+  ns.charDB.seenCards = ns.charDB.seenCards or {}
+  local seen = ns.charDB.seenCards
+  for _, r in ipairs(results or {}) do
+    if major(r) then
+      local key = (r.id or "?") .. "|" .. (r.title or "")
+      if not seen[key] then
+        seen[key] = true
+        if not first and ns.Fanfare then ns.Fanfare.NewJourney(r) end
+      end
+    end
+  end
+end
+
+-- Looked at in the background when things change: a level, a quest handed
+-- in, a new zone (not in combat: it plans many routes).
+local CHECK_DELAY = 4
+local checking = false
+
+local function check()
+  checking = false
+  if InCombatLockdown and InCombatLockdown() then
+    checking = true
+    return
+  end
+  ForYou.Invalidate()
+  local results = ForYou.Results()
+  ForYou.CheckNew(results)
+end
+
+local function soon()
+  if checking then return end
+  checking = true
+  C_Timer.After(CHECK_DELAY, check)
+end
+
+ns.On("PLAYER_LEVEL_UP", soon)
+ns.On("QUEST_TURNED_IN", soon)
+ns.On("ZONE_CHANGED_NEW_AREA", soon)
+ns.On("PLAYER_REGEN_ENABLED", function() if checking then soon() end end)
 
 -- Registered before the panel's own listeners, so its refresh sees fresh data.
 ns.Listen("DATA_CHANGED", ForYou.Invalidate)

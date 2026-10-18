@@ -1841,6 +1841,55 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- quest pickups (end)
+---------------------------------------------------------------- fanfare (begin)
+do
+  io.write("fanfare\n")
+  ns.Nav.Stop()
+  runTimers()
+  -- A two-stop trip: 400 XP, then a level-up with 300 more; one quest handed in.
+  local xp, max = 1000, 2000
+  UnitXP = function() return xp end
+  UnitXPMax = function() return max end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local a = { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" }
+  local b = { node = ns.Geo.Node(1433, 0.56, 0.5, "Second"), text = "Visit Second" }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { a, b } }))
+  ns.HUD.Update()
+  xp = 1400
+  fire("PLAYER_XP_UPDATE")
+  fire("QUEST_TURNED_IN", 999)
+  player.x = 0.53
+  ns.HUD.Update()
+  xp, max = 100, 2500 -- levelled: 600 to finish the level, 100 into the next
+  fire("PLAYER_XP_UPDATE")
+  player.x = 0.56
+  ns.HUD.Update()
+  local f = ns.Fanfare.lastTrip
+  check(ns.Nav.active == nil and f and f.title == "Errands" and f.xp == 1100 and f.quests == 1 and f.distance > 30,
+    string.format("a finished trip's fanfare: %s XP, %s quests, %s yd", tostring(f and f.xp), tostring(f and f.quests),
+      tostring(f and math.floor(f.distance))))
+  UnitXP, UnitXPMax = nil, nil
+
+  -- New journeys: learned quietly the first time, then shown.
+  ns.charDB.seenCards = nil
+  local zone = { id = "zone1437", kind = "zone", category = "Questing zone", title = "Quest in Wetlands",
+    goal = b.node, route = ns.Router.Plan(here, b.node, ns.Network.Build()) }
+  ns.Fanfare.lastNew = nil
+  ns.ForYou.CheckNew({ zone })
+  check(ns.Fanfare.lastNew == nil, "the first look only learns what's there")
+  local dungeon = { id = "dungeonStockade", kind = "dungeon", category = "Dungeon", title = "Run The Stockade  ·  level 24",
+    goal = b.node, route = zone.route }
+  ns.ForYou.CheckNew({ zone, dungeon, { id = "finish", category = "Finish", title = "Finish 2 quests" } })
+  check(ns.Fanfare.lastNew == dungeon, "a new dungeon card pops up as a new journey")
+  ns.ForYou.CheckNew({ zone, dungeon })
+  check(ns.Fanfare.lastNew == dungeon, "and only once")
+  player.x = 0.5
+  ns.Panel.Activate(dungeon)
+  check(ns.Nav.active and ns.Nav.active.title:find("Stockade", 1, true), "clicking it starts it")
+  ns.Nav.Stop()
+end
+---------------------------------------------------------------- fanfare (end)
 ---------------------------------------------------------------- objective areas (begin)
 do
   io.write("objective areas\n")

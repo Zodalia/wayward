@@ -190,6 +190,17 @@ only the time left for them; a dungeon's quests in your log count toward it.
 The Quests page has every hub and your whole log. `/wf debug` shows how long a
 refresh took.
 
+**Fanfare.** When a trip is done, a frame near the top of the screen says
+what it came to: XP earned (across level-ups), time taken, distance travelled
+and quests handed in. When For you has a new major suggestion (a questing
+zone, a dungeon, spells to train, a profession's next rank) a short "New
+journey available" toast pops up; click it to start the journey, or to add
+it to the trip you're on (the usual question). Both fade after a few seconds,
+not while the mouse is over them. For you checks for new ones after a level,
+a quest handed in or a new zone (not in combat); the first look after this
+update only learns what's there. `/wf toasts` or the options turn the toasts
+off.
+
 ### Getting around
 
 - **Directions** add a step whenever you walk into another zone ("Walk to

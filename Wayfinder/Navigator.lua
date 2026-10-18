@@ -83,7 +83,7 @@ local function save()
   if not a then
     ns.charDB.nav = nil
   elseif a.journey then
-    ns.charDB.nav = { title = a.title, journey = ns.Journey.Save(a.journey) }
+    ns.charDB.nav = { title = a.title, journey = ns.Journey.Save(a.journey), stats = a.stats }
   else
     local g = a.goal
     ns.charDB.nav = { title = a.title, goal = { mapID = g.mapID, x = g.x, y = g.y, label = g.label } }
@@ -121,10 +121,19 @@ end
 
 local offerFollowUps -- below: offers a trip's follow-up quests
 
+-- What a trip has come to so far, for the fanfare at its end: XP earned,
+-- yards travelled, quests handed in, and when it started.
+local lastXP, lastXPMax
+
+local function newStats()
+  lastXP, lastXPMax = UnitXP and UnitXP("player"), UnitXPMax and UnitXPMax("player")
+  return { started = time(), xp = 0, distance = 0, quests = 0 }
+end
+
 local function startJourney(journey, quiet)
   local last = journey.stops[#journey.stops]
   Nav.active = { title = journey.title, goal = last.node, journey = journey, index = 1,
-    route = ns.Router.WithZoneSteps({ steps = journey.steps, seconds = journey.seconds }) }
+    route = ns.Router.WithZoneSteps({ steps = journey.steps, seconds = journey.seconds }), stats = newStats() }
   if not quiet then
     ns.print(string.format("journey: %s, %d stop%s, %s", journey.title, #journey.stops,
       #journey.stops == 1 and "" or "s", ns.FormatDuration(journey.seconds)))
@@ -254,7 +263,14 @@ function Nav.Interaction()
 end
 
 local function arrive()
-  ns.print("you have arrived: " .. Nav.active.title)
+  local a = Nav.active
+  ns.print("you have arrived: " .. a.title)
+  -- The end of a trip: its fanfare.
+  if a.journey and a.stats and ns.Fanfare then
+    local stats = a.stats
+    pcall(ns.Fanfare.TripDone, { title = a.title, xp = stats.xp, seconds = time() - stats.started,
+      distance = stats.distance, quests = stats.quests, stops = ns.Journey.StopsDone(a.journey) })
+  end
   Nav.Stop()
 end
 
@@ -514,6 +530,7 @@ ns.On("QUEST_ACCEPTED", function(questID)
   end
 end)
 ns.On("QUEST_TURNED_IN", function(questID)
+  if Nav.active and Nav.active.stats then Nav.active.stats.quests = Nav.active.stats.quests + 1 end
   questAction("turnin", questID)
   syncStops()
 end)
@@ -790,7 +807,9 @@ function Nav.Resume()
     local journey = ns.Journey.Resume(ns.Journey.Load(saved.journey), here)
     if journey then
       ns.print("resuming journey: " .. journey.title .. " (/wf stop to end it)")
-      return Nav.StartJourney(journey, true)
+      Nav.StartJourney(journey, true)
+      if Nav.active and saved.stats then Nav.active.stats = saved.stats end
+      return
     end
   elseif saved.goal then
     local goal = ns.Geo.Node(saved.goal.mapID, saved.goal.x, saved.goal.y, saved.goal.label)
@@ -803,6 +822,17 @@ function Nav.Resume()
   end
   ns.charDB.nav = nil
 end
+
+-- XP earned on a trip, across level-ups.
+ns.On("PLAYER_XP_UPDATE", function()
+  local xp, max = UnitXP("player"), UnitXPMax("player")
+  local a = Nav.active
+  if a and a.stats and lastXP then
+    local gained = xp >= lastXP and xp - lastXP or (lastXPMax or lastXP) - lastXP + xp
+    a.stats.xp = a.stats.xp + gained
+  end
+  lastXP, lastXPMax = xp, max
+end)
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   if isLogin or isReload then C_Timer.After(1, Nav.Resume) end
@@ -914,6 +944,12 @@ function Nav.Tick()
   if not a then return nil end
   local here = ns.Geo.PlayerNode()
   if not here then return nil, Nav.CurrentStep() end
+  -- Yards travelled on a trip (not jumps: a hearthstone, a loading screen).
+  local last = a.lastHere
+  if a.stats and last and last.instance == here.instance then
+    local d = ns.Geo.Distance(last, here)
+    if d < JUMP_YARDS then a.stats.distance = a.stats.distance + d end
+  end
   if onTaxi() then
     -- Took off without us seeing the flight map: on to the flight.
     if flightTalk(a.route.steps, a.index) then

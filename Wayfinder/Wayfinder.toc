@@ -39,6 +39,7 @@ UI\CopyBox.lua
 UI\HUD.lua
 UI\TargetButton.lua
 UI\JourneyOverview.lua
+UI\Fanfare.lua
 UI\RouteMap.lua
 UI\Cards.lua
 UI\Panel.lua
