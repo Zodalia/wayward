@@ -1274,7 +1274,8 @@ local function build()
   if #soon > 0 then
     local line = "Dungeons later, once you can take most of their quests: " .. table.concat(soon, ", ") .. "."
     if dungeonRow then
-      table.insert(dungeonRow.details, 2, { text = line })
+      -- In the dungeon card's tooltip, not on the card.
+      table.insert(dungeonRow.details, 2, { text = line, more = true })
     else
       ctx.notes[#ctx.notes + 1] = line
     end
