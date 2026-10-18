@@ -409,9 +409,15 @@ local function professionNeeds(start, net)
         if not sure then
           details[#details + 1] = { text = "Not every trainer teaches " .. rank.name .. "; if this one doesn't, the Professions tab lists others.", more = true }
         end
+        -- The trip: go there and buy the rank (done when your skill cap goes up).
+        local title = string.format("Train %s %s in %s", rank.name, p.name, place)
+        local stop = { node = trainer.node, npc = trainer.name,
+          text = string.format("Train %s %s at %s", rank.name, p.name, trainer.name),
+          action = { kind = "train", profession = p.name, cap = have.cap, npc = trainer.name } }
+        local journey = ns.Journey.Plan(start, { title = title, stops = { stop } }, net)
         out[#out + 1] = {
-          kind = "profession", soft = not capped, icon = p.icon,
-          title = string.format("Train %s %s in %s", rank.name, p.name, place),
+          kind = "profession", soft = not capped, icon = p.icon, journey = journey,
+          title = title,
           zone = ns.MapName(trainer.node.mapID), goal = trainer.node, route = route,
           why = string.format("%s %d/%d%s", p.name, have.rank, have.cap, capped and ", at your cap" or ""),
           stats = { { "Skill", string.format("%d/%d", have.rank, have.cap) }, { "Next", rank.name },
@@ -955,7 +961,7 @@ local function needRow(need)
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
     place = capitalize(need.why),
     stats = need.stats or { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
-    goal = need.goal, route = need.route, details = details,
+    goal = need.goal, route = need.route, journey = need.journey, details = details,
   }
 end
 

@@ -235,7 +235,7 @@ function Nav.TargetNPC()
   if stop then
     local action = stop.action
     if stop.node and stop.node.object then return nil end -- an object, not someone
-    if action and action.kind == "talk" then return action.npc, stop.node end
+    if action and (action.kind == "talk" or action.kind == "train") then return action.npc, stop.node end
     if action and action.kind == "pickup" then return stop.giver, stop.node end
     if action and action.kind == "turnin" then return stop.npc, stop.node end
     return nil
@@ -599,6 +599,20 @@ end
 for _, event in ipairs({ "GOSSIP_SHOW", "MERCHANT_SHOW", "TRAINER_SHOW", "QUEST_GREETING", "QUEST_DETAIL",
   "BANKFRAME_OPENED", "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" }) do
   ns.On(event, function() Nav.Talked(UnitName("npc")) end)
+end
+
+-- Buying a profession's next rank: the skill cap goes up.
+local function trainedCheck()
+  local mine = ns.Professions and ns.Professions.Mine()
+  if not mine then return end
+  finishStop(function(action)
+    local have = action.kind == "train" and mine[action.profession]
+    return have and have.cap > (action.cap or 0) or false
+  end)
+end
+
+for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_UPDATE", "CHAT_MSG_SKILL", "LEARNED_SPELL_IN_TAB" }) do
+  ns.On(event, function() C_Timer.After(0.2, trainedCheck) end)
 end
 
 -- Collecting an item a quest needs.

@@ -151,7 +151,8 @@ things to do next, one card per kind of thing, each labelled with its kind:
 - **Profession**: the next rank of a profession you can train now
   (Journeyman at 50 skill and level 10, Expert at 125 and 20, Artisan at 200
   and 35), at the nearest trainer known to teach it; due when you're at your
-  cap, worth a visit before that.
+  cap, worth a visit before that. Its trip ends with buying the rank: done
+  when the game raises that profession's skill cap, not just on talking.
 - **Worth a visit** (sharing those two slots, after what's due): your class
   trainer at an even level (when classes get new spells) before your first
   visit or two levels after the last one, and a repair when your gear is at

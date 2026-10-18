@@ -18,7 +18,9 @@ local _, ns = ...
 --     action = { kind = "pickup" | "complete" | "turnin", questID = 123 },  -- optional; also
 --       { kind = "item", itemID, questID } (collect an item a quest needs) and
 --       { kind = "manual", questID } (a step of a quest you confirm with next) and
---       { kind = "talk", npc } (done when you talk to them: a trainer, a vendor)
+--       { kind = "talk", npc } (done when you talk to them: a trainer, a vendor) and
+--       { kind = "train", profession, cap, npc } (done when that profession's skill
+--       cap is over `cap`: you bought the next rank)
 --     after = { stop, ... },   -- optional: stops that must come first
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
 --   }
@@ -457,7 +459,8 @@ end
 function Journey.PendingAction(step)
   local stop = step and step.stop
   local action = stop and stop.action
-  return action and (action.questID or action.kind == "talk") and not stop.done and not stop.skipped and stop or nil
+  return action and (action.questID or action.kind == "talk" or action.kind == "train") and not stop.done
+    and not stop.skipped and stop or nil
 end
 
 function Journey.StopsDone(journey)

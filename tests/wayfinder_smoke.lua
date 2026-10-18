@@ -1496,6 +1496,26 @@ do
   card = nil
   for _, r in ipairs(list) do if r.title:find("^Train Journeyman Tailoring") then card = r end end
   check(card and card.category == "Due now", "at your cap it's due")
+  -- Its trip: to the trainer, then buy the rank (done when the cap goes up).
+  local stop = card and card.journey and card.journey.stops[1]
+  check(stop and stop.action.kind == "train" and stop.text == "Train Journeyman Tailoring at Georgio Bolero",
+    "the card's trip has a step to buy the rank")
+  runTimers()
+  ns.Nav.StartJourney(card.journey)
+  player.mapID, player.x, player.y = stop.node.mapID, stop.node.x, stop.node.y
+  ns.HUD.Update()
+  check(ns.Nav.Waiting() and ns.HUD.Lines()[4]:find("talk to Georgio Bolero and train it", 1, true),
+    "at the trainer: talk to them and train it")
+  local savedName = UnitName
+  UnitName = function(unit) if unit == "npc" then return "Georgio Bolero" end return "Me" end
+  fire("GOSSIP_SHOW")
+  UnitName = savedName
+  check(ns.Nav.active ~= nil, "talking alone doesn't finish it")
+  skills[2][4] = 150
+  fire("SKILL_LINES_CHANGED")
+  runTimers()
+  check(ns.Nav.active == nil and ns.Fanfare.lastTrip.title:find("Journeyman Tailoring", 1, true),
+    "buying Journeyman (the cap goes to 150) finishes it")
 
   GetNumSkillLines, GetSkillLineInfo = savedNum, savedInfo
   ns.db.npcs[990010], NPCS[990011] = nil, nil
