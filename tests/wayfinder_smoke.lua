@@ -2107,16 +2107,37 @@ do
   local blizzard = #waypoints
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   trainer = ns.Trainers.Results()[1]
+  -- Found TomTom: asked once, nothing used until you answer.
+  ns.db.settings.tomtom = nil
+  local asked
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which) asked = which end
+  check(ns.Options.AskTomTom() and asked == "WAYFINDER_TOMTOM" and not ns.Nav.UsingTomTom(),
+    "with TomTom installed, Wayfinder asks whether to use its arrow")
+  StaticPopupDialogs.WAYFINDER_TOMTOM.OnCancel(nil, nil, "clicked")
+  check(ns.db.settings.tomtom == false and not ns.Options.AskTomTom(), "No thanks: off, and not asked again")
+  StaticPopupDialogs.WAYFINDER_TOMTOM.OnAccept()
+  check(ns.db.settings.tomtom == true, "Use TomTom: on")
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   check(ns.Nav.UsingTomTom() and #added == 1 and added[1].opts.crazy and #waypoints == blizzard,
-    "with TomTom, its arrow shows the way instead of ours")
+    "with TomTom on, its arrow and pin show the way")
+  ns.HUD.Update()
+  check(ns.db.settings.showArrow and ns.HUD.CompassShown(), "the compass can stay on alongside TomTom")
+  SlashCmdList.WAYFINDER("compass")
+  check(not ns.HUD.CompassShown() and ns.HUD.Width() < 330, "compass off: no circle, a narrower box")
+  SlashCmdList.WAYFINDER("compass")
+  check(ns.HUD.CompassShown() and ns.HUD.Width() == 330, "and back")
   ns.Nav.Next()
   check(#added == 2 and removed == 1, "each step replaces the TomTom waypoint")
   ns.Nav.Stop()
   check(removed == 2, "stopping clears it")
   SlashCmdList.WAYFINDER("tomtom")
   check(not ns.Nav.UsingTomTom(), "/wf tomtom turns it off")
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   SlashCmdList.WAYFINDER("tomtom")
+  check(ns.Nav.UsingTomTom() and #added == 3, "turning it on during a trip moves the waypoint to TomTom")
+  ns.Nav.Stop()
   TomTom.AddWaypoint = function() error("old TomTom") end
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   check(not ns.Nav.UsingTomTom() and #waypoints > blizzard, "a TomTom that fails falls back to our own arrow")

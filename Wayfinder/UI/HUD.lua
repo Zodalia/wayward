@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- Directions box shown while navigating: current step, distance, and our own
--- arrow. Blizzard's on-screen navigation is off by default in Forever
+-- compass (an arrow in a circle; /wf compass or the options turn it off, and
+-- the box gets narrower). Blizzard's on-screen navigation is off by default in Forever
 -- (showInGameNavigation = 0), so we don't rely on it.
 
 local HUD = {}
@@ -81,6 +82,7 @@ local function create()
   -- The arrow (or the stop's icon) in a dark circle, on its own frame: skins
   -- fade every texture of the box itself.
   local holder = CreateFrame("Frame", nil, f)
+  f.holder = holder
   holder:SetSize(CIRCLE, CIRCLE)
   holder:SetPoint("TOPLEFT", PADDING, -PADDING)
   local circle = holder:CreateTexture(nil, "BACKGROUND")
@@ -159,6 +161,19 @@ local function create()
   return f
 end
 
+-- With the compass off there's no circle: the text starts at the edge and the
+-- box is that much narrower.
+local function applyCompass()
+  local on = ns.db.settings.showArrow ~= false
+  if frame.compass == on then return end
+  frame.compass = on
+  frame.holder:SetShown(on)
+  frame.width = on and WIDTH or WIDTH - (TEXT_LEFT - PADDING)
+  frame:SetWidth(frame.width)
+  frame.title:ClearAllPoints()
+  frame.title:SetPoint("TOPLEFT", on and TEXT_LEFT or PADDING, -PADDING - 2)
+end
+
 local function facing()
   local value = GetPlayerFacing and GetPlayerFacing()
   if value == nil or (type(issecretvalue) == "function" and issecretvalue(value)) then return nil end
@@ -207,6 +222,7 @@ function HUD.Update()
     frame:Hide()
     return
   end
+  applyCompass()
   local trip = a.journey ~= nil
   frame.next:ClearAllPoints()
   frame.next:SetPoint("RIGHT", trip and frame.list or frame.recalc, "LEFT", -2, 0)
@@ -255,9 +271,8 @@ function HUD.Update()
     + subHeight + 5 + height(frame.info)))
 
   local heading = facing()
-  -- TomTom draws the arrow when it's in use; then the circle shows what's ahead.
-  if ns.db.settings.showArrow and not ns.Nav.UsingTomTom() and step.mode == "walk" and distance < math.huge
-    and heading and not ns.Nav.Waiting() then
+  -- The compass points the way while you walk; otherwise its circle shows what's ahead.
+  if step.mode == "walk" and distance < math.huge and heading and not ns.Nav.Waiting() then
     frame.arrow:SetRotation(ns.Geo.Bearing(here, step.to) - heading)
     frame.arrow:Show()
     frame.icon:Hide()
@@ -269,11 +284,19 @@ function HUD.Update()
   end
 end
 
+-- Whether the compass circle shows, and the box's width (for tests).
+function HUD.CompassShown() return frame ~= nil and frame.holder:IsShown() end
+function HUD.Width() return frame and frame.width end
+
 -- The directions box's text, top to bottom (for tests).
 function HUD.Lines()
   if not frame then return {} end
   return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText() }
 end
+
+ns.Listen("SETTINGS_CHANGED", function(key)
+  if key == "showArrow" and frame then HUD.Update() end
+end)
 
 ns.Listen("NAV_CHANGED", function()
   if ns.Nav.active then

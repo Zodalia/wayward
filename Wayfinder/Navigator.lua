@@ -12,8 +12,9 @@ ns.Nav = Nav
 local RADIUS = { walk = 20, fly = 120, transport = 150 }
 local GOAL_RADIUS = 10
 
--- With TomTom installed (and /wf tomtom not off), its arrow and pins show the
--- way instead of ours. Modern TomTom: AddWaypoint(uiMapID, x, y, opts) and
+-- With TomTom installed and its arrow turned on (asked once, see
+-- UI/Options.lua), its arrow and pins show the way, on top of the compass in
+-- the directions box if that is on too. Modern TomTom: AddWaypoint(uiMapID, x, y, opts) and
 -- RemoveWaypoint(uid); if that fails we fall back to our own arrow.
 local tomtomFailed
 
@@ -22,9 +23,12 @@ function Nav.ResetTomTom()
   tomtomFailed = nil
 end
 
+function Nav.TomTomInstalled()
+  return type(TomTom) == "table" and type(TomTom.AddWaypoint) == "function"
+end
+
 function Nav.UsingTomTom()
-  return ns.db.settings.tomtom ~= false and not tomtomFailed and type(TomTom) == "table"
-    and type(TomTom.AddWaypoint) == "function"
+  return ns.db.settings.tomtom == true and not tomtomFailed and Nav.TomTomInstalled()
 end
 
 local function clearTomTom()
@@ -85,6 +89,14 @@ local function showStep()
   save()
   ns.Fire("NAV_CHANGED")
 end
+
+-- Turning TomTom's arrow on or off moves the current waypoint over.
+ns.Listen("SETTINGS_CHANGED", function(key)
+  if key ~= "tomtom" then return end
+  tomtomFailed = nil
+  clearTomTom()
+  if Nav.active then showStep() end
+end)
 
 local function flightTip()
   if next(ns.charDB.knownTaxi) == nil then

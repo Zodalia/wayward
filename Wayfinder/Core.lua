@@ -58,6 +58,12 @@ end
 -- `rest` keeps its original case, so links survive.
 ns.commands = {}
 
+-- Changes a setting and tells the windows (SETTINGS_CHANGED(key)).
+function ns.SetSetting(key, value)
+  ns.db.settings[key] = value
+  ns.Fire("SETTINGS_CHANGED", key)
+end
+
 function ns.RegisterCommand(name, help, run)
   ns.commands[name] = { help = help, run = run }
 end
@@ -67,6 +73,8 @@ end
 local DEFAULTS = {
   npcs = {},         -- [npcID] = harvested NPC (see Harvest.lua)
   transports = {},   -- recorded with /wf dock (see Docks.lua)
+  -- showArrow: the compass in the directions box; tomtom: nil until you've
+  -- been asked (see UI/Options.lua), then true / false.
   settings = { showArrow = true },
 }
 
@@ -143,8 +151,8 @@ end
 local HELP = {
   "/wf - open or close the Wayfinder panel",
   "/wf stop - stop the current directions",
-  "/wf arrow - toggle the on-screen arrow (text directions stay)",
-  "/wf tomtom - use TomTom's arrow when it's installed (on by default)",
+  "/wf compass - the compass in the directions box on or off (text directions stay)",
+  "/wf tomtom - TomTom's arrow on or off for Wayfinder's directions (when TomTom is installed)",
   "/wf where - print your map ID and coordinates (to report data fixes)",
   "/wf dock [boat|zeppelin|portal] - record a transport: once where you board, once where you get off",
   "/wf dock list - copy recorded transports",
@@ -163,14 +171,11 @@ SlashCmdList.WAYFINDER = function(msg)
   elseif cmd == "stop" then
     ns.Nav.Stop()
   elseif cmd == "tomtom" then
-    ns.db.settings.tomtom = ns.db.settings.tomtom == false
-    ns.Nav.ResetTomTom()
+    ns.SetSetting("tomtom", ns.db.settings.tomtom ~= true)
     ns.print("TomTom arrow " .. (ns.db.settings.tomtom and "on (when TomTom is installed)" or "off"))
-    if ns.Nav.active then ns.Nav.Recalculate() end
-  elseif cmd == "arrow" then
-    ns.db.settings.showArrow = not ns.db.settings.showArrow
-    ns.print("arrow " .. (ns.db.settings.showArrow and "on" or "off"))
-    ns.Fire("SETTINGS_CHANGED")
+  elseif cmd == "arrow" or cmd == "compass" then
+    ns.SetSetting("showArrow", not ns.db.settings.showArrow)
+    ns.print("compass " .. (ns.db.settings.showArrow and "on" or "off"))
   elseif cmd == "where" then
     local mapID = C_Map.GetBestMapForUnit("player")
     local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")

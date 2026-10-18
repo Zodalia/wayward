@@ -20,7 +20,7 @@ What works in this MVP:
   4 spells at level 22"). Hover a row to preview the route, click for directions.
 - **Directions**: walking, flight paths you know, boats, zeppelins, the Deeprun
   Tram and the Rut'theran portal. Each step places the map waypoint and moves on
-  when you get there. The directions box has its own arrow (`/wf arrow` hides
+  when you get there. The directions box has its own compass (`/wf compass` hides
   it), because Blizzard's on-screen navigation is off by default in Forever;
   without an arrow its circle shows what's ahead (quest pickup or hand-in,
   flight). It also shows the trip, a bar of stops done, the step, which stop
@@ -168,9 +168,13 @@ refresh took.
   when you're on another continent than the current step expects, or when
   you've walked well away from the current target. Never during a flight,
   and at most every 10 seconds. The R button still re-plans on demand.
-- **TomTom**: when it's installed, Wayfinder puts each step on TomTom's arrow
-  and map pins instead of its own, titled with what to do there (`/wf tomtom`
-  switches back, or retries after TomTom failed).
+- **TomTom**: when it's installed, Wayfinder asks once whether to use it;
+  then each step goes on TomTom's arrow and map pins, titled with what to do
+  there (`/wf tomtom` or the options switch it, or retry after TomTom failed).
+- **Options** (Options > AddOns > Wayfinder, or `/wf options`): the compass in
+  the directions box, TomTom's arrow and the minimap button. The compass and
+  TomTom are separate: use either, both, or neither for text directions
+  only; with the compass off the directions box is narrower.
 - **Flight paths** are learned per continent: a flight map only lists the
   continent you're on, so open one once per continent. "New flight path
   discovered!" also marks the nearest one as known.
