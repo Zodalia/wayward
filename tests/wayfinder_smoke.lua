@@ -2110,6 +2110,21 @@ do
   ns.Nav.Next()
   check(ns.Journey.StopsDone(ns.Nav.active.journey) == 0 and ns.JourneyOverview.Rows()[1].state == "skipped",
     "skipped stops aren't counted as done; the overview says skipped")
+  local function shape()
+    local out = {}
+    for _, line in ipairs(ns.JourneyOverview.Lines()) do
+      out[#out + 1] = line.header and ("finished" .. line.count .. (line.folded and "+" or "-")) or line.row.state
+    end
+    return table.concat(out, ",")
+  end
+  check(shape() == "finished2-,skipped,skipped,now,next", "two finished stops: a line for them, open: " .. shape())
+  ns.JourneyOverview.ToggleFinished()
+  check(shape() == "finished2+,now,next", "click the line to fold them: " .. shape())
+  ns.JourneyOverview.ToggleFinished()
+  check(shape() == "finished2-,skipped,skipped,now,next", "and again to show them")
+  ns.Nav.Next()
+  check(shape() == "finished3-,skipped,skipped,skipped,now", "your choice holds for this trip: " .. shape())
+  ns.Nav.Prev()
   ns.Nav.Prev()
   ns.Nav.Prev()
   local states = {}
@@ -2131,6 +2146,14 @@ do
   for _, st in ipairs(resumed.stops) do order[#order + 1] = st.node.label end
   -- (Near is close enough to count as visited.)
   check(table.concat(order, ",") == "Giver,B,A,Finisher", "your order survives a reload: " .. table.concat(order, ","))
+  -- A new trip folds by itself from three finished stops.
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Fold", stops = {
+    stopAt(0.52, "F1"), stopAt(0.53, "F2"), stopAt(0.54, "F3"), stopAt(0.55, "F4") } }))
+  ns.Nav.Next()
+  ns.Nav.Next()
+  check(shape() == "finished2-,skipped,skipped,now,next", "under three: shown")
+  ns.Nav.Next()
+  check(shape() == "finished3+,now", "three finished: folded by themselves: " .. shape())
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
 end

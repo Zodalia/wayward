@@ -260,7 +260,9 @@ panel to add it to the trip you're on.
     it, and doing it anyway (the quest log or your bags say so) marks it done.
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's book button
-    opens an overview of every stop (done / now / next); a stop can be dropped
+    opens an overview of every stop (done / now / next; finished stops fold
+    into one line you can click open, by themselves from three of them or
+    when they'd push open stops off the list); a stop can be dropped
     there, together with the stops that need it, or dragged up or down by its
     handle to reorder the trip. A reordered trip keeps your order (`Journey.Move`);
     stops added later go where they add the least travel, and a stop can't

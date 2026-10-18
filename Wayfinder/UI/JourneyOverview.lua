@@ -4,6 +4,9 @@ local _, ns = ...
 -- from the directions box (=) and when a journey with several stops starts.
 -- An open stop can be dropped (x); stops that need it are dropped with it.
 -- Drag an open stop up or down by its handle (or the row) to reorder the trip.
+-- Finished stops (done, dropped, skipped) fold into one line you can open;
+-- they fold by themselves once there are AUTO_FOLD of them, or when showing
+-- them would push open stops off the list.
 
 local Overview = {}
 ns.JourneyOverview = Overview
@@ -12,8 +15,10 @@ local MAX_ROWS = 10
 local ROW_HEIGHT = 30
 local HANDLE_WIDTH = 16
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
+local AUTO_FOLD = 3
 
 local frame
+local unfolded -- nil: fold by the rule above; true / false: the player's choice for this trip
 local dragging -- the row being dragged
 
 -- The row under the cursor that a dragged stop can go to.
@@ -32,7 +37,7 @@ local function endDrag()
   from.text:SetAlpha(1)
   frame.marker:Hide()
   local target = rowUnderCursor()
-  if target and target ~= from then Overview.Move(from.index, target.index) end
+  if target and target ~= from then Overview.Move(from.rowIndex, target.rowIndex) end
 end
 
 -- While dragging, a line shows where the stop will go.
@@ -43,7 +48,7 @@ local function trackDrag()
     return
   end
   frame.marker:ClearAllPoints()
-  local below = target.index > dragging.index
+  local below = target.rowIndex > dragging.rowIndex
   frame.marker:SetPoint(below and "TOPLEFT" or "BOTTOMLEFT", target, below and "BOTTOMLEFT" or "TOPLEFT", 0, 0)
   frame.marker:SetPoint(below and "TOPRIGHT" or "BOTTOMRIGHT", target, below and "BOTTOMRIGHT" or "TOPRIGHT", 0, 0)
   frame.marker:Show()
@@ -127,6 +132,13 @@ local function create()
       line:SetColorTexture(GRIP_COLOR[1], GRIP_COLOR[2], GRIP_COLOR[3], GRIP_COLOR[4])
       row.handle.lines[k] = line
     end
+    -- On the finished-stops line instead: open or fold them.
+    row.toggle = CreateFrame("Button", nil, row)
+    row.toggle:SetSize(14, 14)
+    row.toggle:SetPoint("LEFT", 1, 0)
+    row.toggle:SetScript("OnClick", function() Overview.ToggleFinished() end)
+    row.toggle:Hide()
+    row:SetScript("OnMouseUp", function(self) if self.header then Overview.ToggleFinished() end end)
     row.handle:RegisterForDrag("LeftButton")
     row.handle:SetScript("OnDragStart", startDrag)
     row.handle:SetScript("OnDragStop", endDrag)
@@ -208,6 +220,33 @@ local LOOK = {
   next = { "      ", 1 },
 }
 
+local FINISHED = { done = true, dropped = true, skipped = true }
+
+-- What the list shows, top to bottom: the finished stops' line (when there
+-- are any), those stops unless folded, then the open ones.
+--   { header = true, count, folded } or { row = Rows() entry, index }
+function Overview.Lines()
+  local rows = Overview.Rows()
+  local finished = 0
+  for _, r in ipairs(rows) do
+    if FINISHED[r.state] then finished = finished + 1 end
+  end
+  local folded = unfolded == false
+    or (unfolded == nil and (finished >= AUTO_FOLD or #rows + 1 > MAX_ROWS))
+  local lines = {}
+  if finished > 0 then lines[1] = { header = true, count = finished, folded = folded } end
+  for i, r in ipairs(rows) do
+    if not (folded and FINISHED[r.state]) then lines[#lines + 1] = { row = r, index = i } end
+  end
+  return lines, rows
+end
+
+function Overview.ToggleFinished()
+  local lines = Overview.Lines()
+  unfolded = not (lines[1] and lines[1].header and not lines[1].folded)
+  Overview.Refresh()
+end
+
 function Overview.Refresh()
   if not (frame and frame:IsShown()) then return end
   local a = ns.Nav.active
@@ -215,7 +254,7 @@ function Overview.Refresh()
     frame:Hide()
     return
   end
-  local rows = Overview.Rows()
+  local lines, rows = Overview.Lines()
   local root = a.journey.root or a.journey.def
   local done = 0
   for _, r in ipairs(rows) do
@@ -226,9 +265,22 @@ function Overview.Refresh()
     ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())),
     root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
   for i, row in ipairs(frame.rows) do
-    local r = rows[i]
-    row.stop = r and r.stop
-    if r then
+    local line = lines[i]
+    local r = line and line.row
+    row.stop, row.rowIndex, row.header = r and r.stop, line and line.index, line and line.header
+    if line and line.header then
+      row.text:SetText(string.format("|cff9d9d9d%s finished|r  %s", line.count == 1 and "1 stop" or (line.count .. " stops"),
+        line.folded and "(click to show)" or "(click to hide)"))
+      row.zone:SetText("")
+      row.text:SetAlpha(1)
+      row.movable = false
+      row.drop:Hide()
+      row.handle:Hide()
+      local texture = line.folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up"
+      row.toggle:SetNormalTexture(texture)
+      row.toggle:Show()
+      row:Show()
+    elseif r then
       local look = LOOK[r.state]
       row.text:SetText(look[1] .. (r.stop.text or (r.stop.node and r.stop.node.label) or "?"))
       local zone = ns.Journey.StopZone(r.stop)
@@ -237,12 +289,13 @@ function Overview.Refresh()
       row.movable = (r.state == "now" or r.state == "next") and r.stop ~= root.finish
       row.drop:SetShown(r.state == "now" or r.state == "next")
       row.handle:SetShown(row.movable)
+      row.toggle:Hide()
       row:Show()
     else
       row:Hide()
     end
   end
-  frame.more:SetText(#rows > MAX_ROWS and string.format("... and %d more", #rows - MAX_ROWS) or "")
+  frame.more:SetText(#lines > MAX_ROWS and string.format("... and %d more", #lines - MAX_ROWS) or "")
 end
 
 -- How many rows show a drag handle (for tests).
@@ -276,5 +329,9 @@ function Overview.IsShown()
   return frame ~= nil and frame:IsShown()
 end
 
-ns.Listen("JOURNEY_STARTED", Overview.Show)
+-- A new trip folds by the rule again.
+ns.Listen("JOURNEY_STARTED", function()
+  unfolded = nil
+  Overview.Show()
+end)
 ns.Listen("NAV_CHANGED", Overview.Refresh)
