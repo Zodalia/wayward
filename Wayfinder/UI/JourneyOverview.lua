@@ -19,6 +19,8 @@ local MAX_ROWS = 10        -- the list is this many stop rows tall
 local ROW_HEIGHT = 30
 local STEP_HEIGHT = 15     -- a step line under a stop
 local POOL = 24            -- rows drawn at most (stops and steps)
+local SUGGESTIONS = 4      -- "On the way" rows
+local SUGGEST_HEIGHT = 18
 local HANDLE_WIDTH = 16
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
@@ -189,6 +191,33 @@ local function create()
   f.marker:SetHeight(2)
   f.marker:SetColorTexture(1, 0.82, 0, 0.9)
   f.marker:Hide()
+
+  -- On the way: things to add that cost little (OnTheWay.lua).
+  f.suggestHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  f.suggestHeader:SetJustifyH("LEFT")
+  f.suggest = {}
+  for i = 1, SUGGESTIONS do
+    local row = CreateFrame("Frame", nil, f)
+    row:SetSize(356, SUGGEST_HEIGHT)
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.text:SetPoint("LEFT", 4, 0)
+    row.text:SetPoint("RIGHT", -52, 0)
+    row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    row.add = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.add:SetSize(46, 16)
+    row.add:SetPoint("RIGHT", 0, 0)
+    row.add:SetText("Add")
+    row.add:SetScript("OnClick", function() if row.suggestion then ns.OnTheWay.Add(row.suggestion) end end)
+    ns.Skin.Button(row.add)
+    ns.Skin.Text(row.text)
+    row:Hide()
+    f.suggest[i] = row
+  end
+  ns.Skin.Text(f.suggestHeader)
+  -- The rest of the trip on a map.
+  f.map = ns.RouteMap.NewView(f, 356)
+  f.map.canvas:Hide()
 
   f.more = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.more:SetPoint("BOTTOMLEFT", 12, 8)
@@ -387,6 +416,44 @@ function Overview.Refresh()
     end
   end
   frame.more:SetText(#lines > shown and string.format("... and %d more", #lines - shown) or "")
+
+  -- Under the stops: what's on the way, then the map.
+  local y = -44 - used - 10
+  local list = ns.OnTheWay and ns.OnTheWay.Get() or {}
+  frame.suggestHeader:ClearAllPoints()
+  frame.suggestHeader:SetPoint("TOPLEFT", 12, y)
+  frame.suggestHeader:SetShown(#list > 0)
+  if #list > 0 then
+    frame.suggestHeader:SetText("On the way (3 min or less more)")
+    y = y - 16
+  end
+  for i, row in ipairs(frame.suggest) do
+    local s = list[i]
+    row.suggestion = s
+    if s then
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", 12, y)
+      row.text:SetText(string.format("%s  |cff9d9d9d+%s|r", s.label, ns.FormatDuration(s.extra)))
+      row:Show()
+      y = y - SUGGEST_HEIGHT
+    else
+      row:Hide()
+    end
+  end
+  local mapHeight
+  if ns.RouteMap then
+    local remaining = {}
+    for k = a.index, #a.route.steps do remaining[#remaining + 1] = a.route.steps[k] end
+    local ok, h = pcall(ns.RouteMap.Draw, frame.map, { route = { steps = remaining } })
+    mapHeight = ok and h or nil
+  end
+  frame.map.canvas:SetShown(mapHeight ~= nil)
+  if mapHeight then
+    frame.map.canvas:ClearAllPoints()
+    frame.map.canvas:SetPoint("TOPLEFT", 12, y - 6)
+    y = y - 6 - mapHeight
+  end
+  frame:SetHeight(-y + 26)
 end
 
 -- How many rows show a drag handle (for tests).

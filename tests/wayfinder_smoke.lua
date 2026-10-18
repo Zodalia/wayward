@@ -1863,6 +1863,38 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- quest pickups (end)
+---------------------------------------------------------------- on the way (begin)
+do
+  io.write("on the way\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = {
+    { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" },
+    { node = ns.Geo.Node(1433, 0.56, 0.5, "Second"), text = "Visit Second" } } }))
+  -- Lakeshire's quest givers are right by this trip.
+  local onTheWay = ns.OnTheWay.Get()
+  local labels = {}
+  for _, sug in ipairs(onTheWay) do labels[#labels + 1] = sug.kind .. ":" .. sug.label .. " +" .. math.floor(sug.extra) end
+  check(#onTheWay > 0 and onTheWay[1].extra <= 180 and onTheWay[1].kind == "pickup",
+    "suggestions on the way, 3 min or less: " .. table.concat(labels, " | "))
+  local firstQuest = onTheWay[1] and onTheWay[1].stops[1].action.questID
+  check(firstQuest and ns.OnTheWay.Add(onTheWay[1]) and ns.Nav.TripHasQuest(firstQuest), "Add puts it in the trip")
+  local still = false
+  for _, sug in ipairs(ns.OnTheWay.Get()) do
+    for _, st in ipairs(sug.stops) do if st.action and st.action.questID == firstQuest then still = true end end
+  end
+  check(not still, "and it isn't suggested again")
+  -- The overview shows them, and the rest of the trip on a map.
+  C_Map.GetMapArtLayers = function() return { { tileWidth = 256, tileHeight = 256, layerWidth = 1002, layerHeight = 668 } } end
+  C_Map.GetMapArtLayerTextures = function() return { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 } end
+  ns.JourneyOverview.Show()
+  check(ns.RouteMap.mapID == 1433 and ns.RouteMap.lines >= 1, "the overview has a map of the rest of the trip")
+  C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+end
+---------------------------------------------------------------- on the way (end)
 ---------------------------------------------------------------- fanfare (begin)
 do
   io.write("fanfare\n")

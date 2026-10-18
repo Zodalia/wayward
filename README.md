@@ -346,7 +346,11 @@ panel to add it to the trip you're on.
     when they'd push open stops off the list; under the current stop, the
     steps that get you there, walk, fly, boat, with the one you're on
     marked, and any stop's +/- shows or hides its own, so you can see where
-    it's taking you and hearth instead); a stop can be dropped
+    it's taking you and hearth instead; under the stops, "On the way": up
+    to four things near the route that add 3 minutes of travel or less,
+    quest givers with quests for you, quests in your log ready to hand in
+    and vendors you need, each with an Add button; and a map of the rest of
+    the trip); a stop can be dropped
     there, together with the stops that need it, or dragged up or down by its
     handle to reorder the trip. A reordered trip keeps your order (`Journey.Move`);
     stops added later go where they add the least travel, and a stop can't

@@ -1388,6 +1388,17 @@ function ForYou.Invalidate()
   cache = nil
 end
 
+-- Vendors you need to visit now (repairs, ammo, food, a repairer close by):
+-- { {title, goal, why}, ... }, for suggestions along a trip (OnTheWay.lua).
+function ForYou.ShoppingNeeds()
+  local ctx = { level = UnitLevel("player"), notes = {} }
+  local out = {}
+  for _, n in ipairs(try(vendorNeeds, ctx) or {}) do out[#out + 1] = n end
+  local soon = try(repairSoonNeed)
+  if soon then out[#out + 1] = soon end
+  return out
+end
+
 ---------------------------------------------------------------- new journeys
 
 -- Major suggestions: somewhere to quest, a dungeon, spells to train, a
