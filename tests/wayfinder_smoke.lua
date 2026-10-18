@@ -1194,7 +1194,8 @@ do
   for _, d in ipairs(deadmines and deadmines.details or {}) do
     if d.text:find("^Also for your level") then also = d.text end
   end
-  check(also and also:find("Hall of Testing", 1, true), "it names the other dungeons for your level: " .. tostring(also))
+  check(not (also and also:find("Hall of Testing", 1, true)) and not find(list, "Run Hall of Testing"),
+    "with QuestieDB, a dungeon without quests for you isn't suggested (its mobs give little XP)")
   -- The zone: what you can take now, what chains unlock, where to start.
   check(redridge and redridge.place == "Levels 17-19  ·  start at Lakeshire" and redridge.route
     and redridge.details[1].text:find("4 quests you can take now, 1 more as their chains unlock", 1, true),
@@ -1244,6 +1245,18 @@ do
   check(deadmines and deadmines.title == "Run The Deadmines  ·  level 20" and deadmines.place:find("2 pickups on the way"),
     "the dungeon card keeps its name; the pickups are in its place line: " .. tostring(deadmines and deadmines.place))
   check(deadmines and deadmines.subtitle:find("1 in your log"), "quests in your log count too")
+
+  -- Three more Deadmines quests from level 22: most of its quests aren't open yet.
+  for i, id in ipairs({ 30, 31, 32 }) do
+    QUESTS[id] = { name = "Later Defias " .. i, questLevel = 22, requiredLevel = 22, zoneOrSort = 1581, startedBy = { { 344 } } }
+  end
+  reloadBridge()
+  list = rows()
+  check(not find(list, "Run The Deadmines") and ns.ForYou.SummaryText():find("The Deadmines at level 22 (", 1, true),
+    "a dungeon most of whose quests open later waits, and the page says when: " .. ns.ForYou.SummaryText())
+  for _, id in ipairs({ 30, 31, 32 }) do QUESTS[id] = nil end
+  reloadBridge()
+  list = rows()
 
   -- Gear at 20%: repair before training.
   durability = { 10, 50 }
@@ -2195,8 +2208,10 @@ do
   SlashCmdList.WAYFINDER("tomtom")
   check(not ns.Nav.UsingTomTom(), "/wf tomtom turns it off")
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  check(ns.Nav.ownsWaypoint, "TomTom off: the game's map pin shows the way")
   SlashCmdList.WAYFINDER("tomtom")
   check(ns.Nav.UsingTomTom() and #added == 3, "turning it on during a trip moves the waypoint to TomTom")
+  check(not ns.Nav.ownsWaypoint and waypoints[#waypoints] == "cleared", "and takes down the map pin we put up")
   ns.Nav.Stop()
   TomTom.AddWaypoint = function() error("old TomTom") end
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)

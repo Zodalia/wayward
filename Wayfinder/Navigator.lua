@@ -55,7 +55,14 @@ end
 local function setWaypoint(node, title)
   local mapID, x, y = ns.Geo.ZonePoint(node)
   if not (mapID and x and y) then return end
-  if Nav.UsingTomTom() and setTomTom(mapID, x, y, title or node.label or "Wayfinder") then return end
+  if Nav.UsingTomTom() and setTomTom(mapID, x, y, title or node.label or "Wayfinder") then
+    -- TomTom shows the way now: take down the map pin we put up before.
+    if Nav.ownsWaypoint then
+      C_Map.ClearUserWaypoint()
+      Nav.ownsWaypoint = false
+    end
+    return
+  end
   if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then return end
   C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
   if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
