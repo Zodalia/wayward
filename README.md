@@ -106,8 +106,8 @@ parchment. Each card shows the trip's key numbers (level, travel time,
 quests, XP per minute) and its quests; hover it for every detail and step.
 The tooltip of a card, or of any row with directions or a trip, has a small
 map under it with the route drawn on it (the zone, the continent or the world
-map, whichever holds it all; walking white, flights light blue, boats and
-the like deeper blue). The arrows under the cards page through the rest, three at a time; shift-click adds a card to
+map, whichever holds it all, zoomed in on the route; walking white, flights
+light blue, boats and the like deeper blue). The arrows under the cards page through the rest, three at a time; shift-click adds a card to
 your trip.
 
 The window keeps one size: For you is the main window, and **Quests**
@@ -140,9 +140,9 @@ things to do next, one card per kind of thing, each labelled with its kind:
 - **Questing zone** (up to three, anywhere in the world): where to quest at
   your level. Each counts the quests you can take there now and the ones
   their chains unlock (follow-ups whose first step you can take or have in
-  your log), all fitting your level, with their XP; directions go to the hub
-  with the most quests for you, and the card names the next hubs and where
-  the chains lead on to. A zone needs 4 quests you can take now; zones are
+  your log), all fitting your level, with their XP. Its trip goes to the hub
+  with the most quests for you and picks all of them up, giver by giver; the
+  card names the next hubs and where the chains lead on to. A zone needs 4 quests you can take now; zones are
   ranked by XP.
 - **Dungeon** (or **Raid**): the best one, with its quests picked up on the
   way to the entrance, and the others for your level named on the card;

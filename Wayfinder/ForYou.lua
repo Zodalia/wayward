@@ -776,7 +776,8 @@ end
 
 -- Where to quest at your level, anywhere: per zone (Questie.ZoneQuests), the
 -- quests you can take now and those their chains unlock, worth their XP; the
--- hub to start at is the one with the most quests for you now. Zones need
+-- hub to start at is the one with the most quests for you now, and the card's
+-- trip picks up all of them there. Zones need
 -- ZONE_MIN_QUESTS quests you can take now; the best MAX_ZONES by XP (quest
 -- count without XP data) get a route to their first hub.
 local function zoneOptions(ctx, start, net)
@@ -849,9 +850,20 @@ local function zoneOptions(ctx, start, net)
           leads[#leads + 1] = place
         end
       end
+      -- The trip: pick up every quest you can take at the first hub.
+      local title = "Quest in " .. ns.MapName(z.mapID)
+      local stops = {}
+      for _, g in ipairs(first.givers) do
+        for _, q in ipairs(g.quests) do
+          stops[#stops + 1] = { node = g.node, group = "pickup", action = { kind = "pickup", questID = q.id },
+            text = string.format("Pick up %s from %s", q.name or ("quest " .. q.id), g.name or "the quest giver") }
+        end
+      end
+      local journey = #stops > 0 and ns.Journey.Plan(start, { title = title, stops = stops }, net) or nil
       out[#out + 1] = {
-        kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = "Quest in " .. ns.MapName(z.mapID),
-        goal = goal, route = route, trip = route.seconds, now = z.now, later = z.later, value = z.value,
+        kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = title,
+        goal = goal, route = route, journey = journey, trip = journey and journey.seconds or route.seconds,
+        now = z.now, later = z.later, value = z.value,
         lowest = z.lowest, highest = z.highest, hubs = hubs, first = first, leads = leads,
       }
     end
@@ -1046,7 +1058,8 @@ local function zoneRow(z, ctx)
       ctx.xpMode and string.format(", ~%s XP in all", formatNumber(z.value)) or ""),
     color = GOLD,
   } }
-  details[#details + 1] = { text = string.format("Start at %s: %s.", z.first.place, plural(z.first.count, "quest")) }
+  details[#details + 1] = { text = string.format("Start at %s: the trip picks up its %s.", z.first.place,
+    plural(z.first.count, "quest")) }
   local next = {}
   for i = 2, math.min(#z.hubs, ZONE_HUBS + 1) do
     next[#next + 1] = string.format("%s (%d)", z.hubs[i].place, z.hubs[i].count)
@@ -1074,8 +1087,8 @@ local function zoneRow(z, ctx)
     subtitle = string.format("%s  ·  %s  ·  %s  ·  start at %s", z.zone, levels, ns.FormatDuration(z.trip), z.first.place),
     place = string.format("%s  ·  start at %s", levels, z.first.place),
     stats = { { "Quests", quests }, ctx.xpMode and { "XP", "~" .. formatNumber(z.value) } or { "Hubs", tostring(#z.hubs) },
-      { "Travel", ns.FormatDuration(z.trip) } },
-    goal = z.goal, route = z.route, details = details,
+      { z.journey and "Trip" or "Travel", ns.FormatDuration(z.trip) } },
+    goal = z.goal, route = z.route, journey = z.journey, details = details,
   }
 end
 

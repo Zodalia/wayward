@@ -1199,8 +1199,15 @@ do
   check(redridge and redridge.place == "Levels 17-19  ·  start at Lakeshire" and redridge.route
     and redridge.details[1].text:find("4 quests you can take now, 1 more as their chains unlock", 1, true),
     "a questing zone: levels, quests now and unlocked by chains, the hub to start at: " .. tostring(redridge and redridge.details[1].text))
-  check(redridge and redridge.details[2].text == "Start at Lakeshire: 4 quests." and redridge.goal.label:find("^Lakeshire"),
-    "directions go to the first hub (one hub per place): " .. tostring(redridge and redridge.details[2].text))
+  check(redridge and redridge.details[2].text == "Start at Lakeshire: the trip picks up its 4 quests."
+    and redridge.goal.label:find("^Lakeshire"),
+    "the first hub (one hub per place): " .. tostring(redridge and redridge.details[2].text))
+  local pickups = {}
+  for _, st in ipairs(redridge and redridge.journey and redridge.journey.stops or {}) do
+    pickups[#pickups + 1] = st.action and st.action.kind or "?"
+  end
+  check(#pickups == 4 and table.concat(pickups, ","):find("^pickup,pickup,pickup,pickup$"),
+    "the zone's trip picks up the first hub's quests: " .. table.concat(pickups, ","))
   local estimated = false
   for _, d in ipairs(deadmines and deadmines.details or {}) do
     if d.text:find("estimated for 1 quest") then estimated = true end
@@ -1211,7 +1218,7 @@ do
     for _, st in ipairs(r and r.stats or {}) do out[#out + 1] = st[1] .. "=" .. st[2] end
     return table.concat(out, ",")
   end
-  check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Travel="),
+  check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Trip="),
     "a zone's card numbers: quests now + later, XP, travel: " .. statText(redridge))
   check(list[1].stats and list[1].stats[1][1] == "Where" and list[1].place:find("spell"),
     "a need's card: why as the place line, then where and travel: " .. tostring(list[1].place))
@@ -1713,7 +1720,7 @@ do
   for _, r in ipairs(list) do if r.category == "Hand in" then handinCards = handinCards + 1 end end
   check(handinCards == 1 and not find(list, "Hand in 1 quest in Lakeshire"), "only the best hand-in group gets a card")
   local zone = find(list, "Quest in Redridge")
-  check(zone and not zone.journey and zone.route, "the zone card is plain directions to its first hub")
+  check(zone and zone.journey and zone.route, "the zone card is a trip to pick up its first hub's quests")
   check(find(list, "Finish ") and find(list, "Finish ").category == "Finish", "one card to finish quests in your log")
 
   -- Unfinished quests near each other: one whole-quest trip (Journey.QuestStops).
