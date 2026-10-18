@@ -1686,10 +1686,13 @@ do
   check(#ns.Questie.FollowUps(14) == 1 and ns.Questie.FollowUps(14)[1].id == 13, "Chain part 1 is followed by Chain part 2")
   local shown
   StaticPopupDialogs = {}
-  StaticPopup_Show = function(which, a, b, c, data) shown = { which = which, first = a, next = b, extra = c, data = data } end
+  StaticPopup_Show = function(which, a, b, data)
+    shown = { which = which, text = string.format(StaticPopupDialogs[which].text, a, b), data = data }
+  end
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
-  check(shown and shown.which == "WAYFINDER_FOLLOWUP" and shown.first == "Chain part 1" and shown.next == "Chain part 2",
+  check(shown and shown.which == "WAYFINDER_FOLLOWUP" and shown.text:find("Chain part 1 continues with Chain part 2", 1, true)
+    and shown.data,
     "handing in a quest offers its follow-up when it's on the way")
   StaticPopupDialogs.WAYFINDER_FOLLOWUP.OnAccept(nil, shown.data)
   local kinds = {}
@@ -1721,14 +1724,19 @@ do
   C_QuestLog.IsComplete = function() return false end
   local shown
   StaticPopupDialogs = {}
-  StaticPopup_Show = function(which, a, b, c, data) shown = { which = which, a = a, b = b, c = c, data = data } end
+  -- Like the game: two text arguments, then the data; the dialog's text is formatted with them.
+  StaticPopup_Show = function(which, a, b, data)
+    local text = string.format(StaticPopupDialogs[which].text, a, b)
+    shown = { which = which, text = text, data = data }
+  end
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
 
   -- No trip on: start one for it?
   log[1] = 45
   fire("QUEST_ACCEPTED", 45)
   runTimers()
-  check(shown and shown.which == "WAYFINDER_PICKUP_NEW" and shown.a == "Murloc Count" and shown.b:find("min", 1, true),
+  check(shown and shown.which == "WAYFINDER_PICKUP_NEW" and shown.text:find("You picked up Murloc Count", 1, true)
+    and shown.text:find("min)?", 1, true) and shown.data,
     "picking up a quest with no trip on offers a trip for it, with its time")
   StaticPopupDialogs.WAYFINDER_PICKUP_NEW.OnAccept(nil, shown.data)
   local kinds = {}
@@ -1743,8 +1751,9 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
   fire("QUEST_ACCEPTED", 40)
   runTimers()
-  check(shown and shown.which == "WAYFINDER_PICKUP_ADD" and shown.a == "Murloc Menace" and shown.b and shown.c,
-    "with a trip on: add it, with the time it adds, or a new trip: " .. tostring(shown and shown.b))
+  check(shown and shown.which == "WAYFINDER_PICKUP_ADD" and shown.text:find("Murloc Menace", 1, true)
+    and shown.text:find("more), or start a new trip", 1, true) and shown.data,
+    "with a trip on: add it, with the time it adds, or a new trip: " .. tostring(shown and shown.text))
   StaticPopupDialogs.WAYFINDER_PICKUP_ADD.OnAccept(nil, shown.data)
   check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Add to trip: both quests in it")
 

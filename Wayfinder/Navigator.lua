@@ -460,6 +460,12 @@ function Nav.PickupOffer(questIDs)
   return offer
 end
 
+-- Shows a question; if the game can't, says so in chat rather than nothing.
+local function askPlayer(which, text, data)
+  local ok, err = pcall(StaticPopup_Show, which, text, nil, data)
+  if not ok then ns.print("couldn't show a question (" .. tostring(err) .. "): " .. text:gsub("\n\n", " ")) end
+end
+
 local function askPickups()
   if stillPicking() then
     C_Timer.After(PICKUP_WAIT, askPickups)
@@ -473,24 +479,28 @@ local function askPickups()
   if not offer then return end
   Nav.lastPickupOffer = offer
   if not (StaticPopupDialogs and StaticPopup_Show) then return end
+  -- StaticPopup_Show takes two text arguments (then the data): the message is
+  -- built here and passed as one.
   StaticPopupDialogs.WAYFINDER_PICKUP_ADD = StaticPopupDialogs.WAYFINDER_PICKUP_ADD or {
-    text = "You picked up %s.\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?",
+    text = "%s",
     button1 = "Add to trip", button2 = "Not now", button3 = "New trip",
     OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
     OnAlt = function(_, data) startJourney(data.journey) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   StaticPopupDialogs.WAYFINDER_PICKUP_NEW = StaticPopupDialogs.WAYFINDER_PICKUP_NEW or {
-    text = "You picked up %s.\n\nStart a trip for it (%s)?",
+    text = "%s",
     button1 = "Start trip", button2 = "Not now",
     OnAccept = function(_, data) startJourney(data.journey) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   if Nav.active and offer.extra then
-    StaticPopup_Show("WAYFINDER_PICKUP_ADD", offer.label, ns.FormatDuration(offer.extra),
-      ns.FormatDuration(offer.alone), offer)
+    askPlayer("WAYFINDER_PICKUP_ADD", string.format(
+      "You picked up %s.\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?",
+      offer.label, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
   else
-    StaticPopup_Show("WAYFINDER_PICKUP_NEW", offer.label, ns.FormatDuration(offer.alone), nil, offer)
+    askPlayer("WAYFINDER_PICKUP_NEW", string.format("You picked up %s.\n\nStart a trip for it (%s)?",
+      offer.label, ns.FormatDuration(offer.alone)), offer)
   end
 end
 
@@ -738,13 +748,13 @@ function offerFollowUps(stops)
   Nav.pendingFollowUps = offer
   if not (StaticPopupDialogs and StaticPopup_Show) then return end
   StaticPopupDialogs.WAYFINDER_FOLLOWUP = StaticPopupDialogs.WAYFINDER_FOLLOWUP or {
-    text = "%s continues with %s, about %s more on the way.\n\nAdd it to your trip too?",
+    text = "%s",
     button1 = "Add", button2 = "No thanks",
     OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
-  StaticPopup_Show("WAYFINDER_FOLLOWUP", table.concat(firsts, ", "), label, ns.FormatDuration(offer.extra),
-    { stops = offer.stops, label = label })
+  askPlayer("WAYFINDER_FOLLOWUP", string.format("%s continues with %s, about %s more on the way.\n\nAdd it to your trip too?",
+    table.concat(firsts, ", "), label, ns.FormatDuration(offer.extra)), { stops = offer.stops, label = label })
 end
 
 -- True when the current trip still has an open stop for this quest.
