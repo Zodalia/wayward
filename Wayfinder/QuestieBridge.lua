@@ -642,7 +642,10 @@ function Bridge.ZoneQuests(here)
 end
 
 -- Quests whose zoneOrSort is in `areaIDs` (a set; for a dungeon quest that is
--- the dungeon's AreaID): { [areaID] = { available = {...}, inLog = {...} } }.
+-- the dungeon's AreaID): { [areaID] = { available = {...}, inLog = {...},
+-- later = {...} } }. `later` are ones you can't take yet but will: too low a
+-- level for them (with requiredLevel), too hard for now, or after earlier
+-- quests of their chain.
 function Bridge.QuestsForAreas(areaIDs)
   if not Bridge.Available() then return {} end
   if not questIndex then buildQuestIndex() end
@@ -652,13 +655,19 @@ function Bridge.QuestsForAreas(areaIDs)
   for _, q in ipairs(questIndex) do
     local area = q.zoneOrSort
     if area and areaIDs[area] then
-      local group = out[area] or { available = {}, inLog = {} }
+      local group = out[area] or { available = {}, inLog = {}, later = {} }
       out[area] = group
-      local quest = { id = q.id, name = q.name, level = displayLevel(q, p) }
+      local quest = { id = q.id, name = q.name, level = displayLevel(q, p), requiredLevel = q.requiredLevel }
       if inLog[q.id] then
         table.insert(group.inLog, quest)
-      elseif eligible(q, p, done, inLog) then
-        table.insert(group.available, quest)
+      else
+        local status = blocker(q, p, done, inLog)
+        local fits, _, why = fitsLevel(q, p)
+        if status == nil and fits then
+          table.insert(group.available, quest)
+        elseif status == "tooLow" or status == "needsEarlier" or (status == nil and why == "red") then
+          table.insert(group.later, quest)
+        end
       end
     end
   end

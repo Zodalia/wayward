@@ -145,8 +145,12 @@ things to do next, one card per kind of thing, each labelled with its kind:
   card names the next hubs and where the chains lead on to. A zone needs 4 quests you can take now; zones are
   ranked by XP.
 - **Dungeon** (or **Raid**): the best one, with its quests picked up on the
-  way to the entrance, and the others for your level named on the card;
-  without quests for you, the best by level fit and travel time.
+  way to the entrance, and the others for your level named on the card.
+  Mobs in Forever's dungeons give little XP, so the quests make the run: a
+  dungeon is suggested only when you can take most (60%) of its quests now,
+  and one without quests for you isn't suggested at all. Those held back are
+  named with the level their quests open at ("The Stockade at level 22").
+  Without QuestieDB, the best by level fit and travel time.
 
 Due now and Worth a visit come first, then the zones, then the dungeon; hand
 in, finish and best quest follow in order of estimated XP per minute: XP over the

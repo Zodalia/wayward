@@ -38,6 +38,8 @@ local REPAIR_SOON = 0.75        -- gear at or under this: repair if a vendor is 
 local REPAIR_NEAR_SECONDS = 120 -- "close" for that
 local TRAIN_LEVELS_STALE = 2    -- levels since your last trainer visit before new spells are likely
 local ZONE_MIN_QUESTS = 4       -- quests you can take now for a zone to get a card
+local DUNGEON_QUEST_SHARE = 0.6 -- of a dungeon's quests, the share you need to be able to take now
+                                -- (mobs in Forever's dungeons give little XP: the quests make the run)
 local MAX_ZONES = 3             -- "Questing zone" cards
 local ZONE_HUBS = 3             -- hubs named on a zone card after the first
 local ZONE_QUEST_LINES = 5      -- quests listed on a zone card
@@ -85,8 +87,8 @@ end
 
 -- A provider error leaves its part out of the page instead of blanking it.
 local function try(fn, ...)
-  local ok, a, b = pcall(fn, ...)
-  if ok then return a, b end
+  local ok, a, b, c = pcall(fn, ...)
+  if ok then return a, b, c end
   geterrorhandler()(a)
   return nil
 end
@@ -648,10 +650,10 @@ end
 local function dungeonOptions(ctx)
   -- Dungeons.lua caches the dungeon finder list on first use; don't trigger
   -- that before the API exists.
-  if type(GetLFGDungeonInfo) ~= "function" then return {}, {} end
+  if type(GetLFGDungeonInfo) ~= "function" then return {}, {}, {} end
   local logged = {}
   for _, e in ipairs(ctx.log) do logged[e.id] = e end
-  local withQuests, plain = {}, {}
+  local withQuests, plain, held = {}, {}, {}
   for _, r in ipairs(run(ns.Dungeons.Results)) do
     local entry = r.dungeon
     local available, inLog, seen = {}, {}, {}
@@ -673,16 +675,32 @@ local function dungeonOptions(ctx)
         seconds = e and SECONDS_PER_QUEST * e.left }
     end
     local name = entry and entry.name or r.title
+    local later = r.quests and r.quests.later or {}
     local option = {
       kind = "dungeon", name = name, raid = entry and entry.raid, result = r,
       title = "Run " .. r.title, zone = r.zone, goal = r.goal, route = r.route, trip = seconds(r.route),
-      quests = quests, available = available, inLog = inLog,
+      quests = quests, available = available, inLog = inLog, later = later,
     }
+    -- Not yet when most of its quests are still to come: when they open.
+    local total = #quests + #later
+    if total > 0 and #quests / total < DUNGEON_QUEST_SHARE then
+      for _, q in ipairs(later) do
+        local required = q.requiredLevel or 0
+        if required > ctx.level and (not option.opensAt or required < option.opensAt) then option.opensAt = required end
+      end
+      option.held = true
+    end
     if r.route then
-      if #quests > 0 then withQuests[#withQuests + 1] = option else plain[#plain + 1] = option end
+      if option.held then
+        held[#held + 1] = option
+      elseif #quests > 0 then
+        withQuests[#withQuests + 1] = option
+      else
+        plain[#plain + 1] = option
+      end
     end
   end
-  return withQuests, plain
+  return withQuests, plain, held
 end
 
 -- Pick up the dungeon's quests on the way (nearest givers), finish at the entrance.
@@ -1132,9 +1150,9 @@ end
 local parts
 local function timed(name, fn, ...)
   local started = debugprofilestop and debugprofilestop()
-  local a, b = try(fn, ...)
+  local a, b, c = try(fn, ...)
   if started then parts[#parts + 1] = string.format("%s %.0f", name, debugprofilestop() - started) end
-  return a, b
+  return a, b, c
 end
 
 local function build()
@@ -1167,8 +1185,11 @@ local function build()
   local hubs = timed("hubs", hubOptions) or {}
   local handins = timed("handins", handinOptions, ctx, start, net) or {}
   local finishes = timed("finish", finishOptions, ctx, start, net) or {}
-  local dungeons, plain = timed("dungeons", dungeonOptions, ctx)
-  dungeons = dungeons or {}
+  local dungeons, plain, held = timed("dungeons", dungeonOptions, ctx)
+  dungeons, plain, held = dungeons or {}, plain or {}, held or {}
+  -- With QuestieDB, a dungeon without quests for you isn't worth the run in
+  -- Forever (its mobs give little XP); without it there's nothing better to go on.
+  if ctx.questie then plain = {} end
   local all = {}
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
     for _, option in ipairs(list) do
@@ -1204,15 +1225,23 @@ local function build()
   pick(quest)
   table.sort(picks, byRate)
 
-  -- The other dungeons for your level, named on the dungeon card.
+  -- The other dungeons for your level, named on the dungeon card; and the
+  -- ones held back until more of their quests open.
   local others = {}
-  for _, list in ipairs({ dungeons, plain or {} }) do
+  for _, list in ipairs({ dungeons, plain }) do
     for _, option in ipairs(list) do
-      if option ~= dungeon and option ~= (not dungeon and plain and plain[1] or nil) then
+      if option ~= dungeon and option ~= (not dungeon and plain[1] or nil) then
         local name, level = (option.title or ""):match("^Run (.-)%s+·%s+level (%d+)$")
         others[#others + 1] = name and string.format("%s (%s)", name, level) or option.name
       end
     end
+  end
+  table.sort(held, function(a, b) return (a.opensAt or math.huge) < (b.opensAt or math.huge) end)
+  local soon = {}
+  for i = 1, math.min(#held, 3) do
+    local h = held[i]
+    soon[#soon + 1] = string.format("%s %s (%d more quest%s)", h.name,
+      h.opensAt and ("at level " .. h.opensAt) or "after earlier quests", #h.later, #h.later == 1 and "" or "s")
   end
 
   local results = {}
@@ -1223,12 +1252,20 @@ local function build()
   if dungeon then
     timed("dungeon trip", dungeonJourney, dungeon, ctx, start, net)
     dungeonRow = optionRow(dungeon, dungeon.rank, #all, ctx)
-  elseif plain and plain[1] then
-    -- No dungeon with quests for you: the best one by level fit and travel time.
+  elseif plain[1] then
+    -- Without QuestieDB: the best one by level fit and travel time.
     dungeonRow = plainRow(plain[1])
   end
   if dungeonRow and #others > 0 then
     table.insert(dungeonRow.details, 2, { text = "Also for your level: " .. table.concat(others, ", ", 1, math.min(#others, 4)) .. "." })
+  end
+  if #soon > 0 then
+    local line = "Dungeons later, once you can take most of their quests: " .. table.concat(soon, ", ") .. "."
+    if dungeonRow then
+      table.insert(dungeonRow.details, 2, { text = line })
+    else
+      ctx.notes[#ctx.notes + 1] = line
+    end
   end
   add(dungeonRow)
   for _, option in ipairs(picks) do add(optionRow(option, option.rank, #all, ctx)) end

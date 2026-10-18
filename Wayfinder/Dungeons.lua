@@ -169,12 +169,13 @@ function Dungeons.Results()
     end
     goal = goal or entry.entrances[1]
 
-    local available, inLog = {}, {}
+    local available, inLog, later = {}, {}, {}
     for areaID in pairs(entry.areaIDs) do
       local q = quests[areaID]
       if q then
         for _, quest in ipairs(q.available) do available[#available + 1] = quest end
         for _, quest in ipairs(q.inLog) do inLog[#inLog + 1] = quest end
+        for _, quest in ipairs(q.later or {}) do later[#later + 1] = quest end
       end
     end
 
@@ -213,7 +214,7 @@ function Dungeons.Results()
       score = (route and route.seconds or math.huge) + f.penalty,
       -- For other pages (For you): the dungeon and its quests behind this row.
       dungeon = entry,
-      quests = { available = available, inLog = inLog },
+      quests = { available = available, inLog = inLog, later = later },
       -- Pick up the quests you can take, then go in (QuestsPage.lua).
       actions = #available > 0 and { { label = "Quests", run = function()
         ns.QuestsPage.StartDungeonRun(entry.name, goal, available)
