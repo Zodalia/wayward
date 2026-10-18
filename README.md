@@ -112,7 +112,10 @@ your trip.
 
 The window keeps one size: For you is the main window, and **Quests**
 (Journal: your quest log and quest search; Hubs), **Vendors**, **Trainers**
-(Class; Weapons: weapon masters, with the weapons they teach once visited),
+(Class; Weapons: one row per weapon your class can learn and you don't know,
+"Polearms (Woo Ping)", with the nearest weapon master who teaches it to your
+class and the cost against your purse; weapon masters list what they teach
+when you visit, so ones not seen yet point to a master you haven't visited),
 **Dungeons** and **Items** are icon tabs inside its right edge that open a
 list panel docked beside them (click the tab again, or the panel's close
 button, to close it). The search box filters any list. If the cards ever show no text, `/wf debug cards` reports what

@@ -2505,11 +2505,27 @@ do
   ns.Panel.Select(2)
   check(ns.Panel.SideShown() and ns.Panel.SelectedTab() == "trainers", "the Weapons category of Trainers opens")
   local here = ns.Geo.PlayerNode()
+  -- A warlock (swords, staves, daggers) who knows daggers; the master teaches swords for
+  -- 10s and staves for 1g; the purse holds 50s.
   ns.db.npcs[990001] = { name = "Test Weaponmaster", kinds = { weaponMaster = true }, mapID = here.mapID,
-    x = here.x + 0.01, y = here.y, weapons = { "Daggers", "Swords" } }
-  local masters = ns.WeaponMasters.Results()
-  check(masters[1] and masters[1].title == "Test Weaponmaster" and masters[1].details[1].text == "Daggers, Swords",
-    "a visited weapon master is listed with what they teach")
+    x = here.x + 0.01, y = here.y, weapons = { "Swords", "Staves" },
+    teaches = { WARLOCK = { { name = "Swords", cost = 1000 }, { name = "Staves", cost = 10000 } } } }
+  local savedSpell, savedMoney = IsPlayerSpell, GetMoney
+  IsPlayerSpell = function(id) return id == 1180 end
+  GetMoney = function() return 5000 end
+  local rows = ns.WeaponMasters.Results()
+  local titles = {}
+  for _, r in ipairs(rows) do titles[#titles + 1] = (r.title:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+  local joined = table.concat(titles, " | ")
+  check(titles[1] == "Swords  (Test Weaponmaster)" and titles[2] == "Staves  (Test Weaponmaster)",
+    "weapons to learn first, the trainer in brackets, affordable ones first: " .. joined)
+  check(rows[1].subtitle:find("10s", 1, true) and rows[2].subtitle:find("you have 50s", 1, true),
+    "with the cost against your purse: " .. rows[2].subtitle)
+  check(not joined:find("Daggers", 1, true) and joined:find("Weapon master: Test Weaponmaster", 1, true),
+    "a weapon you know isn't listed; the weapon masters come after")
+  check(ns.WeaponMasters.SummaryText():find("You know Daggers. You can learn 2 more", 1, true),
+    "the summary says what you know: " .. ns.WeaponMasters.SummaryText())
+  IsPlayerSpell, GetMoney = savedSpell, savedMoney
   ns.db.npcs[990001] = nil
   ns.Panel.Search("quests", "redridge")
   check(ns.Panel.SideShown(), "/wf quest and /wf item open the side panel with the search")

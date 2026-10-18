@@ -117,9 +117,18 @@ local function readTrainer()
   if kind == "classTrainer" then
     extra = { class = class }
   elseif kind == "weaponMaster" then
-    local weapons = {}
-    for _, s in ipairs(services) do weapons[#weapons + 1] = s.name end
-    extra = { weapons = weapons }
+    -- What they teach depends on your class (the list only has what you can
+    -- learn), so it's kept per class, with the cost and whether you know it.
+    local weapons, list = {}, {}
+    for _, s in ipairs(services) do
+      weapons[#weapons + 1] = s.name
+      list[#list + 1] = { name = s.name, cost = s.cost, type = s.type }
+    end
+    local id = npcID()
+    local known = id and ns.db.npcs[id]
+    local teaches = known and known.teaches and CopyTable(known.teaches) or {}
+    teaches[class] = list
+    extra = { weapons = weapons, teaches = teaches }
   end
   Harvest.RecordNPC(kind, extra)
   if kind == "classTrainer" then
