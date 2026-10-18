@@ -6,6 +6,7 @@ local _, ns = ...
 -- or handed in (see Journey.lua).
 
 local Nav = {}
+local unpack = unpack or table.unpack
 ns.Nav = Nav
 
 -- Yards from a step's destination that count as "reached".
@@ -401,9 +402,106 @@ local function syncStops()
   end
 end
 
+-- Picking up a quest that isn't in your trip yet: its stops (do it, hand it
+-- in) planned, and a question: add them to the trip (and how much longer it
+-- gets), start a new trip for them, or not now. Quests picked up one after
+-- another are asked about together, once the trip has no more pickups to do
+-- right where you are.
+local PICKUP_WAIT = 1.5
+local picked, waiting = {}, false
+
+local function stillPicking()
+  local step = Nav.CurrentStep()
+  local stop = step and step.stop
+  return stop ~= nil and stop.action ~= nil and stop.action.kind == "pickup" and not stop.done and Nav.Waiting()
+end
+
+-- The offer for the quests picked up: { label, stops, alone (seconds), extra
+-- (seconds more on the current trip, or nil without one) }, or nil.
+function Nav.PickupOffer(questIDs)
+  local here = ns.Geo.PlayerNode()
+  if not here then return nil end
+  local stops, names = {}, {}
+  for _, id in ipairs(questIDs) do
+    if not Nav.TripHasQuest(id) then
+      local qs = ns.Journey.QuestStops(id, here)
+      if #qs > 0 then
+        local q = ns.Questie.Quest(id)
+        names[#names + 1] = q and q.name or ("quest " .. id)
+        for _, st in ipairs(qs) do stops[#stops + 1] = st end
+      end
+    end
+  end
+  if #stops == 0 then return nil end
+  local label = #names == 1 and names[1] or string.format("%d quests", #names)
+  local alone = ns.Journey.Plan(here, { title = label, stops = stops })
+  if not alone then return nil end
+  local offer = { label = label, names = names, stops = stops, alone = alone.seconds, journey = alone }
+  local a = Nav.active
+  if a then
+    local base, open
+    if a.journey then
+      base = ns.Journey.Replan(a.journey, here)
+      local root = a.journey.root or a.journey.def
+      open = {}
+      for _, s in ipairs(root.stops or {}) do
+        if not s.done and not s.skipped then open[#open + 1] = s end
+      end
+      for _, s in ipairs(stops) do open[#open + 1] = s end
+      local finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
+      local with = base and ns.Journey.Plan(here, { stops = open, finish = finish })
+      offer.extra = base and with and math.max(0, with.seconds - base.seconds) or nil
+    else
+      local with = ns.Journey.Plan(here, { stops = { { node = a.goal, text = a.title } , unpack(stops) } })
+      local remaining = Nav.RemainingSeconds(here)
+      offer.extra = with and remaining and math.max(0, with.seconds - remaining) or nil
+    end
+  end
+  return offer
+end
+
+local function askPickups()
+  if stillPicking() then
+    C_Timer.After(PICKUP_WAIT, askPickups)
+    return
+  end
+  waiting = false
+  local ids = picked
+  picked = {}
+  if ns.db.settings.askOnPickup == false then return end
+  local offer = Nav.PickupOffer(ids)
+  if not offer then return end
+  Nav.lastPickupOffer = offer
+  if not (StaticPopupDialogs and StaticPopup_Show) then return end
+  StaticPopupDialogs.WAYFINDER_PICKUP_ADD = StaticPopupDialogs.WAYFINDER_PICKUP_ADD or {
+    text = "You picked up %s.\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?",
+    button1 = "Add to trip", button2 = "Not now", button3 = "New trip",
+    OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
+    OnAlt = function(_, data) startJourney(data.journey) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  StaticPopupDialogs.WAYFINDER_PICKUP_NEW = StaticPopupDialogs.WAYFINDER_PICKUP_NEW or {
+    text = "You picked up %s.\n\nStart a trip for it (%s)?",
+    button1 = "Start trip", button2 = "Not now",
+    OnAccept = function(_, data) startJourney(data.journey) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  if Nav.active and offer.extra then
+    StaticPopup_Show("WAYFINDER_PICKUP_ADD", offer.label, ns.FormatDuration(offer.extra),
+      ns.FormatDuration(offer.alone), offer)
+  else
+    StaticPopup_Show("WAYFINDER_PICKUP_NEW", offer.label, ns.FormatDuration(offer.alone), nil, offer)
+  end
+end
+
 ns.On("QUEST_ACCEPTED", function(questID)
   questAction("pickup", questID)
   syncStops()
+  picked[#picked + 1] = questID
+  if not waiting then
+    waiting = true
+    C_Timer.After(PICKUP_WAIT, askPickups)
+  end
 end)
 ns.On("QUEST_TURNED_IN", function(questID)
   questAction("turnin", questID)

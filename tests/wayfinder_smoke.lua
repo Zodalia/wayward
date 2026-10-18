@@ -1704,6 +1704,69 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- objects and follow-ups (end)
+---------------------------------------------------------------- quest pickups (begin)
+do
+  io.write("quest pickups\n")
+  ns.Nav.Stop()
+  runTimers()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy, questKeys.objectives = 3, 10
+  QUESTS[45] = { name = "Murloc Count", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local log = {}
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  local shown
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, a, b, c, data) shown = { which = which, a = a, b = b, c = c, data = data } end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+
+  -- No trip on: start one for it?
+  log[1] = 45
+  fire("QUEST_ACCEPTED", 45)
+  runTimers()
+  check(shown and shown.which == "WAYFINDER_PICKUP_NEW" and shown.a == "Murloc Count" and shown.b:find("min", 1, true),
+    "picking up a quest with no trip on offers a trip for it, with its time")
+  StaticPopupDialogs.WAYFINDER_PICKUP_NEW.OnAccept(nil, shown.data)
+  local kinds = {}
+  for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind end
+  check(table.concat(kinds, ",") == "complete,turnin", "Start trip: do it, hand it in: " .. table.concat(kinds, ","))
+
+  -- On that trip, another quest: add it (and how much longer), or a new trip.
+  shown = nil
+  log[2] = 40
+  QUESTS[40] = { name = "Murloc Menace", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  fire("QUEST_ACCEPTED", 40)
+  runTimers()
+  check(shown and shown.which == "WAYFINDER_PICKUP_ADD" and shown.a == "Murloc Menace" and shown.b and shown.c,
+    "with a trip on: add it, with the time it adds, or a new trip: " .. tostring(shown and shown.b))
+  StaticPopupDialogs.WAYFINDER_PICKUP_ADD.OnAccept(nil, shown.data)
+  check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Add to trip: both quests in it")
+
+  -- Already in the trip: nothing to ask.
+  shown = nil
+  fire("QUEST_ACCEPTED", 40)
+  runTimers()
+  check(shown == nil, "a quest already in the trip isn't asked about")
+  ns.db.settings.askOnPickup = false
+  ns.Nav.Stop()
+  fire("QUEST_ACCEPTED", 45)
+  runTimers()
+  check(shown == nil, "the option turns the question off")
+  ns.db.settings.askOnPickup = nil
+
+  ns.JourneyOverview.Toggle()
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
+  QUESTS[45], QUESTS[40] = nil, nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- quest pickups (end)
 ---------------------------------------------------------------- objective areas (begin)
 do
   io.write("objective areas\n")

@@ -299,6 +299,11 @@ panel to add it to the trip you're on.
     aside and the directions box says "In the area" with your progress.
     Past 120 yards you've left, and the way points at the nearest spawn from
     where you are. A finished objective's spawns stop counting.
+  - Picking up a quest that isn't in your trip asks whether to add it (with
+    how much longer the trip gets), start a new trip for it (with its time),
+    or not now; quests picked up one after another are asked about together,
+    once the trip has no more pickups right where you are. The options turn
+    the question off.
   - When a trip gains a quest's hand-in, the quests that follow it (picked
     up where you hand it in, often from the same NPC) are offered if adding
     them costs 3 minutes of travel or less.
