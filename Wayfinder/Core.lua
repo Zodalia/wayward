@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 
-ns.VERSION = "0.2.0"
+ns.VERSION = "0.3.0"
 ns.data = {}
 
 function ns.print(msg)
@@ -12,11 +12,17 @@ end
 local frame = CreateFrame("Frame")
 local handlers = {}
 
--- Several modules can listen to the same game event.
+-- Several modules can listen to the same game event. An event this client
+-- doesn't have (renamed or removed between versions) is skipped: registering
+-- it would be an error, and one error stops the rest of a file loading.
 function ns.On(event, fn)
   if not handlers[event] then
     handlers[event] = {}
-    frame:RegisterEvent(event)
+    local ok = pcall(frame.RegisterEvent, frame, event)
+    if not ok then
+      ns.unknownEvents = ns.unknownEvents or {}
+      table.insert(ns.unknownEvents, event)
+    end
   end
   table.insert(handlers[event], fn)
 end
@@ -215,6 +221,7 @@ SlashCmdList.WAYFINDER = function(msg)
       ns.print(string.format("%s scan: %.0f ms", name, ms))
     end
     if ns.ForYou and ns.ForYou.lastParts then ns.print("forYou parts (ms): " .. ns.ForYou.lastParts) end
+    if ns.unknownEvents then ns.print("events this client doesn't have: " .. table.concat(ns.unknownEvents, ", ")) end
   else
     for _, line in ipairs(HELP) do ns.print(line) end
     for _, command in pairs(ns.commands) do ns.print(command.help) end

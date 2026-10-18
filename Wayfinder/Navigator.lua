@@ -611,7 +611,7 @@ local function trainedCheck()
   end)
 end
 
-for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_UPDATE", "CHAT_MSG_SKILL", "LEARNED_SPELL_IN_TAB" }) do
+for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_UPDATE", "CHAT_MSG_SKILL" }) do
   ns.On(event, function() C_Timer.After(0.2, trainedCheck) end)
 end
 

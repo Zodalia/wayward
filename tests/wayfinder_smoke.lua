@@ -16,6 +16,9 @@ end
 
 ---------------------------------------------------------------- frames
 
+-- Events Forever's (Mainline) client doesn't have any more.
+REMOVED_EVENTS = { LEARNED_SPELL_IN_TAB = true, OLD_REMOVED_EVENT = true }
+
 -- Like real frames: unknown Capitalised keys are no-op methods, others are nil.
 local function newObj()
   local o = { scripts = {}, shown = true }
@@ -27,7 +30,10 @@ local function newObj()
           local name, fn = ...
           local old = self.scripts[name]
           self.scripts[name] = old and function(...) old(...); fn(...) end or fn
-        elseif k == "RegisterEvent" then events[(...)] = events[(...)] or {}; table.insert(events[(...)], self)
+        elseif k == "RegisterEvent" then
+          -- Like the game: an event it doesn't have is an error.
+          if REMOVED_EVENTS[(...)] then error("Attempt to register unknown event \"" .. (...) .. "\"", 2) end
+          events[(...)] = events[(...)] or {}; table.insert(events[(...)], self)
         elseif k == "SetText" then
           -- Like the game: text on a font string with no font is an error.
           if rawget(self, "fontString") and not rawget(self, "hasFont") then error("Font not set", 2) end
@@ -1863,6 +1869,16 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- quest pickups (end)
+---------------------------------------------------------------- unknown events (begin)
+do
+  io.write("unknown events\n")
+  local ok = pcall(ns.On, "LEARNED_SPELL_IN_TAB", function() end)
+  check(ok and ns.unknownEvents and ns.unknownEvents[#ns.unknownEvents] == "LEARNED_SPELL_IN_TAB",
+    "an event the client doesn't have is skipped, not an error that stops a file loading")
+  check(type(ns.Nav.Tick) == "function" and type(ns.Nav.Resume) == "function" and type(ns.Nav.FollowUpOffer) == "function",
+    "the navigator loaded to the end")
+end
+---------------------------------------------------------------- unknown events (end)
 ---------------------------------------------------------------- on the way (begin)
 do
   io.write("on the way\n")
@@ -2830,7 +2846,7 @@ do
     "every card shows its title and button text: " .. table.concat(ns.Cards.Drawn(), ","))
   local said = #chat
   SlashCmdList.WAYFINDER("debug cards")
-  check(chat[said + 1]:find("version 0.2.0", 1, true) and #chat == said + 4
+  check(chat[said + 1]:find("version " .. ns.VERSION, 1, true) and #chat == said + 4
     and chat[said + 2]:find('large: shown=true', 1, true) and chat[said + 2]:find('title="Suggestion 1"', 1, true),
     "/wf debug cards reports the version and what each card shows")
   ns.Cards.Step(-1)
