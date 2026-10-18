@@ -749,16 +749,38 @@ local function itemNodes(itemID, label, nodes)
   return nodes
 end
 
+-- A quest's objectives as named groups of places: { {name, nodes}, ... } —
+-- creatures to kill (their spawns), objects to use, items (where they drop or
+-- lie) and places to explore. `name` is matched against the quest log's
+-- objective text to tell which are finished.
+local function objectiveGroups(q, label)
+  local groups = {}
+  local objectives = type(q.objectives) == "table" and q.objectives or {}
+  for _, creature in ipairs(objectives[1] or {}) do
+    groups[#groups + 1] = { name = NpcDB.Get(creature[1], "name"), nodes = spawnNodes(NpcDB.Get(creature[1], "spawns"), label) }
+  end
+  for _, object in ipairs(objectives[2] or {}) do
+    groups[#groups + 1] = { name = ObjectDB.Get(object[1], "name"), nodes = spawnNodes(ObjectDB.Get(object[1], "spawns"), label) }
+  end
+  for _, item in ipairs(objectives[3] or {}) do
+    groups[#groups + 1] = { name = ItemDB and ItemDB.Get(item[1], "name"), nodes = itemNodes(item[1], label) }
+  end
+  if type(q.triggerEnd) == "table" then
+    groups[#groups + 1] = { name = type(q.triggerEnd[1]) == "string" and q.triggerEnd[1] or nil,
+      nodes = spawnNodes(q.triggerEnd[2], label) }
+  end
+  local out = {}
+  for _, g in ipairs(groups) do
+    if #g.nodes > 0 then out[#out + 1] = g end
+  end
+  return out
+end
+
 local function objectiveNodes(q, label)
   local nodes = {}
-  local function add(spawns)
-    for _, node in ipairs(spawnNodes(spawns, label)) do nodes[#nodes + 1] = node end
+  for _, g in ipairs(objectiveGroups(q, label)) do
+    for _, node in ipairs(g.nodes) do nodes[#nodes + 1] = node end
   end
-  local groups = type(q.objectives) == "table" and q.objectives or {}
-  for _, creature in ipairs(groups[1] or {}) do add(NpcDB.Get(creature[1], "spawns")) end
-  for _, object in ipairs(groups[2] or {}) do add(ObjectDB.Get(object[1], "spawns")) end
-  for _, item in ipairs(groups[3] or {}) do itemNodes(item[1], label, nodes) end
-  if type(q.triggerEnd) == "table" then add(q.triggerEnd[2]) end
   return nodes
 end
 
@@ -843,6 +865,19 @@ function Bridge.Describe(questID)
     string.format("  status: %s (%s)%s", status, reason or "",
       ns.charDB.notOffered and ns.charDB.notOffered[questID] and "  ·  its giver didn't offer it" or ""),
   }
+end
+
+-- Where a quest's objectives are, as named groups of places (see
+-- objectiveGroups), built once per quest. Empty without QuestieDB data.
+local groupCache = {}
+
+function Bridge.ObjectiveGroups(questID)
+  if groupCache[questID] then return groupCache[questID] end
+  local q = Bridge.Quest(questID)
+  if not q then return {} end
+  local ok, groups = pcall(objectiveGroups, q, q.name or ("Quest " .. questID))
+  groupCache[questID] = ok and groups or {}
+  return groupCache[questID]
 end
 
 -- The level shown for a quest (your level for quests that scale with you).

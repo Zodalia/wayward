@@ -1570,6 +1570,66 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- inferred chains (end)
+---------------------------------------------------------------- objective areas (begin)
+do
+  io.write("objective areas\n")
+  ns.Nav.Stop()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  -- Kill Murloc Foragers (spawns at 60,60 and 80,80) and Murloc Scouts (30,30), in Redridge.
+  QUESTS[43] = { name = "Murloc Sweep", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 }, { 9102 } } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy, questKeys.objectives = 3, 10
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  C_QuestLog.GetNumQuestLogEntries = function() return 1 end
+  C_QuestLog.GetInfo = function() return { questID = 43, isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  local objectives = { { text = "Murloc Forager slain: 2/8", finished = false }, { text = "Murloc Scout slain: 0/5", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 43 and objectives or {} end
+  local groups = ns.Questie.ObjectiveGroups(43)
+  check(#groups == 2 and groups[1].name == "Murloc Forager" and #groups[1].nodes == 2,
+    "QuestieDB's objectives as named groups of spawns")
+
+  player.mapID, player.x, player.y = 1433, 0.5, 0.95
+  local here = ns.Geo.PlayerNode()
+  local stops = ns.Journey.QuestStops(43, here)
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Murloc Sweep", stops = stops }))
+  check(ns.Nav.CurrentStep().stop.action.kind == "complete" and not ns.Nav.InArea(), "on the way to the murlocs")
+
+  player.x, player.y = 0.62, 0.6
+  ns.HUD.Update()
+  local lines = ns.HUD.Lines()
+  check(ns.Nav.InArea() and ns.Nav.Waiting() and not ns.Nav.ownsWaypoint,
+    "near any of their spawns: in the area, no waypoint")
+  check(lines[4]:find("In the area", 1, true) and lines[4]:find("2/8", 1, true),
+    "the box says so, with the progress: " .. lines[4])
+  player.x = 0.45
+  ns.HUD.Update()
+  check(ns.Nav.InArea(), "a little way out: still in the area (no flicker at the edge)")
+  player.x, player.y = 0.45, 0.95
+  ns.HUD.Update()
+  local to = ns.Nav.CurrentStep().to
+  check(not ns.Nav.InArea() and ns.Nav.ownsWaypoint and math.abs(to.x - 0.8) < 1e-6 and math.abs(to.y - 0.8) < 1e-6,
+    string.format("well out: the way points at the nearest spawn from here (%.2f, %.2f)", to.x, to.y))
+
+  -- Foragers done: only the Scouts' spawns count now.
+  objectives[1] = { text = "Murloc Forager slain: 8/8", finished = true }
+  player.x, player.y = 0.62, 0.6
+  ns.HUD.Update()
+  check(not ns.Nav.InArea(), "a finished objective's spawns don't count any more")
+  player.x, player.y = 0.31, 0.3
+  ns.HUD.Update()
+  check(ns.Nav.InArea(), "the open objective's do")
+
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+  QUESTS[43] = nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- objective areas (end)
 ---------------------------------------------------------------- quest log trips (begin)
 do
   io.write("quest log trips\n")

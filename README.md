@@ -269,6 +269,12 @@ panel to add it to the trip you're on.
     what QuestieDB says the quest needs first: its source items you don't have
     (where they drop or lie) and Questie's extra objectives in order (e.g.
     "Fill the bowl at the moonwell").
+  - A quest's objectives are an area, not a point: every spawn of what you
+    still need (QuestieDB's creatures, objects and item sources). Within 80
+    yards of any of them you're in the area: the compass and waypoints step
+    aside and the directions box says "In the area" with your progress.
+    Past 120 yards you've left, and the way points at the nearest spawn from
+    where you are. A finished objective's spawns stop counting.
   - Skipping a stop with next marks it skipped, not done; going back reopens
     it, and doing it anyway (the quest log or your bags say so) marks it done.
   - QuestieDB can miss a step of a chain, so a follow-up looks available

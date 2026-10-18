@@ -251,7 +251,10 @@ function HUD.Update()
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
   local objective = step.stop and step.stop.action and step.stop.action.kind == "complete"
     and HUD.ObjectiveText(step.stop.action.questID)
-  if objective then
+  if objective and ns.Nav.InArea() then
+    -- Among what you need: no arrow, just how it's going.
+    frame.info:SetText("|cff7fd1aeIn the area|r  ·  " .. objective .. "     " .. remaining)
+  elseif objective then
     frame.info:SetText(objective .. "     " .. remaining)
   elseif ns.Nav.Waiting() then
     -- A quest step only you can tell is done.

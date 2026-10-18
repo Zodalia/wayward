@@ -172,12 +172,16 @@ function Nav.StartJourney(journey, quiet)
   startJourney(journey, quiet)
 end
 
-function Nav.Stop()
+local function clearWaypoints()
   clearTomTom()
   if Nav.ownsWaypoint then
     C_Map.ClearUserWaypoint()
     Nav.ownsWaypoint = false
   end
+end
+
+function Nav.Stop()
+  clearWaypoints()
   Nav.active = nil
   save()
   ns.Fire("NAV_CHANGED")
@@ -570,6 +574,52 @@ ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
 end)
 
 -- Called by the HUD several times a second. Returns your node and the step.
+-- Objective areas. A quest's objectives are places, not a point: every spawn
+-- of what you still need (QuestieDB, Questie.ObjectiveGroups; a finished
+-- objective's go when the quest log says so). Within AREA_RADIUS of any of
+-- them you're in the area: the stop counts as reached, and the compass and
+-- waypoints step aside. Past AREA_LEAVE you've left it, and the way points at
+-- the nearest of them from where you are.
+local AREA_RADIUS, AREA_LEAVE = 80, 120
+
+local function openSpots(questID)
+  local groups = ns.Questie.ObjectiveGroups(questID)
+  if #groups == 0 then return nil end
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}
+  local spots = {}
+  for _, g in ipairs(groups) do
+    local finished = false
+    for _, o in ipairs(objectives) do
+      if o.finished and g.name and type(o.text) == "string" and o.text:find(g.name, 1, true) then finished = true end
+    end
+    if not finished then
+      for _, node in ipairs(g.nodes) do spots[#spots + 1] = node end
+    end
+  end
+  return spots
+end
+
+-- inside (true / false, or nil when the stop has no area) and the nearest spot.
+local function areaOf(stop, here)
+  local action = stop and stop.action
+  if not (action and action.kind == "complete") then return nil end
+  local spots = openSpots(action.questID)
+  if not (spots and #spots > 0) then return nil end
+  local best, bestDistance
+  for _, node in ipairs(spots) do
+    local d = ns.Geo.Distance(here, node)
+    if d < (bestDistance or math.huge) then best, bestDistance = node, d end
+  end
+  if not best then return false end
+  return bestDistance <= (stop.inArea and AREA_LEAVE or AREA_RADIUS), best
+end
+
+-- True while you're in the area of the stop you're working on.
+function Nav.InArea()
+  local step = Nav.CurrentStep()
+  return step ~= nil and step.stop ~= nil and step.stop.inArea == true
+end
+
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
@@ -595,7 +645,23 @@ function Nav.Tick()
     -- A zone entry counts once you're in that zone, wherever you crossed.
     local reached = step.zoneEntry and (here.mapID == step.zoneEntry
       or ns.Geo.ZoneAt(here.instance, here.wx, here.wy) == step.zoneEntry)
-    if reached or ns.Geo.Distance(here, step.to) <= radius then
+    -- A quest's objectives: being anywhere in their area counts.
+    local pending = ns.Journey.PendingAction(step)
+    local inside, spot = areaOf(pending, here)
+    if inside ~= nil then
+      if inside and not pending.inArea then
+        pending.inArea = true
+      elseif not inside and pending.inArea then
+        -- Left the area: the nearest spot from here, for the way back.
+        pending.inArea = nil
+        if k == a.index and spot then
+          step.to = ns.Geo.Node(spot.mapID, spot.x, spot.y, pending.node.label) or spot
+          pending.node = step.to
+          showStep()
+        end
+      end
+    end
+    if reached or inside or (inside == nil and ns.Geo.Distance(here, step.to) <= radius) then
       if ns.Journey.PendingAction(step) then
         a.waiting = true
         if a.index ~= k then
@@ -614,6 +680,8 @@ function Nav.Tick()
       break
     end
   end
+  -- In an objective area there's nothing to point at.
+  if Nav.InArea() and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end
   -- Only when nothing was reached: arriving by teleport still counts as arriving.
   if a.index == startIndex and not a.waiting then checkRoute(a, here, previous) end
   return here, a.route.steps[a.index]
