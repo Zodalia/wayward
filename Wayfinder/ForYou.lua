@@ -1115,7 +1115,17 @@ local function summaryFor(ctx, needs)
   return table.concat(parts, " ")
 end
 
+-- How long each part of the last refresh took, for /wf debug.
+local parts
+local function timed(name, fn, ...)
+  local started = debugprofilestop and debugprofilestop()
+  local a, b = try(fn, ...)
+  if started then parts[#parts + 1] = string.format("%s %.0f", name, debugprofilestop() - started) end
+  return a, b
+end
+
 local function build()
+  parts = {}
   local start = ns.Geo.PlayerNode()
   if not start then
     summary = nil
@@ -1130,10 +1140,10 @@ local function build()
 
   local needs = {}
   local function addNeed(n) if n then needs[#needs + 1] = n end end
-  addNeed(try(trainingNeed, ctx))
-  for _, n in ipairs(try(vendorNeeds, ctx) or {}) do addNeed(n) end
-  addNeed(try(flightNeed, ctx, start, net))
-  addNeed(try(repairSoonNeed))
+  addNeed(timed("training", trainingNeed, ctx))
+  for _, n in ipairs(timed("vendors", vendorNeeds, ctx) or {}) do addNeed(n) end
+  addNeed(timed("flight", flightNeed, ctx, start, net))
+  addNeed(timed("repair", repairSoonNeed))
   local function priority(n) return (n.soft and SOFT_PRIORITY or 0) + PRIORITY[n.kind] end
   table.sort(needs, function(a, b) return priority(a) < priority(b) end)
   while #needs > MAX_NEEDS do table.remove(needs) end
@@ -1141,10 +1151,10 @@ local function build()
   -- Every option, ranked by XP per minute (the rank shown on each card); then
   -- the best of each kind. Journeys are planned only for those, and ranked
   -- again with their real trip time.
-  local hubs = try(hubOptions) or {}
-  local handins = try(handinOptions, ctx, start, net) or {}
-  local finishes = try(finishOptions, ctx, start, net) or {}
-  local dungeons, plain = try(dungeonOptions, ctx)
+  local hubs = timed("hubs", hubOptions) or {}
+  local handins = timed("handins", handinOptions, ctx, start, net) or {}
+  local finishes = timed("finish", finishOptions, ctx, start, net) or {}
+  local dungeons, plain = timed("dungeons", dungeonOptions, ctx)
   dungeons = dungeons or {}
   local all = {}
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
@@ -1168,10 +1178,10 @@ local function build()
   local function pick(option) if option then picks[#picks + 1] = option end end
   local handin, finish, dungeon = best(handins), best(finishes), best(dungeons)
   for _, option in ipairs({ handin, finish }) do
-    if option and #option.stops > 0 then try(questJourney, option, ctx, start, net) end
+    if option and #option.stops > 0 then timed("trips", questJourney, option, ctx, start, net) end
     pick(option)
   end
-  local quest = try(bestQuestOption, hubs, ctx, start, net)
+  local quest = timed("best quest", bestQuestOption, hubs, ctx, start, net)
   if quest then
     quest.rank = 1
     for _, option in ipairs(all) do
@@ -1195,10 +1205,10 @@ local function build()
   local results = {}
   local function add(row) if row and #results < MAX_RESULTS then results[#results + 1] = row end end
   for _, need in ipairs(needs) do add(needRow(need)) end
-  for _, zone in ipairs(try(zoneOptions, ctx, start, net) or {}) do add(zoneRow(zone, ctx)) end
+  for _, zone in ipairs(timed("zones", zoneOptions, ctx, start, net) or {}) do add(zoneRow(zone, ctx)) end
   local dungeonRow
   if dungeon then
-    try(dungeonJourney, dungeon, ctx, start, net)
+    timed("dungeon trip", dungeonJourney, dungeon, ctx, start, net)
     dungeonRow = optionRow(dungeon, dungeon.rank, #all, ctx)
   elseif plain and plain[1] then
     -- No dungeon with quests for you: the best one by level fit and travel time.
@@ -1258,6 +1268,7 @@ function ForYou.Results()
   if started then
     ns.debugTimings = ns.debugTimings or {}
     ns.debugTimings.forYou = debugprofilestop() - started
+    ForYou.lastParts = parts and table.concat(parts, ", ") or nil
   end
   cache = now and { at = now, results = results, err = err, net = net } or nil
   return results, err, net

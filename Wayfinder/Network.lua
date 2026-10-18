@@ -15,7 +15,22 @@ local function usableTaxi(node, faction)
   return node.faction ~= other
 end
 
+-- Built once and reused while nothing it depends on changes (the planner
+-- keeps its worked-out paths on it): your known flight paths, the recorded
+-- and bundled transports, your faction.
+local cached, cachedKey
+
+local function signature()
+  local known, count = ns.charDB.knownTaxi, 0
+  for _ in pairs(known) do count = count + 1 end
+  return table.concat({ tostring(known), count, tostring(ns.db.transports), #ns.db.transports,
+    tostring(ns.data.transports), #ns.data.transports, UnitFactionGroup("player") or "",
+    tostring(C_TaxiMap), tostring(C_TaxiMap.GetTaxiNodesForMap) }, "|")
+end
+
 function Network.Build()
+  local key = signature()
+  if cached and cachedKey == key then return cached end
   local faction = UnitFactionGroup("player")
   local known = ns.charDB.knownTaxi
   local net = { flights = {}, transports = {}, knownFlights = 0 }
@@ -46,5 +61,8 @@ function Network.Build()
       end
     end
   end
+  cached, cachedKey = net, key
   return net
 end
+
+ns.Listen("FLIGHTS_CHANGED", function() cached = nil end)

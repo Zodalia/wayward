@@ -37,12 +37,15 @@ function Router.SecondsLeft(step, here, onTaxi)
   return step.seconds
 end
 
--- Returns { steps = { {mode, from, to, seconds, kind} ... }, seconds } or nil.
-function Router.Plan(start, goal, net)
-  local nodes = { start, goal }
+-- The network's own nodes (flight paths you know, transport ends) and the
+-- quickest trips between them, worked out once per network and kept on it:
+-- direct edges (walk, fly, transport) up front, then Dijkstra from a node the
+-- first time a route starts there. A route is then: walk to a network node,
+-- the best trip through the network, walk to the goal (or just walk).
+local function prepare(net)
+  if net.paths then return net.paths end
+  local nodes, links = {}, {}
   for _, n in ipairs(net.flights) do nodes[#nodes + 1] = n end
-
-  local links = {} -- [node index] = { {to = index, transport = t} }
   for _, t in ipairs(net.transports) do
     nodes[#nodes + 1] = t.a
     local ia = #nodes
@@ -53,50 +56,102 @@ function Router.Plan(start, goal, net)
     table.insert(links[ia], { to = ib, transport = t })
     table.insert(links[ib], { to = ia, transport = t })
   end
-
   local count = #nodes
-  local dist, prev, done = {}, {}, {}
-  for i = 1, count do dist[i] = math.huge end
-  dist[1] = 0
-
-  local function relax(from, to, cost, step)
-    if cost and dist[from] + cost < dist[to] then
-      dist[to] = dist[from] + cost
-      prev[to] = { from = from, mode = step.mode, kind = step.kind, seconds = cost }
+  -- Best direct edge between two network nodes: walking, or flying between flight paths.
+  local edge = {}
+  for i = 1, count do
+    local row, a = {}, nodes[i]
+    for j = 1, count do
+      if i ~= j then
+        local cost, mode = walkCost(a, nodes[j]), "walk"
+        if a.isFlight and nodes[j].isFlight then
+          local fly = flyCost(a, nodes[j])
+          if fly and (not cost or fly < cost) then cost, mode = fly, "fly" end
+        end
+        if cost then row[j] = { cost = cost, mode = mode } end
+      end
     end
+    edge[i] = row
   end
 
-  -- Dijkstra over a small dense graph (tens of nodes), so O(n^2) is fine.
-  for _ = 1, count do
-    local current, best = nil, math.huge
-    for i = 1, count do
-      if not done[i] and dist[i] < best then current, best = i, dist[i] end
-    end
-    if not current or current == 2 then break end
-    done[current] = true
-    local node = nodes[current]
-    for j = 1, count do
-      if j ~= current and not done[j] then
-        relax(current, j, walkCost(node, nodes[j]), { mode = "walk" })
-        if node.isFlight and nodes[j].isFlight then
-          relax(current, j, flyCost(node, nodes[j]), { mode = "fly" })
+  local rows = {}
+  local function from(s)
+    if rows[s] then return rows[s] end
+    local dist, prev, done = {}, {}, {}
+    for i = 1, count do dist[i] = math.huge end
+    dist[s] = 0
+    for _ = 1, count do
+      local current, best = nil, math.huge
+      for i = 1, count do
+        if not done[i] and dist[i] < best then current, best = i, dist[i] end
+      end
+      if not current then break end
+      done[current] = true
+      for j, e in pairs(edge[current]) do
+        if not done[j] and best + e.cost < dist[j] then
+          dist[j] = best + e.cost
+          prev[j] = { from = current, mode = e.mode, seconds = e.cost }
+        end
+      end
+      for _, link in ipairs(links[current] or {}) do
+        local j, t = link.to, link.transport
+        if not done[j] and best + t.time < dist[j] then
+          dist[j] = best + t.time
+          prev[j] = { from = current, mode = "transport", kind = t.kind, seconds = t.time }
         end
       end
     end
-    for _, link in ipairs(links[current] or {}) do
-      relax(current, link.to, link.transport.time, { mode = "transport", kind = link.transport.kind })
+    rows[s] = { dist = dist, prev = prev }
+    return rows[s]
+  end
+
+  net.paths = { nodes = nodes, from = from }
+  return net.paths
+end
+
+-- Returns { steps = { {mode, from, to, seconds, kind} ... }, seconds } or nil.
+function Router.Plan(start, goal, net)
+  local paths = prepare(net)
+  local nodes = paths.nodes
+  local best = walkCost(start, goal) or math.huge
+  local bestEntry, bestExit
+
+  local exits = {}
+  for j, node in ipairs(nodes) do
+    if node.instance == goal.instance then exits[#exits + 1] = { j, walkCost(node, goal) } end
+  end
+  if #exits > 0 then
+    for i, node in ipairs(nodes) do
+      local toEntry = node.instance == start.instance and walkCost(start, node)
+      if toEntry and toEntry < best then
+        local dist = paths.from(i).dist
+        for _, exit in ipairs(exits) do
+          local total = toEntry + dist[exit[1]] + exit[2]
+          if total < best then best, bestEntry, bestExit = total, i, exit[1] end
+        end
+      end
     end
   end
-
-  if dist[2] == math.huge then return nil end
-
-  local steps, i = {}, 2
-  while prev[i] do
-    local p = prev[i]
-    table.insert(steps, 1, { mode = p.mode, kind = p.kind, from = nodes[p.from], to = nodes[i], seconds = p.seconds })
-    i = p.from
+  if best == math.huge then return nil end
+  if not bestEntry then
+    return { steps = { { mode = "walk", from = start, to = goal, seconds = best } }, seconds = best }
   end
-  return { steps = steps, seconds = dist[2] }
+
+  local steps = { { mode = "walk", from = start, to = nodes[bestEntry], seconds = walkCost(start, nodes[bestEntry]) } }
+  local middle, prev, j = {}, paths.from(bestEntry).prev, bestExit
+  while prev[j] do
+    local p = prev[j]
+    table.insert(middle, 1, { mode = p.mode, kind = p.kind, from = nodes[p.from], to = nodes[j], seconds = p.seconds })
+    j = p.from
+  end
+  for _, step in ipairs(middle) do steps[#steps + 1] = step end
+  steps[#steps + 1] = { mode = "walk", from = nodes[bestExit], to = goal, seconds = walkCost(nodes[bestExit], goal) }
+  -- Walking in place (already at the flight master or the dock) isn't a step.
+  local out = {}
+  for _, step in ipairs(steps) do
+    if not (step.mode == "walk" and (step.seconds or 0) <= 0) then out[#out + 1] = step end
+  end
+  return { steps = out, seconds = best }
 end
 
 -- Walking into another zone becomes its own step ("Walk to Elwynn Forest"),

@@ -299,9 +299,16 @@ local function playerQuestState()
   return done, inLog
 end
 
+-- Bumped whenever what you can take may have changed (quest events, levels).
+local questVersion = 0
+
 for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE" }) do
-  ns.On(event, function() questState = nil end)
+  ns.On(event, function()
+    questState = nil
+    questVersion = questVersion + 1
+  end)
 end
+ns.On("PLAYER_LEVEL_UP", function() questVersion = questVersion + 1 end)
 
 local function canEverDo(q, p)
   if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return false end
@@ -518,9 +525,13 @@ end
 -- or have in your log), all fitting your level. Built fresh each call; For
 -- you caches its page.
 --   { [zone uiMapID] = { mapID, quests = { {id, name, level, node, giver, chain}, ... } } }
+local zoneCache -- { key, zones }: reused until your quests or level change
+
 function Bridge.ZoneQuests(here)
   if not Bridge.Available() then return {} end
   if not questIndex then buildQuestIndex() end
+  local key = questVersion .. ":" .. UnitLevel("player") .. ":" .. tostring(questIndex)
+  if zoneCache and zoneCache.key == key then return zoneCache.zones end
   local faction = UnitFactionGroup("player")
   local p = playerProfile()
   local done, inLog = playerQuestState()
@@ -548,6 +559,7 @@ function Bridge.ZoneQuests(here)
       end
     end
   end
+  zoneCache = { key = key, zones = zones }
   return zones
 end
 

@@ -225,6 +225,72 @@ local plan = table.concat(kinds, ",")
 check(plan == "walk,boat,walk", "Darkshore: Forever's direct boat to Stormwind (" .. plan .. ")")
 check(far and ns.Router.Summary(far.route) == "boat to Stormwind Harbor", "summary mentions the boat")
 
+-- The router against a plain search over the whole graph (the old planner):
+-- the same trip times for random trips between these maps.
+do
+  local R = ns.Router
+  local function walk(a, b)
+    local d = ns.Geo.Distance(a, b)
+    return d < math.huge and d * R.WALK_FACTOR / R.RUN_SPEED or nil
+  end
+  local function fly(a, b)
+    local d = ns.Geo.Distance(a, b)
+    return d < math.huge and R.FLY_OVERHEAD + d / R.FLY_SPEED or nil
+  end
+  local function reference(start, goal, net)
+    local nodes, links = { start, goal }, {}
+    for _, n in ipairs(net.flights) do nodes[#nodes + 1] = n end
+    for _, t in ipairs(net.transports) do
+      nodes[#nodes + 1] = t.a
+      local ia = #nodes
+      nodes[#nodes + 1] = t.b
+      links[ia], links[#nodes] = links[ia] or {}, links[#nodes] or {}
+      table.insert(links[ia], { #nodes, t.time })
+      table.insert(links[#nodes], { ia, t.time })
+    end
+    local dist, done = {}, {}
+    for i = 1, #nodes do dist[i] = math.huge end
+    dist[1] = 0
+    for _ = 1, #nodes do
+      local cur, best = nil, math.huge
+      for i = 1, #nodes do if not done[i] and dist[i] < best then cur, best = i, dist[i] end end
+      if not cur then break end
+      done[cur] = true
+      for j = 1, #nodes do
+        if not done[j] and j ~= cur then
+          local c = walk(nodes[cur], nodes[j])
+          if c and best + c < dist[j] then dist[j] = best + c end
+          if nodes[cur].isFlight and nodes[j].isFlight then
+            c = fly(nodes[cur], nodes[j])
+            if c and best + c < dist[j] then dist[j] = best + c end
+          end
+        end
+      end
+      for _, l in ipairs(links[cur] or {}) do
+        if best + l[2] < dist[l[1]] then dist[l[1]] = best + l[2] end
+      end
+    end
+    return dist[2]
+  end
+  local net = ns.Network.Build()
+  local maps, seed, same, compared = { 1433, 1453, 1439, 1437 }, 7, 0, 0
+  local function rand()
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed / 2147483648
+  end
+  for _ = 1, 300 do
+    local a = ns.Geo.Node(maps[math.floor(rand() * #maps) + 1], 0.1 + rand() * 0.8, 0.1 + rand() * 0.8, "A")
+    local b = ns.Geo.Node(maps[math.floor(rand() * #maps) + 1], 0.1 + rand() * 0.8, 0.1 + rand() * 0.8, "B")
+    if a and b then
+      compared = compared + 1
+      local route, want = ns.Router.Plan(a, b, net), reference(a, b, net)
+      local got = route and route.seconds or math.huge
+      if (got == math.huge and want == math.huge) or math.abs(got - want) < 1e-6 then same = same + 1 end
+    end
+  end
+  check(compared > 200 and same == compared, string.format("router matches a full search: %d of %d trips", same, compared))
+end
+
 io.write("navigation\n")
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
 r = ns.Trainers.Results()[1]

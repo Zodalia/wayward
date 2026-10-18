@@ -199,6 +199,7 @@ SlashCmdList.WAYFINDER = function(msg)
     for name, ms in pairs(ns.debugTimings or {}) do
       ns.print(string.format("%s scan: %.0f ms", name, ms))
     end
+    if ns.ForYou and ns.ForYou.lastParts then ns.print("forYou parts (ms): " .. ns.ForYou.lastParts) end
   else
     for _, line in ipairs(HELP) do ns.print(line) end
     for _, command in pairs(ns.commands) do ns.print(command.help) end
