@@ -28,6 +28,7 @@ local AUTO_FOLD = 3
 local frame
 local unfolded -- nil: fold by the rule above; true / false: the player's choice for this trip
 local opened = setmetatable({}, { __mode = "k" }) -- [stop] = true / false: its steps shown (nil: the current stop's)
+local scroll = 0 -- lines scrolled past at the top (the mouse wheel)
 local dragging -- the row being dragged
 
 -- The row under the cursor that a dragged stop can go to.
@@ -79,6 +80,8 @@ local function create()
   end)
   f:SetBackdropColor(0, 0, 0, 0.85)
   ns.RestorePosition(f, "overviewPos")
+  f:EnableMouseWheel(true)
+  f:SetScript("OnMouseWheel", function(_, delta) Overview.Scroll(delta) end)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.title:SetPoint("TOPLEFT", 12, -10)
@@ -356,9 +359,11 @@ function Overview.Refresh()
     ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())),
     root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
   -- Rows one under the other (step lines are shorter), as many as fit.
+  -- Scrolled: from line scroll + 1, as many as fit.
+  scroll = math.max(0, math.min(scroll, #lines - 1))
   local room, used, shown = MAX_ROWS * ROW_HEIGHT, 0, 0
   for i, row in ipairs(frame.rows) do
-    local line = lines[i]
+    local line = lines[scroll + i]
     local height = line and (line.step and STEP_HEIGHT or ROW_HEIGHT) or 0
     if line and used + height > room then line = nil end
     row:ClearAllPoints()
@@ -415,7 +420,10 @@ function Overview.Refresh()
       row:Hide()
     end
   end
-  frame.more:SetText(#lines > shown and string.format("... and %d more", #lines - shown) or "")
+  local below = #lines - scroll - shown
+  frame.more:SetText((scroll > 0 or below > 0) and string.format("%s%s  ·  scroll for more",
+    scroll > 0 and (scroll .. " above") or "", below > 0 and ((scroll > 0 and ", " or "") .. below .. " below") or "") or "")
+  Overview.scrolled, Overview.shownLines = scroll, shown
 
   -- Under the stops: what's on the way, then the map.
   local y = -44 - used - 10
@@ -473,6 +481,12 @@ function Overview.Move(from, to)
   return ns.Nav.MoveStop(a.stop, b.stop)
 end
 
+-- Scrolls the list (positive goes up, towards the first line).
+function Overview.Scroll(delta)
+  scroll = math.max(0, scroll - delta)
+  Overview.Refresh()
+end
+
 function Overview.Show()
   frame = frame or create()
   frame:Show()
@@ -491,6 +505,7 @@ end
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
   opened = setmetatable({}, { __mode = "k" })
+  scroll = 0
   Overview.Show()
 end)
 ns.Listen("NAV_CHANGED", Overview.Refresh)

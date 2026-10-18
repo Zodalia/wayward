@@ -2808,6 +2808,17 @@ do
   check(shape() == "finished2-,skipped,skipped,now,next", "under three: shown")
   ns.Nav.Next()
   check(shape() == "finished3+,now", "three finished: folded by themselves: " .. shape())
+  -- A trip too long to show at once scrolls.
+  local many = {}
+  for i = 1, 14 do many[i] = stopAt(0.5 + i * 0.01, "S" .. i) end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Long", stops = many }))
+  ns.JourneyOverview.Show()
+  local top = ns.JourneyOverview.shownLines
+  check(ns.JourneyOverview.scrolled == 0 and top < #ns.JourneyOverview.Lines(), "a long trip doesn't all fit")
+  ns.JourneyOverview.Scroll(-3)
+  check(ns.JourneyOverview.scrolled == 3, "the mouse wheel scrolls it")
+  ns.JourneyOverview.Scroll(10)
+  check(ns.JourneyOverview.scrolled == 0, "and back to the top, no further")
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
 end
