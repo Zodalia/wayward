@@ -86,7 +86,8 @@ local function save()
     ns.charDB.nav = { title = a.title, journey = ns.Journey.Save(a.journey), stats = a.stats }
   else
     local g = a.goal
-    ns.charDB.nav = { title = a.title, goal = { mapID = g.mapID, x = g.x, y = g.y, label = g.label } }
+    ns.charDB.nav = { title = a.title, goal = { mapID = g.mapID, x = g.x, y = g.y, label = g.label, npc = g.npc },
+      stats = a.stats }
   end
 end
 
@@ -112,8 +113,10 @@ local function flightTip()
   end
 end
 
+local newStats -- below
+
 local function startRoute(title, goal, route)
-  Nav.active = { title = title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1 }
+  Nav.active = { title = title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1, stats = newStats() }
   ns.print("directions to " .. title .. ": " .. ns.FormatDuration(route.seconds))
   flightTip()
   showStep()
@@ -125,7 +128,7 @@ local offerFollowUps -- below: offers a trip's follow-up quests
 -- yards travelled, quests handed in, and when it started.
 local lastXP, lastXPMax
 
-local function newStats()
+function newStats()
   lastXP, lastXPMax = UnitXP and UnitXP("player"), UnitXPMax and UnitXPMax("player")
   return { started = time(), xp = 0, distance = 0, quests = 0 }
 end
@@ -265,11 +268,12 @@ end
 local function arrive()
   local a = Nav.active
   ns.print("you have arrived: " .. a.title)
-  -- The end of a trip: its fanfare.
-  if a.journey and a.stats and ns.Fanfare then
+  -- The end of a trip (or plain directions): its fanfare.
+  if a.stats and ns.Fanfare then
     local stats = a.stats
-    pcall(ns.Fanfare.TripDone, { title = a.title, xp = stats.xp, seconds = time() - stats.started,
-      distance = stats.distance, quests = stats.quests, stops = ns.Journey.StopsDone(a.journey) })
+    local ok, err = pcall(ns.Fanfare.TripDone, { title = a.title, xp = stats.xp, seconds = time() - stats.started,
+      distance = stats.distance, quests = stats.quests })
+    if not ok then ns.print("couldn't show the trip's fanfare: " .. tostring(err)) end
   end
   Nav.Stop()
 end
@@ -815,7 +819,9 @@ function Nav.Resume()
     local goal = ns.Geo.Node(saved.goal.mapID, saved.goal.x, saved.goal.y, saved.goal.label)
     local route = goal and ns.Router.Plan(here, goal, ns.Network.Build())
     if route then
-      Nav.active = { title = saved.title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1 }
+      if goal then goal.npc = saved.goal.npc end
+      Nav.active = { title = saved.title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1,
+        stats = saved.stats or newStats() }
       ns.print("resuming directions to " .. saved.title .. " (/wf stop to end them)")
       return showStep()
     end

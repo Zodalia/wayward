@@ -381,6 +381,8 @@ UnitExists, UnitIsPlayer, SetRaidTarget, C_NamePlate = nil, nil, nil, nil
 fire("GOSSIP_SHOW")
 UnitName = savedUnitName
 check(ns.Nav.active == nil and waypoints[#waypoints] == "cleared", "talking to them ends it and clears our waypoint")
+check(ns.Fanfare.lastTrip and ns.Fanfare.lastTrip.title == r.title,
+  "plain directions get the fanfare too: " .. tostring(ns.Fanfare.lastTrip and ns.Fanfare.lastTrip.title))
 
 io.write("live time and re-planning\n")
 ns.charDB.knownTaxi = {}
