@@ -479,11 +479,13 @@ end
 ---------------------------------------------------------------- saving
 
 local function saveNode(node)
-  return node and { mapID = node.mapID, x = node.x, y = node.y, label = node.label }
+  return node and { mapID = node.mapID, x = node.x, y = node.y, label = node.label, object = node.object, npc = node.npc }
 end
 
 local function loadNode(saved)
-  return saved and ns.Geo.Node(saved.mapID, saved.x, saved.y, saved.label)
+  local node = saved and ns.Geo.Node(saved.mapID, saved.x, saved.y, saved.label)
+  if node then node.object, node.npc = saved.object, saved.npc end
+  return node
 end
 
 -- A plain-table copy of a journey's original definition for SavedVariables.

@@ -38,7 +38,8 @@ What works in this MVP:
   beside the directions box that targets them (`/target`, with a key binding
   under Key Bindings > AddOns > Wayfinder). Raid markers would be simpler,
   but addons may not set them. `/wf marker` or the options turn the star and
-  the tooltip line off.
+  the tooltip line off. Quests handed in to (or started from) an object, like
+  Buzzbox 323, say "use" instead, with nothing to target.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
@@ -120,7 +121,7 @@ quests, XP per minute) and its quests; hover it for every detail and step.
 The tooltip of a card, or of any row with directions or a trip, has a small
 map under it with the route drawn on it (the zone, the continent or the world
 map, whichever holds it all, zoomed in on the route; walking white, flights
-light blue, boats and the like deeper blue). The arrows under the cards page through the rest, three at a time; shift-click adds a card to
+light blue, boats and the like deeper blue). The arrows under the cards page through the rest, three at a time (back to page 1 when the cards change); shift-click adds a card to
 your trip.
 
 The window keeps one size: For you is the main window, and **Quests**
@@ -139,6 +140,7 @@ page is a list in the side panel.
 things to do next, one card per kind of thing, each labelled with its kind:
 
 - **Due now** (at most two, always first): spells you can train and afford
+  (the card lists them, with rank and cost)
   (after one trainer visit), repairs at 50% durability or lower, ammo under
   200, food and drink under 5 (not mages, from level 6), and an undiscovered
   flight path within about 3 minutes.
@@ -295,6 +297,9 @@ panel to add it to the trip you're on.
     aside and the directions box says "In the area" with your progress.
     Past 120 yards you've left, and the way points at the nearest spawn from
     where you are. A finished objective's spawns stop counting.
+  - When a trip gains a quest's hand-in, the quests that follow it (picked
+    up where you hand it in, often from the same NPC) are offered if adding
+    them costs 3 minutes of travel or less.
   - Skipping a stop with next marks it skipped, not done; going back reopens
     it, and doing it anyway (the quest log or your bags say so) marks it done.
   - QuestieDB can miss a step of a chain, so a follow-up looks available

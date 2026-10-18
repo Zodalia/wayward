@@ -536,12 +536,20 @@ end
 
 local cardKey
 
+-- What the cards are, in order: when it changes, they start again at page 1.
+local function cardsKey(page, results)
+  local parts = { page.id }
+  for _, r in ipairs(results) do parts[#parts + 1] = r.id or r.title or "?" end
+  return table.concat(parts, "|")
+end
+
 local function refreshMain()
   if not mainPage then return nil end
   local results, err, net = mainPage.Results("")
   results = results or {}
-  local fresh = mainPage.id ~= cardKey
-  cardKey = mainPage.id
+  local key = cardsKey(mainPage, results)
+  local fresh = key ~= cardKey
+  cardKey = key
   frame.summary:SetText(mainPage.SummaryText("") or "")
   ns.Cards.Show(results, err or (#results == 0 and mainPage.EmptyText("")) or "", fresh)
   return net

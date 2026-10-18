@@ -263,13 +263,24 @@ local function trainingNeed(ctx)
   local best = (try(ns.Trainers.Results) or {})[1]
   if not (best and best.route) then return nil end
   local place = placeName(best.goal, best.zone)
+  -- The spells themselves, first thing on the card.
+  local details, level = {}, UnitLevel("player")
+  for _, sp in ipairs(ns.charDB.classSpells and ns.charDB.classSpells.services or {}) do
+    if sp.type ~= "used" and sp.levelReq and sp.levelReq <= level then
+      details[#details + 1] = { text = string.format("%s%s  -  %s", sp.name, sp.rank and (" (" .. sp.rank .. ")") or "",
+        ns.FormatMoney(sp.cost or 0)) }
+    end
+  end
+  details[#details + 1] = { text = "Trainer: " .. best.title, more = #details > 0 }
   return {
     kind = "train", only = "Train only",
+    stats = { { "Spells", tostring(s.trainable) }, { "Cost", ns.FormatMoney(s.cost) },
+      { "Travel", ns.FormatDuration(best.route.seconds) } },
     title = string.format("Train %s in %s", spells, place),
     zone = best.zone, goal = best.goal, route = best.route,
     why = string.format("%s for %s", spells, ns.FormatMoney(s.cost)),
     rank = string.format("Needs come first: you can train and afford %s (%s).", spells, ns.FormatMoney(s.cost)),
-    details = { { text = "Trainer: " .. best.title } },
+    details = details,
     stop = { node = best.goal, text = "Train your new spells at " .. best.title, phrase = "train in " .. place },
   }
 end
@@ -904,7 +915,8 @@ local function needRow(need)
   return {
     id = "need" .. need.kind, kind = need.kind, category = need.soft and "Worth a visit" or "Due now", title = need.title,
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
-    place = capitalize(need.why), stats = { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
+    place = capitalize(need.why),
+    stats = need.stats or { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
     goal = need.goal, route = need.route, details = details,
   }
 end

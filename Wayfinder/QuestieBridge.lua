@@ -278,7 +278,7 @@ local function inferChains()
 end
 
 local function buildQuestIndex()
-  questIndex, predecessors, questByID = {}, {}, {}
+  questIndex, predecessors, questByID, followers = {}, {}, {}, nil
   local started = now()
   local keys = {}
   local questKeys = lib.Meta.QuestMeta.questKeys
@@ -569,7 +569,12 @@ local function giverNode(kind, id, here, faction)
     local db = kind == "npc" and NpcDB or ObjectDB
     local name = db.Get(id, "name")
     local ok = kind ~= "npc" or friendlyTo(db.Get(id, "friendlyToFaction"), faction)
-    giverNodes[key] = ok and { name = name, nodes = spawnNodes(db.Get(id, "spawns"), name) } or false
+    local nodes = ok and spawnNodes(db.Get(id, "spawns"), name) or {}
+    -- Objects (a box, a sign, Buzzbox 323) can't be talked to or targeted.
+    if kind == "object" then
+      for _, n in ipairs(nodes) do n.object = true end
+    end
+    giverNodes[key] = ok and { name = name, nodes = nodes } or false
   end
   local giver = giverNodes[key]
   if not giver or #giver.nodes == 0 then return nil end
@@ -870,6 +875,43 @@ function Bridge.QuestPrep(questID, here)
       if node then out[#out + 1] = { kind = "event", text = text, node = node } end
     end
   end
+  return out
+end
+
+-- The quests that follow `questID` in its chain (QuestieDB's links, quests
+-- that need it, and inferred Forever links) that you could take once it's
+-- done: your race and class, your level, not done yet. Quest rows.
+local followers -- [questID] = { quest rows that come after it }
+
+local function buildFollowers()
+  followers = {}
+  local function add(before, q)
+    followers[before] = followers[before] or {}
+    table.insert(followers[before], q)
+  end
+  for _, q in pairs(questByID) do
+    if (q.nextQuestInChain or 0) ~= 0 and questByID[q.nextQuestInChain] then add(q.id, questByID[q.nextQuestInChain]) end
+    for _, id in ipairs(q.preQuestSingle or {}) do add(id, q) end
+    for _, id in ipairs(q.preQuestGroup or {}) do add(id, q) end
+    if q.inferredAfter then add(q.inferredAfter, q) end
+  end
+end
+
+function Bridge.FollowUps(questID)
+  if not Bridge.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  if not followers then buildFollowers() end
+  local p = playerProfile()
+  local done, inLog = playerQuestState()
+  local out, seen = {}, {}
+  for _, q in ipairs(followers[questID] or {}) do
+    if not seen[q.id] and not done[q.id] and not inLog[q.id] and canEverDo(q, p)
+      and (q.requiredLevel or 0) <= p.level and q.startedBy then
+      seen[q.id] = true
+      out[#out + 1] = q
+    end
+  end
+  table.sort(out, function(a, b) return a.id < b.id end)
   return out
 end
 

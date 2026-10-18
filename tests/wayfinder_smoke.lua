@@ -1276,8 +1276,10 @@ do
   end
   check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Trip="),
     "a zone's card numbers: quests now + later, XP, travel: " .. statText(redridge))
-  check(list[1].stats and list[1].stats[1][1] == "Where" and list[1].place:find("spell"),
-    "a need's card: why as the place line, then where and travel: " .. tostring(list[1].place))
+  check(list[1].stats and list[1].stats[1][1] == "Spells" and list[1].stats[2][1] == "Cost" and list[1].place:find("spell"),
+    "the training card: spells, cost and travel: " .. tostring(list[1].place))
+  check(list[1].details[2] and not list[1].details[2].more and list[1].details[2].text:find("  -  ", 1, true),
+    "the spells you can learn come first on it: " .. tostring(list[1].details[2] and list[1].details[2].text))
   check(ns.ForYou.SummaryText():find("1 thing due") and ns.ForYou.SummaryText():find("best of each kind")
     and not ns.ForYou.SummaryText():find("quests per hour"), "summary: " .. ns.ForYou.SummaryText())
 
@@ -1638,6 +1640,59 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- inferred chains (end)
+---------------------------------------------------------------- objects and follow-ups (begin)
+do
+  io.write("objects and follow-ups\n")
+  ns.Nav.Stop()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  local savedObjects = ObjectDB
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy = 3
+  -- Handed in to an object: Buzzbox 323, in Redridge.
+  ObjectDB = entity({ [700] = { name = "Buzzbox 323", spawns = { [44] = { { 55.0, 50.0 } } } } }, {})
+  QUESTS[44] = { name = "Buzzbox Report", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { nil, { 700 } } }
+  -- Chain part 1 (in your log, done) is handed in to Magistrate Solomon, who gives Chain part 2.
+  QUESTS[14].finishedBy = { { 344 } }
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  local log = { 44, 14 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return true end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+
+  local box = ns.Journey.QuestStops(44, here)
+  check(#box == 1 and box[1].node.object and box[1].text == "Hand in Buzzbox Report to Buzzbox 323",
+    "a hand-in to an object knows it's an object")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Buzzbox", stops = box }))
+  player.x, player.y = box[1].node.x, box[1].node.y
+  ns.HUD.Update()
+  check(ns.Nav.Interaction() == "use" and ns.Nav.TargetNPC() == nil and ns.HUD.Lines()[4]:find("use Buzzbox 323", 1, true),
+    "at the object: use it, nothing to target: " .. ns.HUD.Lines()[4])
+  ns.Nav.Stop()
+
+  -- Its follow-up is picked up where you hand it in: offered.
+  check(#ns.Questie.FollowUps(14) == 1 and ns.Questie.FollowUps(14)[1].id == 13, "Chain part 1 is followed by Chain part 2")
+  local shown
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, a, b, c, data) shown = { which = which, first = a, next = b, extra = c, data = data } end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  check(shown and shown.which == "WAYFINDER_FOLLOWUP" and shown.first == "Chain part 1" and shown.next == "Chain part 2",
+    "handing in a quest offers its follow-up when it's on the way")
+  StaticPopupDialogs.WAYFINDER_FOLLOWUP.OnAccept(nil, shown.data)
+  local kinds = {}
+  for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind .. st.action.questID end
+  check(table.concat(kinds, ",") == "turnin14,pickup13", "Add puts it after the hand-in: " .. table.concat(kinds, ","))
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
+  ObjectDB, QUESTS[44], QUESTS[14].finishedBy = savedObjects, nil, nil
+  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+end
+---------------------------------------------------------------- objects and follow-ups (end)
 ---------------------------------------------------------------- objective areas (begin)
 do
   io.write("objective areas\n")
@@ -2522,6 +2577,11 @@ do
   check(titles() == "Suggestion 4,Suggestion 5", "the mouse wheel pages too, stopping at the last page")
   ns.Panel.Refresh()
   check(titles() == "Suggestion 4,Suggestion 5", "a refresh keeps the page you were on")
+  suggestions[6] = { title = "Suggestion 6", subtitle = "new", goal = goal, route = route, details = {} }
+  ns.Panel.Refresh()
+  check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "when the cards change, back to page 1")
+  suggestions[6] = nil
+  ns.Panel.Refresh()
   ns.Panel.Search("cardtest", "")
   ns.Cards.Step(10)
   check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "back to the first")

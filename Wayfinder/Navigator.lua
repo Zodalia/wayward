@@ -118,6 +118,8 @@ local function startRoute(title, goal, route)
   showStep()
 end
 
+local offerFollowUps -- below: offers a trip's follow-up quests
+
 local function startJourney(journey, quiet)
   local last = journey.stops[#journey.stops]
   Nav.active = { title = journey.title, goal = last.node, journey = journey, index = 1,
@@ -132,6 +134,7 @@ local function startJourney(journey, quiet)
   end
   showStep()
   if not quiet and #journey.stops > 1 then ns.Fire("JOURNEY_STARTED") end
+  if not quiet then offerFollowUps(journey.stops) end
 end
 
 -- Starting something new while a trip is on asks: add it to the trip, or
@@ -218,6 +221,7 @@ function Nav.TargetNPC()
   local stop = step.stop
   if stop then
     local action = stop.action
+    if stop.node and stop.node.object then return nil end -- an object, not someone
     if action and action.kind == "talk" then return action.npc, stop.node end
     if action and action.kind == "pickup" then return stop.giver, stop.node end
     if action and action.kind == "turnin" then return stop.npc, stop.node end
@@ -227,13 +231,23 @@ function Nav.TargetNPC()
   return nil
 end
 
--- What you do where you are now ("talk", "fly", or nil), for the directions box.
+-- The object the current stop is at (Buzzbox 323) and its name, or nil.
+function Nav.TargetObject()
+  local a = Nav.active
+  local step = a and a.route.steps[a.index]
+  local stop = step and step.stop
+  if not (stop and stop.node and stop.node.object) then return nil end
+  return stop.giver or stop.npc or stop.node.label, stop.node
+end
+
+-- What you do where you are now ("talk", "use", "fly", or nil), for the directions box.
 function Nav.Interaction()
   local a = Nav.active
   if not a then return nil end
   if flightTalk(a.route.steps, a.index) then return a.waiting and "talk" or nil end
   local step = a.route.steps[a.index]
   if step and step.mode == "fly" and not onTaxi() then return "fly" end
+  if a.waiting and Nav.TargetObject() then return "use" end
   if a.waiting and Nav.TargetNPC() then return "talk" end
   return nil
 end
@@ -558,7 +572,81 @@ function Nav.AddToTrip(stops, label)
   ns.print(string.format("added %s to your trip: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
   ns.Fire("JOURNEY_STARTED")
+  offerFollowUps(stops)
   return true
+end
+
+-- Follow-up quests. When a trip gains a quest's hand-in, the quests that
+-- follow it (Questie.FollowUps) are offered when adding them costs little
+-- travel (FOLLOW_UP_SLACK more seconds): you pick them up where you hand the
+-- first in, often from the same NPC.
+local FOLLOW_UP_SLACK = 180
+
+function Nav.FollowUpOffer(stops)
+  local a = Nav.active
+  local here = ns.Geo.PlayerNode()
+  if not (a and a.journey and here) then return nil end
+  local root = a.journey.root or a.journey.def
+  local inTrip = {}
+  for _, stop in ipairs(root.stops or {}) do
+    if stop.action and stop.action.questID then inTrip[stop.action.questID] = true end
+  end
+  local base = ns.Journey.Replan(a.journey, here)
+  if not base then return nil end
+  local offer = { quests = {}, stops = {}, extra = 0 }
+  for _, stop in ipairs(stops) do
+    local action = stop.action
+    if action and action.kind == "turnin" and not stop.done then
+      for _, q in ipairs(ns.Questie.FollowUps(action.questID)) do
+        if not inTrip[q.id] then
+          inTrip[q.id] = true
+          local qs = ns.Journey.QuestStops(q.id, here)
+          if #qs > 0 and qs[1].action and qs[1].action.kind == "pickup" then
+            qs[1].after = { stop }
+            -- The trip with it, against the trip without: the travel it adds.
+            local open = {}
+            for _, s in ipairs(root.stops) do
+              if not s.done and not s.skipped then open[#open + 1] = s end
+            end
+            for _, s in ipairs(offer.stops) do open[#open + 1] = s end
+            for _, s in ipairs(qs) do open[#open + 1] = s end
+            local finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
+            local with = ns.Journey.Plan(here, { stops = open, finish = finish })
+            local extra = with and with.seconds - base.seconds - offer.extra
+            if extra and extra <= FOLLOW_UP_SLACK then
+              offer.extra = offer.extra + math.max(0, extra)
+              offer.quests[#offer.quests + 1] = { quest = q, after = action.questID }
+              for _, s in ipairs(qs) do offer.stops[#offer.stops + 1] = s end
+            end
+          end
+        end
+      end
+    end
+  end
+  if #offer.quests == 0 then return nil end
+  return offer
+end
+
+function offerFollowUps(stops)
+  local offer = Nav.FollowUpOffer(stops)
+  if not offer then return end
+  local names, firsts = {}, {}
+  for _, f in ipairs(offer.quests) do
+    names[#names + 1] = f.quest.name or ("quest " .. f.quest.id)
+    local q = ns.Questie.Quest(f.after)
+    firsts[#firsts + 1] = q and q.name or ("quest " .. f.after)
+  end
+  local label = table.concat(names, ", ")
+  Nav.pendingFollowUps = offer
+  if not (StaticPopupDialogs and StaticPopup_Show) then return end
+  StaticPopupDialogs.WAYFINDER_FOLLOWUP = StaticPopupDialogs.WAYFINDER_FOLLOWUP or {
+    text = "%s continues with %s, about %s more on the way.\n\nAdd it to your trip too?",
+    button1 = "Add", button2 = "No thanks",
+    OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  StaticPopup_Show("WAYFINDER_FOLLOWUP", table.concat(firsts, ", "), label, ns.FormatDuration(offer.extra),
+    { stops = offer.stops, label = label })
 end
 
 -- True when the current trip still has an open stop for this quest.
