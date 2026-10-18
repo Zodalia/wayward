@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- A small map under a result's tooltip (cards and side panel rows) with its
 -- route drawn on it: the smallest map that holds the whole route (the zone,
--- else the continent, else the world map), from the game's own map art.
+-- else the continent, else the world map), from the game's own map art,
+-- zoomed in on the route (with some room around it).
 -- Walking is white, flights light blue, boats and the like deeper blue; you,
 -- each stop and the destination are marked. Shown only when the client has
 -- the map art API.
@@ -12,11 +13,14 @@ ns.RouteMap = RouteMap
 
 local AZEROTH = 947
 local WIDTH = 280
+local ZOOM_MARGIN = 1.5  -- the shown area is this much bigger than the route
+local MIN_VIEW = 0.12    -- the closest zoom: this share of the map's width
 local LINE_COLOR = { walk = { 1, 1, 1, 0.9 }, fly = { 0.45, 0.8, 1, 1 }, transport = { 0.25, 0.5, 1, 1 } }
 local MARK_COLOR = { start = { 0.3, 1, 0.3 }, stop = { 1, 0.82, 0 }, goal = { 1, 0.3, 0.2 } }
 
 local frame
 local tiles, lines, marks = {}, {}, {}
+local unpack = unpack or table.unpack
 
 local function available()
   return C_Map and C_Map.GetMapArtLayers and C_Map.GetMapArtLayerTextures and C_Map.GetMapPosFromWorldPos
@@ -113,25 +117,46 @@ function RouteMap.Show(r, tooltip)
   if not layer then return false end
   frame = frame or create()
 
-  local scale = WIDTH / layer.layerWidth
-  local height = math.floor(layer.layerHeight * scale + 0.5)
+  -- The area shown: a square (in map terms) around the route, at least
+  -- MIN_VIEW of the map, kept inside the map.
+  local xs, ys = {}, {}
+  for _, p in ipairs(points) do
+    local x, y = ns.Geo.MapPos(p, mapID)
+    if x and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+      xs[#xs + 1], ys[#ys + 1] = x, y
+    end
+  end
+  local view, x0, y0 = 1, 0, 0
+  if #xs > 0 then
+    local minX, maxX, minY, maxY = math.min(unpack(xs)), math.max(unpack(xs)), math.min(unpack(ys)), math.max(unpack(ys))
+    view = math.min(1, math.max(MIN_VIEW, (maxX - minX) * ZOOM_MARGIN, (maxY - minY) * ZOOM_MARGIN))
+    x0 = math.max(0, math.min(1 - view, (minX + maxX) / 2 - view / 2))
+    y0 = math.max(0, math.min(1 - view, (minY + maxY) / 2 - view / 2))
+  end
+
+  local height = math.floor(WIDTH * layer.layerHeight / layer.layerWidth + 0.5)
   frame.canvas:SetSize(WIDTH, height)
   frame:SetSize(WIDTH + 12, height + 12)
+  -- The whole map at this zoom, shifted so the area shows; the canvas clips the rest.
+  local scale = WIDTH / view / layer.layerWidth
+  local offsetX, offsetY = x0 * layer.layerWidth * scale, y0 * layer.layerHeight * scale
   local columns = math.ceil(layer.layerWidth / layer.tileWidth)
   for i, file in ipairs(textures) do
     local t = texture(tiles, i, "BACKGROUND")
     t:SetTexture(file)
     t:SetSize(layer.tileWidth * scale, layer.tileHeight * scale)
     t:ClearAllPoints()
-    t:SetPoint("TOPLEFT", ((i - 1) % columns) * layer.tileWidth * scale,
-      -math.floor((i - 1) / columns) * layer.tileHeight * scale)
+    t:SetPoint("TOPLEFT", ((i - 1) % columns) * layer.tileWidth * scale - offsetX,
+      -math.floor((i - 1) / columns) * layer.tileHeight * scale + offsetY)
   end
   hideFrom(tiles, #textures + 1)
 
   local function at(node)
     local x, y = ns.Geo.MapPos(node, mapID)
-    if not x or x < 0 or x > 1 or y < 0 or y > 1 then return nil end
-    return x * WIDTH, -y * height
+    if not x then return nil end
+    local px, py = (x - x0) / view * WIDTH, (y - y0) / view * height
+    if px < 0 or px > WIDTH or py < 0 or py > height then return nil end
+    return px, -py
   end
 
   local drawn = 0
@@ -176,7 +201,7 @@ function RouteMap.Show(r, tooltip)
   frame:ClearAllPoints()
   frame:SetPoint("TOPLEFT", tooltip or GameTooltip, "BOTTOMLEFT", 0, -2)
   frame:Show()
-  RouteMap.mapID, RouteMap.lines, RouteMap.marks = mapID, drawn, marked
+  RouteMap.mapID, RouteMap.lines, RouteMap.marks, RouteMap.view = mapID, drawn, marked, view
   return true
 end
 

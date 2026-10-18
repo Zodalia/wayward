@@ -2357,6 +2357,7 @@ do
   C_Map.GetMapArtLayers = function() return { { tileWidth = 256, tileHeight = 256, layerWidth = 1002, layerHeight = 668 } } end
   C_Map.GetMapArtLayerTextures = function() return { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 } end
   ns.Panel.ShowTooltip(UIParent, r)
+  check(ns.RouteMap.view < 1, "a short route zooms in: " .. tostring(ns.RouteMap.view))
   check(ns.RouteMap.mapID == 1433 and ns.RouteMap.lines >= 1 and ns.RouteMap.marks == 2,
     string.format("hovering shows the zone map with the route (map %s, %s lines, %s marks)",
       tostring(ns.RouteMap.mapID), tostring(ns.RouteMap.lines), tostring(ns.RouteMap.marks)))
