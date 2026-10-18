@@ -8,10 +8,13 @@ local _, ns = ...
 --   Finish      the best group of unfinished quests in your log;
 --   Best quest  the single quest worth the most XP that you can pick up nearby,
 --               as a whole-quest trip;
---   Quest hub   per zone, its best hub with HUB_MIN_QUESTS or more quests for
---               you (up to MAX_HUB_ZONES zones);
---   Dungeon     the best dungeon, with its quests picked up on the way.
--- After the due ones, cards are in order of estimated XP per minute.
+--   Questing zone  where to quest at your level, anywhere in the world (up to
+--               MAX_ZONES): the quests you can take there now and the ones their
+--               chains unlock, and the hub to start at;
+--   Dungeon     the best dungeon, with its quests picked up on the way, and the
+--               others for your level;
+-- in that order after the due ones; then hand-ins, finishing and the best
+-- quest by estimated XP per minute.
 --
 -- XP comes from QuestieDB's quest XP table (Support.Get("QuestXP").db). Without
 -- it, options are ranked by quests per hour weighted by level fit, and the
@@ -29,13 +32,15 @@ local ForYou = { id = "foryou", label = "For you", order = 10, searchable = fals
 ns.ForYou = ForYou
 
 local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip
-local MAX_RESULTS = 8           -- cards the page shows
+local MAX_RESULTS = 9           -- cards the page shows (three pages)
 local MAX_NEEDS = 2             -- "Due now" and "Worth a visit" cards
 local REPAIR_SOON = 0.75        -- gear at or under this: repair if a vendor is close
 local REPAIR_NEAR_SECONDS = 120 -- "close" for that
 local TRAIN_LEVELS_STALE = 2    -- levels since your last trainer visit before new spells are likely
-local HUB_MIN_QUESTS = 4        -- quests for you a hub needs for its own card
-local MAX_HUB_ZONES = 3         -- zones with a "Quest hub" card
+local ZONE_MIN_QUESTS = 4       -- quests you can take now for a zone to get a card
+local MAX_ZONES = 3             -- "Questing zone" cards
+local ZONE_HUBS = 3             -- hubs named on a zone card after the first
+local ZONE_QUEST_LINES = 5      -- quests listed on a zone card
 local CACHE_SECONDS = 5         -- a refresh is reused this long (cleared early on data or zone changes)
 local MAX_LEVEL = 60            -- Forever's level cap: quests give no XP there
 local LOW_AMMO = 200            -- arrows or bullets left
@@ -769,20 +774,88 @@ local function bestQuestOption(hubs, ctx, start, net)
   return option
 end
 
--- Per zone, its best hub with enough quests for you; the best zones first.
-local function hubPicks(hubs)
-  local byZone, zones = {}, {}
-  for _, hub in ipairs(hubs) do
-    if #hub.quests >= HUB_MIN_QUESTS then
-      local current = byZone[hub.zone]
-      if not current then zones[#zones + 1] = hub.zone end
-      if not current or hub.rate > current.rate then byZone[hub.zone] = hub end
+-- Where to quest at your level, anywhere: per zone (Questie.ZoneQuests), the
+-- quests you can take now and those their chains unlock, worth their XP; the
+-- hub to start at is the one with the most quests for you now. Zones need
+-- ZONE_MIN_QUESTS quests you can take now; the best MAX_ZONES by XP (quest
+-- count without XP data) get a route to their first hub.
+local function zoneOptions(ctx, start, net)
+  local zones = {}
+  for mapID, z in pairs(ns.Questie.ZoneQuests(start)) do
+    local now, later, value, lowest, highest = {}, {}, 0, math.huge, 0
+    for _, q in ipairs(z.quests) do
+      if not dungeonQuest(ns.Questie.Quest(q.id)) then
+        q.value = questValue(q, ctx)
+        value = value + q.value
+        lowest, highest = math.min(lowest, q.level or ctx.level), math.max(highest, q.level or ctx.level)
+        if q.chain then later[#later + 1] = q else now[#now + 1] = q end
+      end
+    end
+    if #now >= ZONE_MIN_QUESTS then
+      zones[#zones + 1] = { mapID = mapID, now = now, later = later, value = value, lowest = lowest, highest = highest }
     end
   end
+  table.sort(zones, function(a, b)
+    if a.value ~= b.value then return a.value > b.value end
+    return #a.now > #b.now
+  end)
+
   local out = {}
-  for _, zone in ipairs(zones) do out[#out + 1] = byZone[zone] end
-  table.sort(out, function(a, b) return a.rate > b.rate end)
-  while #out > MAX_HUB_ZONES do table.remove(out) end
+  for _, z in ipairs(zones) do
+    if #out >= MAX_ZONES then break end
+    -- Givers of the quests you can take now, clustered into hubs, named by place.
+    local givers, byKey = {}, {}
+    for _, q in ipairs(z.now) do
+      local key = string.format("%s@%d:%.4f:%.4f", q.giver or "?", q.node.mapID, q.node.x, q.node.y)
+      local g = byKey[key]
+      if not g then
+        g = { name = q.giver, node = q.node, distance = ns.Geo.Distance(start, q.node), quests = {} }
+        byKey[key] = g
+        givers[#givers + 1] = g
+      end
+      g.quests[#g.quests + 1] = q
+    end
+    table.sort(givers, function(a, b) return a.distance < b.distance end)
+    -- A town's givers can fall into more than one cluster: one hub per place.
+    local hubs, byPlace = {}, {}
+    for _, hub in ipairs(ns.Questie.Cluster(givers, math.huge)) do
+      local place = ns.Places.NameFor(hub.anchor.node)
+      local same = place and byPlace[place]
+      if same then
+        for _, g in ipairs(hub.givers) do same.givers[#same.givers + 1] = g end
+        same.count = same.count + hub.count
+        if #hub.anchor.quests > #same.anchor.quests then same.anchor = hub.anchor end
+      else
+        hub.place = place or ("near " .. (hub.anchor.name or "?"))
+        hubs[#hubs + 1] = hub
+        if place then byPlace[place] = hub end
+      end
+    end
+    table.sort(hubs, function(a, b)
+      if a.count ~= b.count then return a.count > b.count end
+      return a.anchor.distance < b.anchor.distance
+    end)
+    local first = hubs[1]
+    local anchor = first.anchor.node
+    local goal = ns.Geo.Node(anchor.mapID, anchor.x, anchor.y, string.format("%s (%s)", first.place, first.anchor.name or "?"))
+    local route = goal and ns.Router.Plan(start, goal, net)
+    if route then
+      -- Where the chains lead: the places their next quests start, other than the first hub.
+      local leads, seen = {}, { [first.place] = true }
+      for _, q in ipairs(z.later) do
+        local place = ns.Places.NameFor(q.node)
+        if place and not seen[place] then
+          seen[place] = true
+          leads[#leads + 1] = place
+        end
+      end
+      out[#out + 1] = {
+        kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = "Quest in " .. ns.MapName(z.mapID),
+        goal = goal, route = route, trip = route.seconds, now = z.now, later = z.later, value = z.value,
+        lowest = z.lowest, highest = z.highest, hubs = hubs, first = first, leads = leads,
+      }
+    end
+  end
   return out
 end
 
@@ -965,6 +1038,47 @@ local function plainRow(option)
   }
 end
 
+local function zoneRow(z, ctx)
+  local levels = z.lowest == z.highest and ("Level " .. z.lowest) or string.format("Levels %d-%d", z.lowest, z.highest)
+  local details = { {
+    text = string.format("Questing zone: %s you can take now%s%s.", plural(#z.now, "quest"),
+      #z.later > 0 and string.format(", %d more as their chains unlock", #z.later) or "",
+      ctx.xpMode and string.format(", ~%s XP in all", formatNumber(z.value)) or ""),
+    color = GOLD,
+  } }
+  details[#details + 1] = { text = string.format("Start at %s: %s.", z.first.place, plural(z.first.count, "quest")) }
+  local next = {}
+  for i = 2, math.min(#z.hubs, ZONE_HUBS + 1) do
+    next[#next + 1] = string.format("%s (%d)", z.hubs[i].place, z.hubs[i].count)
+  end
+  if #next > 0 then details[#details + 1] = { text = "Then: " .. table.concat(next, ", ") .. "." } end
+  if #z.leads > 0 then
+    details[#details + 1] = { text = "Chains lead on to " .. table.concat(z.leads, ", ", 1, math.min(#z.leads, 3)) .. "." }
+  end
+  -- The quests worth the most, the ones you can take now first.
+  local listed = {}
+  for _, q in ipairs(z.now) do listed[#listed + 1] = q end
+  table.sort(listed, function(a, b) return (a.value or 0) > (b.value or 0) end)
+  for i = 1, math.min(#listed, ZONE_QUEST_LINES) do
+    local q = listed[i]
+    local value = ctx.xpMode and string.format("  -  %s XP", formatNumber(q.value)) or ""
+    details[#details + 1] = {
+      text = string.format("[%d] %s%s  (%s)", q.level or 0, q.name or ("Quest " .. q.id), value, q.giver or "?"),
+      color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true, more = i > 2,
+    }
+  end
+  local quests = tostring(#z.now)
+  if #z.later > 0 then quests = string.format("%d + %d", #z.now, #z.later) end
+  return {
+    id = "zone" .. z.mapID, kind = "zone", category = "Questing zone", title = z.title,
+    subtitle = string.format("%s  ·  %s  ·  %s  ·  start at %s", z.zone, levels, ns.FormatDuration(z.trip), z.first.place),
+    place = string.format("%s  ·  start at %s", levels, z.first.place),
+    stats = { { "Quests", quests }, ctx.xpMode and { "XP", "~" .. formatNumber(z.value) } or { "Hubs", tostring(#z.hubs) },
+      { "Travel", ns.FormatDuration(z.trip) } },
+    goal = z.goal, route = z.route, details = details,
+  }
+end
+
 ---------------------------------------------------------------- page
 
 local function summaryFor(ctx, needs)
@@ -1065,21 +1179,36 @@ local function build()
     end
   end
   pick(quest)
-  for _, hub in ipairs(hubPicks(hubs)) do pick(hub) end
-  if dungeon then
-    try(dungeonJourney, dungeon, ctx, start, net)
-    pick(dungeon)
-  end
   table.sort(picks, byRate)
 
-  local results = {}
-  for _, need in ipairs(needs) do results[#results + 1] = needRow(need) end
-  for _, option in ipairs(picks) do
-    if #results >= MAX_RESULTS then break end
-    results[#results + 1] = optionRow(option, option.rank, #all, ctx)
+  -- The other dungeons for your level, named on the dungeon card.
+  local others = {}
+  for _, list in ipairs({ dungeons, plain or {} }) do
+    for _, option in ipairs(list) do
+      if option ~= dungeon and option ~= (not dungeon and plain and plain[1] or nil) then
+        local name, level = (option.title or ""):match("^Run (.-)%s+·%s+level (%d+)$")
+        others[#others + 1] = name and string.format("%s (%s)", name, level) or option.name
+      end
+    end
   end
-  -- No dungeon with quests for you: the best one by level fit and travel time.
-  if not dungeon and plain and plain[1] and #results < MAX_RESULTS then results[#results + 1] = plainRow(plain[1]) end
+
+  local results = {}
+  local function add(row) if row and #results < MAX_RESULTS then results[#results + 1] = row end end
+  for _, need in ipairs(needs) do add(needRow(need)) end
+  for _, zone in ipairs(try(zoneOptions, ctx, start, net) or {}) do add(zoneRow(zone, ctx)) end
+  local dungeonRow
+  if dungeon then
+    try(dungeonJourney, dungeon, ctx, start, net)
+    dungeonRow = optionRow(dungeon, dungeon.rank, #all, ctx)
+  elseif plain and plain[1] then
+    -- No dungeon with quests for you: the best one by level fit and travel time.
+    dungeonRow = plainRow(plain[1])
+  end
+  if dungeonRow and #others > 0 then
+    table.insert(dungeonRow.details, 2, { text = "Also for your level: " .. table.concat(others, ", ", 1, math.min(#others, 4)) .. "." })
+  end
+  add(dungeonRow)
+  for _, option in ipairs(picks) do add(optionRow(option, option.rank, #all, ctx)) end
 
   local due = 0
   for _, need in ipairs(needs) do if not need.soft then due = due + 1 end end
@@ -1105,7 +1234,7 @@ local ICONS = {
   raid = "Interface\\Icons\\INV_Misc_Head_Dragon_01", flight = "Interface\\Icons\\Ability_Hunter_EagleEye",
   repair = "Interface\\Icons\\Trade_BlackSmithing", food = "Interface\\Icons\\INV_Misc_Food_15",
   ammo = "Interface\\Icons\\INV_Ammo_Arrow_01", reagents = "Interface\\Icons\\INV_Misc_Dust_02",
-  quest = "Interface\\Icons\\INV_Scroll_03",
+  quest = "Interface\\Icons\\INV_Scroll_03", zone = "Interface\\Icons\\INV_Misc_Spyglass_03",
 }
 
 local function iconFor(r)

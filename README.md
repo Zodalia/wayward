@@ -134,13 +134,19 @@ things to do next, one card per kind of thing, each labelled with its kind:
   times the share of objectives left (at least a quarter).
 - **Best quest**: the single quest worth the most XP that you can pick up
   nearby, as a whole-quest trip (pick it up, do it, hand it in).
-- **Quest hub**: per zone, its best hub with 4 or more quests for you, up to
-  three zones.
+- **Questing zone** (up to three, anywhere in the world): where to quest at
+  your level. Each counts the quests you can take there now and the ones
+  their chains unlock (follow-ups whose first step you can take or have in
+  your log), all fitting your level, with their XP; directions go to the hub
+  with the most quests for you, and the card names the next hubs and where
+  the chains lead on to. A zone needs 4 quests you can take now; zones are
+  ranked by XP.
 - **Dungeon** (or **Raid**): the best one, with its quests picked up on the
-  way to the entrance; without quests for you, the best by level fit and
-  travel time.
+  way to the entrance, and the others for your level named on the card;
+  without quests for you, the best by level fit and travel time.
 
-After the due ones, cards are in order of estimated XP per minute: XP over the
+Due now and Worth a visit come first, then the zones, then the dungeon; hand
+in, finish and best quest follow in order of estimated XP per minute: XP over the
 trip plus 5 minutes per quest (`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes
 from QuestieDB's quest XP table, with the vanilla penalty for quests below your
 level; quests it has no XP for (Forever-only ones) get the average for their

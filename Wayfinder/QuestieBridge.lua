@@ -512,6 +512,45 @@ function Bridge.QuestHubs(here, limit)
   return Bridge.Cluster(order, limit or 12)
 end
 
+-- Where this character can quest, zone by zone (the zone of each quest's
+-- nearest starter): quests you can take now, and the follow-ups their chains
+-- unlock (a quest that needs earlier quests, the first of which you can take
+-- or have in your log), all fitting your level. Built fresh each call; For
+-- you caches its page.
+--   { [zone uiMapID] = { mapID, quests = { {id, name, level, node, giver, chain}, ... } } }
+function Bridge.ZoneQuests(here)
+  if not Bridge.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  local faction = UnitFactionGroup("player")
+  local p = playerProfile()
+  local done, inLog = playerQuestState()
+  local zones = {}
+  local function add(q, chain)
+    local name, node = nearestOf(q.startedBy, here, faction)
+    if not node then return end
+    local zone = ns.Geo.ZoneAt(node.instance, node.wx, node.wy) or node.mapID
+    local z = zones[zone]
+    if not z then
+      z = { mapID = zone, quests = {} }
+      zones[zone] = z
+    end
+    z.quests[#z.quests + 1] = { id = q.id, name = q.name, level = displayLevel(q, p), node = node, giver = name,
+      chain = chain }
+  end
+  for _, q in ipairs(questIndex) do
+    if (fitsLevel(q, p)) then
+      local status = blocker(q, p, done, inLog)
+      if status == nil then
+        add(q, false)
+      elseif status == "needsEarlier" then
+        local _, state = chainStart(q, p, done, inLog, {})
+        if state then add(q, true) end
+      end
+    end
+  end
+  return zones
+end
+
 -- Quests whose zoneOrSort is in `areaIDs` (a set; for a dungeon quest that is
 -- the dungeon's AreaID): { [areaID] = { available = {...}, inLog = {...} } }.
 function Bridge.QuestsForAreas(areaIDs)

@@ -1109,22 +1109,29 @@ do
     for _, r in ipairs(list) do if r.category == category then n = n + 1 end end
     return n
   end
-  local lakeshire = find(list, "Pick up 5 quests in Lakeshire")
+  local redridge = find(list, "Quest in Redridge Mountains")
   local goulash = find(list, "Do ")
   local deadmines = find(list, "Run The Deadmines")
-  check(list[1].category == "Due now" and lakeshire and lakeshire.category == "Quest hub"
+  check(list[1].category == "Due now" and redridge and redridge.category == "Questing zone"
     and goulash and goulash.category == "Best quest" and deadmines and deadmines.category == "Dungeon",
-    "one card per kind: due now, a quest hub, the best quest, a dungeon (" .. titles(list) .. ")")
-  check(not find(list, "Pick up 3 quests in Stormwind"), "a hub with fewer than 4 quests for you gets no card")
-  check(count("Dungeon") == 1 and not find(list, "Run Hall of Testing"), "only the best dungeon")
-  local sorted = true
-  for i = 3, #list do
-    if list[i].rate and list[i - 1].rate and list[i].rate > list[i - 1].rate then sorted = false end
+    "one card per kind: due now, a questing zone, the dungeon, the best quest (" .. titles(list) .. ")")
+  local order = {}
+  for _, r in ipairs(list) do order[#order + 1] = r.category end
+  check(table.concat(order, ","):find("^Due now,Questing zone,Dungeon"), "what's due, then where to quest, then the dungeon: "
+    .. table.concat(order, ","))
+  check(not find(list, "Quest in Stormwind City"), "a zone with fewer than 4 quests for you gets no card")
+  check(count("Dungeon") == 1, "one dungeon card")
+  local also
+  for _, d in ipairs(deadmines and deadmines.details or {}) do
+    if d.text:find("^Also for your level") then also = d.text end
   end
-  check(sorted, "after what's due, cards by XP per minute")
-  check(lakeshire and lakeshire.subtitle:find("~299 XP/min", 1, true)
-    and lakeshire.details[1].text:find("7,600 XP", 1, true),
-    "hub XP is the sum of its quests over trip + 5 min each: " .. tostring(lakeshire and lakeshire.subtitle))
+  check(also and also:find("Hall of Testing", 1, true), "it names the other dungeons for your level: " .. tostring(also))
+  -- The zone: what you can take now, what chains unlock, where to start.
+  check(redridge and redridge.place == "Levels 17-19  ·  start at Lakeshire" and redridge.route
+    and redridge.details[1].text:find("4 quests you can take now, 1 more as their chains unlock", 1, true),
+    "a questing zone: levels, quests now and unlocked by chains, the hub to start at: " .. tostring(redridge and redridge.details[1].text))
+  check(redridge and redridge.details[2].text == "Start at Lakeshire: 4 quests." and redridge.goal.label:find("^Lakeshire"),
+    "directions go to the first hub (one hub per place): " .. tostring(redridge and redridge.details[2].text))
   local estimated = false
   for _, d in ipairs(deadmines and deadmines.details or {}) do
     if d.text:find("estimated for 1 quest") then estimated = true end
@@ -1135,8 +1142,8 @@ do
     for _, st in ipairs(r and r.stats or {}) do out[#out + 1] = st[1] .. "=" .. st[2] end
     return table.concat(out, ",")
   end
-  check(lakeshire and lakeshire.place and statText(lakeshire):find("^Travel=.-,Quests=5,XP/min=~299$"),
-    "a hub's card numbers: travel, quests, XP per minute: " .. statText(lakeshire))
+  check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Travel="),
+    "a zone's card numbers: quests now + later, XP, travel: " .. statText(redridge))
   check(list[1].stats and list[1].stats[1][1] == "Where" and list[1].place:find("spell"),
     "a need's card: why as the place line, then where and travel: " .. tostring(list[1].place))
   check(ns.ForYou.SummaryText():find("1 thing due") and ns.ForYou.SummaryText():find("best of each kind")
@@ -1206,9 +1213,9 @@ do
   LibQuestieDB.Support.Get = zoneSupport
   list = rows()
   check(ns.ForYou.SummaryText():find("No quest XP in your QuestieDB"), "summary explains the fallback")
-  local lk = find(list, "Pick up 5 quests in Lakeshire")
-  check(lk and lk.subtitle:find("quests/h") and not lk.subtitle:find("XP"),
-    "fallback ranks by quests per hour: " .. tostring(lk and lk.subtitle))
+  local rz = find(list, "Quest in Redridge")
+  check(rz and statText(rz):find("Hubs=", 1, true) and not statText(rz):find("XP"),
+    "without XP data a zone counts quests and hubs: " .. statText(rz))
 
   -- Without QuestieDB: needs and dungeons by level fit.
   local savedLib = LibQuestieDB
@@ -1619,7 +1626,8 @@ do
 
   -- Hand-ins: full XP for only the trip, so they come first.
   local handin, hi = find(list, "Hand in 2 quests to Watcher Dodds")
-  check(handin and hi == 1, "quests ready to hand in rank first (" .. titles(list) .. ")")
+  local _, fi2 = find(list, "Finish ")
+  check(handin and fi2 and hi < fi2, "quests ready to hand in rank before finishing (" .. titles(list) .. ")")
   local best = true
   for _, r in ipairs(list) do
     if r ~= handin and r.rate and handin and r.rate >= handin.rate then best = false end
@@ -1635,8 +1643,8 @@ do
   local handinCards = 0
   for _, r in ipairs(list) do if r.category == "Hand in" then handinCards = handinCards + 1 end end
   check(handinCards == 1 and not find(list, "Hand in 1 quest in Lakeshire"), "only the best hand-in group gets a card")
-  local hub = find(list, "Pick up 5 quests in Lakeshire")
-  check(hub and not hub.journey and hub.route and not hub.actions, "the hub card is plain directions to pick up")
+  local zone = find(list, "Quest in Redridge")
+  check(zone and not zone.journey and zone.route, "the zone card is plain directions to its first hub")
   check(find(list, "Finish ") and find(list, "Finish ").category == "Finish", "one card to finish quests in your log")
 
   -- Unfinished quests near each other: one whole-quest trip (Journey.QuestStops).
