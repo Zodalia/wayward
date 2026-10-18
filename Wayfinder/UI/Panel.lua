@@ -26,6 +26,7 @@ local _, ns = ...
 --     first, the ranking, and those with `more`),
 --   place and stats = { {label, value}, ... } (up to 3) for cards: a "where" line
 --     and labelled numbers in place of the subtitle,
+--   category for cards: what kind of suggestion it is ("Best quest"),
 --   actions = { {label, run = function(result) end} } (the first is shown as a button).
 
 local Panel = {}

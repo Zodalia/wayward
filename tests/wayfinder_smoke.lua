@@ -1104,21 +1104,32 @@ do
   check(ms < 100, string.format("a refresh takes %.1f ms here", ms))
   check(list[1] and list[1].title == "Train 1 new spell in Stormwind" and list[1].route,
     "trainable, affordable spell comes first with directions (" .. titles(list) .. ")")
-  local lakeshire, li = find(list, "Pick up 5 quests in Lakeshire")
-  local stormwind, si = find(list, "Pick up 3 quests in Stormwind")
-  local deadmines, di = find(list, "Pick up 2 quests, then run The Deadmines")
-  check(lakeshire and stormwind and deadmines and li < si and si < di,
-    "hubs and dungeons by XP per minute: Lakeshire, Stormwind, Deadmines (" .. titles(list) .. ")")
-  local sorted, rated = true, 0
-  for i = 2, #list do
-    if list[i].rate and list[i - 1].rate and list[i].rate > list[i - 1].rate then sorted = false end
-    if list[i].rate then rated = rated + 1 end
+  local function count(category)
+    local n = 0
+    for _, r in ipairs(list) do if r.category == category then n = n + 1 end end
+    return n
   end
-  check(sorted and rated == 3, "XP options sorted by XP per minute")
+  local lakeshire = find(list, "Pick up 5 quests in Lakeshire")
+  local goulash = find(list, "Do ")
+  local deadmines = find(list, "Run The Deadmines")
+  check(list[1].category == "Due now" and lakeshire and lakeshire.category == "Quest hub"
+    and goulash and goulash.category == "Best quest" and deadmines and deadmines.category == "Dungeon",
+    "one card per kind: due now, a quest hub, the best quest, a dungeon (" .. titles(list) .. ")")
+  check(not find(list, "Pick up 3 quests in Stormwind"), "a hub with fewer than 4 quests for you gets no card")
+  check(count("Dungeon") == 1 and not find(list, "Run Hall of Testing"), "only the best dungeon")
+  local sorted = true
+  for i = 3, #list do
+    if list[i].rate and list[i - 1].rate and list[i].rate > list[i - 1].rate then sorted = false end
+  end
+  check(sorted, "after what's due, cards by XP per minute")
   check(lakeshire and lakeshire.subtitle:find("~299 XP/min", 1, true)
     and lakeshire.details[1].text:find("7,600 XP", 1, true),
     "hub XP is the sum of its quests over trip + 5 min each: " .. tostring(lakeshire and lakeshire.subtitle))
-  check(stormwind and stormwind.details[2].text:find("estimated for 1 quest"), "a quest without XP data is estimated")
+  local estimated = false
+  for _, d in ipairs(deadmines and deadmines.details or {}) do
+    if d.text:find("estimated for 1 quest") then estimated = true end
+  end
+  check(estimated, "a quest without XP data is estimated")
   local function statText(r)
     local out = {}
     for _, st in ipairs(r and r.stats or {}) do out[#out + 1] = st[1] .. "=" .. st[2] end
@@ -1128,9 +1139,14 @@ do
     "a hub's card numbers: travel, quests, XP per minute: " .. statText(lakeshire))
   check(list[1].stats and list[1].stats[1][1] == "Where" and list[1].place:find("spell"),
     "a need's card: why as the place line, then where and travel: " .. tostring(list[1].place))
-  check(#list <= 7 and find(list, "Run Hall of Testing"), "dungeons without quests fill the remaining rows")
-  check(ns.ForYou.SummaryText():find("1 thing due") and not ns.ForYou.SummaryText():find("quests per hour"),
-    "summary: " .. ns.ForYou.SummaryText())
+  check(ns.ForYou.SummaryText():find("1 thing due") and ns.ForYou.SummaryText():find("best of each kind")
+    and not ns.ForYou.SummaryText():find("quests per hour"), "summary: " .. ns.ForYou.SummaryText())
+
+  -- The best quest is a whole-quest trip.
+  local kinds = {}
+  for _, st in ipairs(goulash and goulash.journey and goulash.journey.stops or {}) do kinds[#kinds + 1] = st.action.kind end
+  check(kinds[1] == "pickup" and kinds[#kinds] == "turnin" and statText(goulash):find("XP=", 1, true),
+    "best quest: pick it up, do it, hand it in, with its XP (" .. table.concat(kinds, ",") .. ")")
 
   -- Dungeon quests become one journey: pickups first, the entrance last.
   local dj = deadmines and deadmines.journey
@@ -1142,6 +1158,8 @@ do
   table.sort(picked)
   check(last and last.text == "Enter The Deadmines" and table.concat(picked, ",") == "pickup20,pickup21",
     "dungeon journey picks up its quests, then goes to the entrance (" .. table.concat(picked, ",") .. ")")
+  check(deadmines and deadmines.title == "Run The Deadmines  ·  level 20" and deadmines.place:find("2 pickups on the way"),
+    "the dungeon card keeps its name; the pickups are in its place line: " .. tostring(deadmines and deadmines.place))
   check(deadmines and deadmines.subtitle:find("1 in your log"), "quests in your log count too")
 
   -- Gear at 20%: repair before training.
@@ -1151,30 +1169,19 @@ do
     "low durability: repair first, then training (" .. titles(list) .. ")")
   durability = { 50, 50 }
 
-  -- A big XP quest in Stormwind: training there is on the way, so one journey.
+  -- A big XP quest in Stormwind becomes the best quest; needs stay their own cards.
   XP[6] = { 20, 12000 }
   list = rows()
-  local combo = list[1]
-  check(combo and combo.journey and combo.title == "Train in Stormwind, then pick up 3 quests in Stormwind",
-    "need on the way to the best option: one journey (" .. tostring(combo and combo.title) .. ")")
-  check(combo and #combo.journey.stops == 2 and combo.journey.stops[2].text:find("^Pick up quests here")
-    and combo.actions and combo.actions[1].label == "Train only", "train first, quests last, a Train only button")
-  local sw, swi = find(list, "Pick up 3 quests in Stormwind")
-  local _, lki = find(list, "Pick up 5 quests in Lakeshire")
-  check(sw and lki and swi < lki, "more XP per minute outranks the nearer hub (" .. titles(list) .. ")")
-  combo.actions[1].run(combo)
-  check(ns.Nav.active and ns.Nav.active.journey == nil and ns.Nav.active.title:find("^Train"),
-    "Train only gives plain directions to the trainer")
-  ns.Nav.Stop()
+  check(find(list, "Do Stormwind errand") and not list[1].journey,
+    "the quest worth the most XP is the best quest; training stays a card of its own (" .. titles(list) .. ")")
   XP[6] = { 20, 1400 }
 
   -- Without XP data: quests per hour, weighted by level fit.
   LibQuestieDB.Support.Get = zoneSupport
   list = rows()
   check(ns.ForYou.SummaryText():find("No quest XP in your QuestieDB"), "summary explains the fallback")
-  local lk, lkIndex = find(list, "Pick up 5 quests in Lakeshire")
-  local _, swIndex = find(list, "Pick up 3 quests in Stormwind")
-  check(lk and lk.subtitle:find("quests/h") and not lk.subtitle:find("XP") and swIndex and lkIndex < swIndex,
+  local lk = find(list, "Pick up 5 quests in Lakeshire")
+  check(lk and lk.subtitle:find("quests/h") and not lk.subtitle:find("XP"),
     "fallback ranks by quests per hour: " .. tostring(lk and lk.subtitle))
 
   -- Without QuestieDB: needs and dungeons by level fit.
@@ -1598,18 +1605,13 @@ do
   check(handin and handin.details[1].text:find("2 x 30 s per hand-in", 1, true),
     "tooltip times hand-ins: " .. tostring(handin and handin.details[1].text))
 
-  -- The Lakeshire hub also hands in Solomon's Letter, before picking up.
-  local hub = find(list, "Pick up 5 quests and hand in 1 in Lakeshire")
-  check(hub and hub.journey and actions(hub.journey) == "turnin52,arrive"
-    and hub.journey.stops[2].text:find("^Pick up quests here"),
-    "hub with a hand-in: hand in first, then pick up (" .. titles(list) .. " / " .. actions(hub and hub.journey) .. ")")
-  check(hub and xpOf(hub) == 7600 + 900 and hub.subtitle:find("5 quests + 1 to hand in", 1, true),
-    "hub XP counts the hand-in: " .. tostring(hub and hub.subtitle))
-  check(hub and hub.actions and hub.actions[1].label == "Hand in only", "a Hand in only button on the hub")
-  check(not find(list, "Hand in 1 quest in Lakeshire"), "the hub's hand-in isn't listed twice")
-  hub.actions[1].run(hub)
-  check(ns.Nav.active and actions(ns.Nav.active.journey) == "turnin52", "Hand in only: just the hand-in")
-  ns.Nav.Stop()
+  -- One hand-in card (the best group); the hub card just picks up.
+  local handinCards = 0
+  for _, r in ipairs(list) do if r.category == "Hand in" then handinCards = handinCards + 1 end end
+  check(handinCards == 1 and not find(list, "Hand in 1 quest in Lakeshire"), "only the best hand-in group gets a card")
+  local hub = find(list, "Pick up 5 quests in Lakeshire")
+  check(hub and not hub.journey and hub.route and not hub.actions, "the hub card is plain directions to pick up")
+  check(find(list, "Finish ") and find(list, "Finish ").category == "Finish", "one card to finish quests in your log")
 
   -- Unfinished quests near each other: one whole-quest trip (Journey.QuestStops).
   local finish = find(list, "Finish 2 quests")
@@ -1631,7 +1633,7 @@ do
     "half-done objectives: 2.5 + 5 min left, not two full quests")
 
   -- Dungeon quests in your log count toward the dungeon, not a finish trip.
-  local deadmines = find(list, "Pick up 2 quests, then run The Deadmines")
+  local deadmines = find(list, "Run The Deadmines")
   local withLogged = xpOf(deadmines)
   check(deadmines and deadmines.subtitle:find("3 quests (1 in your log)", 1, true) and not trip:find("10"),
     "dungeon keeps its log quest: " .. tostring(deadmines and deadmines.subtitle))
@@ -1639,7 +1641,7 @@ do
   local savedDone = C_QuestLog.GetAllCompletedQuestIDs
   C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 10 } end
   log = { 50, 51, 52, 53, 54 }
-  local without = xpOf(find(rows(), "Pick up 2 quests, then run The Deadmines"))
+  local without = xpOf(find(rows(), "Run The Deadmines"))
   check(withLogged - without == 1000, string.format("dungeon XP counts the logged quest (%d vs %d)", withLogged, without))
   C_QuestLog.GetAllCompletedQuestIDs = savedDone
 
@@ -1647,9 +1649,8 @@ do
   log = { 10, 50, 51, 52, 53, 54 }
   complete[10] = true
   list = rows()
-  deadmines = find(list, "Pick up 2 quests, then run The Deadmines")
-  hub = find(list, "Pick up 5 quests and hand in 2 in Lakeshire")
-  check(deadmines and not deadmines.subtitle:find("in your log") and hub and xpOf(hub) == 7600 + 900 + 1000,
+  deadmines = find(list, "Run The Deadmines")
+  check(deadmines and not deadmines.subtitle:find("in your log") and find(list, "Hand in"),
     "a done dungeon quest is a hand-in, not dungeon XP (" .. titles(list) .. ")")
   check(ns.ForYou.SummaryText():find("Quest log counted at full XP: 4 ready to hand in, 2 to finish", 1, true),
     "summary says how the log counts: " .. ns.ForYou.SummaryText())
@@ -2172,8 +2173,9 @@ do
   ns.Cards.Show(suggestions, "", true)
 
   ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City  ·  ~5 min  ·  1 quest",
-    place = "Stormwind City  ·  Group", stats = { { "Level", "23" }, { "Travel", "~5 min" }, { "XP/min", "~281" } },
+    place = "Stormwind City  ·  Group", category = "Dungeon", stats = { { "Level", "23" }, { "Travel", "~5 min" }, { "XP/min", "~281" } },
     route = { steps = {} } } }, "", true)
+  check(ns.Cards.Tag(1) == "DUNGEON", "a card says what kind of suggestion it is: " .. tostring(ns.Cards.Tag(1)))
   check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=23,TRAVEL=~5 min,XP/MIN=~281",
     "a card shows its numbers as labelled blocks: " .. table.concat(ns.Cards.Stats(1), ","))
   check(ns.Cards.Drawn()[1] == "Run The Stockade|Go", "a dungeon's level moves from the card title to the subtitle")

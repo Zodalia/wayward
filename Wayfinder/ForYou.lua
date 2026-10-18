@@ -1,11 +1,17 @@
 local _, ns = ...
 
 -- "For you" page, the panel's first tab: a handful of things to do next for
--- this character, right now. Needs come first when they are due (spells you
--- can train and afford, repairs, ammo, food, a flight path close by);
--- everything else is ranked by estimated XP per minute: quest hubs, and
--- dungeons with their quests. Where a need is on the way to the best option,
--- both become one journey ("Train in Stormwind, then pick up 3 quests in ...").
+-- this character, right now, one card per kind of thing (its `category`):
+--   Due now     spells you can train and afford, repairs, ammo, food, a flight
+--               path close by (at most MAX_NEEDS), always first;
+--   Hand in     the best group of quests ready to hand in;
+--   Finish      the best group of unfinished quests in your log;
+--   Best quest  the single quest worth the most XP that you can pick up nearby,
+--               as a whole-quest trip;
+--   Quest hub   per zone, its best hub with HUB_MIN_QUESTS or more quests for
+--               you (up to MAX_HUB_ZONES zones);
+--   Dungeon     the best dungeon, with its quests picked up on the way.
+-- After the due ones, cards are in order of estimated XP per minute.
 --
 -- XP comes from QuestieDB's quest XP table (Support.Get("QuestXP").db). Without
 -- it, options are ranked by quests per hour weighted by level fit, and the
@@ -23,22 +29,22 @@ local ForYou = { id = "foryou", label = "For you", order = 10, searchable = fals
 ns.ForYou = ForYou
 
 local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip
-local MAX_RESULTS = 7           -- rows the panel shows
-local MIN_XP_ROWS = 3           -- XP options listed however many needs are due
+local MAX_RESULTS = 8           -- cards the page shows
+local MAX_NEEDS = 2             -- "Due now" cards
+local HUB_MIN_QUESTS = 4        -- quests for you a hub needs for its own card
+local MAX_HUB_ZONES = 3         -- zones with a "Quest hub" card
 local CACHE_SECONDS = 5         -- a refresh is reused this long (cleared early on data or zone changes)
 local MAX_LEVEL = 60            -- Forever's level cap: quests give no XP there
 local LOW_AMMO = 200            -- arrows or bullets left
 local LOW_FOOD = 5              -- food and drink items left in your bags
 local FOOD_FROM_LEVEL = 6       -- below this, eating and drinking between fights rarely matters
 local FLIGHT_NEAR_SECONDS = 180 -- an undiscovered flight path this close (by route) is worth the detour
-local COMBINE_SLACK = 30        -- seconds a combined journey may add over the two trips apart
 local MAX_PICKUPS = 4           -- dungeon quest givers visited on the way to the entrance
 local HANDIN_SECONDS = 30       -- handing in one quest, on top of the trip
 local MIN_SHARE_LEFT = 0.25     -- an unfinished quest takes at least this share of SECONDS_PER_QUEST
 local FINISH_RADIUS = 600       -- yards between objective areas done in one "Finish" trip
 local MAX_FINISH = 3            -- log quests per "Finish" trip (up to two stops each)
 local FINISH_TRIPS = 3          -- nearest groups of unfinished log quests offered
-local HANDIN_AT_HUB = 350       -- yards: hand-ins this close to a hub's quest giver join the hub
 
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
@@ -504,7 +510,7 @@ local function handinOptions(ctx, start, net)
         kind = "handin", place = hub.place,
         title = capitalize(string.format("hand in %s %s", plural(#quests, "quest"), where)),
         zone = zoneName(goal), goal = goal, route = route, trip = route.seconds,
-        quests = quests, stops = stops, handinStops = stops,
+        quests = quests, stops = stops,
       }
     end
   end
@@ -583,32 +589,6 @@ local function hubOptions()
     end
   end
   return out
-end
-
--- A hub where you also hand quests in takes them along ("Pick up 3 quests and
--- hand in 2 in Lakeshire"), handing in first. Returns the hand-ins left alone.
-local function mergeHandins(hubs, handins)
-  local alone = {}
-  for _, h in ipairs(handins) do
-    local target
-    for _, hub in ipairs(hubs) do
-      local d = ns.Geo.Distance(h.goal, hub.goal)
-      if not hub.handins and ((h.place and h.place == hub.place and d < math.huge) or d <= HANDIN_AT_HUB) then
-        target = hub
-        break
-      end
-    end
-    if target then
-      target.title = capitalize(string.format("pick up %s and hand in %d %s", plural(#target.quests, "quest"),
-        #h.quests, target.where))
-      target.handins = #h.quests
-      for _, q in ipairs(h.quests) do target.quests[#target.quests + 1] = q end
-      target.stops, target.handinStops = h.stops, h.stops
-    else
-      alone[#alone + 1] = h
-    end
-  end
-  return alone
 end
 
 -- Dungeons with their quests (available and in your log) as XP options, and
@@ -715,31 +695,50 @@ local function journeyTitle(stops)
   return capitalize(table.concat(parts, ", then "))
 end
 
--- A due need and the best option in one journey, when the need is on the way:
--- the journey takes no longer than the two trips apart. The option's quests or
--- entrance come last, so you train or shop first, then quest. Hand-ins and
--- unfinished log quests have no fixed end: the need goes wherever it is quickest.
-local function combine(need, option, start, net)
-  if not (need.stop and (option.finish or #option.stops > 0)) then return nil end
-  local needStop = copyStop(need.stop)
-  local def = { stops = copyStops(option.stops, { needStop }), finish = option.finish and copyStop(option.finish) }
-  local journey = ns.Journey.Plan(start, def, net)
-  if not journey or #journey.skipped > 0 then return nil end
-  if journey.seconds > seconds(need.route) + option.trip + COMBINE_SLACK then return nil end
-  if option.kind == "dungeon" then
-    journey.title = journeyTitle(journey.stops)
-  else
-    local doing = option.title:sub(1, 1):lower() .. option.title:sub(2)
-    if journey.stops[1] == needStop then
-      journey.title = capitalize(needStop.phrase .. ", then " .. doing)
-    elseif journey.stops[#journey.stops] == needStop then
-      journey.title = string.format("%s, then %s", option.title, needStop.phrase)
-    else
-      journey.title = string.format("%s, %s on the way", option.title, needStop.phrase)
+-- The quest worth the most XP among the hubs' quests (not dungeon ones), as a
+-- whole-quest trip: pick it up, do it (and what it needs first), hand it in.
+local function bestQuestOption(hubs, ctx, start, net)
+  local best, bestValue, bestHub
+  for _, hub in ipairs(hubs) do
+    for _, q in ipairs(hub.quests) do
+      if not q.inLog and not dungeonQuest(ns.Questie.Quest(q.id)) then
+        local v = questValue(q, ctx)
+        if not bestValue or v > bestValue or (v == bestValue and hub.trip < bestHub.trip) then
+          best, bestValue, bestHub = q, v, hub
+        end
+      end
     end
   end
-  def.title = journey.title
-  return journey
+  if not best then return nil end
+  local stops = ns.Journey.QuestStops(best.id, start)
+  if #stops == 0 then return nil end
+  local name = best.name or ("quest " .. best.id)
+  local journey = ns.Journey.Plan(start, { title = "Do " .. name, stops = stops }, net)
+  if not journey then return nil end
+  local option = {
+    kind = "quest", title = "Do " .. name, zone = bestHub.zone, place = bestHub.place,
+    goal = journey.stops[#journey.stops].node, trip = journey.seconds, journey = journey, stops = stops,
+    quests = { { id = best.id, name = best.name, level = best.level, giver = best.giver } },
+  }
+  score(option, ctx)
+  return option
+end
+
+-- Per zone, its best hub with enough quests for you; the best zones first.
+local function hubPicks(hubs)
+  local byZone, zones = {}, {}
+  for _, hub in ipairs(hubs) do
+    if #hub.quests >= HUB_MIN_QUESTS then
+      local current = byZone[hub.zone]
+      if not current then zones[#zones + 1] = hub.zone end
+      if not current or hub.rate > current.rate then byZone[hub.zone] = hub end
+    end
+  end
+  local out = {}
+  for _, zone in ipairs(zones) do out[#out + 1] = byZone[zone] end
+  table.sort(out, function(a, b) return a.rate > b.rate end)
+  while #out > MAX_HUB_ZONES do table.remove(out) end
+  return out
 end
 
 ---------------------------------------------------------------- rows
@@ -755,7 +754,7 @@ local function needRow(need)
   local details = { { text = need.rank, color = GOLD } }
   for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
   return {
-    id = "need" .. need.kind, kind = need.kind, title = need.title,
+    id = "need" .. need.kind, kind = need.kind, category = "Due now", title = need.title,
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
     place = capitalize(need.why), stats = { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
     goal = need.goal, route = need.route, details = details,
@@ -805,18 +804,6 @@ local function questLines(details, option, ctx)
       color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true,
     }
   end
-end
-
--- Hand in only the quests that are ready, leaving the hub's new quests.
-local function handinOnly(option)
-  return { label = "Hand in only", run = function()
-    local start = ns.Geo.PlayerNode()
-    local title = string.format("Hand in %s", plural(#option.handinStops, "quest"))
-    local journey = start and ns.Journey.Plan(start, { title = title, stops = copyStops(option.handinStops) })
-    if not journey then return end
-    ns.Nav.StartJourney(journey)
-    if ns.Panel.IsShown() then ns.Panel.Toggle() end
-  end }
 end
 
 local function optionRow(option, rank, total, ctx)
@@ -879,13 +866,19 @@ local function optionRow(option, rank, total, ctx)
     stats[#stats + 1] = { "Ready", tostring(handins) }
   elseif option.kind == "finish" then
     stats[#stats + 1] = { "In your log", tostring(logged) }
+  elseif option.kind == "quest" then
+    local q = option.quests[1]
+    stats[#stats + 1] = ctx.xpMode and { "XP", "~" .. formatNumber(option.value) } or { "Level", tostring(q.level or "?") }
   else
     stats[#stats + 1] = { "Quests", handins > 0 and string.format("%d + %d ready", fresh, handins) or tostring(fresh) }
   end
   stats[#stats + 1] = rateStat(option, ctx)
 
+  local CATEGORY = { hub = "Quest hub", handin = "Hand in", finish = "Finish", quest = "Best quest",
+    dungeon = option.raid and "Raid" or "Dungeon" }
   local row = {
     id = option.kind .. (option.name or option.title), kind = option.kind, raid = option.raid, title = option.title,
+    category = CATEGORY[option.kind],
     subtitle = string.format("%s  ·  %s  ·  %s", firstPart(option.zone),
       ns.FormatDuration(option.trip), table.concat(why, ", ")),
     place = place, stats = stats,
@@ -893,11 +886,16 @@ local function optionRow(option, rank, total, ctx)
   }
   if option.journey then
     row.journey = option.journey
-    row.title = option.journey.title or journeyTitle(option.journey.stops)
+    -- A dungeon card keeps its name; the pickups on the way are in the place line.
+    if option.kind == "dungeon" then
+      local pickups = #option.journey.stops - 1
+      if pickups > 0 then row.place = row.place .. string.format("  ·  %s on the way", plural(pickups, "pickup")) end
+    else
+      row.title = option.journey.title or journeyTitle(option.journey.stops)
+    end
     option.journey.title = row.title
     option.journey.def.title = row.title
   end
-  if option.kind == "hub" and option.handinStops then row.actions = { handinOnly(option) } end
   return row
 end
 
@@ -913,6 +911,7 @@ local function plainRow(option)
   stats[#stats + 1] = { "Travel", ns.FormatDuration(option.trip) }
   return {
     id = "plain" .. (r.id or option.name), kind = "dungeon", raid = option.raid, title = option.title,
+    category = option.raid and "Raid" or "Dungeon",
     subtitle = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone),
       ns.FormatDuration(option.trip)),
     place = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone), option.raid and "Raid" or "Group"),
@@ -921,26 +920,11 @@ local function plainRow(option)
   }
 end
 
-local function comboRow(need, option, journey, ctx)
-  local details = { { text = need.rank .. " On the way: the best option, " .. option.title .. ".",
-    color = GOLD } }
-  for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
-  questLines(details, option, ctx)
-  return {
-    id = "combo" .. need.kind, kind = need.kind, title = journey.title,
-    subtitle = string.format("%s  ·  %s, then %s", ns.FormatDuration(journey.seconds), need.why,
-      rateText(option, ctx)),
-    place = capitalize(need.why) .. ", then " .. option.title,
-    stats = { { "Trip", ns.FormatDuration(journey.seconds) }, { "Stops", tostring(#journey.stops) }, rateStat(option, ctx) },
-    journey = journey, details = details, actions = { onlyAction(need) },
-  }
-end
-
 ---------------------------------------------------------------- page
 
 local function summaryFor(ctx, needs)
   local level = UnitLevel("player")
-  local ranking = ctx.xpMode and "the most XP per minute" or "the most quests per hour"
+  local ranking = ctx.xpMode and "the best of each kind, by XP per minute" or "the best of each kind, by quests per hour"
   local parts = {}
   if needs > 0 then
     parts[1] = string.format("Level %d: |cff7fd1ae%s due|r first, then %s.", level, plural(needs, "thing"), ranking)
@@ -991,45 +975,64 @@ local function build()
   for _, n in ipairs(try(vendorNeeds, ctx) or {}) do addNeed(n) end
   addNeed(try(flightNeed, ctx, start, net))
   table.sort(needs, function(a, b) return PRIORITY[a.kind] < PRIORITY[b.kind] end)
-  while #needs > MAX_RESULTS - MIN_XP_ROWS do table.remove(needs) end
+  while #needs > MAX_NEEDS do table.remove(needs) end
 
-  -- Options by XP per minute; journeys (dungeon pickups, log quests) are
-  -- planned only for the ones listed, then those are ranked again with the
-  -- real trip time.
-  local options = try(hubOptions) or {}
+  -- Every option, ranked by XP per minute (the rank shown on each card); then
+  -- the best of each kind. Journeys are planned only for those, and ranked
+  -- again with their real trip time.
+  local hubs = try(hubOptions) or {}
   local handins = try(handinOptions, ctx, start, net) or {}
-  for _, option in ipairs(mergeHandins(options, handins)) do options[#options + 1] = option end
-  for _, option in ipairs(try(finishOptions, ctx, start, net) or {}) do options[#options + 1] = option end
+  local finishes = try(finishOptions, ctx, start, net) or {}
   local dungeons, plain = try(dungeonOptions, ctx)
-  for _, option in ipairs(dungeons or {}) do options[#options + 1] = option end
-  for _, option in ipairs(options) do score(option, ctx) end
+  dungeons = dungeons or {}
+  local all = {}
+  for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
+    for _, option in ipairs(list) do
+      score(option, ctx)
+      all[#all + 1] = option
+    end
+  end
   local function byRate(a, b)
     if a.rate ~= b.rate then return a.rate > b.rate end
     return a.seconds < b.seconds
   end
-  table.sort(options, byRate)
-  local total = #options
-  local listed = {}
-  for i = 1, math.min(#options, MAX_RESULTS - #needs) do listed[i] = options[i] end
-  for _, option in ipairs(listed) do
-    if option.kind == "dungeon" then
-      try(dungeonJourney, option, ctx, start, net)
-    elseif #option.stops > 0 then
-      try(questJourney, option, ctx, start, net)
+  table.sort(all, byRate)
+  for i, option in ipairs(all) do option.rank = i end
+  local function best(list)
+    table.sort(list, byRate)
+    return list[1]
+  end
+
+  local picks = {}
+  local function pick(option) if option then picks[#picks + 1] = option end end
+  local handin, finish, dungeon = best(handins), best(finishes), best(dungeons)
+  for _, option in ipairs({ handin, finish }) do
+    if option and #option.stops > 0 then try(questJourney, option, ctx, start, net) end
+    pick(option)
+  end
+  local quest = try(bestQuestOption, hubs, ctx, start, net)
+  if quest then
+    quest.rank = 1
+    for _, option in ipairs(all) do
+      if option.rate > quest.rate then quest.rank = quest.rank + 1 end
     end
   end
-  table.sort(listed, byRate)
+  pick(quest)
+  for _, hub in ipairs(hubPicks(hubs)) do pick(hub) end
+  if dungeon then
+    try(dungeonJourney, dungeon, ctx, start, net)
+    pick(dungeon)
+  end
+  table.sort(picks, byRate)
 
   local results = {}
-  local combined = needs[1] and listed[1] and try(combine, needs[1], listed[1], start, net)
-  for i, need in ipairs(needs) do
-    results[#results + 1] = (i == 1 and combined) and comboRow(need, listed[1], combined, ctx) or needRow(need)
-  end
-  for i, option in ipairs(listed) do results[#results + 1] = optionRow(option, i, total, ctx) end
-  for _, option in ipairs(plain or {}) do
+  for _, need in ipairs(needs) do results[#results + 1] = needRow(need) end
+  for _, option in ipairs(picks) do
     if #results >= MAX_RESULTS then break end
-    results[#results + 1] = plainRow(option)
+    results[#results + 1] = optionRow(option, option.rank, #all, ctx)
   end
+  -- No dungeon with quests for you: the best one by level fit and travel time.
+  if not dungeon and plain and plain[1] and #results < MAX_RESULTS then results[#results + 1] = plainRow(plain[1]) end
 
   summary = summaryFor(ctx, #needs)
   return results, nil, net

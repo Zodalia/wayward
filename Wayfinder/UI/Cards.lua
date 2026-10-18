@@ -10,7 +10,7 @@ local _, ns = ...
 --
 -- A page opts in with `layout = "cards"` (and `width`); results are the usual
 -- panel results, plus optional `icon` (file) / `iconCoords`, `kind`, and
--- `place` / `stats` (see the page contract in Panel.lua).
+-- `place` / `stats` / `category` (see the page contract in Panel.lua).
 
 local Cards = {}
 ns.Cards = Cards
@@ -24,6 +24,7 @@ local NAV_HEIGHT = 34      -- the arrows under the cards
 local TITLE_COLOR = { 0.20, 0.10, 0.02 }
 local TEXT_COLOR = { 0.22, 0.14, 0.06 }
 local DETAIL_COLOR = { 0.28, 0.19, 0.09 }
+local TAG_COLOR = { 0.55, 0.12, 0.05 } -- the card's kind ("BEST QUEST"), a deep red
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
 
@@ -186,8 +187,8 @@ local function divider(card, width)
   return line
 end
 
--- Large card, top to bottom: icon, title, where; the numbers; a rule; the
--- quests and notes; the button. Fixed gaps, so every card lines up the same.
+-- Large card, top to bottom: icon, its kind ("DUNGEON"), title, where; the
+-- numbers; a rule; the quests and notes; the button. Fixed gaps, so every card lines up the same.
 local LARGE_TEXT_W = 270
 
 local function largeCard(parent)
@@ -197,8 +198,13 @@ local function largeCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -16)
 
+  card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
+  card.tag:SetPoint("TOP", card.icon, "BOTTOM", 0, -10)
+  card.tag:SetWidth(LARGE_TEXT_W)
+  card.tag:SetJustifyH("CENTER")
+
   card.title = text(card, "GameFontNormalHuge", 18, TITLE_COLOR)
-  card.title:SetPoint("TOP", card.icon, "BOTTOM", 0, -12)
+  card.title:SetPoint("TOP", card.tag, "BOTTOM", 0, -4)
   card.title:SetWidth(LARGE_TEXT_W)
   card.title:SetJustifyH("CENTER")
   if card.title.SetMaxLines then card.title:SetMaxLines(2) end
@@ -217,7 +223,7 @@ local function largeCard(parent)
   card.detail:SetWidth(LARGE_TEXT_W - 12)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(3)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(6) end
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(5) end
 
   card.button = button(card, 116, 32, true)
   card.button:SetPoint("BOTTOM", 0, 22)
@@ -237,8 +243,13 @@ local function smallCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
+  card.tag = text(card, "GameFontHighlightSmall", 9, TAG_COLOR)
+  card.tag:SetPoint("TOPLEFT", SMALL_LEFT, -12)
+  card.tag:SetWidth(SMALL_TEXT_W)
+  card.tag:SetJustifyH("LEFT")
+
   card.title = text(card, "GameFontNormalLarge", 14, TITLE_COLOR)
-  card.title:SetPoint("TOPLEFT", SMALL_LEFT, -16)
+  card.title:SetPoint("TOPLEFT", card.tag, "BOTTOMLEFT", 0, -3)
   card.title:SetWidth(SMALL_TEXT_W)
   card.title:SetJustifyH("LEFT")
   card.title:SetWordWrap(false)
@@ -331,6 +342,7 @@ local function fill(card, r, large)
   -- "Run The Stockade  ·  level 23": the level is one of the numbers.
   local title, level = (r.title or ""):match("^(.-)%s+·%s+level (%d+)$")
   card.title:SetText(title or r.title)
+  card.tag:SetText(r.category and string.upper(r.category) or "")
 
   -- Where, then the numbers; rows without them show their subtitle instead.
   local stats = r.stats
@@ -353,7 +365,7 @@ local function fill(card, r, large)
 
   -- The quests and notes (details after the ranking line, without those
   -- marked `more`); the tooltip has everything.
-  local lines, room = {}, large and 6 or 2
+  local lines, room = {}, large and 5 or 2
   for i = 2, #(r.details or {}) do
     if #lines >= room then break end
     if not r.details[i].more then lines[#lines + 1] = plain(r.details[i].text) end
@@ -445,6 +457,12 @@ end
 function Cards.Detail(index)
   local card = view and ({ view.large, view.small[1], view.small[2] })[index]
   return card and card.detail:GetText()
+end
+
+-- A card's kind as drawn (1 = large), for tests.
+function Cards.Tag(index)
+  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
+  return card and card.tag:GetText()
 end
 
 -- A card's numbers as drawn, "LABEL=value" (1 = large), for tests.

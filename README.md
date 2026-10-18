@@ -116,30 +116,36 @@ button, to close it). The search box filters any list. If the cards ever show no
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
 page is a list in the side panel.
 
-**For you** is the first tab (`/wf next` opens it): a handful of things to do
-next, each with a one-line why; click one for directions or a journey. Needs
-come first when due: spells you can train and afford (after one trainer
-visit), repairs at 50% durability or lower, ammo under 200, food and drink
-under 5 (not mages, from level 6), and an undiscovered flight path within
-about 3 minutes. The rest is ranked by estimated XP per minute: quest hubs and
-dungeons with their quests, XP over the trip plus 5 minutes per quest
-(`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes from QuestieDB's quest XP
-table, with the vanilla penalty for quests below your level; quests it has no
-XP for (Forever-only ones) get the average for their level. Without that
-table the ranking falls back to quests per hour weighted by level fit, and
-without QuestieDB to dungeons by level fit and travel time; the summary line
-says which. A need on the way to the best option becomes one journey ("Train
-in Stormwind, then pick up 3 quests in ..."), and dungeon rows pick up their
-quests before the entrance. `/wf debug` shows how long a refresh took.
+**For you** is the first tab (`/wf next` opens it): a short, curated list of
+things to do next, one card per kind of thing, each labelled with its kind:
 
-Quests already in your log count at full XP, with only the time left for
-them. Ones ready to hand in are grouped by where you hand them in ("Hand in 3
-quests in Lakeshire", 30 seconds each), so they usually rank first; a quest
-hub where you also hand quests in takes them along ("Pick up 3 quests and hand
-in 2 in Lakeshire", with a Hand in only button). Unfinished quests whose
-objectives are close together become one whole-quest trip ("Finish 2 quests
-near Lakeshire"), timed at 5 minutes times the share of objectives left (at
-least a quarter). A dungeon's quests in your log count toward its XP.
+- **Due now** (at most two, always first): spells you can train and afford
+  (after one trainer visit), repairs at 50% durability or lower, ammo under
+  200, food and drink under 5 (not mages, from level 6), and an undiscovered
+  flight path within about 3 minutes.
+- **Hand in**: the best group of quests ready to hand in, grouped by where you
+  hand them in (30 seconds each).
+- **Finish**: the best group of unfinished quests in your log whose
+  objectives are close together, as one whole-quest trip, timed at 5 minutes
+  times the share of objectives left (at least a quarter).
+- **Best quest**: the single quest worth the most XP that you can pick up
+  nearby, as a whole-quest trip (pick it up, do it, hand it in).
+- **Quest hub**: per zone, its best hub with 4 or more quests for you, up to
+  three zones.
+- **Dungeon** (or **Raid**): the best one, with its quests picked up on the
+  way to the entrance; without quests for you, the best by level fit and
+  travel time.
+
+After the due ones, cards are in order of estimated XP per minute: XP over the
+trip plus 5 minutes per quest (`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes
+from QuestieDB's quest XP table, with the vanilla penalty for quests below your
+level; quests it has no XP for (Forever-only ones) get the average for their
+level. Without that table the ranking falls back to quests per hour weighted
+by level fit, and without QuestieDB to dungeons by level fit and travel time;
+the summary line says which. Quests already in your log count at full XP, with
+only the time left for them; a dungeon's quests in your log count toward it.
+The Quests page has every hub and your whole log. `/wf debug` shows how long a
+refresh took.
 
 ### Getting around
 
