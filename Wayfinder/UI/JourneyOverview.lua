@@ -359,9 +359,20 @@ function Overview.Refresh()
     ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())),
     root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
   -- Rows one under the other (step lines are shorter), as many as fit.
-  -- Scrolled: from line scroll + 1, as many as fit.
-  scroll = math.max(0, math.min(scroll, #lines - 1))
+  -- Scrolled: from line scroll + 1, as many as fit. A list that needs
+  -- scrolling keeps the full height, and stops once its last line shows.
   local room, used, shown = MAX_ROWS * ROW_HEIGHT, 0, 0
+  local function heightOf(line) return line.step and STEP_HEIGHT or ROW_HEIGHT end
+  local maxScroll, fromEnd = 0, 0
+  for i = #lines, 1, -1 do
+    fromEnd = fromEnd + heightOf(lines[i])
+    if fromEnd > room then
+      maxScroll = i
+      break
+    end
+  end
+  scroll = math.max(0, math.min(scroll, maxScroll))
+  Overview.maxScroll = maxScroll
   for i, row in ipairs(frame.rows) do
     local line = lines[scroll + i]
     local height = line and (line.step and STEP_HEIGHT or ROW_HEIGHT) or 0
@@ -425,8 +436,9 @@ function Overview.Refresh()
     scroll > 0 and (scroll .. " above") or "", below > 0 and ((scroll > 0 and ", " or "") .. below .. " below") or "") or "")
   Overview.scrolled, Overview.shownLines = scroll, shown
 
-  -- Under the stops: what's on the way, then the map.
-  local y = -44 - used - 10
+  -- Under the stops: what's on the way, then the map. A scrolling list
+  -- keeps its full height.
+  local y = -44 - (maxScroll > 0 and room or used) - 10
   local list = ns.OnTheWay and ns.OnTheWay.Get() or {}
   frame.suggestHeader:ClearAllPoints()
   frame.suggestHeader:SetPoint("TOPLEFT", 12, y)
@@ -461,7 +473,8 @@ function Overview.Refresh()
     frame.map.canvas:SetPoint("TOPLEFT", 12, y - 6)
     y = y - 6 - mapHeight
   end
-  frame:SetHeight(-y + 26)
+  frame.height = -y + 26
+  frame:SetHeight(frame.height)
 end
 
 -- How many rows show a drag handle (for tests).
@@ -480,6 +493,9 @@ function Overview.Move(from, to)
   if not (a and b) then return false end
   return ns.Nav.MoveStop(a.stop, b.stop)
 end
+
+-- The window's height (for tests).
+function Overview.Height() return frame and frame.height end
 
 -- Scrolls the list (positive goes up, towards the first line).
 function Overview.Scroll(delta)

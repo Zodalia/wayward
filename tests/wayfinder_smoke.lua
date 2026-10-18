@@ -2817,6 +2817,12 @@ do
   check(ns.JourneyOverview.scrolled == 0 and top < #ns.JourneyOverview.Lines(), "a long trip doesn't all fit")
   ns.JourneyOverview.Scroll(-3)
   check(ns.JourneyOverview.scrolled == 3, "the mouse wheel scrolls it")
+  local height = ns.JourneyOverview.Height()
+  ns.JourneyOverview.Scroll(-100)
+  check(ns.JourneyOverview.scrolled == ns.JourneyOverview.maxScroll
+    and ns.JourneyOverview.scrolled + ns.JourneyOverview.shownLines == #ns.JourneyOverview.Lines(),
+    "it stops once the last line shows")
+  check(ns.JourneyOverview.Height() == height, "and the window keeps its size")
   ns.JourneyOverview.Scroll(10)
   check(ns.JourneyOverview.scrolled == 0, "and back to the top, no further")
   ns.Nav.Stop()
