@@ -308,7 +308,10 @@ panel to add it to the trip you're on.
     reload, re-planned from where you are. The directions box's book button
     opens an overview of every stop (done / now / next; finished stops fold
     into one line you can click open, by themselves from three of them or
-    when they'd push open stops off the list); a stop can be dropped
+    when they'd push open stops off the list; under the current stop, the
+    steps that get you there, walk, fly, boat, with the one you're on
+    marked, and any stop's +/- shows or hides its own, so you can see where
+    it's taking you and hearth instead); a stop can be dropped
     there, together with the stops that need it, or dragged up or down by its
     handle to reorder the trip. A reordered trip keeps your order (`Journey.Move`);
     stops added later go where they add the least travel, and a stop can't

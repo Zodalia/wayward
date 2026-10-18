@@ -2383,6 +2383,21 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands",
     stops = { stopAt(0.52, "A"), stopAt(0.54, "B"), pickup, turnin } }))
   check(labels() == "A,B,Giver,Finisher", "planned nearest first: " .. labels())
+  ns.JourneyOverview.Show()
+  local function stepLines()
+    local out = {}
+    for _, line in ipairs(ns.JourneyOverview.Lines()) do
+      if line.step then out[#out + 1] = line.state .. ":" .. ns.Router.Describe(ns.Nav.active.route, line.stepIndex, true) end
+    end
+    return table.concat(out, " / ")
+  end
+  check(stepLines() == "now:Walk to A", "the current stop shows the steps that get you there: " .. stepLines())
+  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[1])
+  check(stepLines() == "", "its - folds them")
+  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[1])
+  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[2])
+  check(stepLines() == "now:Walk to A / next:Walk to B", "and any stop's + shows its own: " .. stepLines())
+  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[2])
   ns.HUD.Update()
   local lines = ns.HUD.Lines()
   check(lines[1]:find("Errands", 1, true) and lines[1]:find("0 of 4 done", 1, true) and lines[2] == "Visit A"
@@ -2398,7 +2413,9 @@ do
   local function shape()
     local out = {}
     for _, line in ipairs(ns.JourneyOverview.Lines()) do
-      out[#out + 1] = line.header and ("finished" .. line.count .. (line.folded and "+" or "-")) or line.row.state
+      if not line.step then
+        out[#out + 1] = line.header and ("finished" .. line.count .. (line.folded and "+" or "-")) or line.row.state
+      end
     end
     return table.concat(out, ",")
   end

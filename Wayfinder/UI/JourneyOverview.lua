@@ -4,6 +4,10 @@ local _, ns = ...
 -- from the directions box (=) and when a journey with several stops starts.
 -- An open stop can be dropped (x); stops that need it are dropped with it.
 -- Drag an open stop up or down by its handle (or the row) to reorder the trip.
+-- Under an open stop, the steps that get you there (walk, fly, boat...), with
+-- the one you're on marked: open under the current stop, and any stop's +/-
+-- opens or folds them, so you can see where it's taking you (and hearth
+-- instead).
 -- Finished stops (done, dropped, skipped) fold into one line you can open;
 -- they fold by themselves once there are AUTO_FOLD of them, or when showing
 -- them would push open stops off the list.
@@ -11,14 +15,17 @@ local _, ns = ...
 local Overview = {}
 ns.JourneyOverview = Overview
 
-local MAX_ROWS = 10
+local MAX_ROWS = 10        -- the list is this many stop rows tall
 local ROW_HEIGHT = 30
+local STEP_HEIGHT = 15     -- a step line under a stop
+local POOL = 24            -- rows drawn at most (stops and steps)
 local HANDLE_WIDTH = 16
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
 
 local frame
 local unfolded -- nil: fold by the rule above; true / false: the player's choice for this trip
+local opened = setmetatable({}, { __mode = "k" }) -- [stop] = true / false: its steps shown (nil: the current stop's)
 local dragging -- the row being dragged
 
 -- The row under the cursor that a dragged stop can go to.
@@ -86,7 +93,7 @@ local function create()
   ns.Skin.Text(f.info)
 
   f.rows = {}
-  for i = 1, MAX_ROWS do
+  for i = 1, POOL do
     local row = CreateFrame("Frame", nil, f)
     row:SetSize(356, ROW_HEIGHT)
     row:SetPoint("TOPLEFT", 12, -44 - (i - 1) * ROW_HEIGHT)
@@ -107,6 +114,18 @@ local function create()
     row.drop:SetText("x")
     row.drop:SetScript("OnClick", function() ns.Nav.Drop(row.stop) end)
     ns.Skin.Button(row.drop)
+    -- Show or fold the steps to this stop.
+    row.expand = CreateFrame("Button", nil, row)
+    row.expand:SetSize(14, 14)
+    row.expand:SetPoint("RIGHT", row.drop, "LEFT", -6, 0)
+    row.expand:SetScript("OnClick", function() Overview.ToggleSteps(row.stop) end)
+    row.expand:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText("Show or hide the steps to this stop")
+      GameTooltip:Show()
+    end)
+    row.expand:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row.expand:Hide()
     ns.Skin.Text(row.text)
     row.index = i
     local function startDrag()
@@ -222,6 +241,31 @@ local LOOK = {
 
 local FINISHED = { done = true, dropped = true, skipped = true }
 
+-- The current route's steps that lead to `stop`: first, last (indexes), or nil.
+local function legOf(a, stop)
+  local first = 1
+  for i, step in ipairs(a.route.steps) do
+    if step.stop == stop then return first, i end
+    if step.stop then first = i + 1 end
+  end
+  return nil
+end
+
+local function stepsOpen(stop, state)
+  if opened[stop] ~= nil then return opened[stop] end
+  return state == "now"
+end
+
+function Overview.ToggleSteps(stop)
+  if not stop then return end
+  local state
+  for _, r in ipairs(Overview.Rows()) do
+    if r.stop == stop then state = r.state end
+  end
+  opened[stop] = not stepsOpen(stop, state)
+  Overview.Refresh()
+end
+
 -- What the list shows, top to bottom: the finished stops' line (when there
 -- are any), those stops unless folded, then the open ones.
 --   { header = true, count, folded } or { row = Rows() entry, index }
@@ -235,8 +279,26 @@ function Overview.Lines()
     or (unfolded == nil and (finished >= AUTO_FOLD or #rows + 1 > MAX_ROWS))
   local lines = {}
   if finished > 0 then lines[1] = { header = true, count = finished, folded = folded } end
+  local a = ns.Nav.active
   for i, r in ipairs(rows) do
-    if not (folded and FINISHED[r.state]) then lines[#lines + 1] = { row = r, index = i } end
+    if not (folded and FINISHED[r.state]) then
+      lines[#lines + 1] = { row = r, index = i }
+      -- The steps that get you there, under an open stop.
+      local first, last = nil, nil
+      if a and not FINISHED[r.state] then first, last = legOf(a, r.stop) end
+      if first and stepsOpen(r.stop, r.state) then
+        for k = first, last do
+          lines[#lines + 1] = { step = a.route.steps[k], stepIndex = k,
+            state = k < a.index and "done" or k == a.index and "now" or "next" }
+        end
+      end
+      if first then lines[#lines].hasSteps = true end
+      if first then
+        for j = #lines, 1, -1 do
+          if lines[j].row then lines[j].stepsOpen, lines[j].canOpen = stepsOpen(r.stop, r.state), true break end
+        end
+      end
+    end
   end
   return lines, rows
 end
@@ -264,11 +326,35 @@ function Overview.Refresh()
   frame.info:SetText(string.format("%d of %d stops done  ·  %s to go%s", done, #rows,
     ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())),
     root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
+  -- Rows one under the other (step lines are shorter), as many as fit.
+  local room, used, shown = MAX_ROWS * ROW_HEIGHT, 0, 0
   for i, row in ipairs(frame.rows) do
     local line = lines[i]
+    local height = line and (line.step and STEP_HEIGHT or ROW_HEIGHT) or 0
+    if line and used + height > room then line = nil end
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", 12, -44 - used)
+    row:SetHeight(math.max(height, 1))
+    if line then
+      used = used + height
+      shown = shown + 1
+    end
     local r = line and line.row
     row.stop, row.rowIndex, row.header = r and r.stop, line and line.index, line and line.header
-    if line and line.header then
+    row.expand:Hide()
+    if line and line.step then
+      local route = a.route
+      local text = ns.Router.Describe(route, line.stepIndex, true) .. "  ·  " .. ns.FormatDuration(line.step.seconds)
+      local look = line.state == "now" and "|cffffd200>|r " or "   "
+      row.text:SetText("      " .. look .. text)
+      row.text:SetAlpha(line.state == "done" and 0.45 or 0.9)
+      row.zone:SetText("")
+      row.movable = false
+      row.drop:Hide()
+      row.handle:Hide()
+      row.toggle:Hide()
+      row:Show()
+    elseif line and line.header then
       row.text:SetText(string.format("|cff9d9d9d%s finished|r  %s", line.count == 1 and "1 stop" or (line.count .. " stops"),
         line.folded and "(click to show)" or "(click to hide)"))
       row.zone:SetText("")
@@ -290,12 +376,17 @@ function Overview.Refresh()
       row.drop:SetShown(r.state == "now" or r.state == "next")
       row.handle:SetShown(row.movable)
       row.toggle:Hide()
+      if line.canOpen then
+        row.expand:SetNormalTexture(line.stepsOpen and "Interface\\Buttons\\UI-MinusButton-Up"
+          or "Interface\\Buttons\\UI-PlusButton-Up")
+        row.expand:Show()
+      end
       row:Show()
     else
       row:Hide()
     end
   end
-  frame.more:SetText(#lines > MAX_ROWS and string.format("... and %d more", #lines - MAX_ROWS) or "")
+  frame.more:SetText(#lines > shown and string.format("... and %d more", #lines - shown) or "")
 end
 
 -- How many rows show a drag handle (for tests).
@@ -332,6 +423,7 @@ end
 -- A new trip folds by the rule again.
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
+  opened = setmetatable({}, { __mode = "k" })
   Overview.Show()
 end)
 ns.Listen("NAV_CHANGED", Overview.Refresh)

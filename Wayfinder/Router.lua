@@ -212,10 +212,11 @@ local TRANSPORT_VERB = {
 }
 
 -- Player-facing text for a step; walking is described by where it leads.
-function Router.Describe(route, index)
+-- `travelOnly` describes the travel even when the step ends at a journey stop.
+function Router.Describe(route, index, travelOnly)
   local step, nextStep = route.steps[index], route.steps[index + 1]
   -- A journey stop says what to do there ("Pick up ... from ...").
-  if step.stop and step.stop.text then return step.stop.text end
+  if step.stop and step.stop.text and not travelOnly then return step.stop.text end
   if step.mode == "fly" then return "Fly to " .. step.to.label end
   if step.mode == "transport" then
     return string.format(TRANSPORT_VERB[step.kind] or "Travel to %s", step.to.label)
