@@ -100,7 +100,7 @@ function Journey.QuestStops(questID, here)
     local giver, node = ns.Questie.QuestGiver(questID, here)
     if not node then return {} end
     previous = { node = node, text = string.format("Pick up %s from %s", name, giver or "the quest giver"),
-      action = { kind = "pickup", questID = questID } }
+      giver = giver, action = { kind = "pickup", questID = questID } }
     stops[#stops + 1] = previous
   end
 
@@ -492,7 +492,7 @@ function Journey.Save(journey)
   local function save(stop)
     local after = {}
     for _, before in ipairs(stop.after or {}) do after[#after + 1] = index[before] end
-    return { node = saveNode(stop.node), text = stop.text, action = stop.action, resolve = stop.resolve,
+    return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, action = stop.action, resolve = stop.resolve,
       done = stop.done, passed = stop.passed, skipped = stop.skipped, after = #after > 0 and after or nil }
   end
   local saved = { title = root.title, manual = root.manual, stops = {} }
@@ -505,7 +505,7 @@ end
 function Journey.Load(saved)
   local def = { title = saved.title, manual = saved.manual, stops = {} }
   local function load(s)
-    return { node = loadNode(s.node), text = s.text, action = s.action, resolve = s.resolve, done = s.done,
+    return { node = loadNode(s.node), text = s.text, giver = s.giver, action = s.action, resolve = s.resolve, done = s.done,
       passed = s.passed, skipped = s.skipped }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end

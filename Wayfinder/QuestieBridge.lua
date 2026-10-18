@@ -308,7 +308,21 @@ for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "
     questVersion = questVersion + 1
   end)
 end
-ns.On("PLAYER_LEVEL_UP", function() questVersion = questVersion + 1 end)
+-- Quests a giver didn't offer you (see Navigator.lua) count as locked until you
+-- hand something in or level up, when they may have opened.
+function Bridge.MarkNotOffered(questID)
+  ns.charDB.notOffered = ns.charDB.notOffered or {}
+  ns.charDB.notOffered[questID] = true
+  questVersion = questVersion + 1
+end
+
+local function forgetNotOffered()
+  ns.charDB.notOffered = nil
+  questVersion = questVersion + 1
+end
+
+ns.On("QUEST_TURNED_IN", forgetNotOffered)
+ns.On("PLAYER_LEVEL_UP", forgetNotOffered)
 
 local function canEverDo(q, p)
   if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return false end
@@ -347,6 +361,9 @@ end
 local function blocker(q, p, done, inLog)
   if done[q.id] then return "done", "You have done this quest." end
   if inLog[q.id] then return "inLog", "In your quest log." end
+  -- The game knows better than the data: its giver didn't offer it.
+  local notOffered = ns.charDB and ns.charDB.notOffered
+  if notOffered and notOffered[q.id] then return "needsEarlier", "Not offered yet: needs earlier quests." end
   if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then
     return "notForYou", "Not for your race."
   end
@@ -445,6 +462,8 @@ end
 -- status, reason[, stepID, stepState] for a quest row (see Bridge.QuestStatus).
 local function questStatus(q, p, done, inLog)
   local status, reason = blocker(q, p, done, inLog)
+  local notOffered = ns.charDB and ns.charDB.notOffered
+  if status == "needsEarlier" and notOffered and notOffered[q.id] then return status, reason end
   if status == "needsEarlier" then
     local stepID, state = chainStart(q, p, done, inLog, {})
     if state == "available" then
@@ -740,6 +759,30 @@ function Bridge.QuestPrep(questID, here)
     end
   end
   return out
+end
+
+-- What QuestieDB says about a quest's place in its chain, for /wf debug quest.
+function Bridge.Describe(questID)
+  local q = Bridge.Quest(questID)
+  if not q then return { "quest " .. questID .. ": not in QuestieDB" } end
+  local function list(t)
+    if type(t) ~= "table" or #t == 0 then return "-" end
+    local out = {}
+    for _, v in ipairs(t) do out[#out + 1] = tostring(v) end
+    return table.concat(out, ",")
+  end
+  local before = {}
+  for _, prev in ipairs(predecessors[questID] or {}) do before[#before + 1] = prev.id end
+  local status, reason = Bridge.QuestStatus(questID)
+  return {
+    string.format("[%d] %s (id %d): level %s, requires %s", Bridge.QuestLevel(questID) or 0, q.name or "?", questID,
+      tostring(q.questLevel), tostring(q.requiredLevel)),
+    string.format("  after (preQuestSingle): %s  ·  after all (preQuestGroup): %s", list(q.preQuestSingle), list(q.preQuestGroup)),
+    string.format("  chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s",
+      list(before), tostring(q.nextQuestInChain), tostring(q.parentQuest), tostring(q.breadcrumbForQuestId), list(q.exclusiveTo)),
+    string.format("  status: %s (%s)%s", status, reason or "",
+      ns.charDB.notOffered and ns.charDB.notOffered[questID] and "  ·  its giver didn't offer it" or ""),
+  }
 end
 
 -- The level shown for a quest (your level for quests that scale with you).

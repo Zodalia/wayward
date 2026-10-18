@@ -198,6 +198,36 @@ ns.On("UI_INFO_MESSAGE", function(_, message)
   end
 end)
 
+---------------------------------------------------------------- quest givers
+
+-- The quests a quest giver offers you right now, from their gossip or
+-- greeting window: a set of quest IDs, or nil when this client doesn't say.
+local function offeredQuests(event)
+  local ids = {}
+  if event == "GOSSIP_SHOW" then
+    if not (C_GossipInfo and C_GossipInfo.GetAvailableQuests) then return nil end
+    for _, q in ipairs(C_GossipInfo.GetAvailableQuests() or {}) do
+      if type(q) == "table" and q.questID then ids[q.questID] = true end
+    end
+  else
+    if not (GetNumAvailableQuests and GetAvailableQuestInfo) then return nil end
+    for i = 1, GetNumAvailableQuests() or 0 do
+      local id = select(5, GetAvailableQuestInfo(i))
+      if type(id) ~= "number" then return nil end
+      ids[id] = true
+    end
+  end
+  return ids
+end
+
+-- QUESTS_OFFERED(npcName, ids): someone you're talking to lists their quests.
+for _, event in ipairs({ "GOSSIP_SHOW", "QUEST_GREETING" }) do
+  ns.On(event, function()
+    local ids = offeredQuests(event)
+    if ids then ns.Fire("QUESTS_OFFERED", UnitName("npc"), ids) end
+  end)
+end
+
 ---------------------------------------------------------------- other NPCs
 
 ns.On("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(interactionType)

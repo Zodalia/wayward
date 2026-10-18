@@ -694,7 +694,7 @@ local function dungeonJourney(option, ctx, start, net)
     local giver, node = ns.Questie.QuestGiver(q.id, start)
     local route = node and ns.Router.Plan(start, node, net)
     if route then
-      pickups[#pickups + 1] = { node = node, seconds = route.seconds, group = "pickup",
+      pickups[#pickups + 1] = { node = node, seconds = route.seconds, group = "pickup", giver = giver,
         text = string.format("Pick up %s from %s", q.name or ("quest " .. q.id), giver or "?"),
         action = { kind = "pickup", questID = q.id } }
     end
@@ -855,7 +855,7 @@ local function zoneOptions(ctx, start, net)
       local stops = {}
       for _, g in ipairs(first.givers) do
         for _, q in ipairs(g.quests) do
-          stops[#stops + 1] = { node = g.node, group = "pickup", action = { kind = "pickup", questID = q.id },
+          stops[#stops + 1] = { node = g.node, group = "pickup", giver = g.name, action = { kind = "pickup", questID = q.id },
             text = string.format("Pick up %s from %s", q.name or ("quest " .. q.id), g.name or "the quest giver") }
         end
       end

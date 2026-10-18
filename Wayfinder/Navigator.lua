@@ -329,6 +329,32 @@ ns.On("QUEST_TURNED_IN", function(questID)
   syncStops()
 end)
 
+-- Talking to a quest giver: pickups on the trip that they don't offer you are
+-- locked (the data missed an earlier quest). They're dropped, with what needs
+-- them, and treated as locked everywhere until you hand something in.
+local OFFER_RADIUS = 25 -- yards from a pickup stop that count as "at its giver"
+
+ns.Listen("QUESTS_OFFERED", function(npcName, ids)
+  local a = Nav.active
+  local here = ns.Geo.PlayerNode()
+  if not (a and a.journey and here) then return end
+  local missing = {}
+  for k = a.index, #a.route.steps do
+    local stop = ns.Journey.PendingAction(a.route.steps[k])
+    local action = stop and stop.action
+    if action and action.kind == "pickup" and not ids[action.questID]
+      and ns.Geo.Distance(here, stop.node) <= OFFER_RADIUS and (not stop.giver or stop.giver == npcName) then
+      missing[#missing + 1] = stop
+    end
+  end
+  for _, stop in ipairs(missing) do
+    ns.Questie.MarkNotOffered(stop.action.questID)
+    ns.print(string.format("%s isn't offered yet (it needs earlier quests): dropped from the trip.",
+      (stop.text or "that quest"):gsub("^Pick up ", ""):gsub(" from .*$", "")))
+    if Nav.active then Nav.Drop(stop) end
+  end
+end)
+
 -- Collecting an item a quest needs.
 ns.On("BAG_UPDATE_DELAYED", function()
   if not GetItemCount then return end

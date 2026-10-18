@@ -267,6 +267,12 @@ panel to add it to the trip you're on.
     "Fill the bowl at the moonwell").
   - Skipping a stop with next marks it skipped, not done; going back reopens
     it, and doing it anyway (the quest log or your bags say so) marks it done.
+  - QuestieDB can miss a step of a chain, so a follow-up looks available
+    when it isn't. When you talk to a quest giver, the game lists what they
+    offer you: a trip's pickup there that isn't on the list is dropped (with
+    its hand-in), and that quest counts as locked everywhere until you hand
+    something in or level up. `/wf debug quest <name or ID>` prints what
+    QuestieDB says about a quest's chain.
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's book button
     opens an overview of every stop (done / now / next; finished stops fold

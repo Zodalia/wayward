@@ -1501,6 +1501,41 @@ do
   assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
 end
 ---------------------------------------------------------------- quest steps (end)
+---------------------------------------------------------------- quests not offered (begin)
+do
+  io.write("quests not offered\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  -- Two quests from Magistrate Solomon, by the data; the game offers only the first.
+  local a, b = ns.Journey.QuestStops(1, here), ns.Journey.QuestStops(7, here)
+  local stops = {}
+  for _, st in ipairs(a) do stops[#stops + 1] = st end
+  for _, st in ipairs(b) do stops[#stops + 1] = st end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Solomon", stops = stops }))
+  check(a[1].giver and a[1].giver == b[1].giver and ns.Questie.IsQuestAvailable(7), "both pickups at the same giver, by the data")
+  local giver = a[1].node
+  player.mapID, player.x, player.y = giver.mapID, giver.x, giver.y
+  ns.HUD.Update()
+  local savedName = UnitName
+  UnitName = function(unit) if unit == "npc" then return a[1].giver end return "Me" end
+  C_GossipInfo = { GetAvailableQuests = function() return { { questID = 1 } } end }
+  fire("GOSSIP_SHOW")
+  check(b[1].skipped and b[#b].skipped and not a[1].skipped, "the pickup the giver doesn't offer is dropped, with its hand-in")
+  check(not ns.Questie.IsQuestAvailable(7) and ns.Questie.QuestStatus(7) == "needsEarlier",
+    "and counts as locked everywhere: " .. tostring(select(2, ns.Questie.QuestStatus(7))))
+  check(chat[#chat]:find("isn't offered yet", 1, true), "and says so: " .. chat[#chat])
+  local said = #chat
+  SlashCmdList.WAYFINDER("debug quest 7")
+  check(#chat > said + 2 and chat[said + 2]:find("(id 7)", 1, true) and chat[#chat]:find("didn't offer it", 1, true),
+    "/wf debug quest shows the chain data and the giver's answer")
+  fire("QUEST_TURNED_IN", 999)
+  check(ns.Questie.IsQuestAvailable(7), "handing in any quest makes it worth asking again")
+  UnitName, C_GossipInfo = savedName, nil
+  ns.Nav.Stop()
+  ns.JourneyOverview.Toggle()
+end
+---------------------------------------------------------------- quests not offered (end)
 ---------------------------------------------------------------- quest log trips (begin)
 do
   io.write("quest log trips\n")

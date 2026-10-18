@@ -57,7 +57,7 @@ function QuestsPage.DungeonJourney(dungeonName, entrance, quests, start, net)
     local giver, node = ns.Questie.QuestGiver(quest.id, start)
     if node then
       stops[#stops + 1] = { node = node, text = string.format("Pick up %s from %s", quest.name or "?", giver or "?"),
-        action = { kind = "pickup", questID = quest.id } }
+        giver = giver, action = { kind = "pickup", questID = quest.id } }
     end
   end
   if #stops == 0 then return nil end
@@ -152,7 +152,7 @@ local function questStop(m, start)
   if status == "available" then
     local giver, node = ns.Questie.QuestGiver(q.id, start)
     if node then
-      return { node = node, text = string.format("Pick up %s from %s", q.name, giver or "?"),
+      return { node = node, text = string.format("Pick up %s from %s", q.name, giver or "?"), giver = giver,
         action = { kind = "pickup", questID = q.id } }
     end
     local starters = q.startedBy or {}
@@ -171,7 +171,7 @@ local function questStop(m, start)
       local giver, node = ns.Questie.QuestGiver(m.stepID, start)
       if node then
         return { node = node, text = string.format("Start the chain: pick up %s from %s", stepName, giver or "?"),
-          action = { kind = "pickup", questID = m.stepID } }
+          giver = giver, action = { kind = "pickup", questID = m.stepID } }
       end
     else
       local finisher, node = ns.Questie.QuestFinisher(m.stepID, start)
