@@ -795,11 +795,36 @@ function Nav.InArea()
   return step ~= nil and step.stop ~= nil and step.stop.inArea == true
 end
 
+-- True while you're on a flight path: no arrows, no re-planning, no steps
+-- passed on the way; landing picks up from where you are.
+function Nav.Flying()
+  return Nav.active ~= nil and onTaxi()
+end
+
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
   local here = ns.Geo.PlayerNode()
   if not here then return nil, Nav.CurrentStep() end
+  if onTaxi() then
+    -- Took off without us seeing the flight map: on to the flight.
+    if flightTalk(a.route.steps, a.index) then
+      a.index = a.index + 1
+      showStep()
+    end
+    if not a.flying then
+      a.flying = true
+      -- TomTom's arrow has nothing to show in the air.
+      clearTomTom()
+      ns.Fire("NAV_CHANGED")
+    end
+    a.lastHere = here
+    return here, a.route.steps[a.index]
+  elseif a.flying then
+    a.flying = nil
+    a.lastHere = nil
+    showStep()
+  end
   local previous = a.lastHere
   a.lastHere = here
   local startIndex = a.index
@@ -868,11 +893,6 @@ function Nav.Tick()
       end
       break
     end
-  end
-  -- Already in the air (a flight map we didn't see open): on to the flight.
-  if flightTalk(steps, a.index) and onTaxi() then
-    a.index = a.index + 1
-    showStep()
   end
   -- In an objective area there's nothing to point at.
   if Nav.InArea() and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end

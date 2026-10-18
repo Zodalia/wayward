@@ -283,7 +283,7 @@ function HUD.Update()
 
   local heading = facing()
   -- The compass points the way while you walk; otherwise its circle shows what's ahead.
-  if step.mode == "walk" and distance < math.huge and heading and not ns.Nav.Waiting() then
+  if step.mode == "walk" and distance < math.huge and heading and not ns.Nav.Waiting() and not ns.Nav.Flying() then
     frame.arrow:SetRotation(ns.Geo.Bearing(here, step.to) - heading)
     frame.arrow:Show()
     frame.icon:Hide()
@@ -294,6 +294,9 @@ function HUD.Update()
     frame.icon:Show()
   end
 end
+
+-- Whether the compass arrow shows right now (for tests).
+function HUD.ArrowShown() return frame ~= nil and frame.arrow:IsShown() end
 
 -- The directions box (the target button sits beside it).
 function HUD.Frame() return frame end

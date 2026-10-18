@@ -319,6 +319,17 @@ check(ns.Nav.active.index == 1 and ns.Nav.Waiting() and ns.Nav.Interaction() == 
 fire("TAXIMAP_OPENED")
 check(ns.Nav.active.index == 2 and ns.Nav.Interaction() == "fly", "the flight map opens: now the flight")
 check(ns.HUD.Lines()[4]:find("Pick Stormwind", 1, true), "the box says what to pick: " .. ns.HUD.Lines()[4])
+-- In the air: no compass, nothing re-planned, however far you go.
+UnitOnTaxi = function() return true end
+player.facing = 0
+local beforeIndex, chatBefore = ns.Nav.active.index, #chat
+player.mapID, player.x, player.y = 1453, 0.45, 0.75
+ns.HUD.Update()
+check(ns.Nav.Flying() and ns.Nav.active.index == beforeIndex and #chat == chatBefore,
+  "on the flight: no steps passed, no re-planning")
+check(not ns.HUD.ArrowShown(), "and no compass arrow")
+UnitOnTaxi = function() return false end
+player.mapID, player.x, player.y = fp.mapID, fp.x, fp.y
 -- Land in Stormwind.
 local landing = r.route.steps[2].to
 player.mapID, player.x, player.y = landing.mapID, landing.x, landing.y
@@ -2307,6 +2318,17 @@ do
     "with TomTom on, its arrow and pin show the way")
   ns.HUD.Update()
   check(ns.db.settings.showArrow and ns.HUD.CompassShown(), "the compass can stay on alongside TomTom")
+  UnitOnTaxi = function() return true end
+  ns.HUD.Update()
+  check(ns.Nav.tomtomWaypoint == nil and ns.Nav.Flying(), "on a flight, TomTom's arrow comes down")
+  UnitOnTaxi = function() return false end
+  ns.HUD.Update()
+  check(ns.Nav.tomtomWaypoint ~= nil, "and goes back up when you land")
+  -- Start again for the counts below.
+  ns.Nav.Stop()
+  for k in pairs(added) do added[k] = nil end
+  removed = 0
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   SlashCmdList.WAYFINDER("compass")
   check(not ns.HUD.CompassShown() and ns.HUD.Width() < 330, "compass off: no circle, a narrower box")
   SlashCmdList.WAYFINDER("compass")

@@ -29,7 +29,9 @@ What works in this MVP:
 - **Talking to NPCs** is a step of its own. At a flight path it's "Talk to
   Ariena Stormfeather, the flight master at Lakeshire" (named once you've met
   them, or from QuestieDB) until the flight map opens, then "Fly to
-  Stormwind" ("Pick Stormwind on the flight map" until you take off). A
+  Stormwind" ("Pick Stormwind on the flight map" until you take off). In
+  the air there's no compass or TomTom arrow and nothing is re-planned;
+  landing picks up from where you are. A
   trainer or vendor you're heading for is done when you talk to them, not on
   arrival. The NPC the step is for (flight master, quest giver, the one you
   hand in to, trainer, vendor) is easy to find near there: a star over their
