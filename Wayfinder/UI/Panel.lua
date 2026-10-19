@@ -600,9 +600,13 @@ local function refreshSide()
   return net
 end
 
-function Panel.Refresh()
+-- `sideOnly`: only the side panel changed (another tab or category), so the
+-- cards keep what they show instead of being rebuilt (For you is the slowest
+-- page to build).
+function Panel.Refresh(sideOnly)
   if not (frame and frame:IsShown()) then return end
-  local net = refreshMain()
+  local net
+  if not (sideOnly and cardKey ~= nil) then net = refreshMain() end
   if side:IsShown() and sidePage then net = refreshSide() or net end
   markTabs()
   frame.footer:SetText(footerText(net or ns.Network.Build()))
@@ -637,11 +641,13 @@ end
 -- when given.
 function Panel.SelectPage(id, category)
   frame = frame or create()
+  local sideOnly = true
   for _, page in ipairs(sortedPages()) do
     if page.id == id then
       if category and page.categories and page.categories[category] then page.selected = category end
       if isCards(page) then
         mainPage = page
+        sideOnly = false
         side:Hide()
       else
         if page ~= sidePage then
@@ -653,7 +659,7 @@ function Panel.SelectPage(id, category)
       end
     end
   end
-  Panel.Refresh()
+  Panel.Refresh(sideOnly)
 end
 
 -- Selects a category on the side panel's page.

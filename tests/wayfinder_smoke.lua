@@ -3104,6 +3104,34 @@ do
   ns.RouteMap.Hide()
 end
 ---------------------------------------------------------------- route map (end)
+---------------------------------------------------------------- speed (begin)
+do
+  io.write("speed\n")
+  -- Switching side tabs rebuilds only the side page, even once the For you
+  -- cache has expired.
+  ns.Panel.SelectPage("foryou")
+  ns.ForYou.Invalidate()
+  ns.Panel.Refresh()
+  local runs = ns.ForYou.runs
+  ns.ForYou.Invalidate()
+  ns.Panel.SelectPage("trainers", 1)
+  ns.Panel.SelectPage("vendors")
+  ns.Panel.SelectPage("trainers", 2)
+  check(ns.ForYou.runs == runs, "side tab switches don't rebuild For you (" .. (ns.ForYou.runs - runs) .. " rebuilds)")
+  ns.Panel.SelectPage("foryou")
+  check(ns.ForYou.runs == runs + 1, "going back to For you rebuilds it")
+
+  -- The zone at a world point is asked of the map once.
+  local realInfo, asked = C_Map.GetMapInfoAtPosition, 0
+  C_Map.GetMapInfoAtPosition = function(...) asked = asked + 1 return realInfo(...) end
+  local node = ns.Geo.Node(1433, 0.4123, 0.5678, "Somewhere")
+  local first = ns.Geo.ZoneAt(node.instance, node.wx, node.wy)
+  local before = asked
+  check(ns.Geo.ZoneAt(node.instance, node.wx, node.wy) == first and asked == before and before > 0,
+    "a zone lookup is cached (" .. asked .. " map calls)")
+  C_Map.GetMapInfoAtPosition = realInfo
+end
+---------------------------------------------------------------- speed (end)
 ---------------------------------------------------------------- data sources (begin)
 do
   io.write("data source merging\n")

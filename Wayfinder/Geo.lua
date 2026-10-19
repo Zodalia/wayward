@@ -93,8 +93,20 @@ function Geo.MapPos(node, mapID)
 end
 
 -- The zone (not continent) at a world position, or nil in between zones.
+-- Zones don't move, so answers are kept per yard (the map calls behind them
+-- are slow, and quest lists and route planning ask about the same points
+-- again on every refresh).
+local ZONE_CACHE_LIMIT = 20000
+local zoneCache, zoneCached = {}, 0
+
 function Geo.ZoneAt(instance, wx, wy)
+  local key = instance .. ":" .. math.floor(wx + 0.5) .. ":" .. math.floor(wy + 0.5)
+  local cached = zoneCache[key]
+  if cached ~= nil then return cached or nil end
   local mapID = Geo.ZonePoint({ instance = instance, wx = wx, wy = wy })
-  if not mapID or Geo.Continents()[instance] == mapID then return nil end
+  if not mapID or Geo.Continents()[instance] == mapID then mapID = nil end
+  if zoneCached >= ZONE_CACHE_LIMIT then zoneCache, zoneCached = {}, 0 end
+  zoneCache[key] = mapID or false
+  zoneCached = zoneCached + 1
   return mapID
 end
