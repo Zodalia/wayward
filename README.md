@@ -28,7 +28,7 @@ What works in this MVP:
   previous / next step, all stops, recalculate and stop.
 - **Talking to NPCs** is a step of its own. At a flight path it's "Talk to
   Ariena Stormfeather, the flight master at Lakeshire" (named once you've met
-  them, or from QuestieDB) until the flight map opens, then "Fly to
+  them, or from a data source) until the flight map opens, then "Fly to
   Stormwind" ("Pick Stormwind on the flight map" until you take off). In
   the air there's no compass or TomTom arrow and nothing is re-planned;
   landing picks up from where you are. A
@@ -46,42 +46,44 @@ What works in this MVP:
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
 
-- **QuestieDB (optional)**: if [QuestieDB](https://github.com/Questie/QuestieDB)
-  is installed, Wayfinder reads it at runtime through its public API (contract
-  4). Class trainer gains every trainer for your class, and **Quest hubs**
-  lists nearby quest givers you can take quests from (level, race, class,
-  prerequisites, not done, not in your log, not grey), grouped by place
-  ("Auberdine", named after the nearest flight path's town or an explored
-  subzone) and ranked by travel time. Hover a hub for its quests. Nothing from QuestieDB is
-  copied into Wayfinder: it has no licence file, so we only read the copy the
-  player installed. `/wf debug` shows the data source and first-scan times.
+- **Data sources (optional)**: Wayfinder bundles only hand-made data and what
+  it learns in game. A separate data addon can register a source with more
+  (see [Data sources](#data-sources) below). With quest and NPC data, Class
+  trainer gains every trainer for your class, and **Quest hubs** lists nearby
+  quest givers you can take quests from (level, race, class, prerequisites,
+  not done, not in your log, not grey), grouped by place ("Auberdine", named
+  after the nearest flight path's town or an explored subzone) and ranked by
+  travel time. Hover a hub for its quests. With class spell data, "new
+  spells" works before your first trainer visit. `/wf debug` shows the data
+  sources and first-scan times.
 
 - **Dungeons**: dungeons and raids that fit your level (3 under to 6 over; raids
   only from their level), ranked by level fit and travel time to the entrance.
   Levels come from the client's dungeon finder list, matched to our dungeons by
-  name. Entrances come from QuestieDB if installed, otherwise from
+  name. Entrances come from a data source if one has them, otherwise from
   `Wayfinder/Data/Dungeons.lua`. Those are approximate vanilla positions, and
   the Stockade, Stratholme and Naxxramas points are likely off in Forever
-  without QuestieDB. With QuestieDB, a row also counts the dungeon's quests you
+  without a data source. With quest data, a row also counts the dungeon's quests you
   can take or have in your log, and the tooltip lists them.
 
 Data limits to know about:
 
-- Without QuestieDB, trainer locations are only what you have visited, plus
+- Without a data source, trainer locations are only what you have visited, plus
   one seeded trainer (Stormwind warlock trainer). The client has no
   trainer-location API.
 - Quest hubs hide grey and red quests, quests whose chain you haven't reached
   (or have moved past), and quests whose parent, start or end conditions
   aren't met. Holiday/event and reputation requirements aren't handled yet,
   and quests needing a profession skill are left out.
-- Class trainers from QuestieDB are recognised by their English subtitle
+- Class trainers from a data source are recognised by their English subtitle
   ("Warlock Trainer").
 - Boat, zeppelin, tram and portal docks in `Wayfinder/Data/Transports.lua` are
   approximate, and Forever's new routes (e.g. Auberdine - Stormwind) are
   missing. Record one yourself: `/wf dock` where you board, ride, `/wf dock`
   where you get off. Routes use it immediately; `/wf dock list` copies the
   data line to add to `Data/Transports.lua` for everyone.
-- "New spells" needs one visit to a trainer for your class first.
+- "New spells" needs one visit to a trainer for your class first, or a data
+  source with class spells (then costs show only when the source has them).
 - Weapon masters are only recognised on English clients.
 
 ### Vendors
@@ -92,8 +94,8 @@ weapon (hunters). Each row says what the vendor does for you; hover it for the
 goods. The fastest vendor for each need is always listed. When a piece of gear
 is at 50% durability or lower, the summary warns and the nearest repair comes
 first. Opening a merchant window records what that vendor sells and whether
-they repair. With QuestieDB, sellers come from its ItemDB (`vendors`), the NPC
-repair flag and English subtitles ("Food & Drink", "Bowyer"); without it, only
+they repair. With a data source, sellers come from its item records (`vendors`), the NPC
+repair flag and English subtitles ("Food & Drink", "Bowyer"); without one, only
 vendors you visited are listed. Food, ammo and reagent tiers in
 `Data/VendorGoods.lua` are vanilla item IDs, not yet checked in Forever.
 
@@ -107,7 +109,7 @@ the dungeon's quests on the way), mobs and objects in the world (nearest spawn,
 one row per zone), quests that reward it (can take now, in your log, needs
 earlier quests or a higher level) and the nearest vendor that sells it. Things
 you can do now come first, then shorter trips. Drops and quest rewards need
-QuestieDB (ItemDB); without it only vendors you visited that sold the item are
+item data from a data source; without it only vendors you visited that sold the item are
 known. Item tooltips get a "Wayfinder: /wf item for directions" line when an
 item has known sources (never in combat).
 
@@ -177,15 +179,15 @@ things to do next, one card per kind of thing, each labelled with its kind:
   dungeon is suggested only when you can take most (60%) of its quests now,
   and one without quests for you isn't suggested at all. Those held back are
   named with the level their quests open at ("The Stockade at level 22").
-  Without QuestieDB, the best by level fit and travel time.
+  Without quest data, the best by level fit and travel time.
 
 Due now and Worth a visit come first, then the zones, then the dungeon; hand
 in, finish and best quest follow in order of estimated XP per minute: XP over the
 trip plus 5 minutes per quest (`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes
-from QuestieDB's quest XP table, with the vanilla penalty for quests below your
+from a data source's quest XP table, with the vanilla penalty for quests below your
 level; quests it has no XP for (Forever-only ones) get the average for their
 level. Without that table the ranking falls back to quests per hour weighted
-by level fit, and without QuestieDB to dungeons by level fit and travel time;
+by level fit, and without quest data to dungeons by level fit and travel time;
 the summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
 The Quests page has every hub and your whole log. `/wf debug` shows how long a
@@ -254,7 +256,7 @@ harvesting and the panel against a fake two-continent world.
 
 ### Quests
 
-The **Quests** tab (or `/wf quest <name>`) searches QuestieDB quests by name,
+The **Quests** tab (or `/wf quest <name>`) searches quests in the quest data by name,
 or takes a shift-clicked quest link. Each quest shows its level and whether you
 can take it: available (grey and red quests say so), in your log, done, needs
 earlier quests (naming the first one you can take, or the one in your log to
@@ -264,9 +266,9 @@ quest giver, to where you hand it in, or to the start of its chain; the trip
 waits there until you accept or hand in the quest. When a search matches
 dungeon quests, and on the Dungeons tab ("Quests" button), one trip picks up
 every quest you can take for that dungeon and ends at the entrance. The rules
-are the Quest hubs rules (`ns.Questie.QuestStatus(id)` and
-`ns.Questie.ChainStart(id)` give the status, reason and first chain step).
-Needs QuestieDB.
+are the Quest hubs rules (`ns.Quests.QuestStatus(id)` and
+`ns.Quests.ChainStart(id)` give the status, reason and first chain step).
+Needs quest data.
 
 With an empty search the tab lists your quest log: level, zone and the first
 objective not done yet (or "ready to hand in"). Click a quest for a trip for
@@ -275,7 +277,7 @@ into the trip you're on, or starts one; "In trip" takes it out again. The
 trip is re-ordered from where you are each time, each quest in its own order
 (pick up, objectives, hand in) but interleaved by travel time. "Hand in N
 completed quests" visits every finisher in one trip, and can be added to the
-current trip too. Without QuestieDB the log still lists, but without
+current trip too. Without quest data the log still lists, but without
 directions.
 
 **Trips are flexible:** starting new directions while a trip is on asks
@@ -306,13 +308,13 @@ panel to add it to the trip you're on.
     tell is done; the directions box's next button confirms it).
   - `ns.Journey.QuestStops(questID, here)` gives the stops for a whole quest
     from where it stands now: pick it up, do the objectives (the game's quest
-    area marker once it's in your log, else QuestieDB's objective mobs, objects,
+    area marker once it's in your log, else the quest data's objective mobs, objects,
     item drops and explore points), hand it in. Before the objectives come
-    what QuestieDB says the quest needs first: its source items you don't have
-    (where they drop or lie) and Questie's extra objectives in order (e.g.
+    what the quest data says the quest needs first: its source items you don't have
+    (where they drop or lie) and its extra objectives in order (e.g.
     "Fill the bowl at the moonwell").
   - A quest's objectives are an area, not a point: every spawn of what you
-    still need (QuestieDB's creatures, objects and item sources). Within 80
+    still need (the quest data's creatures, objects and item sources). Within 80
     yards of any of them you're in the area: the compass and waypoints step
     aside and the directions box says "In the area" with your progress.
     Past 120 yards you've left, and the way points at the nearest spawn from
@@ -327,12 +329,12 @@ panel to add it to the trip you're on.
     them costs 3 minutes of travel or less.
   - Skipping a stop with next marks it skipped, not done; going back reopens
     it, and doing it anyway (the quest log or your bags say so) marks it done.
-  - QuestieDB can miss a step of a chain, so a follow-up looks available
+  - Quest data can miss a step of a chain, so a follow-up looks available
     when it isn't. When you talk to a quest giver, the game lists what they
     offer you: a trip's pickup there that isn't on the list is dropped (with
     its hand-in), and that quest counts as locked everywhere until you hand
     something in or level up. `/wf debug quest <name or ID>` prints what
-    QuestieDB says about a quest's chain.
+    the quest data says about a quest's chain.
   - Forever's own quests (IDs from 90000) often have no chain data at all,
     like the second Return the Statuette (98189) after the original 286.
     For those, the earlier quest is inferred: one of the same name with a
@@ -358,10 +360,43 @@ panel to add it to the trip you're on.
     move before one it needs (a hand-in before its pickup).
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/wf <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
-- **Quest helpers** on `ns.Questie`: `Quest(id)`, `AllQuests()`,
+- **Quest helpers** on `ns.Quests`: `Quest(id)`, `AllQuests()`,
   `PlayerQuestState()`, `IsQuestAvailable(id)` (the Quest hubs rules) and
-  `QuestGiver(id, here)`.
+  `QuestGiver(id, here)`. Game data from the data sources is on `ns.Data`
+  (`Npc(id)`, `Item(id)`, `NPCsOfKind(kind, faction)`, `ClassSpells(class)`, ...).
 - **Dungeons** for other pages: `ns.Dungeons.Catalogue()` and `ns.Dungeons.ForArea(areaID)`.
+
+### Data sources
+
+Wayfinder ships no third-party data. Everything it knows comes from the game
+client, from what it records while you play (`Harvest.lua`), and from the
+hand-made files in `Wayfinder/Data/`. Other addons can add data by
+registering a **source**; `Wayfinder/Sources.lua` documents the interface in
+full. In short:
+
+```lua
+-- In a companion addon whose TOC has "## Dependencies: Wayfinder":
+Wayfinder.RegisterSource({
+  id = "mydata", label = "My data", priority = 30,
+  ClassSpells = function(class) return { { spellID = 686, level = 1, cost = 10 } } end,
+  Npc = function(id) ... end, NpcIDs = function(flag) ... end,
+  Quest = function(id) ... end, QuestIDs = function() ... end,
+})
+```
+
+- Every function is optional: `Quest`/`QuestIDs`, `Npc`/`NpcIDs`, `Object`,
+  `Item`/`ItemIDs`, `Dungeons`, `QuestXP`, `EraToForever`, `ClassSpells`,
+  `TrainerSpells` and `TaxiCost`. A page that needs one a source doesn't
+  have says so and falls back to harvested data.
+- Records are plain tables. Positions are `{ mapID, x, y, areaID }` with x and
+  y 0-1 in Forever coordinates. Quest records use QuestieDB-style field names
+  (`startedBy`, `preQuestSingle`, `objectives`, ...) except that races and
+  classes are sets.
+- When sources overlap, the higher `priority` wins: per record for quests,
+  items and objects, field by field for NPCs and class spells. What you
+  learned in game beats any source.
+- A source that errors is reported once and skipped; Wayfinder keeps going.
+  `Wayfinder.UnregisterSource(id)` takes a source away again.
 
 ## WFProbe (dev tool)
 
@@ -423,5 +458,10 @@ If copying fails, the same data is in
 lua tests/smoke.lua
 ```
 
-Runs the addon against stubbed WoW APIs. This checks our own code paths only,
+```bash
+lua tests/wayfinder_smoke.lua
+```
+
+Run the addons against stubbed WoW APIs (the second one is Wayfinder, with a
+fixture data source). This checks our own code paths only,
 not real Forever behaviour.
