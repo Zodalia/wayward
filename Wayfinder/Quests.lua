@@ -400,27 +400,41 @@ local function nearestOf(ends, here, faction)
   return bestName, bestNode, bestDistance, bestKey
 end
 
+-- The quests you can take now (the Quest hubs rules), kept until your quests
+-- or level change: checking every quest is the slow part, and For you and the
+-- Quests page both ask in one refresh. Where you stand only changes the order.
+local takeable -- { key, quests = { quest row, ... } }
+
+local function takeableQuests(p)
+  local key = questVersion .. ":" .. p.level .. ":" .. tostring(questIndex)
+  if takeable and takeable.key == key then return takeable.quests end
+  local done, inLog = playerQuestState()
+  local quests = {}
+  for _, q in ipairs(questIndex) do
+    if eligible(q, p, done, inLog) then quests[#quests + 1] = q end
+  end
+  takeable = { key = key, quests = quests }
+  return quests
+end
+
 -- Hubs of quest givers you can take quests from, nearest first (straight line).
 function Quests.QuestHubs(here, limit)
   if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   local faction = UnitFactionGroup("player")
   local p = playerProfile()
-  local done, inLog = playerQuestState()
 
   local givers, order = {}, {}
-  for _, q in ipairs(questIndex) do
-    if eligible(q, p, done, inLog) then
-      local bestName, bestNode, bestDistance, bestKey = nearestOf(q.startedBy, here, faction)
-      if bestNode then
-        local g = givers[bestKey]
-        if not g then
-          g = { name = bestName, node = bestNode, distance = bestDistance, quests = {} }
-          givers[bestKey] = g
-          order[#order + 1] = g
-        end
-        g.quests[#g.quests + 1] = { id = q.id, name = q.name, level = displayLevel(q, p) }
+  for _, q in ipairs(takeableQuests(p)) do
+    local bestName, bestNode, bestDistance, bestKey = nearestOf(q.startedBy, here, faction)
+    if bestNode then
+      local g = givers[bestKey]
+      if not g then
+        g = { name = bestName, node = bestNode, distance = bestDistance, quests = {} }
+        givers[bestKey] = g
+        order[#order + 1] = g
       end
+      g.quests[#g.quests + 1] = { id = q.id, name = q.name, level = displayLevel(q, p) }
     end
   end
 
@@ -843,6 +857,6 @@ end
 -- Indexes are rebuilt when a source registers (a companion loading later).
 ns.Listen("SOURCES_CHANGED", function()
   questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
-  giverNodes, objectiveCache, groupCache, zoneCache = {}, {}, {}, nil
+  giverNodes, objectiveCache, groupCache, zoneCache, takeable = {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
 end)

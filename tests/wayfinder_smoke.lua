@@ -3179,6 +3179,28 @@ do
   check(builds == 1, "300 dungeon lookups build the dungeon list once (" .. builds .. ")")
   ns.Data.Dungeons = realDungeons
 
+  -- The quests you can take are worked out once per change to your quests or
+  -- level; another refresh only sorts them by distance again.
+  local here = ns.Geo.PlayerNode()
+  ns.Quests.QuestHubs(here, 12)
+  local realLog, logReads = C_QuestLog.GetAllCompletedQuestIDs, 0
+  C_QuestLog.GetAllCompletedQuestIDs = function(...) logReads = logReads + 1 return realLog(...) end
+  local hubs1 = ns.Quests.QuestHubs(here, 12)
+  local hubs2 = ns.Quests.QuestHubs(here, 12)
+  check(logReads == 0 and #hubs1 == #hubs2, "quest hubs again: the quest list is reused (" .. logReads .. " log reads)")
+  local before = logReads
+  fire("QUEST_TURNED_IN", 1)
+  ns.Quests.QuestHubs(here, 12)
+  check(logReads > before, "handing in a quest makes it check again")
+  local realLevel = UnitLevel
+  UnitLevel = function() return realLevel() + 1 end
+  before = logReads
+  ns.Quests.QuestHubs(here, 12)
+  ns.Quests.QuestHubs(here, 12)
+  check(logReads == before + 1, "so does a new level, once")
+  UnitLevel = realLevel
+  C_QuestLog.GetAllCompletedQuestIDs = realLog
+
   -- The zone at a world point is asked of the map once.
   local realInfo, asked = C_Map.GetMapInfoAtPosition, 0
   C_Map.GetMapInfoAtPosition = function(...) asked = asked + 1 return realInfo(...) end
