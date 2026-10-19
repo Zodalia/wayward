@@ -65,6 +65,9 @@ function Trainers.Services()
   return nil
 end
 
+-- Spells named under the Class page's summary line; the rest are counted.
+local SUMMARY_SPELLS = 6
+
 -- Learning happens at a trainer, which refreshes the list, so "not used and
 -- level reached" means trainable now.
 function Trainers.SpellSummary()
@@ -72,12 +75,13 @@ function Trainers.SpellSummary()
   if not services then return nil end
   local level = UnitLevel("player")
   local out = { trainable = 0, cost = 0, nextCount = 0, updated = cs and cs.updated, level = cs and cs.level,
-    fromData = from == "data" }
+    fromData = from == "data", names = {} }
   for _, s in ipairs(services) do
     if s.type ~= "used" and s.levelReq then
       if s.levelReq <= level then
         out.trainable = out.trainable + 1
         out.cost = out.cost + (s.cost or 0)
+        out.names[#out.names + 1] = s.name .. (s.rank and (" (" .. s.rank .. ")") or "")
         if not s.cost then out.costUnknown = true end
       elseif not out.nextLevel or s.levelReq < out.nextLevel then
         out.nextLevel = s.levelReq
@@ -108,7 +112,14 @@ function Trainers.SummaryText()
       s.nextCount == 1 and "" or "s", s.nextLevel)
   end
   if s.fromData then parts[#parts + 1] = "from spell data until you visit a trainer" end
-  return table.concat(parts, " · ")
+  local text = table.concat(parts, " · ")
+  if #s.names > 0 then
+    local shown = {}
+    for i = 1, math.min(#s.names, SUMMARY_SPELLS) do shown[i] = s.names[i] end
+    local more = #s.names - #shown
+    text = text .. "\n" .. table.concat(shown, ", ") .. (more > 0 and string.format(" and %d more", more) or "")
+  end
+  return text
 end
 
 function Trainers.EmptyText()
@@ -262,6 +273,11 @@ function WeaponMasters.SummaryText()
 end
 
 function WeaponMasters.EmptyText()
+  local knowsAll = true
+  for _, w in ipairs(WeaponMasters.Weapons()) do
+    if w.known ~= true then knowsAll = false end
+  end
+  if knowsAll then return "You know every weapon skill your class can learn." end
   return "No weapon masters known yet. Talk to one once and Wayfinder remembers where they are and what they teach, "
     .. "or install a Wayfinder data addon."
 end
@@ -269,7 +285,7 @@ end
 -- One row per weapon you can learn, "Polearms (Woo Ping)": the nearest weapon
 -- master known to teach it to your class, with the cost against your purse.
 -- Weapons no visited master teaches go to the nearest master you haven't
--- visited (they list what they teach). Weapon masters themselves come last.
+-- visited (they list what they teach).
 function WeaponMasters.Results()
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
@@ -362,9 +378,5 @@ function WeaponMasters.Results()
     if a.seconds ~= b.seconds then return a.seconds < b.seconds end
     return a.title < b.title
   end)
-  for _, row in ipairs(results(masters, "weapon masters", start, net)) do
-    row.title = "Weapon master: " .. row.title
-    rows[#rows + 1] = row
-  end
   return rows, nil, net
 end

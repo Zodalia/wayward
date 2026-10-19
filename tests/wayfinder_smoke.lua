@@ -3064,8 +3064,8 @@ do
     "weapons to learn first, the trainer in brackets, affordable ones first: " .. joined)
   check(rows[1].subtitle:find("10s", 1, true) and rows[2].subtitle:find("you have 50s", 1, true),
     "with the cost against your purse: " .. rows[2].subtitle)
-  check(not joined:find("Daggers", 1, true) and joined:find("Weapon master: Test Weaponmaster", 1, true),
-    "a weapon you know isn't listed; the weapon masters come after")
+  check(not joined:find("Daggers", 1, true) and not joined:find("Weapon master:", 1, true),
+    "a weapon you know isn't listed, and weapon masters get no rows of their own: " .. joined)
   check(ns.WeaponMasters.SummaryText():find("You know Daggers. You can learn 2 more", 1, true),
     "the summary says what you know: " .. ns.WeaponMasters.SummaryText())
   IsPlayerSpell, GetMoney = savedSpell, savedMoney
@@ -3150,6 +3150,8 @@ do
   fire("SPELLS_CHANGED")
   check(ns.Trainers.SpellSummary().trainable == 2, "with the talent, its spell counts")
   check(ns.Trainers.SummaryText():find("from spell data"), "summary says where the list comes from")
+  check(ns.Trainers.SummaryText():find("\nSpell 9001", 1, true), "the spells you can learn are named under it: "
+    .. ns.Trainers.SummaryText())
   IsPlayerSpell = function(id) return id == 9001 end
   fire("SPELLS_CHANGED")
   summary = ns.Trainers.SpellSummary()
