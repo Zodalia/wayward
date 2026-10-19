@@ -3170,6 +3170,15 @@ do
   ns.Panel.SelectPage("foryou")
   check(ns.ForYou.runs == runs + 1, "going back to For you rebuilds it")
 
+  -- The dungeon list is built once, not once per quest that asks about it.
+  local realDungeons, builds = ns.Data.Dungeons, 0
+  ns.Data.Dungeons = function(...) builds = builds + 1 return realDungeons(...) end
+  ns.Dungeons.Forget()
+  for areaID = 1, 300 do ns.Dungeons.ForArea(areaID) end
+  ns.Dungeons.Catalogue()
+  check(builds == 1, "300 dungeon lookups build the dungeon list once (" .. builds .. ")")
+  ns.Data.Dungeons = realDungeons
+
   -- The zone at a world point is asked of the map once.
   local realInfo, asked = C_Map.GetMapInfoAtPosition, 0
   C_Map.GetMapInfoAtPosition = function(...) asked = asked + 1 return realInfo(...) end

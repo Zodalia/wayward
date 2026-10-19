@@ -116,6 +116,7 @@ function Dungeons.RecordEntrance(name, instanceID, mapID, x, y)
   end
   table.insert(record.points, { mapID = mapID, x = x, y = y, seen = time and time() or 0 })
   ns.print(string.format("learned the entrance of %s.", name))
+  Dungeons.Forget()
   ns.Fire("DATA_CHANGED")
   return true
 end
@@ -129,8 +130,12 @@ local function learnedNodes(record)
   return nodes
 end
 
--- Our dungeons, the data's, and the client's levels merged into one list.
-local function catalogue()
+-- Our dungeons, the data's, and the client's levels merged into one list,
+-- kept until a data source or a learned entrance changes it (Dungeons.Forget):
+-- pages ask for it many times per refresh (For you once per quest).
+local catalogueCache, byAreaCache
+
+local function build()
   local list, byArea, byKey = {}, {}, {}
   local function add(entry)
     list[#list + 1] = entry
@@ -206,6 +211,23 @@ local function catalogue()
   end
   return out
 end
+
+local function catalogue()
+  if not catalogueCache then
+    catalogueCache, byAreaCache = build(), {}
+    for _, entry in ipairs(catalogueCache) do
+      for areaID in pairs(entry.areaIDs) do byAreaCache[areaID] = byAreaCache[areaID] or entry end
+    end
+  end
+  return catalogueCache
+end
+
+-- Drops the merged list; the next ask builds it again.
+function Dungeons.Forget()
+  catalogueCache, byAreaCache = nil, nil
+end
+
+ns.Listen("SOURCES_CHANGED", Dungeons.Forget)
 
 -- The level that fits you best and its ranking penalty in seconds, or nil.
 local function bestFit(entry, playerLevel)
@@ -345,8 +367,6 @@ end
 
 -- The dungeon an AreaID belongs to (e.g. where a boss spawns), or nil.
 function Dungeons.ForArea(areaID)
-  for _, entry in ipairs(catalogue()) do
-    if entry.areaIDs[areaID] then return entry end
-  end
-  return nil
+  catalogue()
+  return byAreaCache[areaID]
 end
