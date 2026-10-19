@@ -463,5 +463,14 @@ lua tests/wayfinder_smoke.lua
 ```
 
 Run the addons against stubbed WoW APIs (the second one is Wayfinder, with a
-fixture data source). This checks our own code paths only,
+fixture data source).
+
+**Finding slow spots in game:** `/wf perf on` times what the window does
+(it stays on across reloads, so first-open costs are caught too). Every tab
+switch, refresh, search or internal message becomes a trace: a tree of the
+Wayfinder and data-source functions it called, with time, call counts and
+memory allocated. `/wf perf` prints the last trace, `/wf perf copy` opens the
+whole report to copy, `/wf perf reset` clears it and `/wf perf off` puts
+everything back. The timers add a little overhead of their own, and Blizzard's
+APIs are never wrapped. This checks our own code paths only,
 not real Forever behaviour.

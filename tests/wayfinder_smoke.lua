@@ -3211,6 +3211,42 @@ do
   check(ns.Data.Status() == "Fixtures (baked)" and not ns.Data.Has("ClassSpells"), "unregistering takes a source away")
 end
 ---------------------------------------------------------------- data sources (end)
+---------------------------------------------------------------- perf (begin)
+do
+  io.write("perf\n")
+  local realSelect, realPlan, realClock = ns.Panel.SelectPage, ns.Router.Plan, debugprofilestop
+  -- A clock that moves, so every timed call counts.
+  local ticks = 0
+  debugprofilestop = function() ticks = ticks + 1 return ticks end
+  SlashCmdList.WAYFINDER("perf on")
+  check(ns.db.settings.perf and ns.Perf.Enabled() and ns.Panel.SelectPage ~= realSelect, "/wf perf on wraps the modules")
+  ns.Panel.SelectPage("trainers", 1)
+  ns.Panel.SelectPage("vendors")
+  local report = ns.Perf.Report()
+  check(report:find("Panel.SelectPage(trainers, 1)", 1, true) and report:find("Panel.SelectPage(vendors)", 1, true),
+    "each tab switch is a trace, named after its tab")
+  local trace = table.concat(ns.Perf.TraceLines(1), "\n")
+  check(trace:find("\n  Panel.Refresh", 1, true) and trace:find("\n    page:trainers.Results", 1, true)
+    and trace:find("\n      Trainers.Results", 1, true) and trace:find("Router.Plan", 1, true),
+    "a trace is a tree: refresh > page > its module > routing:\n" .. trace)
+  check(report:find("source:fixtures", 1, true), "data source calls are timed per source")
+  for _ = 1, 50 do ns.Geo.PlayerNode() end
+  report = ns.Perf.Report()
+  check(report:find("Quick calls outside the traces", 1, true) and report:find("Geo.PlayerNode", 1, true)
+    and #ns.Perf.Traces() <= 40, "quick per-frame calls are tallied, not kept as traces")
+  local ok = pcall(ns.Quests.Quest, nil)
+  check(ok, "wrapped functions still work with odd input")
+  local before = #ns.Perf.Traces()
+  SlashCmdList.WAYFINDER("perf")
+  check(#ns.Perf.TraceLines() > 1, "/wf perf prints the last trace")
+  SlashCmdList.WAYFINDER("perf off")
+  check(not ns.db.settings.perf and ns.Panel.SelectPage == realSelect and ns.Router.Plan == realPlan,
+    "/wf perf off puts the original functions back")
+  ns.Panel.SelectPage("trainers", 1)
+  check(#ns.Perf.Traces() == before, "nothing is recorded while off")
+  debugprofilestop = realClock
+end
+---------------------------------------------------------------- perf (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

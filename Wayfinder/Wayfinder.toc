@@ -46,3 +46,4 @@ UI\Cards.lua
 UI\Panel.lua
 UI\MinimapButton.lua
 UI\Options.lua
+Perf.lua
