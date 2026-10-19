@@ -3104,6 +3104,75 @@ do
   ns.RouteMap.Hide()
 end
 ---------------------------------------------------------------- route map (end)
+---------------------------------------------------------------- data sources (begin)
+do
+  io.write("data source merging\n")
+  -- Two sources know the same NPC: the higher priority wins each field it
+  -- has, the lower one fills the rest; ID lists are combined without repeats.
+  Wayfinder.RegisterSource({ id = "low", label = "Low", priority = 1,
+    Npc = function(id) if id == 777 then return { name = "Old Name", subName = "Weapon Master", faction = "A",
+      flags = { trainer = true }, positions = { { mapID = 1433, x = 0.5, y = 0.52 } } } end end,
+    NpcIDs = function(flag) if flag == "trainer" then return { 777, 461 } end end,
+    ClassSpells = function(class)
+      if class == "WARLOCK" then return { { spellID = 9001, level = 6, cost = 100 }, { spellID = 9002, level = 30, cost = 900 } } end
+    end,
+    TrainerSpells = function(id) if id == 777 then return { { spellID = 227, level = 1, cost = 1000 } } end end })
+  Wayfinder.RegisterSource({ id = "high", label = "High", priority = 50,
+    Npc = function(id) if id == 777 then return { name = "New Name" } end end,
+    NpcIDs = function(flag) if flag == "trainer" then return { 777 } end end,
+    ClassSpells = function(class) if class == "WARLOCK" then return { { spellID = 9001, level = 4 } } end end })
+  local npc = ns.Data.Npc(777)
+  check(npc and npc.name == "New Name" and npc.subName == "Weapon Master" and npc.faction == "A",
+    "NPC fields merge by priority: " .. tostring(npc and npc.name) .. ", " .. tostring(npc and npc.subName))
+  local trainerIDs = ns.Data.NpcIDs("trainer")
+  local seen = {}
+  for _, id in ipairs(trainerIDs) do seen[id] = (seen[id] or 0) + 1 end
+  check(seen[777] == 1 and seen[461] == 1, "ID lists combined without repeats")
+  local spells = ns.Data.ClassSpells("WARLOCK")
+  check(#spells == 2 and spells[1].spellID == 9001 and spells[1].level == 4 and spells[1].cost == 100,
+    "class spells merge by spell ID: level from the higher source, cost from the lower")
+  check(ns.Data.Status():find("High") and ns.Data.Status():find("Low"), "both sources in the status line")
+  check(ns.Data.Has("ClassSpells") and not ns.Data.Has("TaxiCost"), "Has() names what sources can answer")
+
+  -- Before any trainer visit, the Trainers page uses the class spells.
+  local savedSpells, savedKnown = ns.charDB.classSpells, IsPlayerSpell
+  ns.charDB.classSpells = nil
+  IsPlayerSpell = function() return false end
+  local summary = ns.Trainers.SpellSummary()
+  check(summary and summary.fromData and summary.trainable == 1 and summary.cost == 100 and summary.nextLevel == 30,
+    "no trainer visit yet: spells from the data (" .. tostring(summary and summary.trainable) .. " trainable)")
+  check(ns.Trainers.SummaryText():find("from spell data"), "summary says where the list comes from")
+  IsPlayerSpell = function(id) return id == 9001 end
+  fire("SPELLS_CHANGED")
+  summary = ns.Trainers.SpellSummary()
+  check(summary and summary.trainable == 0, "a spell you know isn't counted again")
+  ns.charDB.classSpells, IsPlayerSpell = savedSpells, savedKnown
+  check(not ns.Trainers.SpellSummary().fromData, "a trainer visit wins over the data")
+
+  -- A weapon master you never talked to: what it teaches comes from the data.
+  IsPlayerSpell = function() return false end
+  local masters = ns.WeaponMasters.Results()
+  IsPlayerSpell = savedKnown
+  local staves
+  for _, row in ipairs(masters) do
+    if row.title:find("^Staves") then staves = row end
+  end
+  check(staves and staves.title:find("New Name") and staves.subtitle:find("10s"),
+    "weapon taught by an unvisited master, from its trainer list: " .. tostring(staves and staves.subtitle))
+
+  -- A source that errors is reported and skipped; the page keeps working.
+  local savedHandler, reported = geterrorhandler, nil
+  geterrorhandler = function() return function(err) reported = err end end
+  Wayfinder.RegisterSource({ id = "broken", label = "Broken", priority = 99,
+    Npc = function() error("boom") end })
+  check(ns.Data.Npc(777) and ns.Data.Npc(777).name == "New Name" and reported and reported:find("broken"),
+    "a failing source is reported and skipped: " .. tostring(reported))
+  geterrorhandler = savedHandler
+
+  for _, id in ipairs({ "low", "high", "broken" }) do Wayfinder.UnregisterSource(id) end
+  check(ns.Data.Status() == "Fixtures (baked)" and not ns.Data.Has("ClassSpells"), "unregistering takes a source away")
+end
+---------------------------------------------------------------- data sources (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

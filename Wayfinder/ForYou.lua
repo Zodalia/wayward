@@ -249,9 +249,12 @@ end
 
 local function trainingNeed(ctx)
   local s = ns.Trainers.SpellSummary()
+  -- Spell data (no trainer visit yet) that has nothing for you: no card.
+  if s and s.fromData and s.trainable == 0 then return nil end
   if not (s and s.trainable > 0) then return likelyTraining(ctx, s) end
   local spells = plural(s.trainable, "new spell")
-  if GetMoney() < s.cost then
+  local cost = s.costUnknown and "?" or ns.FormatMoney(s.cost)
+  if not s.costUnknown and GetMoney() < s.cost then
     ctx.notes[#ctx.notes + 1] = string.format("%s to train once you have %s.", capitalize(spells),
       ns.FormatMoney(s.cost))
     return nil
@@ -261,21 +264,22 @@ local function trainingNeed(ctx)
   local place = placeName(best.goal, best.zone)
   -- The spells themselves, first thing on the card.
   local details, level = {}, UnitLevel("player")
-  for _, sp in ipairs(ns.charDB.classSpells and ns.charDB.classSpells.services or {}) do
+  for _, sp in ipairs(ns.Trainers.Services() or {}) do
     if sp.type ~= "used" and sp.levelReq and sp.levelReq <= level then
-      details[#details + 1] = { text = string.format("%s%s  -  %s", sp.name, sp.rank and (" (" .. sp.rank .. ")") or "",
-        ns.FormatMoney(sp.cost or 0)) }
+      details[#details + 1] = { text = string.format("%s%s%s", sp.name, sp.rank and (" (" .. sp.rank .. ")") or "",
+        sp.cost and ("  -  " .. ns.FormatMoney(sp.cost)) or "") }
     end
   end
   details[#details + 1] = { text = "Trainer: " .. best.title, more = #details > 0 }
   return {
     kind = "train", only = "Train only",
-    stats = { { "Spells", tostring(s.trainable) }, { "Cost", ns.FormatMoney(s.cost) },
+    stats = { { "Spells", tostring(s.trainable) }, { "Cost", cost },
       { "Travel", ns.FormatDuration(best.route.seconds) } },
     title = string.format("Train %s in %s", spells, place),
     zone = best.zone, goal = best.goal, route = best.route,
-    why = string.format("%s for %s", spells, ns.FormatMoney(s.cost)),
-    rank = string.format("Needs come first: you can train and afford %s (%s).", spells, ns.FormatMoney(s.cost)),
+    why = s.costUnknown and spells or string.format("%s for %s", spells, cost),
+    rank = s.costUnknown and string.format("Needs come first: you can train %s.", spells)
+      or string.format("Needs come first: you can train and afford %s (%s).", spells, cost),
     details = details,
     stop = { node = best.goal, text = "Train your new spells at " .. best.title, phrase = "train in " .. place },
   }

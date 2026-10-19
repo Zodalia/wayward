@@ -10,25 +10,74 @@ ns.Trainers = Trainers
 local WeaponMasters = { id = "weaponMaster", label = "Weapons" }
 ns.WeaponMasters = WeaponMasters
 
--- Uses the spell list from your last class trainer visit. Learning happens at
--- a trainer, which refreshes the list, so "not used and level reached" means
--- trainable now.
-function Trainers.SpellSummary()
-  local cs = ns.charDB.classSpells
-  if not cs then return nil end
+local function knowsSpell(spellID)
+  if IsPlayerSpell then return IsPlayerSpell(spellID) and true or false end
+  if IsSpellKnown then return IsSpellKnown(spellID) and true or false end
+  return false
+end
+
+local function spellName(spellID)
+  if C_Spell and C_Spell.GetSpellName then
+    return C_Spell.GetSpellName(spellID), C_Spell.GetSpellSubtext and C_Spell.GetSpellSubtext(spellID)
+  end
+  if GetSpellInfo then return (GetSpellInfo(spellID)), GetSpellSubtext and GetSpellSubtext(spellID) end
+  return nil
+end
+
+local dataServices -- { level, services } built from ns.Data.ClassSpells
+
+ns.Listen("SOURCES_CHANGED", function() dataServices = nil end)
+ns.On("SPELLS_CHANGED", function() dataServices = nil end)
+
+-- Your class's spells in the shape of a trainer reading (Harvest.lua), from
+-- the data sources: "used" when you know it, "available" from its level.
+local function servicesFromData()
   local level = UnitLevel("player")
-  local out = { trainable = 0, cost = 0, nextCount = 0, updated = cs.updated, level = cs.level }
-  for _, s in ipairs(cs.services) do
+  if dataServices and dataServices.level == level then return dataServices.services end
+  local _, class = UnitClass("player")
+  local services = {}
+  for _, spell in ipairs(ns.Data.ClassSpells(class)) do
+    local name, rank = spellName(spell.spellID)
+    local known = knowsSpell(spell.spellID)
+    services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
+      spellID = spell.spellID, levelReq = spell.level, cost = spell.cost,
+      type = known and "used" or ((spell.level or 0) <= level and "available" or "unavailable") }
+  end
+  dataServices = { level = level, services = services }
+  return services
+end
+
+-- Your class's trainer services and where they come from: your last trainer
+-- visit ("trainer"; it knows Forever's own list and prices) or the data
+-- sources ("data"), or nil without either.
+function Trainers.Services()
+  local cs = ns.charDB.classSpells
+  if cs then return cs.services, "trainer", cs end
+  local services = servicesFromData()
+  if #services > 0 then return services, "data" end
+  return nil
+end
+
+-- Learning happens at a trainer, which refreshes the list, so "not used and
+-- level reached" means trainable now.
+function Trainers.SpellSummary()
+  local services, from, cs = Trainers.Services()
+  if not services then return nil end
+  local level = UnitLevel("player")
+  local out = { trainable = 0, cost = 0, nextCount = 0, updated = cs and cs.updated, level = cs and cs.level,
+    fromData = from == "data" }
+  for _, s in ipairs(services) do
     if s.type ~= "used" and s.levelReq then
       if s.levelReq <= level then
         out.trainable = out.trainable + 1
         out.cost = out.cost + (s.cost or 0)
+        if not s.cost then out.costUnknown = true end
       elseif not out.nextLevel or s.levelReq < out.nextLevel then
         out.nextLevel = s.levelReq
       end
     end
   end
-  for _, s in ipairs(cs.services) do
+  for _, s in ipairs(services) do
     if s.type ~= "used" and s.levelReq == out.nextLevel then out.nextCount = out.nextCount + 1 end
   end
   return out
@@ -38,7 +87,9 @@ function Trainers.SummaryText()
   local s = Trainers.SpellSummary()
   if not s then return "Visit any trainer for your class once to see which spells you can learn." end
   local parts = {}
-  if s.trainable > 0 then
+  if s.trainable > 0 and s.costUnknown then
+    parts[#parts + 1] = string.format("|cff7fd1ae%d new spell%s to train|r", s.trainable, s.trainable == 1 and "" or "s")
+  elseif s.trainable > 0 then
     local afford = GetMoney() >= s.cost and "" or " (you're short)"
     parts[#parts + 1] = string.format("|cff7fd1ae%d new spell%s to train|r for %s%s", s.trainable,
       s.trainable == 1 and "" or "s", ns.FormatMoney(s.cost), afford)
@@ -49,6 +100,7 @@ function Trainers.SummaryText()
     parts[#parts + 1] = string.format("next: %d spell%s at level %d", s.nextCount,
       s.nextCount == 1 and "" or "s", s.nextLevel)
   end
+  if s.fromData then parts[#parts + 1] = "from spell data until you visit a trainer" end
   return table.concat(parts, " · ")
 end
 
@@ -224,7 +276,10 @@ function WeaponMasters.Results()
     return routes[m] or nil
   end
 
-  -- Who teaches what to your class, from your visits.
+  -- Who teaches what to your class: from your visits, else from the data
+  -- sources' trainer lists (matched by the weapon skill's spell).
+  local weaponBySpell = {}
+  for _, w in ipairs(WEAPONS) do weaponBySpell[w.spell] = w end
   local teachers, unvisited = {}, {}
   for _, m in ipairs(masters) do
     local npc = npcs[m.id]
@@ -235,7 +290,16 @@ function WeaponMasters.Results()
         table.insert(teachers[t.name], { master = m, cost = t.cost })
       end
     else
-      unvisited[#unvisited + 1] = m
+      local fromData = false
+      for _, sp in ipairs(ns.Data.TrainerSpells(m.id) or {}) do
+        local w = weaponBySpell[sp.spellID]
+        if w then
+          fromData = true
+          teachers[w.name] = teachers[w.name] or {}
+          table.insert(teachers[w.name], { master = m, cost = sp.cost })
+        end
+      end
+      if not fromData then unvisited[#unvisited + 1] = m end
     end
   end
   local nearestUnvisited
