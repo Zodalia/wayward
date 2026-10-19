@@ -70,9 +70,14 @@ function QuestHubs.Results()
     local goal = ns.Geo.Node(anchor.mapID, anchor.x, anchor.y,
       hub.place and string.format("%s (%s)", hub.place, hub.anchor.name or "?") or hub.anchor.name)
     local levels = lowest == highest and ("level " .. lowest) or string.format("levels %d-%d", lowest, highest)
+    -- Coloured like most of its quests: the median quest level's difficulty.
+    local sorted = {}
+    for _, q in ipairs(quests) do sorted[#sorted + 1] = q.level end
+    table.sort(sorted)
     results[#results + 1] = {
       id = "hub" .. i,
       title = string.format("%s  ·  %d quest%s", place, hub.count, hub.count == 1 and "" or "s"),
+      titleColor = ns.DifficultyColor(sorted[math.floor((#sorted + 1) / 2)]),
       zone = string.format("%s  ·  %s  ·  %d quest giver%s", ns.MapName(anchor.mapID), levels, #hub.givers,
         #hub.givers == 1 and "" or "s"),
       goal = goal,

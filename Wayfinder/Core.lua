@@ -128,6 +128,13 @@ function ns.FormatDuration(seconds)
   return string.format("~%d h %d min", math.floor(minutes / 60), minutes % 60)
 end
 
+-- The game's quest difficulty colour for a level ({r, g, b}), or nil.
+function ns.DifficultyColor(level)
+  if type(level) ~= "number" or level <= 0 or not GetQuestDifficultyColor then return nil end
+  local c = GetQuestDifficultyColor(level)
+  return c and { r = c.r, g = c.g, b = c.b } or nil
+end
+
 function ns.EnumName(enum, value)
   for k, v in pairs(enum or {}) do
     if v == value then return k end

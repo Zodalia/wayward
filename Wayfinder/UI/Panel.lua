@@ -21,6 +21,7 @@ local _, ns = ...
 --   page.selected              --   and the selected one (see categoryPage below)
 -- A result:
 --   title, and either subtitle or zone (zone gets "· time · summary" appended),
+--   titleColor = {r, g, b} (optional; e.g. quest difficulty),
 --   goal + route (from ns.Router.Plan) or journey (from ns.Journey.Plan),
 --   details = { {text, color, more}, ... } for the tooltip (cards leave out the
 --     first, the ranking, and those with `more`),
@@ -514,6 +515,13 @@ local function paint()
     row.result = r
     if r then
       row.title:SetText(r.title)
+      -- Rows are reused: put back the font's own colour when a result has none.
+      if not row.titleDefault and row.title.GetTextColor then
+        local dr, dg, db = row.title:GetTextColor()
+        row.titleDefault = dr and { r = dr, g = dg, b = db }
+      end
+      local c = r.titleColor or row.titleDefault
+      if c then row.title:SetTextColor(c.r, c.g, c.b) end
       row.sub:SetText(subtitle(r))
       local action = r.actions and r.actions[1]
       row.action:SetShown(action ~= nil)

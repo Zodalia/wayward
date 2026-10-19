@@ -332,6 +332,7 @@ function Dungeons.Results()
     results[#results + 1] = {
       id = "dungeon" .. normalize(entry.name),
       title = string.format("%s%s  ·  level %d", entry.name, entry.raid and " (raid)" or "", f.fit.level),
+      titleColor = ns.DifficultyColor(f.fit.level),
       zone = table.concat(why, "  ·  "),
       goal = goal,
       route = route,

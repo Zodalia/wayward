@@ -3212,6 +3212,47 @@ do
   C_Map.GetMapInfoAtPosition = realInfo
 end
 ---------------------------------------------------------------- speed (end)
+---------------------------------------------------------------- difficulty colours (begin)
+do
+  io.write("difficulty colours\n")
+  local YELLOW, ORANGE, GREEN = { r = 1, g = 1, b = 0 }, { r = 1, g = 0.5, b = 0.25 }, { r = 0.25, g = 0.75, b = 0.25 }
+  GetQuestDifficultyColor = function(level)
+    local diff = level - UnitLevel("player")
+    if diff >= 3 then return ORANGE end
+    if diff >= -2 then return YELLOW end
+    return GREEN
+  end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local function same(c, want) return c and c.r == want.r and c.g == want.g and c.b == want.b end
+
+  -- A hub coloured like most of its quests (its median level).
+  local hubs = ns.QuestHubs.Results()
+  local checked = 0
+  for _, hub in ipairs(hubs) do
+    local levels = {}
+    for _, d in ipairs(hub.details or {}) do
+      local l = d.text and tonumber(d.text:match("^%[(%d+)%]"))
+      if l then levels[#levels + 1] = l end
+    end
+    table.sort(levels)
+    if #levels > 0 then
+      checked = checked + 1
+      check(same(hub.titleColor, GetQuestDifficultyColor(levels[math.floor((#levels + 1) / 2)])),
+        hub.title .. ": coloured by its median quest level")
+    end
+  end
+  check(checked > 0, "hubs were checked")
+  check(ns.DifficultyColor(23) and same(ns.DifficultyColor(23), ORANGE), "orange 3 levels up")
+
+  -- Journal search results and dungeons carry their level's colour too.
+  local found = ns.QuestsPage.Results("Lakeshire Logs")
+  check(found[1] and same(found[1].titleColor, YELLOW), "a quest in the journal is coloured by its level")
+  local dungeonRows = ns.Dungeons.Results()
+  check(dungeonRows[1] and dungeonRows[1].titleColor ~= nil, "dungeon rows are coloured by their level")
+  GetQuestDifficultyColor = nil
+  check(ns.DifficultyColor(20) == nil, "no colour API: rows keep the font's colour")
+end
+---------------------------------------------------------------- difficulty colours (end)
 ---------------------------------------------------------------- data sources (begin)
 do
   io.write("data source merging\n")

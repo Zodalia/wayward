@@ -225,8 +225,8 @@ local function questRow(m, start, net)
     details[#details + 1] = { text = "Requires level " .. q.requiredLevel, color = { r = 0.7, g = 0.7, b = 0.7 } }
   end
   local actions = (m.status == "available" or m.status == "inLog") and { tripAction(q.id, q.name) } or nil
-  return { id = "quest" .. q.id, title = questTitle(q), subtitle = sub, journey = journey, details = details,
-    actions = actions }
+  return { id = "quest" .. q.id, title = questTitle(q), titleColor = ns.DifficultyColor(ns.Quests.QuestLevel(q.id)),
+    subtitle = sub, journey = journey, details = details, actions = actions }
 end
 
 ---------------------------------------------------------------- quest log
@@ -332,6 +332,7 @@ local function logRow(entry, start, net)
     end
   end
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
+    titleColor = ns.DifficultyColor(entry.level),
     subtitle = table.concat(parts, "  ·  "), journey = journey, details = details,
     actions = ns.Quests.Available() and { tripAction(entry.id, entry.title) } or nil }
 end
