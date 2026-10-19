@@ -1,247 +1,29 @@
 local _, ns = ...
 
--- Optional bridge to QuestieDB (github.com/Questie/QuestieDB), read at runtime
--- through its public API. Nothing is copied into Wayfinder: QuestieDB has no
--- licence file, so we only read what the player has installed. Without it,
--- Wayfinder falls back to the NPCs it has learned (Harvest.lua).
---
--- API reference: QuestieDB docs/api.md (contract 4 adds Enum.npcFlags/classKeys).
+-- Quests from the data sources (Sources.lua): which ones you can take, where
+-- their givers and objectives are, quest hubs, chains and follow-ups. Without
+-- a source that has quests, every function answers "nothing" and the pages
+-- say so.
 
-local Bridge = {}
-ns.Questie = Bridge
+local Quests = {}
+ns.Quests = Quests
 
-local CONTRACT = 4
+local Data = ns.Data
 local HUB_RADIUS = 120 -- yards between neighbouring quest givers in one hub
-
--- English trainer subtitles (read with GetRaw, which skips localisation).
-local CLASS_BY_TRAINER_TITLE = {
-  ["Warrior Trainer"] = "WARRIOR", ["Paladin Trainer"] = "PALADIN", ["Hunter Trainer"] = "HUNTER",
-  ["Rogue Trainer"] = "ROGUE", ["Priest Trainer"] = "PRIEST", ["Shaman Trainer"] = "SHAMAN",
-  ["Mage Trainer"] = "MAGE", ["Warlock Trainer"] = "WARLOCK", ["Druid Trainer"] = "DRUID",
-}
-
-local QUEST_FIELDS = { "name", "questLevel", "requiredLevel", "requiredRaces", "requiredClasses",
-  "preQuestSingle", "preQuestGroup", "exclusiveTo", "startedBy", "requiredSkill", "nextQuestInChain",
-  "parentQuest", "requiredMaxLevel", "availableUntilCompleted", "availableStartingWith", "disabledByQuest",
-  "breadcrumbForQuestId", "zoneOrSort", "finishedBy", "objectives", "triggerEnd" }
-
 local RED_LEVELS = 5 -- a quest this many levels above you shows red
 
-local lib, failure
-local areaToUiMap, trainersByClass, questIndex, dungeonList
+local questIndex
 local giverNodes = {}
-
--- Masks can exceed 32 bits (Skyborne), so test bits arithmetically.
-local function hasBit(mask, bit)
-  return bit ~= nil and bit > 0 and math.floor(mask / bit) % 2 == 1
-end
 
 local function now()
   return debugprofilestop and debugprofilestop() or 0
 end
 
--- True when QuestieDB is installed and speaks a contract we understand.
-function Bridge.Available()
-  if lib then return true end
-  if failure then return false, failure end
-  local candidate = _G.LibQuestieDB
-  if type(candidate) ~= "table" or type(candidate.RequireContract) ~= "function" then
-    return false, "QuestieDB is not installed"
-  end
-  local ok, accepted, message = pcall(candidate.RequireContract, CONTRACT)
-  if ok and accepted then
-    lib = candidate
-    return true
-  end
-  failure = "QuestieDB is too old or too new for Wayfinder: " .. tostring(message or accepted)
-  ns.print(failure)
-  return false, failure
+-- True when a data source has quests.
+function Quests.Available()
+  return Data.Has("Quest")
 end
 
-function Bridge.StatusText()
-  if not Bridge.Available() then return nil end
-  local mode = lib.readMode == "source" and "SOURCE MODE" or (lib.readMode or "?")
-  return "QuestieDB (" .. mode .. ")"
-end
-
----------------------------------------------------------------- locations
-
-local function uiMapForArea(areaID)
-  if not areaToUiMap then
-    areaToUiMap = {}
-    local ok, zoneDB = pcall(lib.Support.Get, "ZoneDB")
-    local source = ok and zoneDB and zoneDB.private and zoneDB.private.areaIdToUiMapId
-    if type(source) == "string" then
-      local chunk = loadstring(source)
-      local loaded, value = pcall(chunk or error)
-      if loaded and type(value) == "table" then areaToUiMap = value end
-    elseif type(source) == "table" then
-      areaToUiMap = source
-    end
-  end
-  return areaToUiMap[areaID]
-end
-
--- spawns = { [areaID] = { {x, y[, phase]}, ... } } in 0-100 map percentages.
-local function spawnNodes(spawns, label)
-  local nodes = {}
-  for areaID, points in pairs(spawns or {}) do
-    local uiMap = uiMapForArea(areaID)
-    if uiMap then
-      for _, p in ipairs(points) do
-        if type(p[1]) == "number" and p[1] >= 0 then
-          local node = ns.Geo.Node(uiMap, p[1] / 100, p[2] / 100, label)
-          if node then nodes[#nodes + 1] = node end
-        end
-      end
-    end
-  end
-  return nodes
-end
-Bridge.SpawnNodes = spawnNodes
-Bridge.UiMapForArea = uiMapForArea
-
-function Bridge.Nearest(nodes, here)
-  local best, bestDistance = nodes[1], math.huge
-  for _, node in ipairs(nodes) do
-    local d = ns.Geo.Distance(here, node)
-    if d < bestDistance then best, bestDistance = node, d end
-  end
-  return best, bestDistance
-end
-
-local function friendlyTo(friendly, faction)
-  if friendly == nil or friendly == "" then return true end
-  return friendly:find(faction == "Alliance" and "A" or "H", 1, true) ~= nil
-end
-
----------------------------------------------------------------- trainers
-
--- Weapon masters are kept with the class trainers, under this key.
-local WEAPON_MASTER = "WEAPON_MASTER"
-
-local flightMasters -- { {name, nodes}, ... }, built with the trainers
-local professionTrainers -- [profession] = { {id, name, friendly, rank} }
-
-local function buildTrainers()
-  trainersByClass, flightMasters, professionTrainers = {}, {}, {}
-  local started = now()
-  local trainerFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.TRAINER
-  local flightFlag = lib.Enum.npcFlags and lib.Enum.npcFlags.FLIGHT_MASTER
-  if not trainerFlag then return end
-  for _, id in ipairs(NpcDB.GetAllIds()) do
-    local flags = NpcDB.Get(id, "npcFlags") or 0
-    if flightFlag and flags ~= 0 and hasBit(flags, flightFlag) then
-      local name = NpcDB.Get(id, "name")
-      flightMasters[#flightMasters + 1] = { name = name, nodes = spawnNodes(NpcDB.Get(id, "spawns"), name) }
-    end
-    if flags ~= 0 and hasBit(flags, trainerFlag) then
-      local subName = NpcDB.GetRaw(id, "subName") or ""
-      local class = CLASS_BY_TRAINER_TITLE[subName] or (subName == "Weapon Master" and WEAPON_MASTER) or nil
-      local profession, rank = ns.Professions.FromSubtitle(subName)
-      if profession then
-        professionTrainers[profession] = professionTrainers[profession] or {}
-        table.insert(professionTrainers[profession], { id = id, name = NpcDB.Get(id, "name"),
-          friendly = NpcDB.Get(id, "friendlyToFaction"), rank = rank })
-      end
-      if class then
-        trainersByClass[class] = trainersByClass[class] or {}
-        table.insert(trainersByClass[class], { id = id, name = NpcDB.Get(id, "name"),
-          friendly = NpcDB.Get(id, "friendlyToFaction") })
-      end
-    end
-  end
-  ns.debugTimings = ns.debugTimings or {}
-  ns.debugTimings.questieTrainers = now() - started
-end
-
--- The name of the flight master within `radius` yards of a node (a flight
--- path), or nil.
-function Bridge.FlightMasterNear(node, radius)
-  if not Bridge.Available() then return nil end
-  if not trainersByClass then buildTrainers() end
-  local best, bestDistance
-  for _, fm in ipairs(flightMasters or {}) do
-    for _, n in ipairs(fm.nodes) do
-      local d = ns.Geo.Distance(node, n)
-      if d <= radius and d < (bestDistance or math.huge) then best, bestDistance = fm.name, d end
-    end
-  end
-  return best
-end
-
--- { {id, name, node}, ... } for your class and faction, nearest spawn each.
-function Bridge.ClassTrainers(class, faction, here)
-  if not Bridge.Available() then return {} end
-  if not trainersByClass then buildTrainers() end
-  local out = {}
-  for _, t in ipairs(trainersByClass[class] or {}) do
-    if friendlyTo(t.friendly, faction) then
-      local node = Bridge.Nearest(spawnNodes(NpcDB.Get(t.id, "spawns"), t.name), here)
-      if node then out[#out + 1] = { id = t.id, name = t.name, node = node } end
-    end
-  end
-  return out
-end
-
--- Trainers of a profession for your faction: { {id, name, node, rank?} }, where
--- rank is the one their subtitle names ("Expert Tailor").
-function Bridge.ProfessionTrainers(profession, faction, here)
-  if not Bridge.Available() then return {} end
-  if not trainersByClass then buildTrainers() end
-  local out = {}
-  for _, t in ipairs(professionTrainers[profession] or {}) do
-    if friendlyTo(t.friendly, faction) then
-      local node = Bridge.Nearest(spawnNodes(NpcDB.Get(t.id, "spawns"), t.name), here)
-      if node then out[#out + 1] = { id = t.id, name = t.name, node = node, rank = t.rank } end
-    end
-  end
-  return out
-end
-
--- Weapon masters for your faction, the same shape.
-function Bridge.WeaponMasters(faction, here)
-  return Bridge.ClassTrainers(WEAPON_MASTER, faction, here)
-end
-
----------------------------------------------------------------- dungeons
-
--- Entrances from ZoneDB.private.dungeons, keyed by the dungeon's AreaID:
--- { {areaID, name, alternativeAreaIds, nodes}, ... }. The Forever flavor
--- stores them already converted to Forever maps, so they are not converted
--- again (EraToForever is only for our own Era points, below).
-function Bridge.Dungeons()
-  if not Bridge.Available() then return {} end
-  if dungeonList then return dungeonList end
-  dungeonList = {}
-  local ok, zoneDB = pcall(lib.Support.Get, "ZoneDB")
-  local source = ok and zoneDB and zoneDB.private and zoneDB.private.dungeons
-  for areaID, d in pairs(type(source) == "table" and source or {}) do
-    if type(d) == "table" and type(d[1]) == "string" then
-      local spawns = {}
-      for _, loc in ipairs(type(d[4]) == "table" and d[4] or {}) do
-        if type(loc) == "table" and loc[1] then
-          spawns[loc[1]] = spawns[loc[1]] or {}
-          table.insert(spawns[loc[1]], { loc[2], loc[3] })
-        end
-      end
-      dungeonList[#dungeonList + 1] = { areaID = areaID, name = d[1],
-        alternativeAreaIds = type(d[2]) == "table" and d[2] or {}, nodes = spawnNodes(spawns, d[1] .. " entrance") }
-    end
-  end
-  return dungeonList
-end
-
--- An Era (vanilla) map point in Forever coordinates (0-1), through QuestieDB's
--- helper when it has one. Only Mulgore, Eastern Plaguelands, Redridge and
--- Stormwind City change. Returns x, y, converted.
-function Bridge.EraToForever(uiMapID, x, y)
-  local convert = Bridge.Available() and lib.EraToForeverByUiMapId
-  if type(convert) ~= "function" then return x, y, false end
-  local ok, fx, fy = pcall(convert, uiMapID, x * 100, y * 100)
-  if not (ok and type(fx) == "number" and type(fy) == "number") then return x, y, false end
-  return fx / 100, fy / 100, true
-end
 
 ---------------------------------------------------------------- quests
 
@@ -249,7 +31,7 @@ local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
 local questByID -- [questID] = quest row (every quest, with or without a starter)
 local nameIndex -- { {lowercase name, quest row}, ... }, built on the first search
 
--- Forever adds quests QuestieDB knows nothing about the chains of (e.g. a
+-- Forever adds quests the data knows nothing about the chains of (e.g. a
 -- second "Return the Statuette", 98189, after the original 286). For those
 -- (IDs from FOREVER_QUEST_IDS; Era's stop well below) with no chain data at
 -- all, the earlier quest is inferred (q.inferredAfter):
@@ -299,19 +81,16 @@ local function inferChains()
   end
 end
 
+-- Rows are copies of the source's records, so inferred links stay ours.
 local function buildQuestIndex()
-  questIndex, predecessors, questByID, followers = {}, {}, {}, nil
+  questIndex, predecessors, questByID = {}, {}, {}
   local started = now()
-  local keys = {}
-  local questKeys = lib.Meta.QuestMeta.questKeys
-  for _, field in ipairs(QUEST_FIELDS) do
-    if questKeys[field] then keys[#keys + 1] = field end
-  end
-  for _, id in ipairs(QuestDB.GetAllIds()) do
-    local values = QuestDB.GetAll(id, keys)
-    if values then
-      local q = { id = id }
-      for i, field in ipairs(keys) do q[field] = values[i] end
+  for _, id in ipairs(Data.QuestIDs()) do
+    local record = Data.Quest(id)
+    if type(record) == "table" then
+      local q = {}
+      for k, v in pairs(record) do q[k] = v end
+      q.id = id
       questByID[id] = q
       local nextID = q.nextQuestInChain or 0
       if nextID ~= 0 then
@@ -326,7 +105,7 @@ local function buildQuestIndex()
   end
   inferChains()
   ns.debugTimings = ns.debugTimings or {}
-  ns.debugTimings.questieQuests = now() - started
+  ns.debugTimings.quests = now() - started
 end
 
 local function anyDone(list, done)
@@ -360,14 +139,10 @@ end
 local function playerProfile()
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
-  return {
-    level = UnitLevel("player"),
-    raceMask = lib.Enum.raceMaskById and lib.Enum.raceMaskById[raceID],
-    classMask = lib.Enum.classKeys and lib.Enum.classKeys[class],
-  }
+  return { level = UnitLevel("player"), raceID = raceID, class = class }
 end
 
--- Level <= 0 means "scales with you" in Questie data; show your level.
+-- Level <= 0 means "scales with you" in quest data; show your level.
 local function displayLevel(q, p)
   local level = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
   return level > 0 and level or p.level
@@ -405,7 +180,7 @@ for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "
 end
 -- Quests a giver didn't offer you (see Navigator.lua) count as locked until you
 -- hand something in or level up, when they may have opened.
-function Bridge.MarkNotOffered(questID)
+function Quests.MarkNotOffered(questID)
   ns.charDB.notOffered = ns.charDB.notOffered or {}
   ns.charDB.notOffered[questID] = true
   questVersion = questVersion + 1
@@ -420,8 +195,8 @@ ns.On("QUEST_TURNED_IN", forgetNotOffered)
 ns.On("PLAYER_LEVEL_UP", forgetNotOffered)
 
 local function canEverDo(q, p)
-  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return false end
-  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then return false end
+  if q.races and not q.races[p.raceID] then return false end
+  if q.classes and not q.classes[p.class] then return false end
   return true
 end
 
@@ -457,7 +232,7 @@ end
 -- nil when nothing stops you (level fit aside, see fitsLevel). Statuses: done,
 -- inLog, notForYou, tooLow, unavailable (closed to you for good or for now),
 -- needsEarlier (an earlier quest first, see chainStart).
--- Field meanings: QuestieDB src/meta/questMeta.lua. Questie handles more
+-- Field meanings: the quest record in Sources.lua. Questie handles more
 -- (holiday/event flags, reputation); quests needing a profession are left out.
 local function blocker(q, p, done, inLog)
   if done[q.id] then return "done", "You have done this quest." end
@@ -465,10 +240,10 @@ local function blocker(q, p, done, inLog)
   -- The game knows better than the data: its giver didn't offer it.
   local notOffered = ns.charDB and ns.charDB.notOffered
   if notOffered and notOffered[q.id] then return "needsEarlier", "Not offered yet: needs earlier quests." end
-  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then
+  if q.races and not q.races[p.raceID] then
     return "notForYou", "Not for your race."
   end
-  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then
+  if q.classes and not q.classes[p.class] then
     return "notForYou", "Not for your class."
   end
   local required = q.requiredLevel or 0
@@ -562,7 +337,7 @@ local function chainStart(q, p, done, inLog, seen)
   return nil
 end
 
--- status, reason[, stepID, stepState] for a quest row (see Bridge.QuestStatus).
+-- status, reason[, stepID, stepState] for a quest row (see Quests.QuestStatus).
 local function questStatus(q, p, done, inLog)
   local status, reason = blocker(q, p, done, inLog)
   local notOffered = ns.charDB and ns.charDB.notOffered
@@ -588,19 +363,26 @@ end
 local function giverNode(kind, id, here, faction)
   local key = kind .. id
   if giverNodes[key] == nil then
-    local db = kind == "npc" and NpcDB or ObjectDB
-    local name = db.Get(id, "name")
-    local ok = kind ~= "npc" or friendlyTo(db.Get(id, "friendlyToFaction"), faction)
-    local nodes = ok and spawnNodes(db.Get(id, "spawns"), name) or {}
+    local record = kind == "npc" and Data.Npc(id) or (kind == "object" and Data.Object(id)) or nil
+    local name = record and record.name
+    local ok = record ~= nil and (kind ~= "npc" or Data.FriendlyTo(record.faction, faction))
+    local nodes = ok and Data.Nodes(record.positions, name) or {}
     -- Objects (a box, a sign, Buzzbox 323) can't be talked to or targeted.
     if kind == "object" then
-      for _, n in ipairs(nodes) do n.object = true end
+      local flagged = {}
+      for i, n in ipairs(nodes) do
+        local copy = {}
+        for k, v in pairs(n) do copy[k] = v end
+        copy.object = true
+        flagged[i] = copy
+      end
+      nodes = flagged
     end
     giverNodes[key] = ok and { name = name, nodes = nodes } or false
   end
   local giver = giverNodes[key]
   if not giver or #giver.nodes == 0 then return nil end
-  return giver.name, Bridge.Nearest(giver.nodes, here)
+  return giver.name, Data.Nearest(giver.nodes, here)
 end
 
 -- Nearest of a quest's starters or finishers ({npcIDs, objectIDs}) you can talk
@@ -619,8 +401,8 @@ local function nearestOf(ends, here, faction)
 end
 
 -- Hubs of quest givers you can take quests from, nearest first (straight line).
-function Bridge.QuestHubs(here, limit)
-  if not Bridge.Available() then return {} end
+function Quests.QuestHubs(here, limit)
+  if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   local faction = UnitFactionGroup("player")
   local p = playerProfile()
@@ -643,7 +425,7 @@ function Bridge.QuestHubs(here, limit)
   end
 
   table.sort(order, function(a, b) return a.distance < b.distance end)
-  return Bridge.Cluster(order, limit or 12)
+  return Quests.Cluster(order, limit or 12)
 end
 
 -- Where this character can quest, zone by zone (the zone of each quest's
@@ -654,8 +436,8 @@ end
 --   { [zone uiMapID] = { mapID, quests = { {id, name, level, node, giver, chain}, ... } } }
 local zoneCache -- { key, zones }: reused until your quests or level change
 
-function Bridge.ZoneQuests(here)
-  if not Bridge.Available() then return {} end
+function Quests.ZoneQuests(here)
+  if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   local key = questVersion .. ":" .. UnitLevel("player") .. ":" .. tostring(questIndex)
   if zoneCache and zoneCache.key == key then return zoneCache.zones end
@@ -695,8 +477,8 @@ end
 -- later = {...} } }. `later` are ones you can't take yet but will: too low a
 -- level for them (with requiredLevel), too hard for now, or after earlier
 -- quests of their chain.
-function Bridge.QuestsForAreas(areaIDs)
-  if not Bridge.Available() then return {} end
+function Quests.QuestsForAreas(areaIDs)
+  if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   local p = playerProfile()
   local done, inLog = playerQuestState()
@@ -725,46 +507,46 @@ end
 
 ---------------------------------------------------------------- shared quest helpers
 
--- For pages built on the bridge (Quests, Items, For you). Rows are the
--- QUEST_FIELDS above; treat them as read-only.
+-- For pages built on quests (Quests, Items, For you). Rows are copies of the
+-- quest records (Sources.lua) plus inferredAfter; treat them as read-only.
 
-function Bridge.Quest(questID)
-  if not Bridge.Available() then return nil end
+function Quests.Quest(questID)
+  if not Quests.Available() then return nil end
   if not questIndex then buildQuestIndex() end
   return questByID[questID]
 end
 
 -- Every quest that has an NPC or object starter.
-function Bridge.AllQuests()
-  if not Bridge.Available() then return {} end
+function Quests.AllQuests()
+  if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   return questIndex
 end
 
 -- done, inLog: sets of quest IDs for this character right now.
-function Bridge.PlayerQuestState()
+function Quests.PlayerQuestState()
   return playerQuestState()
 end
 
 -- True when this character can pick the quest up now (same rules as Quest hubs).
-function Bridge.IsQuestAvailable(questID, done, inLog)
-  local q = Bridge.Quest(questID)
+function Quests.IsQuestAvailable(questID, done, inLog)
+  local q = Quests.Quest(questID)
   if not q then return false end
   if not done then done, inLog = playerQuestState() end
   return eligible(q, playerProfile(), done, inLog)
 end
 
 -- Nearest starter of a quest you can talk to: name, node, distance (or nil).
-function Bridge.QuestGiver(questID, here)
-  local q = Bridge.Quest(questID)
+function Quests.QuestGiver(questID, here)
+  local q = Quests.Quest(questID)
   if not (q and q.startedBy) then return nil end
   local name, node, distance = nearestOf(q.startedBy, here, UnitFactionGroup("player"))
   return name, node, distance
 end
 
 -- Nearest NPC or object you hand the quest in to: name, node, distance (or nil).
-function Bridge.QuestFinisher(questID, here)
-  local q = Bridge.Quest(questID)
+function Quests.QuestFinisher(questID, here)
+  local q = Quests.Quest(questID)
   if not (q and q.finishedBy) then return nil end
   local name, node, distance = nearestOf(q.finishedBy, here, UnitFactionGroup("player"))
   return name, node, distance
@@ -772,7 +554,7 @@ end
 
 -- Where to work on a quest's objectives: the nearest place, as a route node.
 -- In your log, the game's own quest-area marker (C_QuestLog.GetQuestsOnMap);
--- otherwise QuestieDB: creatures to kill, objects to use, mobs that drop the
+-- otherwise the quest data: creatures to kill, objects to use, mobs that drop the
 -- items you need, and places to explore. Returns node, source or nil.
 local MAX_DROPPERS = 6
 
@@ -792,17 +574,18 @@ end
 -- Places an item drops or can be picked up: its droppers' and objects' spawns.
 local function itemNodes(itemID, label, nodes)
   nodes = nodes or {}
-  if not ItemDB then return nodes end
-  local function add(spawns)
-    for _, node in ipairs(spawnNodes(spawns, label)) do nodes[#nodes + 1] = node end
+  local item = Data.Item(itemID)
+  if not item then return nodes end
+  local function add(record)
+    for _, node in ipairs(record and Data.Nodes(record.positions, label) or {}) do nodes[#nodes + 1] = node end
   end
-  for i, npcID in ipairs(ItemDB.Get(itemID, "npcDrops") or {}) do
+  for i, npcID in ipairs(item.npcDrops or {}) do
     if i > MAX_DROPPERS then break end
-    add(NpcDB.Get(npcID, "spawns"))
+    add(Data.Npc(npcID))
   end
-  for i, objectID in ipairs(ItemDB.Get(itemID, "objectDrops") or {}) do
+  for i, objectID in ipairs(item.objectDrops or {}) do
     if i > MAX_DROPPERS then break end
-    add(ObjectDB.Get(objectID, "spawns"))
+    add(Data.Object(objectID))
   end
   return nodes
 end
@@ -815,17 +598,20 @@ local function objectiveGroups(q, label)
   local groups = {}
   local objectives = type(q.objectives) == "table" and q.objectives or {}
   for _, creature in ipairs(objectives[1] or {}) do
-    groups[#groups + 1] = { name = NpcDB.Get(creature[1], "name"), nodes = spawnNodes(NpcDB.Get(creature[1], "spawns"), label) }
+    local npc = Data.Npc(creature[1])
+    groups[#groups + 1] = { name = npc and npc.name, nodes = npc and Data.Nodes(npc.positions, label) or {} }
   end
   for _, object in ipairs(objectives[2] or {}) do
-    groups[#groups + 1] = { name = ObjectDB.Get(object[1], "name"), nodes = spawnNodes(ObjectDB.Get(object[1], "spawns"), label) }
+    local o = Data.Object(object[1])
+    groups[#groups + 1] = { name = o and o.name, nodes = o and Data.Nodes(o.positions, label) or {} }
   end
   for _, item in ipairs(objectives[3] or {}) do
-    groups[#groups + 1] = { name = ItemDB and ItemDB.Get(item[1], "name"), nodes = itemNodes(item[1], label) }
+    local i = Data.Item(item[1])
+    groups[#groups + 1] = { name = i and i.name, nodes = itemNodes(item[1], label) }
   end
   if type(q.triggerEnd) == "table" then
     groups[#groups + 1] = { name = type(q.triggerEnd[1]) == "string" and q.triggerEnd[1] or nil,
-      nodes = spawnNodes(q.triggerEnd[2], label) }
+      nodes = Data.Nodes(q.triggerEnd[2], label) }
   end
   local out = {}
   for _, g in ipairs(groups) do
@@ -842,12 +628,12 @@ local function objectiveNodes(q, label)
   return nodes
 end
 
--- QuestieDB's objective places don't change, so each quest's list is built
+-- The data's objective places don't change, so each quest's list is built
 -- once; the game's own marker is read fresh every time.
 local objectiveCache = {}
 
-function Bridge.ObjectiveNode(questID, here)
-  local q = Bridge.Quest(questID)
+function Quests.ObjectiveNode(questID, here)
+  local q = Quests.Quest(questID)
   local label = q and q.name or ("Quest " .. questID)
   local area = logArea(questID, label)
   if area then return area, "log" end
@@ -859,48 +645,41 @@ function Bridge.ObjectiveNode(questID, here)
     objectiveCache[questID] = nodes
   end
   if #nodes == 0 then return nil end
-  return Bridge.Nearest(nodes, here), "QuestieDB"
+  return Data.Nearest(nodes, here), "data"
 end
 
--- A quest field read on demand (not kept in the quest index), or nil.
-local function questField(questID, field)
-  local keys = lib and lib.Meta and lib.Meta.QuestMeta and lib.Meta.QuestMeta.questKeys
-  if not (keys and keys[field]) then return nil end
-  local ok, value = pcall(QuestDB.Get, questID, field)
-  return ok and type(value) == "table" and value or nil
-end
-
--- What a quest needs before its objectives can be done, from QuestieDB, in
+-- What a quest needs before its objectives can be done, from the data, in
 -- order: items to collect first (its source items that drop or lie somewhere,
--- and that you don't have yet), then Questie's extra objectives (e.g. "Fill the
+-- and that you don't have yet), then its extra objectives (e.g. "Fill the
 -- bowl at the moonwell"), each with its nearest place:
 --   { {kind = "item", itemID, text, node} | {kind = "event", text, node}, ... }
-function Bridge.QuestPrep(questID, here)
-  if not Bridge.Available() then return {} end
-  local q = Bridge.Quest(questID)
+function Quests.QuestPrep(questID, here)
+  if not Quests.Available() then return {} end
+  local q = Quests.Quest(questID)
   if not q then return {} end
   local out, objectiveItems = {}, {}
   local groups = type(q.objectives) == "table" and q.objectives or {}
   for _, item in ipairs(groups[3] or {}) do objectiveItems[item[1]] = true end
-  for _, itemID in ipairs(questField(questID, "requiredSourceItems") or {}) do
+  for _, itemID in ipairs(type(q.requiredSourceItems) == "table" and q.requiredSourceItems or {}) do
     local have = GetItemCount and (GetItemCount(itemID) or 0) > 0
     if type(itemID) == "number" and not objectiveItems[itemID] and not have then
-      local name = (ItemDB and ItemDB.Get(itemID, "name")) or ("item " .. itemID)
-      local node = Bridge.Nearest(itemNodes(itemID, name), here)
+      local item = Data.Item(itemID)
+      local name = item and item.name or ("item " .. itemID)
+      local node = Data.Nearest(itemNodes(itemID, name), here)
       if node then out[#out + 1] = { kind = "item", itemID = itemID, text = "Collect " .. name, node = node } end
     end
   end
-  for _, extra in ipairs(questField(questID, "extraObjectives") or {}) do
-    local spawns, text = extra[1], extra[3]
-    if type(spawns) == "table" and type(text) == "string" then
-      local node = Bridge.Nearest(spawnNodes(spawns, text), here)
+  for _, extra in ipairs(type(q.extraObjectives) == "table" and q.extraObjectives or {}) do
+    local positions, text = extra[1], extra[3]
+    if type(positions) == "table" and type(text) == "string" then
+      local node = Data.Nearest(Data.Nodes(positions, text), here)
       if node then out[#out + 1] = { kind = "event", text = text, node = node } end
     end
   end
   return out
 end
 
--- The quests that follow `questID` in its chain (QuestieDB's links, quests
+-- The quests that follow `questID` in its chain (the data's links, quests
 -- that need it, and inferred Forever links) that you could take once it's
 -- done: your race and class, your level, not done yet. Quest rows.
 local followers -- [questID] = { quest rows that come after it }
@@ -919,8 +698,8 @@ local function buildFollowers()
   end
 end
 
-function Bridge.FollowUps(questID)
-  if not Bridge.Available() then return {} end
+function Quests.FollowUps(questID)
+  if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   if not followers then buildFollowers() end
   local p = playerProfile()
@@ -937,10 +716,10 @@ function Bridge.FollowUps(questID)
   return out
 end
 
--- What QuestieDB says about a quest's place in its chain, for /wf debug quest.
-function Bridge.Describe(questID)
-  local q = Bridge.Quest(questID)
-  if not q then return { "quest " .. questID .. ": not in QuestieDB" } end
+-- What the data says about a quest's place in its chain, for /wf debug quest.
+function Quests.Describe(questID)
+  local q = Quests.Quest(questID)
+  if not q then return { "quest " .. questID .. ": not in the quest data" } end
   local function list(t)
     if type(t) ~= "table" or #t == 0 then return "-" end
     local out = {}
@@ -949,9 +728,9 @@ function Bridge.Describe(questID)
   end
   local before = {}
   for _, prev in ipairs(predecessors[questID] or {}) do before[#before + 1] = prev.id end
-  local status, reason = Bridge.QuestStatus(questID)
+  local status, reason = Quests.QuestStatus(questID)
   return {
-    string.format("[%d] %s (id %d): level %s, requires %s", Bridge.QuestLevel(questID) or 0, q.name or "?", questID,
+    string.format("[%d] %s (id %d): level %s, requires %s", Quests.QuestLevel(questID) or 0, q.name or "?", questID,
       tostring(q.questLevel), tostring(q.requiredLevel)),
     string.format("  after (preQuestSingle): %s  ·  after all (preQuestGroup): %s", list(q.preQuestSingle), list(q.preQuestGroup)),
     string.format("  chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s",
@@ -963,12 +742,12 @@ function Bridge.Describe(questID)
 end
 
 -- Where a quest's objectives are, as named groups of places (see
--- objectiveGroups), built once per quest. Empty without QuestieDB data.
+-- objectiveGroups), built once per quest. Empty without quest data.
 local groupCache = {}
 
-function Bridge.ObjectiveGroups(questID)
+function Quests.ObjectiveGroups(questID)
   if groupCache[questID] then return groupCache[questID] end
-  local q = Bridge.Quest(questID)
+  local q = Quests.Quest(questID)
   if not q then return {} end
   local ok, groups = pcall(objectiveGroups, q, q.name or ("Quest " .. questID))
   groupCache[questID] = ok and groups or {}
@@ -976,8 +755,8 @@ function Bridge.ObjectiveGroups(questID)
 end
 
 -- The level shown for a quest (your level for quests that scale with you).
-function Bridge.QuestLevel(questID)
-  local q = Bridge.Quest(questID)
+function Quests.QuestLevel(questID)
+  local q = Quests.Quest(questID)
   return q and displayLevel(q, playerProfile()) or nil
 end
 
@@ -985,20 +764,20 @@ end
 --   status, reason[, stepID, stepState]
 -- status is "available" (grey and red quests too; the reason says so), "inLog",
 -- "done", "needsEarlier", "tooLow", "notForYou", "unavailable" or "unknown"
--- (not in QuestieDB). For "needsEarlier", stepID is the first quest of the
--- chain you can act on (see Bridge.ChainStart) and stepState "available" or
+-- (not in the quest data). For "needsEarlier", stepID is the first quest of the
+-- chain you can act on (see Quests.ChainStart) and stepState "available" or
 -- "inLog" (finish it first); both are nil when no earlier quest is open to you.
-function Bridge.QuestStatus(questID, done, inLog)
-  local q = Bridge.Quest(questID)
-  if not q then return "unknown", "Unknown to QuestieDB." end
+function Quests.QuestStatus(questID, done, inLog)
+  local q = Quests.Quest(questID)
+  if not q then return "unknown", "Not in the quest data." end
   if not done then done, inLog = playerQuestState() end
   return questStatus(q, playerProfile(), done, inLog)
 end
 
 -- The first quest on the way to `questID` you can act on now: stepID, stepState
 -- ("available": take it; "inLog": finish it first), or nil.
-function Bridge.ChainStart(questID, done, inLog)
-  local q = Bridge.Quest(questID)
+function Quests.ChainStart(questID, done, inLog)
+  local q = Quests.Quest(questID)
   if not q then return nil end
   if not done then done, inLog = playerQuestState() end
   return chainStart(q, playerProfile(), done, inLog, {})
@@ -1006,8 +785,8 @@ end
 
 -- Quests whose name contains `text` (case-insensitive), with or without a
 -- starter, lowest ID first. The name index is built once, on the first search.
-function Bridge.FindQuests(text)
-  if not Bridge.Available() then return {} end
+function Quests.FindQuests(text)
+  if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
   if not nameIndex then
     nameIndex = {}
@@ -1031,7 +810,7 @@ end
 
 -- Single linkage: a giver joins every hub it is near any member of, and the
 -- hubs it bridges merge. Past `limit`, givers can still join existing hubs.
-function Bridge.Cluster(givers, limit)
+function Quests.Cluster(givers, limit)
   local hubs = {}
   for _, g in ipairs(givers) do
     local near = {}
@@ -1060,3 +839,10 @@ function Bridge.Cluster(givers, limit)
   end
   return hubs
 end
+
+-- Indexes are rebuilt when a source registers (a companion loading later).
+ns.Listen("SOURCES_CHANGED", function()
+  questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
+  giverNodes, objectiveCache, groupCache, zoneCache = {}, {}, {}, nil
+  questState, questVersion = nil, questVersion + 1
+end)

@@ -276,9 +276,9 @@ end
 ---------------------------------------------------------------- footer
 
 local function footerText(net)
-  local source = ns.Questie.StatusText()
+  local source = ns.Data.Status()
   source = source and ("Data: " .. source .. " + places you visited. ")
-    or "Data: places you visited (install QuestieDB for more). "
+    or "Data: places you visited (install a Wayfinder data addon for more). "
   local flights = net and net.knownFlights or 0
   if flights == 0 then
     return source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight "

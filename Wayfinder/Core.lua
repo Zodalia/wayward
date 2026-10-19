@@ -202,15 +202,14 @@ SlashCmdList.WAYFINDER = function(msg)
     local questQuery = rest:match("^quest%s+(.+)$")
     if questQuery then
       local id = tonumber(questQuery) or tonumber(questQuery:match("quest:(%d+)"))
-      local matches = id and { { id = id } } or ns.Questie.FindQuests(questQuery)
+      local matches = id and { { id = id } } or ns.Quests.FindQuests(questQuery)
       if #matches == 0 then ns.print("no quest called " .. questQuery) end
       for i = 1, math.min(#matches, 3) do
-        for _, line in ipairs(ns.Questie.Describe(matches[i].id)) do ns.print(line) end
+        for _, line in ipairs(ns.Quests.Describe(matches[i].id)) do ns.print(line) end
       end
       return
     end
-    local available, reason = ns.Questie.Available()
-    ns.print("QuestieDB: " .. (available and ns.Questie.StatusText() or tostring(reason)))
+    ns.print("data sources: " .. (ns.Data.Status() or "none (install a Wayfinder data addon for quests, items and more NPCs)"))
     local function count(t)
       local n = 0
       for _ in pairs(t) do n = n + 1 end

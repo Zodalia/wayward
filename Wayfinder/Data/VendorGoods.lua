@@ -2,8 +2,8 @@ local _, ns = ...
 
 -- What a levelling character buys from vendors, by the level it becomes
 -- useful. Vanilla item IDs, not yet checked against Forever's vendors. Used to
--- say why a vendor is worth the trip, and to find sellers in QuestieDB's
--- ItemDB. Names are English fallbacks until the client has the item cached.
+-- say why a vendor is worth the trip, and to find sellers in the item data.
+-- Names are English fallbacks until the client has the item cached.
 
 ns.data.vendorGoods = {
   -- Food and drink tiers: 1, 5, 15, 25, 35, 45.

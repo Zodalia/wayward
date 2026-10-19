@@ -21,6 +21,18 @@ end
 local cached, cachedKey
 local FLIGHT_MASTER_RADIUS = 60 -- yards from a flight path's map position
 
+-- The name of the data's flight master within `radius` yards of a node, or nil.
+local function sourceFlightMaster(node, radius)
+  local best, bestDistance
+  for _, fm in ipairs(ns.Data.NPCsOfKind("flightMaster")) do
+    for _, n in ipairs(fm.nodes) do
+      local d = ns.Geo.Distance(node, n)
+      if d <= radius and d < (bestDistance or math.huge) then best, bestDistance = fm.name, d end
+    end
+  end
+  return best
+end
+
 local function signature()
   local known, count = ns.charDB.knownTaxi, 0
   for _ in pairs(known) do count = count + 1 end
@@ -42,9 +54,9 @@ function Network.Build()
         local node = ns.Geo.Node(continent, t.position.x, t.position.y, t.name)
         if node then
           node.isFlight, node.nodeID = true, t.nodeID
-          -- Who you talk to there: one you've met, else QuestieDB's.
+          -- Who you talk to there: one you've met, else the data's.
           node.npc = ns.Harvest.NPCNear("flightMaster", node, FLIGHT_MASTER_RADIUS)
-            or ns.Questie.FlightMasterNear(node, FLIGHT_MASTER_RADIUS)
+            or sourceFlightMaster(node, FLIGHT_MASTER_RADIUS)
           net.flights[#net.flights + 1] = node
         end
       end

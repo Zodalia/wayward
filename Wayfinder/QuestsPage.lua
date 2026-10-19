@@ -5,7 +5,7 @@ local _, ns = ...
 -- start of its chain. Dungeon quests can be picked up in one trip that ends at
 -- the entrance (also offered on the Dungeons page). With an empty search it
 -- lists your quest log; "Add" puts a quest (log or search) into the current trip.
--- Searching and directions need QuestieDB; the log list does not.
+-- Searching and directions need quest data (Sources.lua); the log list does not.
 
 -- The Quests side page's "Journal" category (UI/Panel.lua); it searches itself.
 local QuestsPage = { id = "journal", label = "Journal", searchable = true,
@@ -18,7 +18,7 @@ local MAX_DUNGEON_ROWS = 2
 
 local GREEN, YELLOW, GREY, RED = "|cff7fd1ae", "|cffffd200", "|cff9d9d9d", "|cffff7f3f"
 
--- Label, colour and sort rank per status (QuestieBridge.lua, Bridge.QuestStatus).
+-- Label, colour and sort rank per status (Quests.lua, Quests.QuestStatus).
 local STATUS = {
   available = { "Available", GREEN, 1 },
   inLog = { "In your log", YELLOW, 2 },
@@ -27,14 +27,13 @@ local STATUS = {
   unavailable = { "Not available", RED, 5 },
   done = { "Done", GREY, 6 },
   notForYou = { "Not for you", GREY, 7 },
-  unknown = { "Unknown to QuestieDB", GREY, 8 },
+  unknown = { "Not in the quest data", GREY, 8 },
 }
 
 local summary
 
 local function unavailableText()
-  local _, reason = ns.Questie.Available()
-  return (reason or "QuestieDB is not available") .. ". Install QuestieDB to search quests."
+  return "No quest data. Install a Wayfinder data addon to search quests."
 end
 
 local function label(status, extra)
@@ -43,7 +42,7 @@ local function label(status, extra)
 end
 
 local function questTitle(q)
-  return string.format("[%d] %s", ns.Questie.QuestLevel(q.id) or 0, q.name or ("Quest " .. q.id))
+  return string.format("[%d] %s", ns.Quests.QuestLevel(q.id) or 0, q.name or ("Quest " .. q.id))
 end
 
 ---------------------------------------------------------------- dungeon runs
@@ -54,7 +53,7 @@ end
 function QuestsPage.DungeonJourney(dungeonName, entrance, quests, start, net)
   local stops = {}
   for _, quest in ipairs(quests) do
-    local giver, node = ns.Questie.QuestGiver(quest.id, start)
+    local giver, node = ns.Quests.QuestGiver(quest.id, start)
     if node then
       stops[#stops + 1] = { node = node, text = string.format("Pick up %s from %s", quest.name or "?", giver or "?"),
         giver = giver, action = { kind = "pickup", questID = quest.id } }
@@ -80,7 +79,7 @@ end
 -- Quests you can take for a catalogue dungeon (ns.Dungeons.Catalogue()).
 local function dungeonQuests(entry)
   local available = {}
-  for _, group in pairs(ns.Questie.QuestsForAreas(entry.areaIDs)) do
+  for _, group in pairs(ns.Quests.QuestsForAreas(entry.areaIDs)) do
     for _, quest in ipairs(group.available) do available[#available + 1] = quest end
   end
   table.sort(available, function(a, b) return a.id < b.id end)
@@ -105,7 +104,7 @@ local function dungeonRows(matches, start, net)
         seen[entry] = true
         local quests = dungeonQuests(entry)
         local journey = #quests > 0
-          and QuestsPage.DungeonJourney(entry.name, ns.Questie.Nearest(entry.entrances, start), quests, start, net)
+          and QuestsPage.DungeonJourney(entry.name, ns.Data.Nearest(entry.entrances, start), quests, start, net)
         if journey then
           local details = {}
           for _, stop in ipairs(journey.stops) do details[#details + 1] = { text = stop.text } end
@@ -150,7 +149,7 @@ end
 local function questStop(m, start)
   local q, status = m.q, m.status
   if status == "available" then
-    local giver, node = ns.Questie.QuestGiver(q.id, start)
+    local giver, node = ns.Quests.QuestGiver(q.id, start)
     if node then
       return { node = node, text = string.format("Pick up %s from %s", q.name, giver or "?"), giver = giver,
         action = { kind = "pickup", questID = q.id } }
@@ -158,23 +157,23 @@ local function questStop(m, start)
     local starters = q.startedBy or {}
     return nil, starters[3] and #starters[3] > 0 and "starts from an item" or "no known quest giver"
   elseif status == "inLog" then
-    local finisher, node = ns.Questie.QuestFinisher(q.id, start)
+    local finisher, node = ns.Quests.QuestFinisher(q.id, start)
     if node then
       return { node = node, npc = finisher, text = string.format("Hand in %s to %s", q.name, finisher or "?"),
         action = { kind = "turnin", questID = q.id } }
     end
     return nil, "no known place to hand it in"
   elseif status == "needsEarlier" and m.stepID then
-    local step = ns.Questie.Quest(m.stepID)
+    local step = ns.Quests.Quest(m.stepID)
     local stepName = step and step.name or ("quest " .. m.stepID)
     if m.stepState == "available" then
-      local giver, node = ns.Questie.QuestGiver(m.stepID, start)
+      local giver, node = ns.Quests.QuestGiver(m.stepID, start)
       if node then
         return { node = node, text = string.format("Start the chain: pick up %s from %s", stepName, giver or "?"),
           giver = giver, action = { kind = "pickup", questID = m.stepID } }
       end
     else
-      local finisher, node = ns.Questie.QuestFinisher(m.stepID, start)
+      local finisher, node = ns.Quests.QuestFinisher(m.stepID, start)
       if node then
         return { node = node, text = string.format("Finish %s first: hand it in to %s", stepName, finisher or "?"),
           action = { kind = "turnin", questID = m.stepID } }
@@ -188,7 +187,7 @@ end
 -- Short status for the row; the full reason goes in the tooltip.
 local function rowStatus(m)
   if m.status == "needsEarlier" and m.stepID then
-    local step = ns.Questie.Quest(m.stepID)
+    local step = ns.Quests.Quest(m.stepID)
     local name = step and step.name or ("quest " .. m.stepID)
     return label(m.status, (m.stepState == "available" and "start: " or "finish: ") .. name)
   elseif m.status == "tooLow" then
@@ -252,10 +251,10 @@ function QuestsPage.LogQuests()
       zone = info.title
     elseif info and info.questID and not info.isHidden then
       local id = info.questID
-      local q = ns.Questie.Quest(id)
+      local q = ns.Quests.Quest(id)
       local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) or false
       out[#out + 1] = { id = id, title = info.title or (q and q.name) or ("Quest " .. id),
-        level = (info.level or 0) > 0 and info.level or ns.Questie.QuestLevel(id) or 0,
+        level = (info.level or 0) > 0 and info.level or ns.Quests.QuestLevel(id) or 0,
         zone = zone, complete = complete, progress = progress(id, complete) }
     end
   end
@@ -277,7 +276,7 @@ function QuestsPage.TripFor(questIDs, title, start, net)
 end
 
 local function questName(id)
-  local q = ns.Questie.Quest(id)
+  local q = ns.Quests.Quest(id)
   return q and q.name or (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)) or ("Quest " .. id)
 end
 
@@ -314,8 +313,8 @@ local function logRow(entry, start, net)
   if entry.zone then parts[#parts + 1] = entry.zone end
   parts[#parts + 1] = entry.progress or (YELLOW .. "In progress|r")
   local journey
-  if not ns.Questie.Available() then
-    parts[#parts + 1] = GREY .. "directions need QuestieDB|r"
+  if not ns.Quests.Available() then
+    parts[#parts + 1] = GREY .. "directions need quest data|r"
   elseif start then
     local stops = ns.Journey.QuestStops(entry.id, start)
     journey = #stops > 0 and ns.Journey.Plan(start, { title = entry.title, stops = stops }, net) or nil
@@ -334,13 +333,13 @@ local function logRow(entry, start, net)
   end
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
     subtitle = table.concat(parts, "  ·  "), journey = journey, details = details,
-    actions = ns.Questie.Available() and { tripAction(entry.id, entry.title) } or nil }
+    actions = ns.Quests.Available() and { tripAction(entry.id, entry.title) } or nil }
 end
 
 -- Empty search: trip rows for picked and completed quests, then the log.
 local function logResults()
   local log = QuestsPage.LogQuests()
-  local available = ns.Questie.Available()
+  local available = ns.Quests.Available()
   local start = ns.Geo.PlayerNode()
   local net = available and start and ns.Network.Build() or nil
   local results = {}
@@ -366,9 +365,8 @@ local function logResults()
   if #log == 0 then
     summary = nil
   elseif not available then
-    local _, reason = ns.Questie.Available()
-    summary = string.format("Your quest log: %s. %s. Install QuestieDB for directions and to search quests.",
-      plural(#log, "quest"), reason or "QuestieDB is not available")
+    summary = string.format("Your quest log: %s. No quest data. Install a Wayfinder data addon for directions and to search quests.",
+      plural(#log, "quest"))
   else
     summary = string.format("Your quest log: %s. Click one for a trip, or Add it to the trip you're on. "
       .. "Type to search all quests.", plural(#log, "quest"))
@@ -395,7 +393,7 @@ local function parse(text)
 end
 
 function QuestsPage.SummaryText(query)
-  local available = ns.Questie.Available()
+  local available = ns.Quests.Available()
   if parse(query) == "" then
     return summary or (available and "Find a quest: whether you can take it, and where to go." or unavailableText())
   end
@@ -406,41 +404,41 @@ end
 function QuestsPage.EmptyText(query)
   local text = parse(query)
   if text == "" then
-    return "Your quest log is empty." .. (ns.Questie.Available() and " Type a quest name to search." or "")
+    return "Your quest log is empty." .. (ns.Quests.Available() and " Type a quest name to search." or "")
   end
   if #text < MIN_LENGTH then return "Type a quest name (at least " .. MIN_LENGTH .. " letters)." end
-  return string.format("No quest called \"%s\" in QuestieDB.", text)
+  return string.format("No quest called \"%s\" in the quest data.", text)
 end
 
 function QuestsPage.Results(query)
   summary = nil
   local text, linkedID, linkedName = parse(query)
   if text == "" then return logResults() end
-  if not ns.Questie.Available() then return {}, unavailableText() end
+  if not ns.Quests.Available() then return {}, unavailableText() end
   if not linkedID and #text < MIN_LENGTH then return {} end
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
-  local done, inLog = ns.Questie.PlayerQuestState()
+  local done, inLog = ns.Quests.PlayerQuestState()
 
   local found
   if linkedID then
-    local q = ns.Questie.Quest(linkedID)
+    local q = ns.Quests.Quest(linkedID)
     if not q then
-      summary = "That quest isn't in QuestieDB."
+      summary = "That quest isn't in the quest data."
       return { { title = linkedName or ("Quest " .. linkedID), subtitle = label("unknown") } }, nil, net
     end
     found = { q }
   else
-    found = ns.Questie.FindQuests(text)
+    found = ns.Quests.FindQuests(text)
   end
 
   local needle, matches = text:lower(), {}
   for _, q in ipairs(found) do
-    local status, reason, stepID, stepState = ns.Questie.QuestStatus(q.id, done, inLog)
+    local status, reason, stepID, stepState = ns.Quests.QuestStatus(q.id, done, inLog)
     local name = (q.name or ""):lower()
     matches[#matches + 1] = { q = q, status = status, reason = reason, stepID = stepID, stepState = stepState,
-      exact = name == needle, prefix = name:sub(1, #needle) == needle, level = ns.Questie.QuestLevel(q.id) or 0 }
+      exact = name == needle, prefix = name:sub(1, #needle) == needle, level = ns.Quests.QuestLevel(q.id) or 0 }
   end
   table.sort(matches, rank)
 

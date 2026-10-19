@@ -3,8 +3,8 @@ local _, ns = ...
 -- "Vendors" category: the vendors a levelling character needs right now
 -- (repairs, food & drink, class reagents, ammo), ranked by travel time.
 -- Sources: vendors you visited (what they sold, whether they repair, recorded
--- at the merchant window) and QuestieDB when installed (ItemDB sellers of the
--- goods in Data/VendorGoods.lua, the NPC repair flag and English subtitles).
+-- at the merchant window) and the data sources (Sources.lua: item sellers of
+-- the goods in Data/VendorGoods.lua, the NPC repair flag and English subtitles).
 
 local Vendors = { id = "vendors", label = "Vendors" }
 ns.Vendors = Vendors
@@ -22,7 +22,7 @@ local FOOD_SUBCLASS = 5 -- Consumable: Food & Drink
 local AMMO_BY_PROJECTILE = { [2] = "arrow", [3] = "bullet" }
 local AMMO_BY_WEAPON = { [2] = "arrow", [18] = "arrow", [3] = "bullet" } -- bows, crossbows, guns
 
--- English QuestieDB subtitles (read with GetRaw, which skips localisation).
+-- English NPC subtitles from the data sources.
 local SELLS_BY_SUBTITLE = {
   ["Food & Drink"] = { food = true }, ["Innkeeper"] = { food = true }, ["Baker"] = { food = true },
   ["Butcher"] = { food = true }, ["Fruit Vendor"] = { food = true }, ["Mushroom Vendor"] = { food = true },
@@ -200,78 +200,68 @@ ns.On("MERCHANT_SHOW", function()
 end)
 ns.On("UPDATE_INVENTORY_DURABILITY", function() ns.Fire("DATA_CHANGED") end)
 
----------------------------------------------------------------- QuestieDB
+---------------------------------------------------------------- data sources
 
 local npcScan       -- [npcID] = { repairs, sells } from flags and subtitles
 local sellersCache = {}
 local npcCache = {}
 
--- Masks can exceed 32 bits, so test bits arithmetically.
-local function hasBit(mask, bit)
-  return bit ~= nil and bit > 0 and math.floor(mask / bit) % 2 == 1
-end
-
-local function friendlyTo(friendly, faction)
-  if friendly == nil or friendly == "" then return true end
-  return friendly:find(faction == "Alliance" and "A" or "H", 1, true) ~= nil
-end
+ns.Listen("SOURCES_CHANGED", function()
+  npcScan, sellersCache, npcCache = nil, {}, {}
+end)
 
 local function now()
   return debugprofilestop and debugprofilestop() or 0
 end
 
--- One scan per session, like the trainer scan in QuestieBridge.lua.
+-- One scan per session, like the trainer scan in Sources.lua.
 local function scanNpcs()
   npcScan = {}
   local started = now()
-  local flags = LibQuestieDB.Enum.npcFlags or {}
-  for _, id in ipairs(NpcDB.GetAllIds()) do
-    local f = NpcDB.Get(id, "npcFlags") or 0
-    if f ~= 0 and (hasBit(f, flags.VENDOR) or hasBit(f, flags.REPAIR)) then
-      local sells = SELLS_BY_SUBTITLE[NpcDB.GetRaw(id, "subName") or ""]
-      local repairs = hasBit(f, flags.REPAIR) or (flags.REPAIR == nil and sells and sells.repair)
+  local ids = {}
+  for _, id in ipairs(ns.Data.NpcIDs("vendor")) do ids[id] = true end
+  for _, id in ipairs(ns.Data.NpcIDs("repair")) do ids[id] = true end
+  for id in pairs(ids) do
+    local npc = ns.Data.Npc(id)
+    if npc then
+      local sells = SELLS_BY_SUBTITLE[npc.subName or ""]
+      local repairs = npc.flags and npc.flags.repair
       if repairs or sells then npcScan[id] = { repairs = repairs or nil, sells = sells } end
     end
   end
   ns.debugTimings = ns.debugTimings or {}
-  ns.debugTimings.questieVendors = now() - started
+  ns.debugTimings.sourceVendors = now() - started
 end
 
 local function itemSellers(itemID)
   if sellersCache[itemID] == nil then
-    local keys = LibQuestieDB.Meta and LibQuestieDB.Meta.ItemMeta and LibQuestieDB.Meta.ItemMeta.itemKeys
-    local items = LibQuestieDB.Item or ItemDB
-    local sellers
-    if keys and keys.vendors and items then
-      local ok, value = pcall(items.Get, itemID, "vendors")
-      sellers = ok and type(value) == "table" and value or nil
-    end
-    sellersCache[itemID] = sellers or false
+    local item = ns.Data.Item(itemID)
+    sellersCache[itemID] = item and type(item.vendors) == "table" and item.vendors or false
   end
   return sellersCache[itemID] or {}
 end
 
 local function npcInfo(id)
   if npcCache[id] == nil then
-    local name = NpcDB.Get(id, "name")
-    npcCache[id] = name and {
-      name = name,
-      friendly = NpcDB.Get(id, "friendlyToFaction"),
-      nodes = ns.Questie.SpawnNodes(NpcDB.Get(id, "spawns"), name),
+    local npc = ns.Data.Npc(id)
+    npcCache[id] = npc and npc.name and {
+      name = npc.name,
+      faction = npc.faction,
+      nodes = ns.Data.Nodes(npc.positions, npc.name),
     } or false
   end
   return npcCache[id] or nil
 end
 
 -- { [npcID] = { name, node, goods = {[itemID] = true}, sells, repairs } } for your faction.
-local function questieVendors(p, faction, here)
+local function sourceVendors(p, faction, here)
   local out = {}
-  if not ns.Questie.Available() then return out end
+  if not ns.Data.Has("Npc") then return out end
   if not npcScan then scanNpcs() end
   local function add(id)
     if out[id] == nil then
       local info = npcInfo(id)
-      local node = info and friendlyTo(info.friendly, faction) and ns.Questie.Nearest(info.nodes, here)
+      local node = info and ns.Data.FriendlyTo(info.faction, faction) and ns.Data.Nearest(info.nodes, here)
       out[id] = node and { name = info.name, node = node, goods = {}, sells = {} } or false
     end
     return out[id] or nil
@@ -401,7 +391,7 @@ end
 
 function Vendors.EmptyText()
   return "No vendors known yet. Talk to any vendor once and Wayfinder remembers where they are and what "
-    .. "they sell, or install QuestieDB."
+    .. "they sell, or install a Wayfinder data addon."
 end
 
 -- Results: one row per vendor, labelled with what it does for you. The
@@ -414,8 +404,8 @@ function Vendors.Results()
   local faction = UnitFactionGroup("player")
   summary = summaryText(p)
 
-  local vendors = questieVendors(p, faction, start)
-  -- Visited vendors: positions and goods measured in Forever win over QuestieDB.
+  local vendors = sourceVendors(p, faction, start)
+  -- Visited vendors: positions and goods measured in Forever win over the data.
   for id, npc in pairs(ns.Harvest.AllNPCs()) do
     local friendly = npc.faction == nil or npc.faction == faction or npc.faction == "Neutral"
     if npc.kinds.vendor and friendly then

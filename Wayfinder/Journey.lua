@@ -40,7 +40,7 @@ local MAX_SWAP_PASSES = 6
 local done, logged = {}, {}
 
 local function refresh()
-  done, logged = ns.Questie.PlayerQuestState()
+  done, logged = ns.Quests.PlayerQuestState()
 end
 
 local function inLog(questID)
@@ -92,7 +92,7 @@ end
 -- The stops for doing a whole quest from where it stands now: pick it up,
 -- do the objectives, hand it in. Returns { stops } (empty if done).
 function Journey.QuestStops(questID, here)
-  local q = ns.Questie.Quest(questID)
+  local q = ns.Quests.Quest(questID)
   local name = q and q.name or ("quest " .. questID)
   refresh()
   if completed(questID) then return {} end
@@ -100,7 +100,7 @@ function Journey.QuestStops(questID, here)
   local previous
 
   if not inLog(questID) then
-    local giver, node = ns.Questie.QuestGiver(questID, here)
+    local giver, node = ns.Quests.QuestGiver(questID, here)
     if not node then return {} end
     previous = { node = node, text = string.format("Pick up %s from %s", name, giver or "the quest giver"),
       giver = giver, action = { kind = "pickup", questID = questID } }
@@ -112,7 +112,7 @@ function Journey.QuestStops(questID, here)
     -- extra steps in order (e.g. fill a bowl, place it at a bonfire).
     local gate = previous and { previous } or nil
     local items = {}
-    for _, p in ipairs(ns.Questie.QuestPrep(questID, here)) do
+    for _, p in ipairs(ns.Quests.QuestPrep(questID, here)) do
       local stop
       if p.kind == "item" then
         stop = { node = p.node, text = string.format("%s for %s", p.text, name), after = previous and { previous } or nil,
@@ -126,7 +126,7 @@ function Journey.QuestStops(questID, here)
       stops[#stops + 1] = stop
     end
     if #items > 0 then gate = items end
-    local node = ns.Questie.ObjectiveNode(questID, here)
+    local node = ns.Quests.ObjectiveNode(questID, here)
     if node then
       previous = { node = node, text = "Do " .. name, after = gate,
         action = { kind = "complete", questID = questID }, resolve = { kind = "objectives", questID = questID } }
@@ -134,7 +134,7 @@ function Journey.QuestStops(questID, here)
     end
   end
 
-  local finisher, node = ns.Questie.QuestFinisher(questID, here)
+  local finisher, node = ns.Quests.QuestFinisher(questID, here)
   if node then
     stops[#stops + 1] = { node = node, npc = finisher, text = string.format("Hand in %s to %s", name, finisher or "the quest giver"),
       after = previous and { previous } or nil, action = { kind = "turnin", questID = questID } }
@@ -147,7 +147,7 @@ end
 local function resolve(stop, here)
   local r = stop.resolve
   if r and r.kind == "objectives" then
-    local node = ns.Questie.ObjectiveNode(r.questID, here)
+    local node = ns.Quests.ObjectiveNode(r.questID, here)
     if node then stop.node = node end
   end
 end

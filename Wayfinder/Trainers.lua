@@ -55,7 +55,7 @@ end
 function Trainers.EmptyText()
   local className = UnitClass("player")
   return string.format("No %s trainers known yet. Talk to one once and Wayfinder remembers where "
-    .. "they are, or install QuestieDB. City guards can point you to one.", className:lower())
+    .. "they are, or install a Wayfinder data addon. City guards can point you to one.", className:lower())
 end
 
 -- Trainers this close together (one room or building) are one result.
@@ -113,8 +113,8 @@ local function results(trainers, plural, start, net)
 end
 
 -- Known NPCs of one kind for your faction (visited ones and Data/Seed.lua;
--- their positions were measured in Forever), then QuestieDB's.
-local function collect(kind, fits, questie)
+-- their positions were measured in Forever), then the data sources'.
+local function collect(kind, fits, fromSources)
   local trainers, seen = {}, {}
   local faction = UnitFactionGroup("player")
   for id, npc in pairs(ns.Harvest.AllNPCs()) do
@@ -126,21 +126,21 @@ local function collect(kind, fits, questie)
       end
     end
   end
-  for _, t in ipairs(questie) do
+  for _, t in ipairs(fromSources) do
     if not seen[t.id] then trainers[#trainers + 1] = { id = t.id, name = t.name, node = t.node } end
   end
   return trainers
 end
 
 -- Results: { title, zone, goal (route node), route, details } sorted by travel time.
--- Sources: trainers you visited, Data/Seed.lua, and QuestieDB when installed.
+-- Sources: trainers you visited, Data/Seed.lua, and the data sources (Sources.lua).
 function Trainers.Results()
   local className, class = UnitClass("player")
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
   local trainers = collect("classTrainer", function(npc) return npc.class == class end,
-    ns.Questie.ClassTrainers(class, UnitFactionGroup("player"), start))
+    ns.Data.NearestOfKind("classTrainer", UnitFactionGroup("player"), start, function(t) return t.class == class end))
   return results(trainers, (className or class):lower() .. " trainers", start, net), nil, net
 end
 
@@ -204,7 +204,7 @@ end
 
 function WeaponMasters.EmptyText()
   return "No weapon masters known yet. Talk to one once and Wayfinder remembers where they are and what they teach, "
-    .. "or install QuestieDB."
+    .. "or install a Wayfinder data addon."
 end
 
 -- One row per weapon you can learn, "Polearms (Woo Ping)": the nearest weapon
@@ -216,7 +216,7 @@ function WeaponMasters.Results()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
   local _, class = UnitClass("player")
-  local masters = collect("weaponMaster", nil, ns.Questie.WeaponMasters(UnitFactionGroup("player"), start))
+  local masters = collect("weaponMaster", nil, ns.Data.NearestOfKind("weaponMaster", UnitFactionGroup("player"), start))
   local npcs = ns.Harvest.AllNPCs()
   local routes = {}
   local function routeTo(m)

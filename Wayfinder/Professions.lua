@@ -3,7 +3,7 @@ local _, ns = ...
 -- Professions: which you have and how far along (skill / cap), the next rank
 -- you can train (Journeyman at 50 skill and level 10, Expert at 125 and 20,
 -- Artisan at 200 and 35: the classic rules), and the trainers for them, from
--- your visits and QuestieDB (English subtitles: "Tailoring Trainer",
+-- your visits and the data sources (English subtitles: "Tailoring Trainer",
 -- "Expert Tailor"...). Trainers > Professions lists them; For you shows a card
 -- when you can train the next rank.
 
@@ -117,7 +117,8 @@ local function trainersFor(profession, start)
       end
     end
   end
-  for _, t in ipairs(ns.Questie.ProfessionTrainers(profession, faction, start)) do
+  for _, t in ipairs(ns.Data.NearestOfKind("professionTrainer", faction, start,
+    function(t) return t.profession == profession end)) do
     if not seen[t.id] then out[#out + 1] = t end
   end
   return out
@@ -175,7 +176,7 @@ function Professions.SummaryText()
 end
 
 function Professions.EmptyText()
-  return "No profession trainers known yet. Talk to one once and Wayfinder remembers where they are, or install QuestieDB."
+  return "No profession trainers known yet. Talk to one once and Wayfinder remembers where they are, or install a Wayfinder data addon."
 end
 
 -- Your professions first (the next rank, and where to train it), then the

@@ -446,7 +446,7 @@ function Nav.PickupOffer(questIDs)
     if not Nav.TripHasQuest(id) then
       local qs = ns.Journey.QuestStops(id, here)
       if #qs > 0 then
-        local q = ns.Questie.Quest(id)
+        local q = ns.Quests.Quest(id)
         names[#names + 1] = q and q.name or ("quest " .. id)
         for _, st in ipairs(qs) do stops[#stops + 1] = st end
       end
@@ -558,7 +558,7 @@ ns.Listen("QUESTS_OFFERED", function(npcName, ids)
     end
   end
   for _, stop in ipairs(missing) do
-    ns.Questie.MarkNotOffered(stop.action.questID)
+    ns.Quests.MarkNotOffered(stop.action.questID)
     ns.print(string.format("%s isn't offered yet (it needs earlier quests): dropped from the trip.",
       (stop.text or "that quest"):gsub("^Pick up ", ""):gsub(" from .*$", "")))
     if Nav.active then Nav.Drop(stop) end
@@ -720,7 +720,7 @@ function Nav.AddToTrip(stops, label)
 end
 
 -- Follow-up quests. When a trip gains a quest's hand-in, the quests that
--- follow it (Questie.FollowUps) are offered when adding them costs little
+-- follow it (Quests.FollowUps) are offered when adding them costs little
 -- travel (FOLLOW_UP_SLACK more seconds): you pick them up where you hand the
 -- first in, often from the same NPC.
 local FOLLOW_UP_SLACK = 180
@@ -740,7 +740,7 @@ function Nav.FollowUpOffer(stops)
   for _, stop in ipairs(stops) do
     local action = stop.action
     if action and action.kind == "turnin" and not stop.done then
-      for _, q in ipairs(ns.Questie.FollowUps(action.questID)) do
+      for _, q in ipairs(ns.Quests.FollowUps(action.questID)) do
         if not inTrip[q.id] then
           inTrip[q.id] = true
           local qs = ns.Journey.QuestStops(q.id, here)
@@ -776,7 +776,7 @@ function offerFollowUps(stops)
   local names, firsts = {}, {}
   for _, f in ipairs(offer.quests) do
     names[#names + 1] = f.quest.name or ("quest " .. f.quest.id)
-    local q = ns.Questie.Quest(f.after)
+    local q = ns.Quests.Quest(f.after)
     firsts[#firsts + 1] = q and q.name or ("quest " .. f.after)
   end
   local label = table.concat(names, ", ")
@@ -908,7 +908,7 @@ end)
 
 -- Called by the HUD several times a second. Returns your node and the step.
 -- Objective areas. A quest's objectives are places, not a point: every spawn
--- of what you still need (QuestieDB, Questie.ObjectiveGroups; a finished
+-- of what you still need (quest data, Quests.ObjectiveGroups; a finished
 -- objective's go when the quest log says so). Within AREA_RADIUS of any of
 -- them you're in the area: the stop counts as reached, and the compass and
 -- waypoints step aside. Past AREA_LEAVE you've left it, and the way points at
@@ -916,7 +916,7 @@ end)
 local AREA_RADIUS, AREA_LEAVE = 80, 120
 
 local function openSpots(questID)
-  local groups = ns.Questie.ObjectiveGroups(questID)
+  local groups = ns.Quests.ObjectiveGroups(questID)
   if #groups == 0 then return nil end
   local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}
   local spots = {}

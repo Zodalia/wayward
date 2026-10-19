@@ -6,10 +6,10 @@ local _, ns = ...
 -- (nearest spawn, one row per zone), quests that reward it and the nearest
 -- vendor that sells it. Things you can do now come first, then shorter trips.
 --
--- Sources come from QuestieDB's ItemDB (npcDrops, objectDrops, itemDrops,
--- questRewards, vendors), read at runtime like QuestieBridge.lua. Without
--- it, only vendors you visited that sold the item are known (Vendors.lua
--- records merchant goods).
+-- Sources come from the data sources' item records (npcDrops, objectDrops,
+-- itemDrops, questRewards, vendors; see Sources.lua). Without one, only
+-- vendors you visited that sold the item are known (Vendors.lua records
+-- merchant goods).
 
 local Items = {}
 ns.Items = Items
@@ -20,7 +20,7 @@ local CANDIDATES = 4    -- nearest places (straight line) per row that get a ful
 local ZONE_ROWS = 3     -- world-drop rows per kind (mobs, objects)
 local DUNGEON_REACH = 3 -- a dungeon up to this many levels above you counts as "now"
 local MOB_REACH = 4     -- mobs up to this many levels above you count as "now"
-local RED_LEVELS = 5    -- a quest this many levels above you is too hard (as in QuestieBridge.lua)
+local RED_LEVELS = 5    -- a quest this many levels above you is too hard (as in Quests.lua)
 
 -- Ranking tiers: every row of a tier comes before the next tier, then by trip time.
 local NOW, LATER, INFO = 0, 1, 2
@@ -40,15 +40,7 @@ local function now()
   return debugprofilestop and debugprofilestop() or 0
 end
 
--- Masks can exceed 32 bits, so test bits arithmetically.
-local function hasBit(mask, bit)
-  return bit ~= nil and bit > 0 and math.floor(mask / bit) % 2 == 1
-end
-
-local function friendlyTo(friendly, faction)
-  if friendly == nil or friendly == "" then return true end
-  return friendly:find(faction == "Alliance" and "A" or "H", 1, true) ~= nil
-end
+local friendlyTo = ns.Data.FriendlyTo
 
 local function plural(n, word)
   return n .. " " .. word .. (n == 1 and "" or "s")
@@ -62,23 +54,19 @@ local function list(value)
   return type(value) == "table" and value or {}
 end
 
----------------------------------------------------------------- QuestieDB reads
+---------------------------------------------------------------- data reads
 
-local function entityDB(kind)
-  local lib = LibQuestieDB or {}
-  if kind == "item" then return lib.Item or ItemDB end
-  if kind == "npc" then return lib.Npc or NpcDB end
-  if kind == "object" then return lib.Object or ObjectDB end
-  return lib.Quest or QuestDB
+local function record(kind, id)
+  if kind == "item" then return ns.Data.Item(id) end
+  if kind == "npc" then return ns.Data.Npc(id) end
+  if kind == "object" then return ns.Data.Object(id) end
+  return ns.Data.Quest(id)
 end
 
 -- One field, or nil when the entity or the field is unknown.
 local function field(kind, id, key)
-  local db = entityDB(kind)
-  if not db then return nil end
-  local ok, value = pcall(db.Get, id, key)
-  if ok then return value end
-  return nil
+  local r = record(kind, id)
+  return r and r[key]
 end
 
 local dungeonByArea -- [AreaID] = dungeon from ns.Dungeons.Catalogue()
@@ -108,18 +96,19 @@ local function entity(kind, id)
       if kind == "npc" then
         e.rank = field(kind, id, "rank")
         e.minLevel, e.maxLevel = field(kind, id, "minLevel"), field(kind, id, "maxLevel")
-        e.friendly = field(kind, id, "friendlyToFaction")
+        e.friendly = field(kind, id, "faction")
       end
       local inside = {}
-      for areaID, points in pairs(list(field(kind, id, "spawns"))) do
-        local dungeon = dungeonAreas()[areaID]
+      for _, p in ipairs(list(field(kind, id, "positions"))) do
+        local dungeon = p.areaID and dungeonAreas()[p.areaID]
         if dungeon then
           if not inside[dungeon] then
             inside[dungeon] = true
             e.dungeons[#e.dungeons + 1] = dungeon
           end
         else
-          for _, node in ipairs(ns.Questie.SpawnNodes({ [areaID] = points }, name)) do
+          local node = p.mapID and ns.Geo.Node(p.mapID, p.x, p.y, name)
+          if node then
             e.byMap[node.mapID] = e.byMap[node.mapID] or {}
             table.insert(e.byMap[node.mapID], node)
             e.nodes[#e.nodes + 1] = node
@@ -140,7 +129,7 @@ end
 
 local sourceCache = {}
 
--- What QuestieDB knows about an item, grouped into rows:
+-- What the data knows about an item, grouped into rows:
 --   dungeons = { {entry, members = {entity, ...}}, ... }
 --   zones = { {kind = "npc"|"object", mapID, members = { {entity, nodes}, ... }}, ... }
 --   quests, containers, vendors = ID lists.
@@ -218,10 +207,10 @@ ns.On("GET_ITEM_INFO_RECEIVED", function(itemID)
 end)
 
 -- name, link, itemLevel, requiredLevel: the client's when it has the item,
--- else QuestieDB's. `known` is false when neither has a name.
+-- else the data's. `known` is false when neither has a name.
 function Items.Info(id)
   local info = clientInfo(id) or {}
-  if ns.Questie.Available() then
+  if ns.Data.Has("Item") then
     info.name = info.name or field("item", id, "name")
     info.itemLevel = info.itemLevel or field("item", id, "itemLevel")
     info.requiredLevel = info.requiredLevel or field("item", id, "requiredLevel")
@@ -262,29 +251,27 @@ end
 
 ---------------------------------------------------------------- name search
 
-local nameIndex -- { {id, name, key = lower-case name}, ... } over ItemDB, built on the first search
+local nameIndex -- { {id, name, key = lower-case name}, ... } over the item data, built on the first search
 
 local function buildNameIndex()
   nameIndex = {}
   local started = now()
-  local items = entityDB("item")
-  local ok, ids = pcall(items and items.GetAllIds or error)
-  for _, id in ipairs(ok and list(ids) or {}) do
+  for _, id in ipairs(ns.Data.ItemIDs()) do
     local name = field("item", id, "name")
     if type(name) == "string" and name ~= "" then
       nameIndex[#nameIndex + 1] = { id = id, name = name, key = name:lower() }
     end
   end
   ns.debugTimings = ns.debugTimings or {}
-  ns.debugTimings.questieItems = now() - started
+  ns.debugTimings.items = now() - started
 end
 
 -- Items whose name contains `text` (any case): the exact name first, then
 -- names starting with it, then shorter names. Up to MAX_MATCHES, and the total.
--- Without QuestieDB only the goods of vendors you visited are searched.
+-- Without item data only the goods of vendors you visited are searched.
 local function searchNames(text)
   local candidates = {}
-  if ns.Questie.Available() then
+  if ns.Data.Has("Item") then
     if not nameIndex then buildNameIndex() end
     candidates = nameIndex
   else
@@ -361,7 +348,7 @@ local function dungeonJourney(entry, quests, entrance)
   if not (here and entrance) then return nil end
   local stops = {}
   for _, quest in ipairs(quests) do
-    local giver, node = ns.Questie.QuestGiver(quest.id, here)
+    local giver, node = ns.Quests.QuestGiver(quest.id, here)
     if node then
       stops[#stops + 1] = { node = node,
         text = string.format("Pick up %s from %s", quest.name or ("quest " .. quest.id), giver or "the quest giver"),
@@ -407,10 +394,10 @@ local function dungeonRows(s, ctx, out)
         fromClient and "" or " (Wayfinder estimate)", ctx.level), row.tier == NOW and GREEN or ORANGE)
     end
     for _, e in ipairs(d.members) do line(memberText(e), GREY) end
-    if goal and not entry.fromQuestie then line("Entrance position is approximate.", GREY) end
+    if goal and not entry.fromSource then line("Entrance position is approximate.", GREY) end
 
     local quests = {}
-    for _, group in pairs(ns.Questie.QuestsForAreas(entry.areaIDs)) do
+    for _, group in pairs(ns.Quests.QuestsForAreas(entry.areaIDs)) do
       for _, quest in ipairs(group.available) do quests[#quests + 1] = quest end
     end
     if #quests > 0 and goal then
@@ -436,7 +423,7 @@ local function zoneRows(s, ctx, out)
   for _, z in ipairs(s.zones) do
     local nearest, nearestDistance, nodes = nil, math.huge, {}
     for _, m in ipairs(z.members) do
-      local _, distance = ns.Questie.Nearest(m.nodes, ctx.start)
+      local _, distance = ns.Data.Nearest(m.nodes, ctx.start)
       if not nearest or distance < nearestDistance then nearest, nearestDistance = m.entity, distance end
       for _, node in ipairs(m.nodes) do nodes[#nodes + 1] = node end
     end
@@ -508,7 +495,7 @@ local function allDone(ids, done)
   return true
 end
 
--- Grey quests, with the thresholds QuestieBridge.lua uses. Quest hubs hide
+-- Grey quests, with the thresholds Quests.lua uses. Quest hubs hide
 -- them, but for a reward they are still worth it.
 local function isGrey(questLevel, level)
   if UnitQuestTrivialLevelRange then
@@ -523,18 +510,16 @@ local function isGrey(questLevel, level)
   return questLevel <= gray
 end
 
--- Level <= 0 means "scales with you" in Questie data.
+-- Level <= 0 means "scales with you" in quest data.
 local function questLevel(q, level)
   local l = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
   return l > 0 and l or level
 end
 
 local function profile(level)
-  local enum = (LibQuestieDB and LibQuestieDB.Enum) or {}
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
-  return { level = level, raceMask = enum.raceMaskById and enum.raceMaskById[raceID],
-    classMask = enum.classKeys and enum.classKeys[class] }
+  return { level = level, raceID = raceID, class = class }
 end
 
 -- Where you stand with a reward quest: "available", "low" (grey, you can
@@ -543,14 +528,14 @@ end
 local function questStatus(q, p, done, inLog)
   if done[q.id] then return "done" end
   if inLog[q.id] then return "inLog" end
-  if (q.requiredRaces or 0) ~= 0 and not hasBit(q.requiredRaces, p.raceMask) then return nil end
-  if (q.requiredClasses or 0) ~= 0 and not hasBit(q.requiredClasses, p.classMask) then return nil end
+  if q.races and not q.races[p.raceID] then return nil end
+  if q.classes and not q.classes[p.class] then return nil end
   if anyDone(q.exclusiveTo, done) then return nil end
   if (q.requiredMaxLevel or 0) ~= 0 and p.level > q.requiredMaxLevel then return nil end
   if (q.availableUntilCompleted or 0) ~= 0 and done[q.availableUntilCompleted] then return nil end
   local following = q.nextQuestInChain or 0
   if following ~= 0 and (done[following] or inLog[following]) then return nil end
-  if ns.Questie.IsQuestAvailable(q.id, done, inLog) then return "available" end
+  if ns.Quests.IsQuestAvailable(q.id, done, inLog) then return "available" end
   if (q.requiredLevel or 0) > p.level then return "level" end
   if (q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done))
     or (q.preQuestGroup and not allDone(q.preQuestGroup, done)) then
@@ -572,7 +557,7 @@ local function questFinisher(questID, ctx)
     for _, id in ipairs(list(finishers[i])) do
       local e = entity(kind, id)
       if e and (kind ~= "npc" or friendlyTo(e.friendly, ctx.faction)) then
-        local node, distance = ns.Questie.Nearest(e.nodes, ctx.start)
+        local node, distance = ns.Data.Nearest(e.nodes, ctx.start)
         if node and (not bestDistance or distance < bestDistance) then
           bestName, bestNode, bestDistance = e.name, node, distance
         end
@@ -603,7 +588,7 @@ local function questRow(q, status, ctx)
     return row
   end
 
-  local who, node = ns.Questie.QuestGiver(q.id, ctx.start)
+  local who, node = ns.Quests.QuestGiver(q.id, ctx.start)
   who = who or "the quest giver"
   -- The quest to track from start to hand-in (nil: just directions to the giver).
   local track = (status == "available" or status == "low") and q.id or nil
@@ -620,8 +605,8 @@ local function questRow(q, status, ctx)
   else
     -- Directions go to the first quest of the chain you can act on now.
     row.title, row.tier = row.title .. "  ·  needs earlier quests", LATER
-    local stepID, stepState = ns.Questie.ChainStart(q.id)
-    local step = stepID and ns.Questie.Quest(stepID)
+    local stepID, stepState = ns.Quests.ChainStart(q.id)
+    local step = stepID and ns.Quests.Quest(stepID)
     local stepName = step and step.name or (stepID and ("Quest " .. stepID))
     track = stepID
     if stepState == "inLog" then
@@ -631,7 +616,7 @@ local function questRow(q, status, ctx)
         finisher or "its quest giver"), ORANGE)
     elseif stepID then
       local giver
-      giver, node = ns.Questie.QuestGiver(stepID, ctx.start)
+      giver, node = ns.Quests.QuestGiver(stepID, ctx.start)
       line(string.format("Needs earlier quests first. Start the chain: pick up %s from %s.", stepName,
         giver or "its quest giver"), ORANGE)
     else
@@ -647,10 +632,10 @@ end
 
 local function questRows(s, ctx, out)
   if #s.quests == 0 then return end
-  local done, inLog = ns.Questie.PlayerQuestState()
+  local done, inLog = ns.Quests.PlayerQuestState()
   local p = profile(ctx.level)
   for _, questID in ipairs(s.quests) do
-    local q = ns.Questie.Quest(questID)
+    local q = ns.Quests.Quest(questID)
     local status = q and questStatus(q, p, done, inLog)
     if status then out[#out + 1] = questRow(q, status, ctx) end
   end
@@ -658,15 +643,15 @@ end
 
 ---------------------------------------------------------------- vendors
 
--- The nearest vendor that sells it: QuestieDB sellers and vendors you visited.
+-- The nearest vendor that sells it: sellers in the data and vendors you visited.
 local function vendorRow(itemID, s, ctx, out)
   local sellers = {}
   for _, id in ipairs(s and s.vendors or {}) do
     local e = entity("npc", id)
-    local node = e and friendlyTo(e.friendly, ctx.faction) and ns.Questie.Nearest(e.nodes, ctx.start)
+    local node = e and friendlyTo(e.friendly, ctx.faction) and ns.Data.Nearest(e.nodes, ctx.start)
     if node then sellers[id] = { name = e.name, node = node } end
   end
-  -- Visited vendors: positions and goods measured in Forever win over QuestieDB.
+  -- Visited vendors: positions and goods measured in Forever win over the data.
   for _, v in ipairs(ctx.goods[itemID] or {}) do
     local node = ns.Geo.Node(v.npc.mapID, v.npc.x, v.npc.y, v.npc.name)
     if node then sellers[v.id] = { name = v.npc.name, node = node, visited = true } end
@@ -683,7 +668,7 @@ local function vendorRow(itemID, s, ctx, out)
   local row = { title = "Sold by " .. seller.name, zone = ns.MapName(goal.mapID), goal = goal, route = route,
     tier = NOW, details = {} }
   row.details[1] = seller.visited and { text = "Sold here when you last visited.", color = GREEN }
-    or { text = "Sells it (QuestieDB).", color = GREEN }
+    or { text = "Sells it (data).", color = GREEN }
   if #nodes > 1 then
     row.details[2] = { text = string.format("%s %s it too.", plural(#nodes - 1, "other vendor"),
       #nodes == 2 and "sells" or "sell"), color = GREY }
@@ -702,7 +687,7 @@ local function sourcesFor(id, query, alsoMatching)
   local info = Items.Info(id)
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
-  local available = ns.Questie.Available()
+  local available = ns.Data.Has("Item")
   local ctx = { start = start, net = ns.Network.Build(), level = UnitLevel("player"),
     faction = UnitFactionGroup("player"), goods = visitedGoods() }
 
@@ -729,7 +714,7 @@ local function sourcesFor(id, query, alsoMatching)
     text = text .. string.format(" (%s match too; type more of the name)", plural(alsoMatching, "other item"))
   end
   if not available then
-    text = text .. ". Install QuestieDB to see where items drop and which quests reward them."
+    text = text .. ". Install a Wayfinder data addon to see where items drop and which quests reward them."
   end
   summary = { query = query, text = text }
   return out, nil, ctx.net
@@ -780,17 +765,17 @@ end
 
 function Items.EmptyText(query)
   local q = trim(query)
-  local available = ns.Questie.Available()
+  local available = ns.Data.Has("Item")
   if q == "" then return "Try a dungeon drop or a quest reward linked in chat." end
   if Items.ParseID(q) then
-    if available then return "QuestieDB knows no source of this item that is open to you." end
-    return "Without QuestieDB, Wayfinder only knows vendors you visited, and none of them sold this item. "
-      .. "Install QuestieDB to see where items drop and which quests reward them."
+    if available then return "The data knows no source of this item that is open to you." end
+    return "Without item data, Wayfinder only knows vendors you visited, and none of them sold this item. "
+      .. "Install a Wayfinder data addon to see where items drop and which quests reward them."
   end
   if #q < MIN_QUERY then return string.format("Type at least %d letters of the item's name.", MIN_QUERY) end
   if available then return string.format('No item called "%s".', q) end
   return string.format('No item called "%s" among the goods of vendors you visited. Shift-click the item '
-    .. "instead, or install QuestieDB to search every item.", q)
+    .. "instead, or install a Wayfinder data addon to search every item.", q)
 end
 
 ns.RegisterPage({
@@ -808,7 +793,7 @@ ns.RegisterCommand("item", "/wf item <item link or name> - where an item comes f
 
 -- True when Wayfinder knows where an item comes from.
 function Items.HasSources(itemID)
-  if ns.Questie.Available() then
+  if ns.Data.Has("Item") then
     for _, key in ipairs({ "npcDrops", "objectDrops", "itemDrops", "questRewards", "vendors" }) do
       if next(list(field("item", itemID, key))) then return true end
     end

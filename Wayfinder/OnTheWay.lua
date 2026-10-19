@@ -44,9 +44,9 @@ end
 -- What could be added: { {kind, label, node, stops}, ... }.
 local function candidates(a, here)
   local out, have = {}, inTrip(a)
-  local done, logged = ns.Questie.PlayerQuestState()
+  local done, logged = ns.Quests.PlayerQuestState()
   -- Quest givers with quests for you.
-  for _, hub in ipairs(ns.Questie.QuestHubs(here, 12)) do
+  for _, hub in ipairs(ns.Quests.QuestHubs(here, 12)) do
     for _, g in ipairs(hub.givers) do
       local stops, names = {}, {}
       for _, q in ipairs(g.quests) do
@@ -69,8 +69,8 @@ local function candidates(a, here)
       local info = C_QuestLog.GetInfo(i)
       local id = info and not info.isHeader and info.questID
       if id and not have[id] and C_QuestLog.IsComplete(id) then
-        local finisher, node = ns.Questie.QuestFinisher(id, here)
-        local q = ns.Questie.Quest(id)
+        local finisher, node = ns.Quests.QuestFinisher(id, here)
+        local q = ns.Quests.Quest(id)
         local name = q and q.name or info.title or ("quest " .. id)
         if node then
           out[#out + 1] = { kind = "handin", node = node, label = string.format("Hand in %s (%s)", name, finisher or "?"),

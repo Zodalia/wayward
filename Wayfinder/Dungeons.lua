@@ -5,8 +5,8 @@ local _, ns = ...
 --
 -- Levels come from the client's dungeon finder list (GetLFGDungeonInfo, one
 -- level per dungeon or wing). It has no area IDs, so it is matched to our
--- dungeons by name. Entrances come from QuestieDB when installed, else from
--- Data/Dungeons.lua. Dungeon quests need QuestieDB.
+-- dungeons by name. Entrances come from the data sources when they have them,
+-- else from Data/Dungeons.lua. Dungeon quests need quest data.
 
 local Dungeons = { id = "dungeons", label = "Dungeons" }
 ns.Dungeons = Dungeons
@@ -47,14 +47,14 @@ end
 local function fallbackNodes(d)
   local nodes = {}
   for _, e in ipairs(d.entrances or {}) do
-    local x, y = ns.Questie.EraToForever(e.mapID, e.x, e.y)
+    local x, y = ns.Data.EraToForever(e.mapID, e.x, e.y)
     local node = ns.Geo.Node(e.mapID, x, y, e.label or (d.name .. " entrance"))
     if node then nodes[#nodes + 1] = node end
   end
   return nodes
 end
 
--- Our dungeons, QuestieDB's, and the client's levels merged into one list.
+-- Our dungeons, the data's, and the client's levels merged into one list.
 local function catalogue()
   local list, byArea, byKey = {}, {}, {}
   local function add(entry)
@@ -67,23 +67,23 @@ local function catalogue()
     local keys = { normalize(d.name) }
     for _, alias in ipairs(d.aliases or {}) do keys[#keys + 1] = normalize(alias) end
     add({ name = d.name, keys = keys, areaIDs = { [d.areaID] = true }, faction = d.faction, raid = d.raid,
-      dataLevel = d.level, entrances = fallbackNodes(d), questieNodes = {}, levels = {} })
+      dataLevel = d.level, entrances = fallbackNodes(d), sourceNodes = {}, levels = {} })
   end
 
-  -- A QuestieDB dungeon joins ours by area ID, else by name (it has several
+  -- A data dungeon joins ours by area ID, else by name (there are several
   -- "Dire Maul" wings). The rest only show if the client lists them, because
-  -- QuestieDB also covers later expansions and battlegrounds.
-  for _, q in ipairs(ns.Questie.Dungeons()) do
+  -- data can also cover later expansions and battlegrounds.
+  for _, q in ipairs(ns.Data.Dungeons()) do
     local entry = byArea[q.areaID] or byKey[normalize(q.name)]
     if not entry then
-      entry = { name = q.name, keys = { normalize(q.name) }, areaIDs = {}, questieNodes = {}, levels = {},
-        entrances = {}, questieOnly = true }
+      entry = { name = q.name, keys = { normalize(q.name) }, areaIDs = {}, sourceNodes = {}, levels = {},
+        entrances = {}, sourceOnly = true }
       add(entry)
     end
     entry.areaIDs[q.areaID] = true
     byArea[q.areaID] = entry
-    for _, alt in ipairs(q.alternativeAreaIds) do entry.areaIDs[alt] = true end
-    for _, node in ipairs(q.nodes) do table.insert(entry.questieNodes, node) end
+    for _, alt in ipairs(q.alternativeAreaIds or {}) do entry.areaIDs[alt] = true end
+    for _, node in ipairs(ns.Data.Nodes(q.positions, q.name .. " entrance")) do table.insert(entry.sourceNodes, node) end
   end
 
   -- Wings ("Scarlet Monastery - Armory") match by prefix; the longest name wins.
@@ -102,8 +102,8 @@ local function catalogue()
 
   local out = {}
   for _, entry in ipairs(list) do
-    if #entry.questieNodes > 0 then entry.entrances, entry.fromQuestie = entry.questieNodes, true end
-    if not entry.questieOnly or #entry.levels > 0 then out[#out + 1] = entry end
+    if #entry.sourceNodes > 0 then entry.entrances, entry.fromSource = entry.sourceNodes, true end
+    if not entry.sourceOnly or #entry.levels > 0 then out[#out + 1] = entry end
   end
   return out
 end
@@ -157,7 +157,7 @@ function Dungeons.Results()
       for areaID in pairs(entry.areaIDs) do areaIDs[areaID] = true end
     end
   end
-  local quests = ns.Questie.QuestsForAreas(areaIDs)
+  local quests = ns.Quests.QuestsForAreas(areaIDs)
 
   local results = {}
   for _, f in ipairs(fitting) do
@@ -198,7 +198,7 @@ function Dungeons.Results()
         details[#details + 1] = { text = string.format("  %s: level %d", l.name, l.level), color = { r = 0.7, g = 0.7, b = 0.7 } }
       end
     end
-    if not entry.fromQuestie then
+    if not entry.fromSource then
       details[#details + 1] = { text = "Entrance position is approximate.", color = { r = 0.6, g = 0.6, b = 0.6 } }
     end
     questLines(details, "Quests you can take for it:", available)
@@ -227,14 +227,14 @@ function Dungeons.Results()
     return a.title < b.title
   end)
   summary = string.format("Dungeons for level %d, best level fit and shortest trip first.", level)
-  if not ns.Questie.Available() then
-    summary = summary .. " Install QuestieDB for exact entrances and dungeon quests."
+  if not ns.Quests.Available() then
+    summary = summary .. " Install a Wayfinder data addon for exact entrances and dungeon quests."
   end
   return results, nil, net
 end
 
 -- For other pages: every known dungeon/raid as
--- { name, areaIDs = set, raid, faction, entrances = {route nodes}, fromQuestie, levels = {{name, level}} }.
+-- { name, areaIDs = set, raid, faction, entrances = {route nodes}, fromSource, levels = {{name, level}} }.
 function Dungeons.Catalogue()
   return catalogue()
 end

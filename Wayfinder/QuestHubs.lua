@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- "Quest hubs" category: places with quest givers you can take quests from,
--- ranked by travel time. Needs QuestieDB (see QuestieBridge.lua).
+-- ranked by travel time. Needs quest data (see Quests.lua).
 
 local QuestHubs = { id = "questHubs", label = "Quest hubs" }
 ns.QuestHubs = QuestHubs
@@ -14,12 +14,11 @@ ns.On("QUEST_ACCEPTED", function() ns.Fire("DATA_CHANGED") end)
 ns.On("QUEST_TURNED_IN", function() ns.Fire("DATA_CHANGED") end)
 
 local function unavailableText()
-  local _, reason = ns.Questie.Available()
-  return (reason or "QuestieDB is not available") .. ". Install QuestieDB to see quest hubs near you."
+  return "No quest data. Install a Wayfinder data addon to see quest hubs near you."
 end
 
 function QuestHubs.SummaryText()
-  if not ns.Questie.Available() then return unavailableText() end
+  if not ns.Quests.Available() then return unavailableText() end
   return summary or "Quest givers you can take quests from, nearest first."
 end
 
@@ -28,7 +27,7 @@ function QuestHubs.EmptyText()
 end
 
 function QuestHubs.Results()
-  if not ns.Questie.Available() then return {}, unavailableText() end
+  if not ns.Quests.Available() then return {}, unavailableText() end
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
@@ -36,7 +35,7 @@ function QuestHubs.Results()
   -- Name each hub after its place, and merge hubs that turn out to be the same
   -- place (a town's quest givers can be spread over more than one cluster).
   local named, byPlace = {}, {}
-  for _, hub in ipairs(ns.Questie.QuestHubs(start, ROUTED_HUBS)) do
+  for _, hub in ipairs(ns.Quests.QuestHubs(start, ROUTED_HUBS)) do
     local place = ns.Places.NameFor(hub.anchor.node)
     local key = place and (place .. "@" .. hub.anchor.node.mapID)
     local existing = key and byPlace[key]

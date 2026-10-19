@@ -413,12 +413,12 @@ io.write("panel\n")
 ns.Panel.Toggle()
 check(ns.Panel.IsShown(), "first /wf opens the panel")
 
-io.write("without QuestieDB\n")
+io.write("without data sources\n")
 local noHubs, noHubsErr = ns.QuestHubs.Results()
-check(#noHubs == 0 and noHubsErr and noHubsErr:find("not installed"), "quest hubs explain that QuestieDB is needed")
-check(ns.Questie.StatusText() == nil, "no QuestieDB status line")
+check(#noHubs == 0 and noHubsErr and noHubsErr:find("No quest data"), "quest hubs explain that quest data is needed")
+check(ns.Data.Status() == nil, "no data source status line")
 
-io.write("questiedb bridge\n")
+io.write("data sources\n")
 local NPCS = {
   [461] = { name = "Demisette Cloyce", subName = "Warlock Trainer", npcFlags = 18, friendlyToFaction = "A",
     spawns = { [1519] = { { 39.38, 84.83 } } } },
@@ -504,8 +504,134 @@ C_QuestLog = {
   GetInfo = function() return { questID = 10, isHeader = false } end,
 }
 
+-- The fixtures above are kept in QuestieDB's shape (rows with spawns per
+-- AreaID in map percent, race and class bit masks). fixtureSource turns them
+-- into a Wayfinder data source (Wayfinder/Sources.lua), reading the globals at
+-- call time so tests can change rows; refreshData() registers it again, which
+-- resets Wayfinder's caches, and dropData() takes it away.
+local function fixtureSource()
+  local function support(name)
+    local ok, module = pcall(LibQuestieDB.Support.Get, name)
+    return ok and module or nil
+  end
+  local areaMaps = {}
+  local function uiMap(areaID)
+    local zone = support("ZoneDB")
+    local src = zone and zone.private and zone.private.areaIdToUiMapId
+    if type(src) == "string" then
+      areaMaps[src] = areaMaps[src] or assert(loadstring(src))()
+      return areaMaps[src][areaID]
+    end
+    return type(src) == "table" and src[areaID] or nil
+  end
+  local function positions(spawns)
+    local out = {}
+    for areaID, points in pairs(type(spawns) == "table" and spawns or {}) do
+      for _, p in ipairs(points) do
+        if type(p[1]) == "number" then
+          out[#out + 1] = { mapID = uiMap(areaID), x = p[1] / 100, y = p[2] / 100, areaID = areaID }
+        end
+      end
+    end
+    return out
+  end
+  local function set(mask, bitByKey)
+    if (mask or 0) == 0 then return nil end
+    local out = {}
+    for key, bit in pairs(bitByKey or {}) do
+      if math.floor(mask / bit) % 2 == 1 then out[key] = true end
+    end
+    return out
+  end
+  local FLAGS = { TRAINER = "trainer", VENDOR = "vendor", REPAIR = "repair", FLIGHT_MASTER = "flightMaster",
+    QUEST_GIVER = "questGiver" }
+  local function npcFlags(id)
+    local mask, out = NpcDB.Get(id, "npcFlags") or 0, {}
+    for enumKey, flag in pairs(FLAGS) do
+      local bit = LibQuestieDB.Enum.npcFlags[enumKey]
+      if bit and mask ~= 0 and math.floor(mask / bit) % 2 == 1 then out[flag] = true end
+    end
+    return out
+  end
+
+  local source = { id = "fixtures", label = "Fixtures", priority = 10 }
+  function source.Status() return LibQuestieDB.readMode end
+  function source.QuestIDs() return QuestDB.GetAllIds() end
+  function source.Quest(id)
+    if not QuestDB.GetAll(id, { "name" }) then return nil end
+    local q = {}
+    for field in pairs(LibQuestieDB.Meta.QuestMeta.questKeys) do q[field] = QuestDB.Get(id, field) end
+    q.races = set(q.requiredRaces, LibQuestieDB.Enum.raceMaskById)
+    q.classes = set(q.requiredClasses, LibQuestieDB.Enum.classKeys)
+    q.requiredRaces, q.requiredClasses = nil, nil
+    if type(q.triggerEnd) == "table" then q.triggerEnd = { q.triggerEnd[1], positions(q.triggerEnd[2]) } end
+    if type(q.extraObjectives) == "table" then
+      local extras = {}
+      for i, e in ipairs(q.extraObjectives) do extras[i] = { positions(e[1]), e[2], e[3] } end
+      q.extraObjectives = extras
+    end
+    return q
+  end
+  function source.Npc(id)
+    if not NpcDB.GetAll(id, { "name" }) then return nil end
+    return { id = id, name = NpcDB.Get(id, "name"), subName = NpcDB.GetRaw(id, "subName"),
+      faction = NpcDB.Get(id, "friendlyToFaction"), rank = NpcDB.Get(id, "rank"),
+      minLevel = NpcDB.Get(id, "minLevel"), maxLevel = NpcDB.Get(id, "maxLevel"),
+      flags = npcFlags(id), positions = positions(NpcDB.Get(id, "spawns")) }
+  end
+  function source.NpcIDs(flag)
+    local out = {}
+    for _, id in ipairs(NpcDB.GetAllIds()) do
+      if npcFlags(id)[flag] then out[#out + 1] = id end
+    end
+    return out
+  end
+  function source.Object(id)
+    if not (ObjectDB and ObjectDB.GetAll(id, { "name" })) then return nil end
+    return { id = id, name = ObjectDB.Get(id, "name"), positions = positions(ObjectDB.Get(id, "spawns")) }
+  end
+  function source.Item(id)
+    if not (ItemDB and ItemDB.GetAll(id, { "name" })) then return nil end
+    local item = { id = id }
+    for _, k in ipairs({ "name", "itemLevel", "requiredLevel", "npcDrops", "objectDrops", "itemDrops",
+      "questRewards", "vendors" }) do
+      item[k] = ItemDB.Get(id, k)
+    end
+    return item
+  end
+  function source.ItemIDs() return ItemDB and ItemDB.GetAllIds() or {} end
+  function source.Dungeons()
+    local zone = support("ZoneDB")
+    local out = {}
+    for areaID, d in pairs(zone and zone.private and zone.private.dungeons or {}) do
+      local spawns = {}
+      for _, loc in ipairs(d[4] or {}) do
+        spawns[loc[1]] = spawns[loc[1]] or {}
+        table.insert(spawns[loc[1]], { loc[2], loc[3] })
+      end
+      out[#out + 1] = { areaID = areaID, name = d[1], alternativeAreaIds = d[2] or {}, positions = positions(spawns) }
+    end
+    return out
+  end
+  function source.QuestXP()
+    local xp = support("QuestXP")
+    return xp and xp.db
+  end
+  function source.EraToForever(mapID, x, y)
+    local convert = LibQuestieDB.EraToForeverByUiMapId
+    if not convert then return nil end
+    local fx, fy = convert(mapID, x * 100, y * 100)
+    return fx / 100, fy / 100
+  end
+  return source
+end
+local fixtures = fixtureSource()
+local function refreshData() Wayfinder.RegisterSource(fixtures) end
+local function dropData() Wayfinder.UnregisterSource("fixtures") end
+refreshData()
+
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
-check(ns.Questie.Available() and ns.Questie.StatusText() == "QuestieDB (baked)", "QuestieDB detected (contract 4)")
+check(ns.Quests.Available() and ns.Data.Status() == "Fixtures (baked)", "a registered source is used")
 local trainers = ns.Trainers.Results()
 local names = {}
 for _, t in ipairs(trainers) do names[#names + 1] = t.title end
@@ -610,8 +736,7 @@ ns.db.npcs[8003] = { kinds = { vendor = true }, name = "Orgrimmar Grocer", facti
   x = 0.5, y = 0.5, goods = { 1205 }, sells = { food = true }, repairs = true }
 
 -- Without QuestieDB: only vendors you visited.
-local realAvailable = ns.Questie.Available
-ns.Questie.Available = function() return false, "QuestieDB is not installed" end
+dropData()
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
 local shops = ns.Vendors.Results()
 check(#shops == 2 and shops[1].id == 8001 and shops[2].id == 8002,
@@ -629,7 +754,7 @@ check(shops[1] and shops[1].id == 8002, "gear at 20%: the repair vendor jumps to
 check(ns.Vendors.SummaryText():find("Gear at 20%%: repair soon"), "summary warns: " .. ns.Vendors.SummaryText())
 check(shops[1].title:find("|cffff7f3fRepair|r", 1, true), "repair label highlighted")
 durability = { 50, 50 }
-ns.Questie.Available = realAvailable
+refreshData()
 
 -- With QuestieDB: ItemDB sellers, repair flags, faction filter.
 NPCS[7000] = { name = "Innkeeper Farley", subName = "Innkeeper", npcFlags = 4 + 128, friendlyToFaction = "A",
@@ -724,7 +849,6 @@ ns.data.dungeons = {
   { areaID = 2057, name = "Scholomance", level = 50, entrances = { { mapID = 1437, x = 0.6, y = 0.6 } } },
   { areaID = 2717, name = "Molten Core", level = 60, raid = true, entrances = { { mapID = 1437, x = 0.5, y = 0.6 } } },
 }
-local function reloadBridge() assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns) end
 local function titles(list)
   local out = {}
   for _, d in ipairs(list) do out[#out + 1] = d.title end
@@ -737,13 +861,12 @@ local function find(list, prefix)
 end
 
 -- Without QuestieDB: entrances from Data/Dungeons.lua, levels from the client.
-local savedLib, savedLevel = LibQuestieDB, UnitLevel
-LibQuestieDB = nil
-reloadBridge()
+local savedLevel = UnitLevel
+dropData()
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
 local dungeons = ns.Dungeons.Results()
 local all = titles(dungeons)
-check(not ns.Questie.Available() and ns.Dungeons.SummaryText():find("Install QuestieDB"),
+check(not ns.Quests.Available() and ns.Dungeons.SummaryText():find("Install a Wayfinder data addon"),
   "without QuestieDB: summary suggests installing it")
 check(dungeons[1] and dungeons[1].title == "The Deadmines  ·  level 20",
   "client level wins over data, matched by name without \"The\" (" .. all .. ")")
@@ -775,7 +898,7 @@ UnitLevel = savedLevel
 
 -- With QuestieDB: its entrances (already Forever coordinates), dungeon quests,
 -- and dungeons only it knows when the client lists them.
-LibQuestieDB = savedLib
+refreshData()
 LibQuestieDB.Meta.QuestMeta.questKeys.zoneOrSort = 17
 LibQuestieDB.EraToForeverByUiMapId = function(mapID, x, y)
   if mapID == 1453 then return x + 10, y end
@@ -792,7 +915,7 @@ QUESTS[20] = { name = "Defias Ledger", questLevel = 20, requiredLevel = 14, zone
 QUESTS[21] = { name = "Red Silk Bandanas", questLevel = 21, requiredLevel = 15, zoneOrSort = 10029, startedBy = { { 6000 } } }
 QUESTS[22] = { name = "Deadmines Too High", questLevel = 30, requiredLevel = 28, zoneOrSort = 1581, startedBy = { { 344 } } }
 QUESTS[10].zoneOrSort = 1581 -- "Already in log"
-reloadBridge()
+refreshData()
 dungeons = ns.Dungeons.Results()
 all = titles(dungeons)
 deadmines = find(dungeons, "The Deadmines")
@@ -881,9 +1004,9 @@ ns.RegisterCommand("echo", "/wf echo - test", function(rest) commandArg = rest e
 SlashCmdList.WAYFINDER("echo |cff9d9d9d|Hitem:2589::::|h[Linen Cloth]|h|r")
 check(commandArg == "|cff9d9d9d|Hitem:2589::::|h[Linen Cloth]|h|r", "registered /wf commands get the raw text")
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
-check(ns.Questie.IsQuestAvailable(1) and not ns.Questie.IsQuestAvailable(2), "IsQuestAvailable uses the hub rules")
-check(ns.Questie.Quest(14) and ns.Questie.Quest(14).nextQuestInChain == 13, "Quest(id) returns the quest row")
-local giverName = ns.Questie.QuestGiver(1, ns.Geo.PlayerNode())
+check(ns.Quests.IsQuestAvailable(1) and not ns.Quests.IsQuestAvailable(2), "IsQuestAvailable uses the hub rules")
+check(ns.Quests.Quest(14) and ns.Quests.Quest(14).nextQuestInChain == 13, "Quest(id) returns the quest row")
+local giverName = ns.Quests.QuestGiver(1, ns.Geo.PlayerNode())
 check(giverName == "Magistrate Solomon", "QuestGiver finds the nearest starter")
 local catalogue = ns.Dungeons.Catalogue()
 local someArea
@@ -896,7 +1019,7 @@ do
   io.write("quests page\n")
   ns.Nav.Stop()
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
-  local function reload() assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns) end
+  local function reload() refreshData() end
   local added = { 10, 30, 31, 32, 33 }
   QUESTS[10].finishedBy = { { 6000 } } -- "Already in log", handed in in Stormwind
   QUESTS[30] = { name = "Chain part 3", questLevel = 20, requiredLevel = 15, preQuestSingle = { 13 },
@@ -914,26 +1037,26 @@ do
   LibQuestieDB.Meta.QuestMeta.questKeys.finishedBy = 3
   reload()
 
-  local function status(id) return (ns.Questie.QuestStatus(id)) end
+  local function status(id) return (ns.Quests.QuestStatus(id)) end
   local codes = {}
   for _, id in ipairs({ 1, 10, 2, 13, 9, 3, 8, 18, 5, 4, 4242 }) do codes[#codes + 1] = status(id) end
   check(table.concat(codes, ",") == "available,inLog,done,needsEarlier,tooLow,notForYou,notForYou,unavailable,"
     .. "available,needsEarlier,unknown", "every status (" .. table.concat(codes, ",") .. ")")
-  local _, greyReason = ns.Questie.QuestStatus(5)
+  local _, greyReason = ns.Quests.QuestStatus(5)
   check(greyReason:find("Grey"), "a grey quest is available but says so: " .. greyReason)
-  local _, reason, stepID, stepState = ns.Questie.QuestStatus(30)
+  local _, reason, stepID, stepState = ns.Quests.QuestStatus(30)
   check(stepID == 14 and stepState == "available" and reason:find("Start the chain: Chain part 1", 1, true),
     "a two-step chain starts at its first quest: " .. reason)
-  check(select(1, ns.Questie.ChainStart(31)) == 10 and select(2, ns.Questie.ChainStart(31)) == "inLog",
+  check(select(1, ns.Quests.ChainStart(31)) == 10 and select(2, ns.Quests.ChainStart(31)) == "inLog",
     "a chain waiting on a quest in your log says to finish it")
-  _, reason, stepID = ns.Questie.QuestStatus(4)
+  _, reason, stepID = ns.Quests.QuestStatus(4)
   check(stepID == nil and reason:find("can't take yet"), "no takeable step: " .. reason)
   local agree = true
-  local done, inLog = ns.Questie.PlayerQuestState()
+  local done, inLog = ns.Quests.PlayerQuestState()
   for id in pairs(QUESTS) do
-    local s, r = ns.Questie.QuestStatus(id, done, inLog)
+    local s, r = ns.Quests.QuestStatus(id, done, inLog)
     local fits = s == "available" and r == "You can take this quest."
-    if ns.Questie.IsQuestAvailable(id, done, inLog) ~= fits then agree = false end
+    if ns.Quests.IsQuestAvailable(id, done, inLog) ~= fits then agree = false end
   end
   check(agree, "IsQuestAvailable is exactly 'available' at a fitting level")
   local hubs = ns.QuestHubs.Results()
@@ -977,7 +1100,7 @@ do
   check(subFor("already done", 2):find("Done") and not questRow("already done", 2).journey, "done: no route")
   check(subFor("lost to the horde", 33):find("no known quest giver"), "other faction's giver: no route")
   rows = ns.QuestsPage.Results("|cffffff00|Hquest:4242:20|h[Lost Quest]|h|r")
-  check(#rows == 1 and rows[1].title == "Lost Quest" and rows[1].subtitle:find("Unknown to QuestieDB"),
+  check(#rows == 1 and rows[1].title == "Lost Quest" and rows[1].subtitle:find("Not in the quest data"),
     "a quest link unknown to QuestieDB")
   rows = ns.QuestsPage.Results("|cffffff00|Hquest:1:18|h[Redridge Goulash]|h|r")
   check(#rows == 1 and rows[1].title == "[18] Redridge Goulash", "a shift-clicked quest link finds that quest")
@@ -1013,19 +1136,17 @@ do
   check(ns.Panel.IsShown() and seen == "Redridge Goulash", "/wf quest opens the Quests page with that search")
   ns.QuestsPage.Results = realResults
 
-  local savedLib = LibQuestieDB
-  LibQuestieDB = nil
-  reload()
+  dropData()
   local none, err = ns.QuestsPage.Results("chain")
-  check(#none == 0 and err and err:find("Install QuestieDB"), "without QuestieDB: the page says it is needed")
-  check(ns.QuestsPage.SummaryText(""):find("Install QuestieDB"), "without QuestieDB: summary too")
+  check(#none == 0 and err and err:find("Install a Wayfinder data addon"), "without QuestieDB: the page says it is needed")
+  check(ns.QuestsPage.SummaryText(""):find("Install a Wayfinder data addon"), "without QuestieDB: summary too")
   for _, d in ipairs(ns.Dungeons.Results()) do
     if d.actions then check(false, "no dungeon quest action without QuestieDB") end
   end
   ns.Panel.Search("quests", "chain")
   check(ns.Panel.IsShown(), "panel shows the Quests page without QuestieDB")
 
-  LibQuestieDB = savedLib
+  refreshData()
   QUESTS[10].finishedBy = nil
   for i = 2, #added do QUESTS[added[i]] = nil end
   reload()
@@ -1043,7 +1164,7 @@ do
     t.private.areaIdToUiMapId = "return { [44] = 1433, [1519] = 1453, [11] = 1437 }"
     return t
   end
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 
   NPCS[9100] = { name = "Edwin VanCleef", rank = 3, minLevel = 21, maxLevel = 21, spawns = { [1581] = { { -1, -1 } } } }
   NPCS[9104] = { name = "Defias Pirate", rank = 1, minLevel = 19, maxLevel = 20, spawns = { [10029] = { { -1, -1 } } } }
@@ -1182,16 +1303,15 @@ do
   InCombatLockdown = nil
 
   -- Without QuestieDB: vendors you visited only.
-  local realAvailable = ns.Questie.Available
-  ns.Questie.Available = function() return false, "QuestieDB is not installed" end
+  dropData()
   GetItemInfo = function(id)
     if id == 1205 then return "Melon Juice", "|cffffffff|Hitem:1205::::|h[Melon Juice]|h|r", 1, 5, 1 end
   end
   list = rows("item:1205")
   check(#list == 1 and list[1].title == "Sold by Lakeshire Cook" and detailText(list[1]):find("last visited"),
     "without QuestieDB: the visited vendor that sold it (" .. names(list) .. ")")
-  check(ns.Items.SummaryText("item:1205"):find("Install QuestieDB"), "summary says QuestieDB is needed for the rest")
-  check(#rows("item:9001") == 0 and ns.Items.EmptyText("item:9001"):find("Install QuestieDB"),
+  check(ns.Items.SummaryText("item:1205"):find("Install a Wayfinder data addon"), "summary says QuestieDB is needed for the rest")
+  check(#rows("item:9001") == 0 and ns.Items.EmptyText("item:9001"):find("Install a Wayfinder data addon"),
     "without QuestieDB: no drops, and the page says why")
   list = rows("melon")
   check(list[1] and list[1].title == "Sold by Lakeshire Cook", "without QuestieDB: names searched among visited goods")
@@ -1199,7 +1319,7 @@ do
   ns.Panel.Search("items", "item:1205")
   check(ns.Panel.IsShown(), "panel shows the Items page without QuestieDB")
   GetItemInfo = nil
-  ns.Questie.Available = realAvailable
+  refreshData()
 
   ns.Panel.Search("items", "fin")
   check(ns.Panel.IsShown(), "panel shows the Items page with QuestieDB")
@@ -1326,12 +1446,12 @@ do
   for i, id in ipairs({ 30, 31, 32 }) do
     QUESTS[id] = { name = "Later Defias " .. i, questLevel = 22, requiredLevel = 22, zoneOrSort = 1581, startedBy = { { 344 } } }
   end
-  reloadBridge()
+  refreshData()
   list = rows()
   check(not find(list, "Run The Deadmines") and ns.ForYou.SummaryText():find("The Deadmines at level 22 (", 1, true),
     "a dungeon most of whose quests open later waits, and the page says when: " .. ns.ForYou.SummaryText())
   for _, id in ipairs({ 30, 31, 32 }) do QUESTS[id] = nil end
-  reloadBridge()
+  refreshData()
   list = rows()
 
   -- Gear at 20%: repair before training.
@@ -1377,25 +1497,23 @@ do
   -- Without XP data: quests per hour, weighted by level fit.
   LibQuestieDB.Support.Get = zoneSupport
   list = rows()
-  check(ns.ForYou.SummaryText():find("No quest XP in your QuestieDB"), "summary explains the fallback")
+  check(ns.ForYou.SummaryText():find("No quest XP in the data"), "summary explains the fallback")
   local rz = find(list, "Quest in Redridge")
   check(rz and statText(rz):find("Hubs=", 1, true) and not statText(rz):find("XP"),
     "without XP data a zone counts quests and hubs: " .. statText(rz))
 
   -- Without QuestieDB: needs and dungeons by level fit.
-  local savedLib = LibQuestieDB
-  LibQuestieDB = nil
-  reloadBridge()
+  dropData()
   list = rows()
-  check(ns.ForYou.SummaryText():find("Install QuestieDB"), "without QuestieDB the summary says so")
+  check(ns.ForYou.SummaryText():find("Install a Wayfinder data addon"), "without QuestieDB the summary says so")
   check(list[1] and list[1].title:find("^Train") and find(list, "Run The Deadmines") and not find(list, "Pick up"),
     "without QuestieDB: training, then dungeons (" .. titles(list) .. ")")
-  LibQuestieDB = savedLib
+  refreshData()
   LibQuestieDB.Support.Get = function(name)
     if name == "QuestXP" then return { db = XP } end
     return zoneSupport(name)
   end
-  reloadBridge()
+  refreshData()
 
   -- An undiscovered flight path where you stand.
   ns.charDB.knownTaxi[5] = nil
@@ -1474,8 +1592,8 @@ do
     ranks = { "Apprentice", "Journeyman" }, mapID = 1433, x = 0.52, y = 0.5 }
   NPCS[990011] = { name = "Expert Seamstress", subName = "Expert Tailor", npcFlags = 16, friendlyToFaction = "A",
     spawns = { [1519] = { { 50, 50 } } } }
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
-  local qt = ns.Questie.ProfessionTrainers("Tailoring", "Alliance", here)
+  refreshData()
+  local qt = ns.Data.NearestOfKind("professionTrainer", "Alliance", here, function(t) return t.profession == "Tailoring" end)
   check(#qt == 1 and qt[1].rank == "Expert", "QuestieDB's tailors, with the rank their subtitle names")
 
   ns.Panel.SelectPage("trainers", 3)
@@ -1525,7 +1643,7 @@ do
 
   GetNumSkillLines, GetSkillLineInfo = savedNum, savedInfo
   ns.db.npcs[990010], NPCS[990011] = nil, nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   ns.ForYou.Invalidate()
 end
 ---------------------------------------------------------------- professions (end)
@@ -1541,7 +1659,7 @@ do
     finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
   local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
   questKeys.objectives, questKeys.triggerEnd = 10, 9
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   local here = ns.Geo.PlayerNode()
 
@@ -1609,7 +1727,7 @@ do
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
     savedLog[1], savedLog[2], savedLog[3], savedLog[4]
   QUESTS[40] = nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- trips (end)
 ---------------------------------------------------------------- quest steps (begin)
@@ -1629,7 +1747,7 @@ do
   local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
   questKeys.finishedBy, questKeys.objectives, questKeys.requiredSourceItems, questKeys.extraObjectives = 3, 10, 21, 27
   LibQuestieDB.Meta.ItemMeta.itemKeys.npcDrops, LibQuestieDB.Meta.ItemMeta.itemKeys.objectDrops = 2, 3
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   local bags = {}
   GetItemCount = function(id) return bags[id] or 0 end
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
@@ -1672,7 +1790,7 @@ do
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
   ObjectDB, GetItemCount = savedObjects, savedCount
   QUESTS[41], ITEMS[500], ITEMS[501] = nil, nil, nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- quest steps (end)
 ---------------------------------------------------------------- quests not offered (begin)
@@ -1687,7 +1805,7 @@ do
   for _, st in ipairs(a) do stops[#stops + 1] = st end
   for _, st in ipairs(b) do stops[#stops + 1] = st end
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Solomon", stops = stops }))
-  check(a[1].giver and a[1].giver == b[1].giver and ns.Questie.IsQuestAvailable(7), "both pickups at the same giver, by the data")
+  check(a[1].giver and a[1].giver == b[1].giver and ns.Quests.IsQuestAvailable(7), "both pickups at the same giver, by the data")
   local giver = a[1].node
   player.mapID, player.x, player.y = giver.mapID, giver.x, giver.y
   ns.HUD.Update()
@@ -1696,15 +1814,15 @@ do
   C_GossipInfo = { GetAvailableQuests = function() return { { questID = 1 } } end }
   fire("GOSSIP_SHOW")
   check(b[1].skipped and b[#b].skipped and not a[1].skipped, "the pickup the giver doesn't offer is dropped, with its hand-in")
-  check(not ns.Questie.IsQuestAvailable(7) and ns.Questie.QuestStatus(7) == "needsEarlier",
-    "and counts as locked everywhere: " .. tostring(select(2, ns.Questie.QuestStatus(7))))
+  check(not ns.Quests.IsQuestAvailable(7) and ns.Quests.QuestStatus(7) == "needsEarlier",
+    "and counts as locked everywhere: " .. tostring(select(2, ns.Quests.QuestStatus(7))))
   check(chat[#chat]:find("isn't offered yet", 1, true), "and says so: " .. chat[#chat])
   local said = #chat
   SlashCmdList.WAYFINDER("debug quest 7")
   check(#chat > said + 2 and chat[said + 2]:find("(id 7)", 1, true) and chat[#chat]:find("didn't offer it", 1, true),
     "/wf debug quest shows the chain data and the giver's answer")
   fire("QUEST_TURNED_IN", 999)
-  check(ns.Questie.IsQuestAvailable(7), "handing in any quest makes it worth asking again")
+  check(ns.Quests.IsQuestAvailable(7), "handing in any quest makes it worth asking again")
   UnitName, C_GossipInfo = savedName, nil
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
@@ -1725,23 +1843,23 @@ do
   QUESTS[98301] = { name = "Report In", questLevel = 20, requiredLevel = 15, requiredRaces = 1, startedBy = { { 344 } } }
   local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
   questKeys.finishedBy = 3
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
-  local function after(id) return ns.Questie.Quest(id).inferredAfter end
+  refreshData()
+  local function after(id) return ns.Quests.Quest(id).inferredAfter end
   check(after(98189) == 286 and after(98191) == 98190, "a Forever quest named like an earlier one comes after it")
   check(after(98190) == 98189, "a Forever quest given by whoever takes the previous one comes after it")
   check(after(286) == nil and after(285) == nil, "Era quests keep their own data")
-  check(not ns.Questie.IsQuestAvailable(98189) and not ns.Questie.IsQuestAvailable(98190)
-    and not ns.Questie.IsQuestAvailable(98191), "the whole series waits for the original chain")
-  check(ns.Questie.IsQuestAvailable(98301), "the other faction's quest of the same name doesn't hold it up")
-  local _, reason = ns.Questie.QuestStatus(98190)
+  check(not ns.Quests.IsQuestAvailable(98189) and not ns.Quests.IsQuestAvailable(98190)
+    and not ns.Quests.IsQuestAvailable(98191), "the whole series waits for the original chain")
+  check(ns.Quests.IsQuestAvailable(98301), "the other faction's quest of the same name doesn't hold it up")
+  local _, reason = ns.Quests.QuestStatus(98190)
   check(reason and reason:find("Search More Hovels", 1, true), "its chain starts where the data's chain does: " .. tostring(reason))
   local savedDone = C_QuestLog.GetAllCompletedQuestIDs
   C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 285, 286 } end
-  check(ns.Questie.IsQuestAvailable(98189) and not ns.Questie.IsQuestAvailable(98190),
+  check(ns.Quests.IsQuestAvailable(98189) and not ns.Quests.IsQuestAvailable(98190),
     "after the original: the next part opens, the one after it doesn't yet")
   C_QuestLog.GetAllCompletedQuestIDs = savedDone
   for _, id in ipairs({ 285, 286, 98189, 98190, 98191, 98300, 98301 }) do QUESTS[id] = nil end
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- inferred chains (end)
 ---------------------------------------------------------------- objects and follow-ups (begin)
@@ -1757,7 +1875,7 @@ do
   QUESTS[44] = { name = "Buzzbox Report", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { nil, { 700 } } }
   -- Chain part 1 (in your log, done) is handed in to Magistrate Solomon, who gives Chain part 2.
   QUESTS[14].finishedBy = { { 344 } }
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   local log = { 44, 14 }
   C_QuestLog.GetNumQuestLogEntries = function() return #log end
   C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
@@ -1776,7 +1894,7 @@ do
   ns.Nav.Stop()
 
   -- Its follow-up is picked up where you hand it in: offered.
-  check(#ns.Questie.FollowUps(14) == 1 and ns.Questie.FollowUps(14)[1].id == 13, "Chain part 1 is followed by Chain part 2")
+  check(#ns.Quests.FollowUps(14) == 1 and ns.Quests.FollowUps(14)[1].id == 13, "Chain part 1 is followed by Chain part 2")
   local shown
   StaticPopupDialogs = {}
   StaticPopup_Show = function(which, a, b, data)
@@ -1797,7 +1915,7 @@ do
 
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
   ObjectDB, QUESTS[44], QUESTS[14].finishedBy = savedObjects, nil, nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- objects and follow-ups (end)
 ---------------------------------------------------------------- quest pickups (begin)
@@ -1810,7 +1928,7 @@ do
   questKeys.finishedBy, questKeys.objectives = 3, 10
   QUESTS[45] = { name = "Murloc Count", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
     finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   local log = {}
   C_QuestLog.GetNumQuestLogEntries = function() return #log end
   C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
@@ -1841,7 +1959,7 @@ do
   log[2] = 40
   QUESTS[40] = { name = "Murloc Menace", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
     finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   fire("QUEST_ACCEPTED", 40)
   runTimers()
   check(shown and shown.which == "WAYFINDER_PICKUP_ADD" and shown.text:find("Murloc Menace", 1, true)
@@ -1866,7 +1984,7 @@ do
   StaticPopupDialogs, StaticPopup_Show = nil, nil
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
   QUESTS[45], QUESTS[40] = nil, nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- quest pickups (end)
 ---------------------------------------------------------------- unknown events (begin)
@@ -1971,13 +2089,13 @@ do
     finishedBy = { { 345 } }, objectives = { { { 9101 }, { 9102 } } } }
   local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
   questKeys.finishedBy, questKeys.objectives = 3, 10
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   C_QuestLog.GetNumQuestLogEntries = function() return 1 end
   C_QuestLog.GetInfo = function() return { questID = 43, isHeader = false } end
   C_QuestLog.IsComplete = function() return false end
   local objectives = { { text = "Murloc Forager slain: 2/8", finished = false }, { text = "Murloc Scout slain: 0/5", finished = false } }
   C_QuestLog.GetQuestObjectives = function(id) return id == 43 and objectives or {} end
-  local groups = ns.Questie.ObjectiveGroups(43)
+  local groups = ns.Quests.ObjectiveGroups(43)
   check(#groups == 2 and groups[1].name == "Murloc Forager" and #groups[1].nodes == 2,
     "QuestieDB's objectives as named groups of spawns")
 
@@ -2017,14 +2135,14 @@ do
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
     savedLog[1], savedLog[2], savedLog[3], savedLog[4]
   QUESTS[43] = nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- objective areas (end)
 ---------------------------------------------------------------- quest log trips (begin)
 do
   io.write("quest log trips\n")
   ns.Nav.Stop()
-  local function reload() assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns) end
+  local function reload() refreshData() end
   local savedLog = { C_QuestLog.GetAllCompletedQuestIDs, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo,
     C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives }
   -- Murlocs to kill near Lakeshire; quests given by Solomon (344), handed in to Oslow (345) or in Stormwind (6000).
@@ -2127,21 +2245,19 @@ do
   ns.Nav.Stop()
 
   -- Without QuestieDB: the log still shows, without trips.
-  local savedLib = LibQuestieDB
-  LibQuestieDB = nil
-  reload()
+  dropData()
   rows = ns.QuestsPage.Results("")
   cull = byID(rows, "log50")
   check(#rows == 3 and cull and cull.title == "[19] Murloc Cull" and not cull.journey and not cull.actions
-    and cull.subtitle:find("directions need QuestieDB") and cull.subtitle:find("3/8", 1, true),
+    and cull.subtitle:find("directions need quest data") and cull.subtitle:find("3/8", 1, true),
     "without QuestieDB: the log lists, says directions need it, no trips: " .. tostring(cull and cull.subtitle))
-  check(ns.QuestsPage.SummaryText(""):find("Install QuestieDB"), "without QuestieDB: the summary says so")
+  check(ns.QuestsPage.SummaryText(""):find("Install a Wayfinder data addon"), "without QuestieDB: the summary says so")
   ns.Panel.Search("quests", "")
   check(ns.Panel.IsShown(), "panel shows the quest log without QuestieDB")
   log = {}
   rows = ns.QuestsPage.Results("")
   check(#rows == 0 and ns.QuestsPage.EmptyText(""):find("quest log is empty"), "an empty log says so")
-  LibQuestieDB = savedLib
+  refreshData()
 
   C_QuestLog.GetAllCompletedQuestIDs, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
     C_QuestLog.GetQuestObjectives = savedLog[1], savedLog[2], savedLog[3], savedLog[4], savedLog[5]
@@ -2201,7 +2317,7 @@ do
     objectives = { { { 9101 } } } }
   QUESTS[54] = { name = "Murloc Eyes", questLevel = 20, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { { 345 } },
     objectives = { { { 9101 } } } }
-  reloadBridge()
+  refreshData()
 
   local log, complete = { 10, 50, 51, 52, 53, 54 }, { [50] = true, [51] = true, [52] = true }
   C_QuestLog.GetNumQuestLogEntries = function() return #log end
@@ -2294,7 +2410,7 @@ do
   LibQuestieDB.Support.Get = zoneSupport
   for id = 50, 54 do QUESTS[id] = nil end
   NPCS[6100] = nil
-  reloadBridge()
+  refreshData()
   ns.ForYou.Invalidate()
 end
 ---------------------------------------------------------------- for you: quest log (end)
@@ -2453,19 +2569,19 @@ do
   io.write("caches\n")
   QUESTS[41] = { name = "Forager Count", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
     finishedBy = { { 344 } }, objectives = { { { 9101 } } } }
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   local clock, reads = 100, 0
   GetTime = function() return clock end
   local realCompleted = C_QuestLog.GetAllCompletedQuestIDs
   C_QuestLog.GetAllCompletedQuestIDs = function() reads = reads + 1 return realCompleted() end
-  ns.Questie.PlayerQuestState()
-  ns.Questie.PlayerQuestState()
+  ns.Quests.PlayerQuestState()
+  ns.Quests.PlayerQuestState()
   check(reads == 1, "quest state is read once per moment")
   fire("QUEST_LOG_UPDATE")
-  ns.Questie.PlayerQuestState()
+  ns.Quests.PlayerQuestState()
   check(reads == 2, "a quest event starts a fresh read")
   clock = clock + 2
-  ns.Questie.PlayerQuestState()
+  ns.Quests.PlayerQuestState()
   check(reads == 3, "and so does time passing")
   C_QuestLog.GetAllCompletedQuestIDs = realCompleted
   GetTime = nil
@@ -2476,12 +2592,12 @@ do
     return realGet(id, key)
   end
   local here = ns.Geo.PlayerNode()
-  local a = ns.Questie.ObjectiveNode(41, here)
-  local b = ns.Questie.ObjectiveNode(41, here)
+  local a = ns.Quests.ObjectiveNode(41, here)
+  local b = ns.Quests.ObjectiveNode(41, here)
   check(a and b and spawnReads == 1, "a quest's objective places are built once")
   NpcDB.Get = realGet
   QUESTS[41] = nil
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- caches (end)
 ---------------------------------------------------------------- trip polish (begin)
@@ -2493,7 +2609,7 @@ do
   -- Trainers in one room are one row.
   NPCS[5003] = { name = "Gakin the Darkbinder", subName = "Warlock Trainer", npcFlags = 16, friendlyToFaction = "A",
     spawns = { [1519] = { { 39.40, 84.86 } } } }
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
   local grouped
   for _, r in ipairs(ns.Trainers.Results()) do
     if r.title:find("warlock trainers", 1, true) then grouped = r end
@@ -2618,7 +2734,7 @@ do
   local wasShown = ns.Panel.IsShown()
   Wayfinder_OnAddonCompartmentClick(nil, "LeftButton")
   check(ns.Panel.IsShown() ~= wasShown, "the addon compartment entry opens the panel")
-  assert(loadfile(dir .. "/QuestieBridge.lua"))("Wayfinder", ns)
+  refreshData()
 end
 ---------------------------------------------------------------- trip polish (end)
 ---------------------------------------------------------------- flight knowledge (begin)

@@ -16,9 +16,9 @@ local _, ns = ...
 -- in that order after the due ones; then hand-ins, finishing and the best
 -- quest by estimated XP per minute.
 --
--- XP comes from QuestieDB's quest XP table (Support.Get("QuestXP").db). Without
--- it, options are ranked by quests per hour weighted by level fit, and the
--- summary line says so. Without QuestieDB there are no hubs or dungeon quests,
+-- XP comes from the data's quest XP table (ns.Data.QuestXP). Without it,
+-- options are ranked by quests per hour weighted by level fit, and the
+-- summary line says so. Without quest data there are no hubs or dungeon quests,
 -- so dungeons are ranked by level fit and travel time, as on the Find page.
 --
 -- Quests already in your log count too, at their full XP; only the time left
@@ -143,15 +143,11 @@ end
 
 ---------------------------------------------------------------- quest XP
 
--- QuestieDB's quest XP: [questID] = { questLevel, xp }, the full reward before
+-- The data's quest XP: [questID] = { questLevel, xp }, the full reward before
 -- the level penalty. It is Era data (the Forever file matches Era's), so
 -- Forever-only quests are missing; those get the average XP for their level.
 local function xpTable()
-  local lib = _G.LibQuestieDB
-  if not (ns.Questie.Available() and type(lib) == "table" and type(lib.Support) == "table"
-    and type(lib.Support.Get) == "function") then return nil end
-  local ok, module = pcall(lib.Support.Get, "QuestXP")
-  local db = ok and type(module) == "table" and module.db
+  local db = ns.Data.QuestXP()
   if type(db) ~= "table" or next(db) == nil then return nil end
   return db
 end
@@ -527,7 +523,7 @@ local function shareLeft(questID)
   return math.max(MIN_SHARE_LEFT, 1 - done / #objectives)
 end
 
--- Quests in your log: { id, row (QuestieDB), name, level, complete, left }.
+-- Quests in your log: { id, row (quest data), name, level, complete, left }.
 local function readLog()
   local out = {}
   if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return out end
@@ -535,10 +531,10 @@ local function readLog()
     local info = C_QuestLog.GetInfo(i)
     local id = info and not info.isHeader and not info.isHidden and info.questID
     if id then
-      local row = ns.Questie.Quest(id)
+      local row = ns.Quests.Quest(id)
       local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) and true or false
       out[#out + 1] = { id = id, row = row, name = row and row.name or info.title,
-        level = ns.Questie.QuestLevel(id) or info.level, complete = complete,
+        level = ns.Quests.QuestLevel(id) or info.level, complete = complete,
         left = complete and 0 or shareLeft(id) }
     end
   end
@@ -565,7 +561,7 @@ local function handinOptions(ctx, start, net)
   local givers, order = {}, {}
   for _, e in ipairs(ctx.log) do
     if e.complete then
-      local name, node, distance = ns.Questie.QuestFinisher(e.id, start)
+      local name, node, distance = ns.Quests.QuestFinisher(e.id, start)
       if node then
         local key = string.format("%s@%d:%.4f:%.4f", name or "?", node.mapID, node.x, node.y)
         local g = givers[key]
@@ -584,7 +580,7 @@ local function handinOptions(ctx, start, net)
   table.sort(order, function(a, b) return a.distance < b.distance end)
 
   local named, byPlace = {}, {}
-  for _, hub in ipairs(ns.Questie.Cluster(order, math.huge)) do
+  for _, hub in ipairs(ns.Quests.Cluster(order, math.huge)) do
     local place = ns.Places.NameFor(hub.anchor.node)
     local key = place and (place .. "@" .. hub.anchor.node.mapID)
     if key and byPlace[key] then
@@ -630,7 +626,7 @@ local function finishOptions(ctx, start, net)
   local open = {}
   for _, e in ipairs(ctx.log) do
     if not e.complete and not dungeonQuest(e.row) then
-      local node = ns.Questie.ObjectiveNode(e.id, start)
+      local node = ns.Quests.ObjectiveNode(e.id, start)
       if node then
         open[#open + 1] = { entry = e, node = node, distance = ns.Geo.Distance(start, node) }
       else
@@ -763,7 +759,7 @@ local function dungeonJourney(option, ctx, start, net)
   -- continent (e.g. Darnassus for Blackfathom Deeps) still counts.
   local pickups = {}
   for _, q in ipairs(option.available) do
-    local giver, node = ns.Questie.QuestGiver(q.id, start)
+    local giver, node = ns.Quests.QuestGiver(q.id, start)
     local route = node and ns.Router.Plan(start, node, net)
     if route then
       pickups[#pickups + 1] = { node = node, seconds = route.seconds, group = "pickup", giver = giver,
@@ -823,7 +819,7 @@ local function bestQuestOption(hubs, ctx, start, net)
   local best, bestValue, bestHub
   for _, hub in ipairs(hubs) do
     for _, q in ipairs(hub.quests) do
-      if not q.inLog and not dungeonQuest(ns.Questie.Quest(q.id)) then
+      if not q.inLog and not dungeonQuest(ns.Quests.Quest(q.id)) then
         local v = questValue(q, ctx)
         if not bestValue or v > bestValue or (v == bestValue and hub.trip < bestHub.trip) then
           best, bestValue, bestHub = q, v, hub
@@ -846,7 +842,7 @@ local function bestQuestOption(hubs, ctx, start, net)
   return option
 end
 
--- Where to quest at your level, anywhere: per zone (Questie.ZoneQuests), the
+-- Where to quest at your level, anywhere: per zone (Quests.ZoneQuests), the
 -- quests you can take now and those their chains unlock, worth their XP; the
 -- hub to start at is the one with the most quests for you now, and the card's
 -- trip picks up all of them there. Zones need
@@ -854,10 +850,10 @@ end
 -- count without XP data) get a route to their first hub.
 local function zoneOptions(ctx, start, net)
   local zones = {}
-  for mapID, z in pairs(ns.Questie.ZoneQuests(start)) do
+  for mapID, z in pairs(ns.Quests.ZoneQuests(start)) do
     local now, later, value, lowest, highest = {}, {}, 0, math.huge, 0
     for _, q in ipairs(z.quests) do
-      if not dungeonQuest(ns.Questie.Quest(q.id)) then
+      if not dungeonQuest(ns.Quests.Quest(q.id)) then
         q.value = questValue(q, ctx)
         value = value + q.value
         lowest, highest = math.min(lowest, q.level or ctx.level), math.max(highest, q.level or ctx.level)
@@ -891,7 +887,7 @@ local function zoneOptions(ctx, start, net)
     table.sort(givers, function(a, b) return a.distance < b.distance end)
     -- A town's givers can fall into more than one cluster: one hub per place.
     local hubs, byPlace = {}, {}
-    for _, hub in ipairs(ns.Questie.Cluster(givers, math.huge)) do
+    for _, hub in ipairs(ns.Quests.Cluster(givers, math.huge)) do
       local place = ns.Places.NameFor(hub.anchor.node)
       local same = place and byPlace[place]
       if same then
@@ -1032,7 +1028,7 @@ local function optionRow(option, rank, total, ctx)
       color = GREY, more = true }
   end
   if option.estimated > 0 then
-    details[#details + 1] = { text = string.format("XP estimated for %s QuestieDB has no XP for.",
+    details[#details + 1] = { text = string.format("XP estimated for %s the data has no XP for.",
       plural(option.estimated, "quest")), color = GREY, more = true }
   end
   if not ctx.xpMode then
@@ -1103,11 +1099,11 @@ local function optionRow(option, rank, total, ctx)
   return row
 end
 
--- Dungeons without quests for you (or without QuestieDB): Dungeons' own ranking.
+-- Dungeons without quests for you (or without quest data): Dungeons' own ranking.
 local function plainRow(option)
   local r = option.result
-  local details = { { text = ns.Questie.Available() and "No quests for it: ranked by level fit and travel time."
-    or "Ranked by level fit and travel time. Install QuestieDB for its quests and XP.", color = GOLD } }
+  local details = { { text = ns.Quests.Available() and "No quests for it: ranked by level fit and travel time."
+    or "Ranked by level fit and travel time. Install a Wayfinder data addon for its quests and XP.", color = GOLD } }
   for _, line in ipairs(r.details or {}) do details[#details + 1] = line end
   local stats = {}
   local level = option.title and option.title:match("level (%d+)$")
@@ -1177,12 +1173,12 @@ local function summaryFor(ctx, needs)
   else
     parts[1] = string.format("Level %d: %s from here.", level, ranking)
   end
-  if not ctx.questie then
-    parts[#parts + 1] = "Install QuestieDB for quest hubs and XP; dungeons are ranked by level fit and travel time."
+  if not ctx.quests then
+    parts[#parts + 1] = "Install a Wayfinder data addon for quest hubs and XP; dungeons are ranked by level fit and travel time."
   elseif level >= MAX_LEVEL then
     parts[#parts + 1] = "At the level cap quests give no XP, so options are ranked by quests per hour."
   elseif not ctx.db then
-    parts[#parts + 1] = "No quest XP in your QuestieDB: ranked by quests per hour, weighted by level fit."
+    parts[#parts + 1] = "No quest XP in the data: ranked by quests per hour, weighted by level fit."
   end
   local ready, unfinished = 0, 0
   for _, e in ipairs(ctx.log) do
@@ -1195,7 +1191,7 @@ local function summaryFor(ctx, needs)
     parts[#parts + 1] = string.format("Quest log counted at full XP: %s.", table.concat(counted, ", "))
     if ctx.unplaced > 0 then
       parts[#parts + 1] = string.format("%s in your log can't be placed on the map%s.", plural(ctx.unplaced, "quest"),
-        ctx.questie and "" or " without QuestieDB")
+        ctx.quests and "" or " without quest data")
     end
   end
   for _, note in ipairs(ctx.notes) do parts[#parts + 1] = note end
@@ -1222,7 +1218,7 @@ local function build()
   local level = UnitLevel("player")
   local db = xpTable()
   local ctx = { level = level, db = db, xpMode = db ~= nil and level < MAX_LEVEL,
-    questie = ns.Questie.Available() and true or false, notes = {}, unplaced = 0 }
+    quests = ns.Quests.Available() and true or false, notes = {}, unplaced = 0 }
   ctx.log = try(readLog) or {}
 
   local needs = {}
@@ -1244,9 +1240,9 @@ local function build()
   local finishes = timed("finish", finishOptions, ctx, start, net) or {}
   local dungeons, plain, held = timed("dungeons", dungeonOptions, ctx)
   dungeons, plain, held = dungeons or {}, plain or {}, held or {}
-  -- With QuestieDB, a dungeon without quests for you isn't worth the run in
+  -- With quest data, a dungeon without quests for you isn't worth the run in
   -- Forever (its mobs give little XP); without it there's nothing better to go on.
-  if ctx.questie then plain = {} end
+  if ctx.quests then plain = {} end
   local all = {}
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
     for _, option in ipairs(list) do
@@ -1310,7 +1306,7 @@ local function build()
     timed("dungeon trip", dungeonJourney, dungeon, ctx, start, net)
     dungeonRow = optionRow(dungeon, dungeon.rank, #all, ctx)
   elseif plain[1] then
-    -- Without QuestieDB: the best one by level fit and travel time.
+    -- Without quest data: the best one by level fit and travel time.
     dungeonRow = plainRow(plain[1])
   end
   if dungeonRow and #others > 0 then
@@ -1340,7 +1336,7 @@ end
 
 function ForYou.EmptyText()
   return "Nothing to suggest from here yet. Visit a trainer for your class, open a flight map, or install "
-    .. "QuestieDB for quest hubs and XP estimates."
+    .. "a Wayfinder data addon for quest hubs and XP estimates."
 end
 
 -- Computed once per refresh and reused for CACHE_SECONDS: the providers plan

@@ -2,19 +2,18 @@ local _, ns = ...
 
 -- Dungeon and raid entrances. The client has none (C_EncounterJournal and
 -- C_Map.GetMapLinksForMap are empty in Forever), so these are hand-made and
--- used when QuestieDB is not installed or doesn't know a dungeon.
+-- used when no data source knows a dungeon.
 --
 -- Coordinates are APPROXIMATE: vanilla (Era) positions from memory, rounded
 -- to whole map percent, on the outdoor zone map, not checked in Forever.
 -- Forever moved the Stormwind City and Eastern Plaguelands maps (also Mulgore
 -- and Redridge), so the Stockade, Stratholme and Naxxramas points are likely
--- off there; with QuestieDB installed they are converted with its EraToForever
--- helper. To fix one: stand at the entrance, run /wf where, update x/y and set
+-- off there; a data source with an EraToForever helper converts them. To fix one: stand at the entrance, run /wf where, update x/y and set
 -- verified = true.
 --
 -- `level` is a fallback; the client's dungeon finder list (GetLFGDungeonInfo)
 -- overrides it, matched by name or `aliases`. `faction` lists a dungeon only
--- for the faction whose capital it's in. `areaID` links QuestieDB entrances
+-- for the faction whose capital it's in. `areaID` links the data's entrances
 -- and dungeon quests.
 
 ns.data.dungeons = {
