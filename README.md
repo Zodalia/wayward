@@ -60,7 +60,11 @@ What works in this MVP:
 - **Dungeons**: dungeons and raids that fit your level (3 under to 6 over; raids
   only from their level), ranked by level fit and travel time to the entrance.
   Levels come from the client's dungeon finder list, matched to our dungeons by
-  name. Entrances come from a data source if one has them, otherwise from
+  name; dungeons only that list has (Forever's new ones, such as Hall of
+  Thanes) are listed too, at the end and without directions until you walk in
+  once. Walking into a dungeon or raid records its entrance (where you were
+  when the loading screen started; dungeon finder teleports don't count), and
+  a recorded entrance beats every other source. Otherwise entrances come from a data source if one has them, otherwise from
   `Wayfinder/Data/Dungeons.lua`. Those are approximate vanilla positions, and
   the Stockade, Stratholme and Naxxramas points are likely off in Forever
   without a data source. With quest data, a row also counts the dungeon's quests you

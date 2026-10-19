@@ -832,6 +832,8 @@ local LFG = {
   [12] = { name = "Warsong Gulch", level = 10, type = 5 },
   [15] = { name = "Stormwind Stockade", level = 22 },
   [20] = { name = "Hall of Testing", level = 21 },
+  -- Forever's new dungeons sit far above the vanilla IDs.
+  [3273] = { name = "Hall of Thanes", level = 21 },
 }
 GetLFGDungeonInfo = function(id)
   local d = LFG[id]
@@ -934,6 +936,53 @@ stockade = find(dungeons, "The Stockade")
 check(stockade and math.abs(stockade.goal.x - 0.6) < 1e-6, "our Era Stormwind point converted with EraToForever")
 ns.Panel.SelectPage("dungeons")
 check(ns.Panel.IsShown(), "panel shows dungeons with QuestieDB")
+
+-- A dungeon only the dungeon finder lists: shown without directions, after
+-- the ones you can be routed to, until you walk in once.
+dungeons = ns.Dungeons.Results()
+local thanes, thanesAt = find(dungeons, "Hall of Thanes"), nil
+for i, d in ipairs(dungeons) do if d == thanes then thanesAt = i end end
+check(thanes and thanes.title == "Hall of Thanes  ·  level 21" and not thanes.route
+  and thanes.zone:find("entrance not known yet", 1, true), "a new Forever dungeon (ID 3273) is listed without directions")
+local lastRouted = 0
+for i, d in ipairs(dungeons) do if d.route then lastRouted = i end end
+check(thanesAt and thanesAt > lastRouted, "after every dungeon with a known entrance")
+check(thanes and thanes.details[#thanes.details].text:find("Walk in once", 1, true), "its tooltip says how to fix that")
+
+-- Walking in records the entrance: where you were when the loading screen came.
+local inside, lfg = false, false
+IsInInstance = function() return inside, inside and "party" or "none" end
+IsPartyLFG = function() return lfg end
+GetInstanceInfo = function() return "The Hall of Thanes", "party", 1, "Normal", 5, 0, false, 3065 end
+player.mapID, player.x, player.y = 1433, 0.31, 0.62
+fire("PLAYER_LEAVING_WORLD")
+inside = true
+fire("PLAYER_ENTERING_WORLD")
+local saved = ns.db.dungeonEntrances.hallofthanes
+check(saved and saved.instanceID == 3065 and #saved.points == 1 and saved.points[1].mapID == 1433
+  and math.abs(saved.points[1].x - 0.31) < 1e-9, "entering the instance records its entrance")
+inside = false
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+thanes = find(ns.Dungeons.Results(), "Hall of Thanes")
+check(thanes and thanes.route and math.abs(thanes.goal.x - 0.31) < 1e-9 and not thanes.zone:find("not known", 1, true),
+  "and the next time it has directions")
+local deadminesNow = find(ns.Dungeons.Results(), "The Deadmines")
+
+-- Close to a known entrance: the same one. Through the dungeon finder: not counted.
+player.mapID, player.x, player.y = 1433, 0.3101, 0.6201
+fire("PLAYER_LEAVING_WORLD")
+inside = true
+fire("PLAYER_ENTERING_WORLD")
+check(#ns.db.dungeonEntrances.hallofthanes.points == 1, "walking in again at the same spot adds nothing")
+inside, lfg = false, true
+player.mapID, player.x, player.y = 1433, 0.9, 0.9
+fire("PLAYER_LEAVING_WORLD")
+inside = true
+fire("PLAYER_ENTERING_WORLD")
+check(#ns.db.dungeonEntrances.hallofthanes.points == 1, "a dungeon finder teleport isn't an entrance")
+inside, lfg = false, false
+player.mapID, player.x, player.y = 1433, 0.5, 0.5
+check(deadminesNow and deadminesNow.route, "dungeons with entrances keep theirs")
 
 ---------------------------------------------------------------- dungeons (end)
 

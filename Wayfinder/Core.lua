@@ -79,6 +79,7 @@ end
 local DEFAULTS = {
   npcs = {},         -- [npcID] = harvested NPC (see Harvest.lua)
   transports = {},   -- recorded with /wf dock (see Docks.lua)
+  dungeonEntrances = {}, -- [name key] = entrances you walked through (see Dungeons.lua)
   -- showArrow: the compass in the directions box; tomtom: nil until you've
   -- been asked (see UI/Options.lua), then true / false.
   settings = { showArrow = true },

@@ -708,7 +708,11 @@ local function dungeonOptions(ctx)
   local logged = {}
   for _, e in ipairs(ctx.log) do logged[e.id] = e end
   local withQuests, plain, held = {}, {}, {}
+  local routed = {}
   for _, r in ipairs(run(ns.Dungeons.Results)) do
+    if r.goal then routed[#routed + 1] = r end -- not those whose entrance isn't known
+  end
+  for _, r in ipairs(routed) do
     local entry = r.dungeon
     local available, inLog, seen = {}, {}, {}
     local function add(list, q)

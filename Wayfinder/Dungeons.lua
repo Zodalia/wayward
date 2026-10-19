@@ -5,17 +5,22 @@ local _, ns = ...
 --
 -- Levels come from the client's dungeon finder list (GetLFGDungeonInfo, one
 -- level per dungeon or wing). It has no area IDs, so it is matched to our
--- dungeons by name. Entrances come from the data sources when they have them,
--- else from Data/Dungeons.lua. Dungeon quests need quest data.
+-- dungeons by name; a dungeon only it lists (Forever's new ones) is kept too.
+-- Entrances: where you walked in yourself (recorded when you enter an
+-- instance), else the data sources', else Data/Dungeons.lua. A dungeon with
+-- none of those is listed without directions. Dungeon quests need quest data.
 
 local Dungeons = { id = "dungeons", label = "Dungeons" }
 ns.Dungeons = Dungeons
 
 local MAX_LEVEL = 60          -- Forever's level cap; higher entries are later expansions
-local LFG_SCAN = 3000         -- dungeon finder IDs to read (WFProbe saw vanilla in 1..~100)
+local LFG_SCAN = 10000        -- dungeon finder IDs to read (vanilla 1..131, Forever's new ones from 3271)
 local TYPE_WORLD, TYPE_BATTLEGROUND = 4, 5
 local UNDER, OVER = 3, 6      -- a dungeon fits from 3 levels under its level to 6 over
 local SECONDS_PER_LEVEL = 150 -- ranking: each level away from a dungeon's level weighs like 2.5 min of travel
+local NO_ENTRANCE = 1e6       -- ranking: a dungeon without a known entrance comes after those with one
+local SAME_ENTRANCE = 60      -- yards: a recorded entrance this close to a known one is the same
+local ENTRY_WINDOW = 120      -- seconds: an instance entered this soon after leaving a place was entered there
 
 local clientList, summary
 
@@ -54,6 +59,76 @@ local function fallbackNodes(d)
   return nodes
 end
 
+---------------------------------------------------------------- learned entrances
+
+-- Where you were when the loading screen started (PLAYER_LEAVING_WORLD); when
+-- the next world you arrive in is a dungeon or raid instance, that spot is its
+-- entrance. Dungeon finder teleports aren't counted (you didn't walk in).
+-- WayfinderDB.dungeonEntrances[key] = { name, instanceID, points = { {mapID, x, y, seen}, ... } }
+local leftFrom -- { mapID, x, y, at }
+
+local function playerSpot()
+  local mapID = C_Map.GetBestMapForUnit("player")
+  local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+  if not pos then return nil end
+  local x, y = pos:GetXY()
+  return { mapID = mapID, x = x, y = y }
+end
+
+ns.On("PLAYER_LEAVING_WORLD", function()
+  leftFrom = nil
+  if IsInInstance and IsInInstance() then return end
+  if UnitOnTaxi and UnitOnTaxi("player") then return end
+  local spot = playerSpot()
+  if spot then
+    spot.at = GetTime and GetTime() or 0
+    leftFrom = spot
+  end
+end)
+
+ns.On("PLAYER_ENTERING_WORLD", function()
+  local spot = leftFrom
+  leftFrom = nil
+  if not (spot and IsInInstance and GetInstanceInfo) then return end
+  local inside, kind = IsInInstance()
+  if not inside or (kind ~= "party" and kind ~= "raid") then return end
+  if (IsPartyLFG and IsPartyLFG()) or (IsInLFGDungeon and IsInLFGDungeon()) then return end
+  if GetTime and GetTime() - spot.at > ENTRY_WINDOW then return end
+  local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
+  if type(name) ~= "string" or name == "" then return end
+  Dungeons.RecordEntrance(name, instanceID, spot.mapID, spot.x, spot.y)
+end)
+
+-- Remembers an instance's entrance (a new point unless one is this close).
+function Dungeons.RecordEntrance(name, instanceID, mapID, x, y)
+  local key = normalize(name)
+  local all = ns.db.dungeonEntrances or {}
+  ns.db.dungeonEntrances = all
+  local record = all[key] or { name = name, instanceID = instanceID, points = {} }
+  all[key] = record
+  local node = ns.Geo.Node(mapID, x, y, name)
+  for _, p in ipairs(record.points) do
+    local known = ns.Geo.Node(p.mapID, p.x, p.y, name)
+    if node and known and ns.Geo.Distance(node, known) <= SAME_ENTRANCE then
+      p.seen = time and time() or 0
+      return false
+    end
+  end
+  table.insert(record.points, { mapID = mapID, x = x, y = y, seen = time and time() or 0 })
+  ns.print(string.format("learned the entrance of %s.", name))
+  ns.Fire("DATA_CHANGED")
+  return true
+end
+
+local function learnedNodes(record)
+  local nodes = {}
+  for _, p in ipairs(record.points) do
+    local node = ns.Geo.Node(p.mapID, p.x, p.y, record.name .. " entrance")
+    if node then nodes[#nodes + 1] = node end
+  end
+  return nodes
+end
+
 -- Our dungeons, the data's, and the client's levels merged into one list.
 local function catalogue()
   local list, byArea, byKey = {}, {}, {}
@@ -86,23 +161,47 @@ local function catalogue()
     for _, node in ipairs(ns.Data.Nodes(q.positions, q.name .. " entrance")) do table.insert(entry.sourceNodes, node) end
   end
 
-  -- Wings ("Scarlet Monastery - Armory") match by prefix; the longest name wins.
-  for _, c in ipairs(clientDungeons()) do
+  -- The longest of an entry's names that `key` starts with ("Scarlet
+  -- Monastery - Armory" is a wing of "Scarlet Monastery"), or nil.
+  local function owner(key)
     local best, bestLength = nil, 0
     for _, entry in ipairs(list) do
-      for _, key in ipairs(entry.keys) do
-        if #key > bestLength and c.key:sub(1, #key) == key then best, bestLength = entry, #key end
+      for _, k in ipairs(entry.keys) do
+        if #k > bestLength and key:sub(1, #k) == k then best, bestLength = entry, #k end
       end
     end
-    if best then
-      table.insert(best.levels, c)
-      best.raid = best.raid or c.raid
+    return best
+  end
+
+  -- A dungeon only the client lists (one Forever added) becomes an entry of
+  -- its own, without an entrance until you walk in once.
+  for _, c in ipairs(clientDungeons()) do
+    local best = owner(c.key)
+    if not best then
+      best = { name = c.name, keys = { c.key }, areaIDs = {}, sourceNodes = {}, levels = {}, entrances = {},
+        clientOnly = true }
+      add(best)
+    end
+    table.insert(best.levels, c)
+    best.raid = best.raid or c.raid
+  end
+
+  -- Entrances you walked through win over everything else.
+  for key, record in pairs(ns.db and ns.db.dungeonEntrances or {}) do
+    local entry = owner(key)
+    if entry then
+      local nodes = learnedNodes(record)
+      if #nodes > 0 then entry.learnedNodes = nodes end
     end
   end
 
   local out = {}
   for _, entry in ipairs(list) do
-    if #entry.sourceNodes > 0 then entry.entrances, entry.fromSource = entry.sourceNodes, true end
+    if entry.learnedNodes then
+      entry.entrances, entry.learned = entry.learnedNodes, true
+    elseif #entry.sourceNodes > 0 then
+      entry.entrances, entry.fromSource = entry.sourceNodes, true
+    end
     if not entry.sourceOnly or #entry.levels > 0 then out[#out + 1] = entry end
   end
   return out
@@ -138,7 +237,7 @@ function Dungeons.SummaryText()
 end
 
 function Dungeons.EmptyText()
-  return string.format("No dungeon with a known entrance fits level %d. Dungeons show from %d levels under "
+  return string.format("No dungeon fits level %d. Dungeons show from %d levels under "
     .. "their level to %d over.", UnitLevel("player"), UNDER, OVER)
 end
 
@@ -152,7 +251,7 @@ function Dungeons.Results()
   local fitting, areaIDs = {}, {}
   for _, entry in ipairs(catalogue()) do
     local fit, penalty = bestFit(entry, level)
-    if fit and #entry.entrances > 0 and (entry.faction == nil or entry.faction == faction) then
+    if fit and (entry.faction == nil or entry.faction == faction) then
       fitting[#fitting + 1] = { entry = entry, fit = fit, penalty = penalty }
       for areaID in pairs(entry.areaIDs) do areaIDs[areaID] = true end
     end
@@ -168,6 +267,7 @@ function Dungeons.Results()
       if r and (not route or r.seconds < route.seconds) then goal, route = node, r end
     end
     goal = goal or entry.entrances[1]
+    local unknown = goal == nil
 
     local available, inLog, later = {}, {}, {}
     for areaID in pairs(entry.areaIDs) do
@@ -180,7 +280,7 @@ function Dungeons.Results()
     end
 
     -- Why go: the level in the title, quests for it on the second line.
-    local why = { ns.MapName(goal.mapID) }
+    local why = { unknown and "entrance not known yet" or ns.MapName(goal.mapID) }
     if #available > 0 then
       why[#why + 1] = string.format("%d quest%s for you", #available, #available == 1 and "" or "s")
     end
@@ -198,7 +298,10 @@ function Dungeons.Results()
         details[#details + 1] = { text = string.format("  %s: level %d", l.name, l.level), color = { r = 0.7, g = 0.7, b = 0.7 } }
       end
     end
-    if not entry.fromSource then
+    if unknown then
+      details[#details + 1] = { text = "Wayfinder doesn't know where its entrance is yet. Walk in once (not through "
+        .. "the dungeon finder) and it remembers.", color = { r = 1, g = 0.5, b = 0.25 } }
+    elseif not (entry.fromSource or entry.learned) then
       details[#details + 1] = { text = "Entrance position is approximate.", color = { r = 0.6, g = 0.6, b = 0.6 } }
     end
     questLines(details, "Quests you can take for it:", available)
@@ -211,12 +314,12 @@ function Dungeons.Results()
       goal = goal,
       route = route,
       details = details,
-      score = (route and route.seconds or math.huge) + f.penalty,
+      score = (route and route.seconds or NO_ENTRANCE) + f.penalty,
       -- For other pages (For you): the dungeon and its quests behind this row.
       dungeon = entry,
       quests = { available = available, inLog = inLog, later = later },
       -- Pick up the quests you can take, then go in (QuestsPage.lua).
-      actions = #available > 0 and { { label = "Quests", run = function()
+      actions = #available > 0 and goal and { { label = "Quests", run = function()
         ns.QuestsPage.StartDungeonRun(entry.name, goal, available)
       end } } or nil,
     }
@@ -234,7 +337,8 @@ function Dungeons.Results()
 end
 
 -- For other pages: every known dungeon/raid as
--- { name, areaIDs = set, raid, faction, entrances = {route nodes}, fromSource, levels = {{name, level}} }.
+-- { name, areaIDs = set, raid, faction, entrances = {route nodes}, fromSource, learned, clientOnly,
+--   levels = {{name, level}} }.
 function Dungeons.Catalogue()
   return catalogue()
 end
