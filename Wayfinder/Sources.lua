@@ -23,7 +23,9 @@ local _, ns = ...
 --   Dungeons()         { {areaID, name, alternativeAreaIds = {areaID, ...}, positions}, ... }
 --   QuestXP()          { [questID] = {questLevel, xp} }: full reward before the level penalty
 --   EraToForever(mapID, x, y)   an Era (vanilla) map point in Forever: x, y (0-1)
---   ClassSpells(class) { {spellID, level, cost?, requires = {spellID, ...}?, replaces = spellID?}, ... }
+--   ClassSpells(class) { {spellID, level, cost?, requires = {spellID, ...}?, replaces = spellID?,
+--                        talent = spellID? (only with that talent), races = {[raceID] = true}?,
+--                        faction = "Alliance"|"Horde"?}, ... }
 --   TrainerSpells(npcID)        { {spellID, level, cost?, skill?, skillValue?}, ... }
 --   TaxiCost(fromNodeID, toNodeID)  copper
 --
@@ -192,7 +194,8 @@ function Data.EraToForever(mapID, x, y)
 end
 
 -- Class spells from every source, merged by spell ID (higher priority wins
--- each field): { {spellID, level, cost?, requires?, replaces?}, ... } by level.
+-- each field): { {spellID, level, cost?, requires?, replaces?, talent?, races?,
+-- faction?}, ... } by level.
 function Data.ClassSpells(class)
   local bySpell, order = {}, {}
   for i = #sources, 1, -1 do

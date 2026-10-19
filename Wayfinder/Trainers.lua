@@ -35,13 +35,20 @@ local function servicesFromData()
   local level = UnitLevel("player")
   if dataServices and dataServices.level == level then return dataServices.services end
   local _, class = UnitClass("player")
+  local _, _, raceID = UnitRace("player")
+  local faction = UnitFactionGroup("player")
   local services = {}
   for _, spell in ipairs(ns.Data.ClassSpells(class)) do
-    local name, rank = spellName(spell.spellID)
-    local known = knowsSpell(spell.spellID)
-    services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
-      spellID = spell.spellID, levelReq = spell.level, cost = spell.cost,
-      type = known and "used" or ((spell.level or 0) <= level and "available" or "unavailable") }
+    -- Spells for another race or faction, or for a talent you don't have,
+    -- aren't on your trainer's list.
+    if (not spell.races or spell.races[raceID]) and (not spell.faction or spell.faction == faction)
+      and (not spell.talent or knowsSpell(spell.talent)) then
+      local name, rank = spellName(spell.spellID)
+      local known = knowsSpell(spell.spellID)
+      services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
+        spellID = spell.spellID, levelReq = spell.level, cost = spell.cost,
+        type = known and "used" or ((spell.level or 0) <= level and "available" or "unavailable") }
+    end
   end
   dataServices = { level = level, services = services }
   return services

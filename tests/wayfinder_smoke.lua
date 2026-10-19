@@ -3114,7 +3114,9 @@ do
       flags = { trainer = true }, positions = { { mapID = 1433, x = 0.5, y = 0.52 } } } end end,
     NpcIDs = function(flag) if flag == "trainer" then return { 777, 461 } end end,
     ClassSpells = function(class)
-      if class == "WARLOCK" then return { { spellID = 9001, level = 6, cost = 100 }, { spellID = 9002, level = 30, cost = 900 } } end
+      if class == "WARLOCK" then return { { spellID = 9001, level = 6, cost = 100 }, { spellID = 9002, level = 30, cost = 900 },
+        { spellID = 9003, level = 4, cost = 50, talent = 9100 }, { spellID = 9004, level = 4, cost = 50, races = { [2] = true } },
+        { spellID = 9005, level = 4, cost = 50, faction = "Horde" } } end
     end,
     TrainerSpells = function(id) if id == 777 then return { { spellID = 227, level = 1, cost = 1000 } } end end })
   Wayfinder.RegisterSource({ id = "high", label = "High", priority = 50,
@@ -3129,7 +3131,9 @@ do
   for _, id in ipairs(trainerIDs) do seen[id] = (seen[id] or 0) + 1 end
   check(seen[777] == 1 and seen[461] == 1, "ID lists combined without repeats")
   local spells = ns.Data.ClassSpells("WARLOCK")
-  check(#spells == 2 and spells[1].spellID == 9001 and spells[1].level == 4 and spells[1].cost == 100,
+  local first
+  for _, sp in ipairs(spells) do if sp.spellID == 9001 then first = sp end end
+  check(#spells == 5 and first and first.level == 4 and first.cost == 100,
     "class spells merge by spell ID: level from the higher source, cost from the lower")
   check(ns.Data.Status():find("High") and ns.Data.Status():find("Low"), "both sources in the status line")
   check(ns.Data.Has("ClassSpells") and not ns.Data.Has("TaxiCost"), "Has() names what sources can answer")
@@ -3140,7 +3144,11 @@ do
   IsPlayerSpell = function() return false end
   local summary = ns.Trainers.SpellSummary()
   check(summary and summary.fromData and summary.trainable == 1 and summary.cost == 100 and summary.nextLevel == 30,
-    "no trainer visit yet: spells from the data (" .. tostring(summary and summary.trainable) .. " trainable)")
+    "no trainer visit yet: spells from the data, not another race's, faction's or talent's ("
+      .. tostring(summary and summary.trainable) .. " trainable)")
+  IsPlayerSpell = function(id) return id == 9100 end
+  fire("SPELLS_CHANGED")
+  check(ns.Trainers.SpellSummary().trainable == 2, "with the talent, its spell counts")
   check(ns.Trainers.SummaryText():find("from spell data"), "summary says where the list comes from")
   IsPlayerSpell = function(id) return id == 9001 end
   fire("SPELLS_CHANGED")
