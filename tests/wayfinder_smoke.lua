@@ -1868,8 +1868,11 @@ do
   check(chat[#chat]:find("isn't offered yet", 1, true), "and says so: " .. chat[#chat])
   local said = #chat
   SlashCmdList.WAYFINDER("debug quest 7")
-  check(#chat > said + 2 and chat[said + 2]:find("(id 7)", 1, true) and chat[#chat]:find("didn't offer it", 1, true),
-    "/wf debug quest shows the chain data and the giver's answer")
+  local answered = false
+  for i = said + 1, #chat do answered = answered or chat[i]:find("didn't offer it", 1, true) ~= nil end
+  check(#chat > said + 2 and chat[said + 2]:find("(id 7)", 1, true) and answered
+    and chat[#chat]:find("chain ahead", 1, true),
+    "/wf debug quest shows the chain data, the giver's answer and the chain ahead")
   fire("QUEST_TURNED_IN", 999)
   check(ns.Quests.IsQuestAvailable(7), "handing in any quest makes it worth asking again")
   UnitName, C_GossipInfo = savedName, nil

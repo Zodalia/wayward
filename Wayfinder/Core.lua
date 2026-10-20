@@ -214,6 +214,7 @@ SlashCmdList.WAYFINDER = function(msg)
       if #matches == 0 then ns.print("no quest called " .. questQuery) end
       for i = 1, math.min(#matches, 3) do
         for _, line in ipairs(ns.Quests.Describe(matches[i].id)) do ns.print(line) end
+        for _, line in ipairs(ns.Quests.DescribeChain(matches[i].id)) do ns.print(line) end
       end
       return
     end
