@@ -2733,6 +2733,20 @@ do
     "the finish trip uses your 10 min average: " .. tostring(finish and finish.details[1].text))
   ns.charDB.questTimes = nil
 
+  -- The buttons by the summary line, and each card's time.
+  local wasShown = ns.Panel.IsShown()
+  ns.Panel.Search("foryou")
+  local buttons = {}
+  for _, btn in ipairs(ns.Panel.ControlButtons()) do buttons[btn:GetText()] = btn end
+  check(buttons["15"] and buttons["30"] and buttons["60"] and buttons.Any, "For you has 15 / 30 / 60 / Any buttons")
+  buttons["30"].scripts.OnClick(buttons["30"])
+  check(ns.charDB.budgetMinutes == 30 and ns.ForYou.SummaryText():find("^Fits in 30 min:"), "30 sets a 30 minute budget")
+  local badge = ns.Cards.Badge(1)
+  check(badge and badge:find("min$") and badge == ns.Cards.Visible()[1].badge, "the cards show their time: " .. tostring(badge))
+  buttons.Any.scripts.OnClick(buttons.Any)
+  check(ns.charDB.budgetMinutes == nil and ns.Cards.Badge(1) == nil, "Any clears it, and the cards drop their times")
+  if not wasShown then ns.Panel.Toggle() end
+
   SlashCmdList.WAYFINDER("time off")
   check(ns.charDB.budgetMinutes == nil and ns.ForYou.Budget() == nil, "/wf time off clears the budget")
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
