@@ -253,8 +253,14 @@ function HUD.Update()
   local objective = step.stop and step.stop.action and step.stop.action.kind == "complete"
     and HUD.ObjectiveText(step.stop.action.questID)
   if objective and ns.Nav.InArea() then
-    -- Among what you need: no arrow, just how it's going.
-    frame.info:SetText("|cff7fd1aeIn the area|r  ·  " .. objective .. "     " .. remaining)
+    -- Among what you need: no arrow, just how it's going (and how long, at your pace here).
+    if ns.Camps.LooksCleared(step.stop) then
+      frame.info:SetText("|cffffd100Camp looks cleared|r  ·  " .. objective .. "     " .. remaining)
+    else
+      local left = ns.Camps.TimeLeft(step.stop)
+      frame.info:SetText("|cff7fd1aeIn the area|r  ·  " .. objective
+        .. (left and ("  ·  " .. ns.FormatDuration(left) .. " left here") or "") .. "     " .. remaining)
+    end
   elseif objective then
     -- On the way from a spot you've cleared to the next, or back to one respawning.
     local respawn = ns.Journey.RespawnIn(step.stop)

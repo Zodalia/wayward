@@ -149,7 +149,8 @@ end
 -- A quest's objectives can be in several areas (Quests.ObjectiveAreas: one
 -- camp, then the next one up the coast). A stop remembers the areas you've
 -- cleared: after WORK_SECONDS in one, leaving it counts it as cleared for
--- CLEARED_FOR (about a respawn), and the way goes elsewhere meanwhile.
+-- CLEARED_FOR (about a respawn), and the way goes elsewhere meanwhile. Seeing
+-- the camp empty (Camps.lua) counts it as cleared sooner.
 local WORK_SECONDS, CLEARED_FOR = 30, 300
 
 -- The areas that still have something you need (a finished objective's
@@ -214,18 +215,25 @@ function Journey.ClearedAreas(stop)
   return count
 end
 
--- Tracks which of a stop's areas you're in (`index`, nil when in none).
--- Returns true when that just counted the one you left as cleared.
+-- Tracks which of a stop's areas you're in (`index`, nil when in none); each
+-- time in one is a visit (stop.visit, watched by Camps). Returns true when
+-- that just counted the one you left as cleared: after WORK_SECONDS there, or
+-- sooner when it looked cleared (Camps.LooksCleared).
 function Journey.EnterArea(stop, index)
   if stop.areaAt == index then return false end
-  local now, cleared = time(), false
-  if stop.areaAt and stop.areaSince and now - stop.areaSince >= WORK_SECONDS then
+  local now, cleared, visit = time(), false, stop.visit
+  if stop.areaAt and visit and (now - visit.since >= WORK_SECONDS or visit.looksCleared) then
     stop.worked = stop.worked or {}
     stop.worked[stop.areaAt] = now
     cleared = true
   end
-  stop.areaAt, stop.areaSince = index, index and now or nil
+  stop.areaAt, stop.visit = index, index and { since = now } or nil
   return cleared
+end
+
+-- Ends a visit without counting the area as cleared (you died there).
+function Journey.ForgetVisit(stop)
+  stop.areaAt, stop.visit, stop.inArea = nil, nil, nil
 end
 
 -- Where to do a stop's objectives from `from` when they're in more than one

@@ -29,6 +29,7 @@ Professions.lua
 QuestHubs.lua
 QuestsPage.lua
 Journey.lua
+Camps.lua
 Navigator.lua
 OnTheWay.lua
 Marker.lua

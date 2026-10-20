@@ -393,6 +393,17 @@ panel to add it to the trip you're on.
     Cleared areas are saved with the trip.
   - Making progress on a later stop's objectives while you're in their area
     (another quest's camp on the way) makes that stop the next one.
+  - In a camp, its mobs on nameplates count (`Camps.lua`; enemy nameplates
+    have to be on, about 40-60 yards): once you've killed there and for 10
+    seconds none are in sight that you could kill (dead, or tapped by someone
+    else), the box says "Camp looks cleared", and leaving counts it as cleared
+    straight away. After two kills there it also says how long the rest should
+    take at your pace ("~3 min left here"), and the trip's time counts it.
+    Whatever the game keeps secret counts as not seen, so without nameplates
+    the 30 seconds in the area decide.
+  - Dying holds the trip still until you're alive again: releasing to a
+    graveyard doesn't count as leaving the camp (the visit just ends, not
+    cleared), doesn't re-plan, and the way still points where it did.
   - Picking up a quest that isn't in your trip asks whether to add it (with
     how much longer the trip gets), start a new trip for it (with its time),
     or not now; quests picked up one after another are asked about together,
@@ -506,6 +517,9 @@ character-select AddOns screen; the probe reports the new number.
    on-screen arrow appear. `/wfprobe nav` explains a missing arrow (setting,
    frame, target state, and whether player facing is readable for our own
    arrow). `/wfprobe waypoint clear` removes it.
+   `/wfprobe plates` near some mobs, once out of combat and once fighting,
+   records what nameplates show (GUID, name, dead, tapped, each readable or
+   secret), which camps rely on.
 5. Visit and interact with: a class trainer, a vendor, a flight master, the
    bank, a quest giver (open a quest and accept it), an NPC with a gossip menu.
    Each one is captured automatically ("captured …" in chat).

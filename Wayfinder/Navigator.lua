@@ -345,7 +345,8 @@ local function onTaxi()
   return UnitOnTaxi and UnitOnTaxi("player") or false
 end
 
--- The current step is re-measured from `here`; later steps use the plan.
+-- The current step is re-measured from `here`; later steps use the plan. In
+-- a camp, what its objectives still need at your pace there counts too.
 function Nav.RemainingSeconds(here)
   local a = Nav.active
   if not a then return nil end
@@ -353,7 +354,7 @@ function Nav.RemainingSeconds(here)
   for i = a.index, #a.route.steps do
     local step = a.route.steps[i]
     if i == a.index and here then
-      total = total + ns.Router.SecondsLeft(step, here, onTaxi())
+      total = total + ns.Router.SecondsLeft(step, here, onTaxi()) + (ns.Camps.TimeLeft(step.stop) or 0)
     else
       total = total + step.seconds
     end
@@ -1007,7 +1008,7 @@ end
 
 local function doingLater()
   local a = Nav.active
-  if not (a and a.journey) or onTaxi() then return end
+  if not (a and a.journey) or onTaxi() or Nav.Dead() then return end
   local here = ns.Geo.PlayerNode()
   if not here then return end
   local current = a.route.steps[a.index]
@@ -1049,11 +1050,62 @@ function Nav.Flying()
   return Nav.active ~= nil and onTaxi()
 end
 
+-- Dying. From death until you're alive again (at your corpse or a spirit
+-- healer) the trip holds still: releasing moves you to a graveyard, which
+-- isn't leaving a camp (its visit just ends, not cleared) or a reason to
+-- re-plan, and the way still points where it did.
+local dead = false
+
+local function secretValue(v)
+  return type(issecretvalue) == "function" and issecretvalue(v)
+end
+
+function Nav.Dead()
+  if UnitIsDeadOrGhost then
+    local v = UnitIsDeadOrGhost("player")
+    if not secretValue(v) then return v and true or false end
+  end
+  return dead
+end
+
+-- Once per death: the camp you were in isn't left, its visit just ends.
+local function died(a)
+  if a.died then return end
+  a.died, a.waiting = true, false
+  for _, step in ipairs(a.route.steps) do
+    if step.stop and (step.stop.visit or step.stop.inArea) then ns.Journey.ForgetVisit(step.stop) end
+  end
+end
+
+ns.On("PLAYER_DEAD", function()
+  dead = true
+  if Nav.active then died(Nav.active) end
+end)
+
+local function alive()
+  dead = false
+  local a = Nav.active
+  -- Where you died and where you are now aren't a trip's distance or a detour.
+  if a then a.died, a.lastHere, a.closest = nil, nil, nil end
+end
+ns.On("PLAYER_UNGHOST", alive)
+ns.On("PLAYER_ALIVE", function()
+  -- Also fires on release, as a ghost.
+  local ghost = UnitIsGhost and UnitIsGhost("player")
+  if not secretValue(ghost) and ghost == false then alive() end
+end)
+
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
   local here = ns.Geo.PlayerNode()
   if not here then return nil, Nav.CurrentStep() end
+  if Nav.Dead() then
+    died(a)
+    a.lastHere, a.closest = nil, nil
+    return here, a.route.steps[a.index]
+  end
+  a.died = nil
   -- Yards travelled on a trip (not jumps: a hearthstone, a loading screen).
   local last = a.lastHere
   if a.stats and last and last.instance == here.instance then
@@ -1106,6 +1158,7 @@ function Nav.Tick()
       local cleared = ns.Journey.EnterArea(pending, inside and area or nil)
       if inside then
         pending.inArea = true
+        ns.Camps.Watch(pending)
       elseif pending.inArea then
         pending.inArea = nil
         if k == a.index then

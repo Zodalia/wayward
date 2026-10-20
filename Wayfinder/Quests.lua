@@ -1016,6 +1016,55 @@ function Quests.ObjectiveGroups(questID)
   return groupCache[questID]
 end
 
+-- The mobs a quest's objectives want: creatures to kill and those that drop
+-- the items it needs, by NPC ID and by name ({ ids = set, names = set }), for
+-- telling them apart on nameplates. Built once per quest.
+local mobCache = {}
+
+function Quests.ObjectiveMobs(questID)
+  if mobCache[questID] then return mobCache[questID] end
+  local mobs = { ids = {}, names = {} }
+  local function add(npcID)
+    if type(npcID) ~= "number" then return end
+    mobs.ids[npcID] = true
+    local npc = Data.Npc(npcID)
+    if npc and type(npc.name) == "string" then mobs.names[npc.name] = true end
+  end
+  local q = Quests.Quest(questID)
+  local objectives = q and type(q.objectives) == "table" and q.objectives or {}
+  for _, creature in ipairs(objectives[1] or {}) do add(creature[1]) end
+  for _, entry in ipairs(objectives[3] or {}) do
+    local item = Data.Item(entry[1])
+    for i, npcID in ipairs(item and item.npcDrops or {}) do
+      if i > MAX_DROPPERS then break end
+      add(npcID)
+    end
+  end
+  mobCache[questID] = mobs
+  return mobs
+end
+
+-- How many kills or items a quest in your log still needs, summed over its
+-- unfinished objectives ("Murloc Forager slain: 2/8" needs 6), or nil when
+-- the log doesn't say.
+function Quests.ObjectivesLeft(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  if type(objectives) ~= "table" then return nil end
+  local left, known = 0, false
+  for _, o in ipairs(objectives) do
+    local have, need = o.numFulfilled, o.numRequired
+    if not (type(have) == "number" and type(need) == "number") and type(o.text) == "string" then
+      local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
+      have, need = tonumber(a), tonumber(b)
+    end
+    if type(have) == "number" and type(need) == "number" then
+      known = true
+      if not o.finished then left = left + math.max(0, need - have) end
+    end
+  end
+  return known and left or nil
+end
+
 -- The same places as areas: spawns within AREA_LINK yards of each other (in a
 -- chain) are one area, e.g. one murloc camp up the coast from the next. Each
 -- area is a list of { node, group } (group: its index in ObjectiveGroups);
@@ -1164,7 +1213,7 @@ end
 -- Indexes are rebuilt when a source registers (a companion loading later).
 ns.Listen("SOURCES_CHANGED", function()
   questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
-  giverNodes, objectiveCache, groupCache, areaCache, zoneCache, takeable = {}, {}, {}, {}, nil, nil
+  giverNodes, objectiveCache, groupCache, areaCache, mobCache, zoneCache, takeable = {}, {}, {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
   chainCache = {}
 end)

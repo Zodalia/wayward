@@ -2587,6 +2587,91 @@ do
   ns.HUD.Update()
   check(ns.HUD.Lines()[4]:find("Respawns in ~3 min", 1, true), "the box says when it respawns: " .. ns.HUD.Lines()[4])
 
+  -- Nameplates: the murlocs in sight. Killing there, then none left you could
+  -- kill (one tapped by someone else): the camp looks cleared, sooner than 30 s.
+  log = { 43 }
+  objectives[1] = { text = "Murloc Forager slain: 2/8", finished = false }
+  objectives[2] = { text = "Murloc Scout slain: 0/5", finished = false }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 43 and objectives or {} end
+  local units = { nameplate1 = { id = 9101 }, nameplate2 = { id = 9101, taken = true }, nameplate3 = { id = 1234 } }
+  local savedGUID, savedName = UnitGUID, UnitName
+  C_NamePlate = { GetNamePlateForUnit = function() return nil end, GetNamePlates = function()
+    local out = {}
+    for token in pairs(units) do out[#out + 1] = { namePlateUnitToken = token } end
+    return out
+  end }
+  UnitGUID = function(u) return units[u] and ("Creature-0-1-0-2-" .. units[u].id .. "-AB") or savedGUID(u) end
+  UnitName = function(u) return units[u] and "A murloc" or savedName(u) end
+  UnitIsDead = function(u) return units[u] and units[u].dead or false end
+  UnitIsTapDenied = function(u) return units[u] and units[u].taken or false end
+  ns.Nav.Stop()
+  clock = 5000
+  player.x, player.y = 0.62, 0.6
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Murloc Sweep", stops = ns.Journey.QuestStops(43, here) }))
+  ns.HUD.Update()
+  local camp = ns.Nav.CurrentStep().stop
+  check(ns.Nav.InArea() and ns.Camps.InSight(43) == 1, "in the camp: one murloc in sight you could kill")
+  local function kill(n, at)
+    objectives[1] = { text = "Murloc Forager slain: " .. n .. "/8", finished = false }
+    clock = at
+    ns.HUD.Update()
+  end
+  kill(3, 5005)
+  kill(4, 5010)
+  check(ns.Camps.TimeLeft(camp) == 45 and ns.HUD.Lines()[4]:find("<1 min left here", 1, true),
+    "two kills in 10 s, 9 to go: the time left here: " .. ns.HUD.Lines()[4])
+  check(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode()) >= 45, "and the trip's time counts it")
+  units.nameplate1 = nil
+  kill(5, 5012)
+  check(not ns.Camps.LooksCleared(camp), "none left to kill just now: not cleared yet")
+  clock = 5022
+  ns.HUD.Update()
+  check(ns.Camps.LooksCleared(camp) and ns.HUD.Lines()[4]:find("Camp looks cleared", 1, true),
+    "none for 10 s: the camp looks cleared: " .. ns.HUD.Lines()[4])
+  before = #chat
+  clock = 5023
+  player.x, player.y = 0.6, 0.4
+  ns.HUD.Update()
+  check(ns.Journey.ClearedAreas(ns.Nav.CurrentStep().stop) == 1
+    and table.concat(chat, "\n", before + 1):find("cleared: on to another", 1, true),
+    "leaving after 23 s counts it as cleared, because it looked it")
+
+  -- Without nameplates the game will show: by the time there, as before.
+  C_NamePlate = nil
+  local scouts = ns.Nav.CurrentStep().stop
+  player.x, player.y = 0.31, 0.3
+  ns.HUD.Update()
+  clock = 5030
+  objectives[2] = { text = "Murloc Scout slain: 1/5", finished = false }
+  ns.HUD.Update()
+  check(ns.Nav.InArea() and not ns.Camps.LooksCleared(scouts) and ns.Camps.InSight(43) == nil,
+    "no nameplates: nothing in sight, never looks cleared")
+
+  -- Dying there and releasing: not leaving the camp, not a reason to re-plan.
+  clock = 5100
+  local deadNow = true
+  UnitIsDeadOrGhost = function() return deadNow end
+  fire("PLAYER_DEAD")
+  local to = ns.Nav.CurrentStep().to
+  before = #chat
+  player.x, player.y = 0.9, 0.9
+  ns.HUD.Update()
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == scouts and ns.Nav.CurrentStep().to == to and not ns.Nav.InArea()
+    and ns.Journey.ClearedAreas(scouts) == 1 and #chat == before,
+    "released to a graveyard: the camp isn't cleared, the trip is as it was")
+  deadNow = false
+  fire("PLAYER_UNGHOST")
+  ns.HUD.Update()
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == scouts and ns.Nav.CurrentStep().to == to and #chat == before,
+    "alive again at the spirit healer: still no re-plan, the way goes back to the camp")
+  player.x, player.y = 0.31, 0.3
+  ns.HUD.Update()
+  check(ns.Nav.InArea() and scouts.visit and scouts.visit.since == 5100, "back in the camp: a new visit")
+
+  UnitGUID, UnitName, UnitIsDead, UnitIsTapDenied, UnitIsDeadOrGhost = savedGUID, savedName, nil, nil, nil
   time = os.time
   QUESTS[46], NPCS[9150], QUESTS[47], NPCS[9151] = nil, nil, nil, nil
   ns.Nav.Stop()
