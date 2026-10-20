@@ -555,8 +555,8 @@ end
 -- caches the dungeon finder list on first use, so not before the API exists.
 local function dungeonQuest(row)
   if not row or type(GetLFGDungeonInfo) ~= "function" then return false end
-  local area = tonumber(row.zoneOrSort)
-  return area ~= nil and area > 0 and ns.Dungeons.ForArea(area) ~= nil
+  local area = ns.Quests.QuestArea(row)
+  return area ~= nil and ns.Dungeons.ForArea(area) ~= nil
 end
 
 -- Quests ready to hand in, grouped by where you hand them in: their

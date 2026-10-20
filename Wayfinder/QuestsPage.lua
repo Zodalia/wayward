@@ -91,8 +91,8 @@ local function dungeonRows(matches, start, net)
   local byArea
   local rows, seen = {}, {}
   for _, m in ipairs(matches) do
-    local area = m.q.zoneOrSort
-    if type(area) == "number" and area > 0 then
+    local area = ns.Quests.QuestArea(m.q)
+    if area then
       if not byArea then
         byArea = {}
         for _, entry in ipairs(ns.Dungeons.Catalogue()) do
