@@ -200,6 +200,17 @@ local function rowStatus(m)
   return label(m.status)
 end
 
+-- What the quest's chain leads to (Quests.ChainText): a line for the tooltip,
+-- and the dungeon for the row ("leads to The Deadmines"), or nil.
+local CHAIN_COLOR = { r = 0.5, g = 0.82, b = 0.68 }
+
+local function chainInfo(questID)
+  local text = ns.Quests.ChainText(questID)
+  if not text then return nil end
+  local dungeon = ns.Quests.ChainDungeon(questID)
+  return { text = text, color = CHAIN_COLOR }, dungeon and ("leads to " .. dungeon) or nil
+end
+
 local function questRow(m, start, net)
   local q = m.q
   local details = { { text = m.reason or "" } }
@@ -224,6 +235,9 @@ local function questRow(m, start, net)
   if (q.requiredLevel or 0) > 0 then
     details[#details + 1] = { text = "Requires level " .. q.requiredLevel, color = { r = 0.7, g = 0.7, b = 0.7 } }
   end
+  local chainLine, leads = chainInfo(q.id)
+  if chainLine then details[#details + 1] = chainLine end
+  if leads then sub = sub .. "  ·  " .. leads end
   local actions = (m.status == "available" or m.status == "inLog") and { tripAction(q.id, q.name) } or nil
   return { id = "quest" .. q.id, title = questTitle(q), titleColor = ns.DifficultyColor(ns.Quests.QuestLevel(q.id)),
     subtitle = sub, journey = journey, details = details, actions = actions }
@@ -331,6 +345,10 @@ local function logRow(entry, start, net)
       details[#details + 1] = { text = o.text, color = o.finished and { r = 0.6, g = 0.6, b = 0.6 } or nil }
     end
   end
+  local chainLine, leads = nil, nil
+  if ns.Quests.Available() then chainLine, leads = chainInfo(entry.id) end
+  if chainLine then details[#details + 1] = chainLine end
+  if leads then parts[#parts + 1] = leads end
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
     titleColor = ns.DifficultyColor(entry.level),
     subtitle = table.concat(parts, "  ·  "), journey = journey, details = details,
