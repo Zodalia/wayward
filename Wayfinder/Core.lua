@@ -125,6 +125,7 @@ local DEFAULTS = {
 local CHAR_DEFAULTS = {
   knownTaxi = {},    -- [taxi nodeID] = true
   classSpells = nil, -- last class trainer reading (see Harvest.lua)
+  skippedSpells = nil, -- [spell (rank)] = true: left at the trainer (see Trainers.lua)
 }
 
 local function applyDefaults(target, defaults)

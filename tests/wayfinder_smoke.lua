@@ -211,6 +211,12 @@ fire("TRAINER_SHOW")
 runTimers()
 local summary = ns.Trainers.SpellSummary()
 check(summary and summary.trainable == 1 and summary.cost == 1000, "1 spell trainable now for 10s")
+fire("TRAINER_CLOSED")
+check(ns.charDB.skippedSpells and ns.charDB.skippedSpells["Life Tap"] and not ns.charDB.skippedSpells["Shadow Bolt"]
+  and not ns.charDB.skippedSpells["Corruption"], "closing the trainer remembers what you could learn and didn't")
+check(ns.Trainers.SpellSummary(true).trainable == 0 and ns.Trainers.SpellSummary(true).skipped == 1,
+  "which a summary can leave out")
+ns.charDB.skippedSpells = nil
 check(summary and summary.nextLevel == 24 and summary.nextCount == 1, "next spell at level 24")
 check(ns.db.npcs[999] and ns.db.npcs[999].kinds.classTrainer and ns.db.npcs[999].class == "WARLOCK",
   "trainer harvested as a warlock class trainer")
@@ -1470,6 +1476,24 @@ do
     "the spells you can learn come first on it: " .. tostring(list[1].details[2] and list[1].details[2].text))
   check(ns.ForYou.SummaryText():find("1 thing due") and ns.ForYou.SummaryText():find("best of each kind")
     and not ns.ForYou.SummaryText():find("quests per hour"), "summary: " .. ns.ForYou.SummaryText())
+
+  -- Spells left at the trainer: no card for them, the Class page still lists them.
+  local savedSpells = ns.charDB.classSpells
+  ns.charDB.classSpells = { updated = 0, level = 20, services = {
+    { name = "Life Tap", type = "available", levelReq = 20, cost = 1000 } } }
+  ns.Trainers.RecordSkipped(ns.charDB.classSpells.services)
+  check(not find(rows(), "Train "), "closing the trainer without Life Tap: no training card for it")
+  check(ns.Trainers.SpellSummary().trainable == 1, "the Class page still counts it")
+  table.insert(ns.charDB.classSpells.services, { name = "Drain Soul", type = "available", levelReq = 20, cost = 500 })
+  local train = find(rows(), "Train ")
+  local notCounted = train and train.details[#train.details].text
+  check(train and train.title:find("^Train 1 new spell in ") and train.details[2].text:find("^Drain Soul")
+    and notCounted == "Not counted: 1 spell you left at the trainer.",
+    "a spell you haven't left there gets a card of its own: " .. tostring(train and train.title) .. " / "
+      .. tostring(notCounted))
+  ns.charDB.skippedSpells = nil
+  check(find(rows(), "Train 2 new spells"), "without it, both count again")
+  ns.charDB.classSpells = savedSpells
 
   -- The best quest is a whole-quest trip.
   local kinds = {}

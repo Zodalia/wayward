@@ -276,9 +276,11 @@ local function likelyTraining(ctx, s)
 end
 
 local function trainingNeed(ctx)
-  local s = ns.Trainers.SpellSummary()
+  local s = ns.Trainers.SpellSummary(true)
   -- Spell data (no trainer visit yet) that has nothing for you: no card.
   if s and s.fromData and s.trainable == 0 then return nil end
+  -- All you could learn you left at the trainer: no card until there's more.
+  if s and s.trainable == 0 and s.skipped > 0 then return nil end
   if not (s and s.trainable > 0) then return likelyTraining(ctx, s) end
   local spells = plural(s.trainable, "new spell")
   local cost = s.costUnknown and "?" or ns.FormatMoney(s.cost)
@@ -293,12 +295,16 @@ local function trainingNeed(ctx)
   -- The spells themselves, first thing on the card.
   local details, level = {}, UnitLevel("player")
   for _, sp in ipairs(ns.Trainers.Services() or {}) do
-    if sp.type ~= "used" and sp.levelReq and sp.levelReq <= level then
+    if sp.type ~= "used" and sp.levelReq and sp.levelReq <= level and not ns.Trainers.Skipped(sp) then
       details[#details + 1] = { text = string.format("%s%s%s", sp.name, sp.rank and (" (" .. sp.rank .. ")") or "",
         sp.cost and ("  -  " .. ns.FormatMoney(sp.cost)) or "") }
     end
   end
   details[#details + 1] = { text = "Trainer: " .. best.title, more = #details > 0 }
+  if s.skipped > 0 then
+    details[#details + 1] = { text = string.format("Not counted: %s you left at the trainer.",
+      plural(s.skipped, "spell")) }
+  end
   return {
     kind = "train", only = "Train only",
     stats = { { "Spells", tostring(s.trainable) }, { "Cost", cost },

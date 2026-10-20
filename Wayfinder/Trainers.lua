@@ -68,20 +68,44 @@ end
 -- Spells named under the Class page's summary line; the rest are counted.
 local SUMMARY_SPELLS = 6
 
+local function spellKey(s)
+  return s.name .. (s.rank and (" (" .. s.rank .. ")") or "")
+end
+
+-- Spells you could learn when you last closed a class trainer's window and
+-- didn't: For you leaves them out (the Class page still lists them). Each
+-- visit replaces the list, since it shows every spell you can learn again.
+function Trainers.RecordSkipped(services)
+  local skipped = {}
+  for _, s in ipairs(services or {}) do
+    if s.type == "available" and s.name then skipped[spellKey(s)] = true end
+  end
+  ns.charDB.skippedSpells = next(skipped) and skipped or nil
+  ns.Fire("DATA_CHANGED")
+end
+
+function Trainers.Skipped(s)
+  local skipped = ns.charDB.skippedSpells
+  return skipped ~= nil and s.name ~= nil and skipped[spellKey(s)] == true
+end
+
 -- Learning happens at a trainer, which refreshes the list, so "not used and
--- level reached" means trainable now.
-function Trainers.SpellSummary()
+-- level reached" means trainable now. `leaveOutSkipped`: not the spells you
+-- left at the trainer (counted in `skipped` instead).
+function Trainers.SpellSummary(leaveOutSkipped)
   local services, from, cs = Trainers.Services()
   if not services then return nil end
   local level = UnitLevel("player")
-  local out = { trainable = 0, cost = 0, nextCount = 0, updated = cs and cs.updated, level = cs and cs.level,
-    fromData = from == "data", names = {} }
+  local out = { trainable = 0, cost = 0, nextCount = 0, skipped = 0, updated = cs and cs.updated,
+    level = cs and cs.level, fromData = from == "data", names = {} }
   for _, s in ipairs(services) do
     if s.type ~= "used" and s.levelReq then
-      if s.levelReq <= level then
+      if s.levelReq <= level and leaveOutSkipped and Trainers.Skipped(s) then
+        out.skipped = out.skipped + 1
+      elseif s.levelReq <= level then
         out.trainable = out.trainable + 1
         out.cost = out.cost + (s.cost or 0)
-        out.names[#out.names + 1] = s.name .. (s.rank and (" (" .. s.rank .. ")") or "")
+        out.names[#out.names + 1] = spellKey(s)
         if not s.cost then out.costUnknown = true end
       elseif not out.nextLevel or s.levelReq < out.nextLevel then
         out.nextLevel = s.levelReq

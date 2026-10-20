@@ -117,6 +117,8 @@ local function classify(services)
   return "weaponMaster"
 end
 
+local classTrainerOpen = false
+
 -- The service list is empty at TRAINER_SHOW and fills in shortly after.
 local function readTrainer()
   local n = GetNumTrainerServices and GetNumTrainerServices() or 0
@@ -157,6 +159,7 @@ local function readTrainer()
     extra = { weapons = weapons, teaches = teaches }
   end
   Harvest.RecordNPC(kind, extra)
+  classTrainerOpen = kind == "classTrainer"
   if kind == "classTrainer" then
     ns.charDB.classSpells = { updated = time(), level = UnitLevel("player"), services = services }
     ns.Fire("DATA_CHANGED")
@@ -165,6 +168,13 @@ end
 
 ns.On("TRAINER_SHOW", function() C_Timer.After(0.5, readTrainer) end)
 ns.On("TRAINER_UPDATE", readTrainer)
+-- What you could have learned and didn't, you left there on purpose.
+ns.On("TRAINER_CLOSED", function()
+  if not classTrainerOpen then return end
+  classTrainerOpen = false
+  local cs = ns.charDB.classSpells
+  if cs then ns.Trainers.RecordSkipped(cs.services) end
+end)
 
 ---------------------------------------------------------------- flight paths
 

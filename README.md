@@ -151,7 +151,9 @@ things to do next, one card per kind of thing, each labelled with its kind:
 
 - **Due now** (at most two, always first): spells you can train and afford
   (the card lists them, with rank and cost)
-  (after one trainer visit), repairs at 50% durability or lower, ammo under
+  (after one trainer visit; spells you could have learned when you last
+  closed the trainer's window and didn't are left out, and only the Class
+  page still lists them), repairs at 50% durability or lower, ammo under
   200, food and drink under 5 (not mages, from level 6), and an undiscovered
   flight path within about 3 minutes.
 - **Don't miss** (right after what's due): the quest that stands out most
