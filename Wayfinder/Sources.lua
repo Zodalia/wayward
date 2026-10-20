@@ -20,6 +20,8 @@ local _, ns = ...
 --   Object(id)         object record
 --   Item(id)           item record
 --   ItemIDs()          { itemID, ... }
+--   QuestRewards()     { [questID] = { itemID, ... } }: the items each quest rewards
+--                      (optional: else built from ItemIDs and the items' questRewards)
 --   Dungeons()         { {areaID, name, alternativeAreaIds = {areaID, ...}, positions}, ... }
 --   QuestXP()          { [questID] = {questLevel, xp} }: full reward before the level penalty
 --   EraToForever(mapID, x, y)   an Era (vanilla) map point in Forever: x, y (0-1)
@@ -165,6 +167,7 @@ function Data.QuestIDs() return union("QuestIDs") end
 function Data.Object(id) return first("Object", id) end
 function Data.Item(id) return first("Item", id) end
 function Data.ItemIDs() return union("ItemIDs") end
+function Data.QuestRewards() return first("QuestRewards") end
 function Data.NpcIDs(flag) return union("NpcIDs", flag) end
 function Data.QuestXP() return first("QuestXP") end
 function Data.TrainerSpells(npcID) return first("TrainerSpells", npcID) end

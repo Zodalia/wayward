@@ -74,7 +74,9 @@ end
 
 ---------------------------------------------------------------- reward items
 
-local rewardIndex -- [questID] = { reward, ... }, from every item's questRewards
+local WEAPON, ARMOUR = 2, 4
+local rewardIndex -- [questID] = { itemID, ... }
+local rewardCache = {} -- [questID] = { reward, ... }, built on the first ask per quest
 
 local function itemInstant(itemID)
   local fn = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
@@ -84,18 +86,18 @@ local function itemInstant(itemID)
   return classID, subClassID, equipLoc
 end
 
+-- quest -> items: a source's own index when it has one (cheap), else every
+-- item record's questRewards (a pass over all items, once).
 local function buildRewards()
-  rewardIndex = {}
   local started = debugprofilestop and debugprofilestop() or 0
-  for _, itemID in ipairs(Data.ItemIDs()) do
-    local item = Data.Item(itemID)
-    local quests = item and item.questRewards
-    if type(quests) == "table" and #quests > 0 then
-      local reward = { itemID = itemID, name = item.name, class = item.class, subClass = item.subClass,
-        requiredLevel = item.requiredLevel, itemLevel = item.itemLevel }
-      for _, questID in ipairs(quests) do
+  rewardIndex = Data.QuestRewards()
+  if not rewardIndex then
+    rewardIndex = {}
+    for _, itemID in ipairs(Data.ItemIDs()) do
+      local item = Data.Item(itemID)
+      for _, questID in ipairs(item and type(item.questRewards) == "table" and item.questRewards or {}) do
         rewardIndex[questID] = rewardIndex[questID] or {}
-        table.insert(rewardIndex[questID], reward)
+        table.insert(rewardIndex[questID], itemID)
       end
     end
   end
@@ -106,15 +108,24 @@ end
 -- The items a quest rewards (choices included), from the data. The index is
 -- built on the first ask and kept until the sources change. Read-only.
 function Quests.RewardItems(questID)
-  if not Data.Has("ItemIDs") then return {} end
+  if rewardCache[questID] then return rewardCache[questID] end
+  if not (Data.Has("ItemIDs") or Data.Has("QuestRewards")) then return {} end
   if not rewardIndex then buildRewards() end
-  return rewardIndex[questID] or {}
+  local out = {}
+  for _, itemID in ipairs(rewardIndex[questID] or {}) do
+    local item = Data.Item(itemID)
+    if item then
+      out[#out + 1] = { itemID = itemID, name = item.name, class = item.class, subClass = item.subClass,
+        requiredLevel = item.requiredLevel, itemLevel = item.itemLevel }
+    end
+  end
+  rewardCache[questID] = out
+  return out
 end
 
 ---------------------------------------------------------------- usable by your class
 
 -- Weapon subclasses each class can learn (the classic weapon skills).
-local WEAPON, ARMOUR = 2, 4
 local WEAPONS = {
   [0] = "WARRIOR PALADIN HUNTER SHAMAN",                         -- one-handed axes
   [1] = "WARRIOR PALADIN HUNTER SHAMAN",                         -- two-handed axes
@@ -167,12 +178,19 @@ function Quests.UsableBy(reward, class, level)
   return false -- misc armour without a known slot: shirts and tabards too
 end
 
--- The client's quality for an item it has cached, else nil (never waited for).
+-- The client's quality for an item it has cached, else nil: never waited
+-- for, but asked for once, so a later look (GET_ITEM_INFO_RECEIVED) knows.
+local requested = {}
+
 local function quality(itemID)
   local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
   if not getInfo then return nil end
   local ok, name, _, q = pcall(getInfo, itemID)
   if ok and type(name) == "string" and type(q) == "number" then return q end
+  if not requested[itemID] and C_Item and C_Item.RequestLoadItemDataByID then
+    requested[itemID] = true
+    pcall(C_Item.RequestLoadItemDataByID, itemID)
+  end
   return nil
 end
 
@@ -286,23 +304,30 @@ local function reasonsFor(q, p)
       name, name:lower()))
   end
 
-  -- Rewards your class would wear or wield; white and grey ones don't count.
-  local usable, best, bestQuality = 0, nil, nil
+  -- Rewards your class would wear or wield. White and grey ones don't count;
+  -- one whose quality the client doesn't know yet is only mentioned. A
+  -- green weapon tags the quest; armour needs to be blue.
+  local usable, best = 0, nil
   for _, reward in ipairs(Quests.RewardItems(q.id)) do
     local qual = quality(reward.itemID)
     if (not qual or qual >= MIN_QUALITY) and Quests.UsableBy(reward, p.class, p.level) then
       usable = usable + 1
-      local better = not best or (qual or 0) > (bestQuality or 0)
-        or ((qual or 0) == (bestQuality or 0) and (reward.itemLevel or 0) > (best.itemLevel or 0))
-      if better then best, bestQuality = reward, qual end
+      local weapon = (reward.class or itemInstant(reward.itemID)) == WEAPON
+      local weight = 1
+      if qual and qual >= RARE_QUALITY then weight = weapon and 3 or 2
+      elseif qual and weapon then weight = 2 end
+      if not best or weight > best.weight or (weight == best.weight and (reward.itemLevel or 0) > (best.reward.itemLevel or 0)) then
+        best = { reward = reward, weight = weight, quality = qual }
+      end
     end
   end
   if best then
-    local rare = bestQuality and bestQuality >= RARE_QUALITY
-    local level = (best.requiredLevel or 0) > 0 and (", level " .. best.requiredLevel) or ""
+    local reward = best.reward
+    local rare = best.quality and best.quality >= RARE_QUALITY
+    local level = (reward.requiredLevel or 0) > 0 and (", level " .. reward.requiredLevel) or ""
     local more = usable > 1 and string.format(" and %d more you can use", usable - 1) or ""
-    add("reward", rare and 3 or 2, "Reward for you", string.format("Rewards %s%s (your class can use it%s)%s.",
-      best.name or ("item " .. best.itemID), rare and ", a rare item" or "", level, more))
+    add("reward", best.weight, "Reward for you", string.format("Rewards %s%s (your class can use it%s)%s.",
+      reward.name or ("item " .. reward.itemID), rare and ", a rare item" or "", level, more))
   end
 
   if foreverOnly(q) then
@@ -421,5 +446,5 @@ end
 
 ns.On("GET_ITEM_INFO_RECEIVED", function() notableCache = {} end)
 ns.Listen("SOURCES_CHANGED", function()
-  rewardIndex, oldNames, notableCache = nil, nil, {}
+  rewardIndex, rewardCache, oldNames, notableCache = nil, {}, nil, {}
 end)

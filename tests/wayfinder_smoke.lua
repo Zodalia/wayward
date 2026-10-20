@@ -3479,8 +3479,12 @@ do
     questRewards = { 503 } }
   ITEMS[9503] = { name = "Plain Robe", class = 4, subClass = 1, requiredLevel = 15, questRewards = { 503 } }
   ITEMS[9504] = { name = "Band of Lakeshire", class = 4, subClass = 0, requiredLevel = 18, questRewards = { 510 } }
-  -- The client has the robe cached (white: doesn't count) and knows the ring is a ring.
-  GetItemInfo = function(id) if id == 9503 then return "Plain Robe", nil, 1 end end
+  -- The client has the staff (green), the robe (white: doesn't count) and the
+  -- ring (blue) cached, and knows the ring is a ring; not the helm yet.
+  local QUALITY = { [9501] = 2, [9503] = 1, [9504] = 3 }
+  local asked = {}
+  GetItemInfo = function(id) if QUALITY[id] then return "Item " .. id, nil, QUALITY[id] end end
+  C_Item.RequestLoadItemDataByID = function(id) asked[#asked + 1] = id end
   C_Item.GetItemInfoInstant = function(id)
     if id == 9504 then return id, "Armor", "Miscellaneous", "INVTYPE_FINGER", 0, 4, 0 end
     return savedInstant(id)
@@ -3518,10 +3522,11 @@ do
   -- Notable: each reason in plain words.
   check(kinds(501) == "class" and reason(501, "class"):find("^Class quest %(Warlock%)")
     and ns.Quests.NotableTag(501) == "Class quest", "a warlock class quest: " .. reason(501, "class"))
-  check(reason(502, "reward") == "Rewards Staff of the Blessed Seer (your class can use it, level 20).",
-    "a staff a warlock can use: " .. reason(502, "reward"))
+  check(reason(502, "reward") == "Rewards Staff of the Blessed Seer (your class can use it, level 20)."
+    and ns.Quests.NotableTag(502) == "Reward for you", "a green staff a warlock can use: " .. reason(502, "reward"))
   check(kinds(503) == "", "plate isn't for a warlock, and a white robe doesn't count: " .. kinds(503))
-  check(ns.Quests.NotableTag(510) == "Reward for you", "a ring suits anyone (the client knows its slot)")
+  check(ns.Quests.NotableTag(510) == "Reward for you" and reason(510, "reward"):find(", a rare item", 1, true),
+    "a blue ring suits anyone (the client knows its slot)")
   check(kinds(504) == "epic" and ns.Quests.NotableTag(504) == "Epic", "an epic quest (questFlags 32)")
   check(reason(505, "dungeon") == "Leads to a quest in The Deadmines (Deep in the Mines).",
     "a chain that leads into a dungeon: " .. reason(505, "dungeon"))
@@ -3539,6 +3544,8 @@ do
   check(reason(503, "reward"):find("^Rewards Heavy Plate Helm") and kinds(502) == "reward" and kinds(501) == "",
     "a warrior: the plate helm (worn from 40) and the staff count, a warlock quest doesn't: "
       .. reason(503, "reward"))
+  check(ns.Quests.NotableTag(503) == nil and #asked == 1 and asked[1] == 9502,
+    "armour of a quality not known yet is mentioned, not tagged; the client is asked for it once")
   UnitLevel = function() return 30 end
   ITEMS[9505] = { name = "Ringmail Vest", class = 4, subClass = 3, requiredLevel = 41, questRewards = { 503 } }
   refreshData()
@@ -3548,12 +3555,24 @@ do
   refreshData()
   UnitClass = savedClass
 
+  -- A source with its own quest -> items index is used instead of a pass over every item.
+  local itemReads = 0
+  local realItem = fixtures.Item
+  fixtures.Item = function(id) itemReads = itemReads + 1 return realItem(id) end
+  fixtures.QuestRewards = function() return { [502] = { 9501 } } end
+  refreshData()
+  check(#ns.Quests.RewardItems(502) == 1 and itemReads == 1 and #ns.Quests.RewardItems(503) == 0,
+    "a source's QuestRewards index: only the reward items are read (" .. itemReads .. ")")
+  fixtures.Item, fixtures.QuestRewards = realItem, nil
+  refreshData()
+
   -- /wf debug quest: sort, flags, rewards and reasons.
   local said = #chat
   SlashCmdList.WAYFINDER("debug quest 502")
   local printed = table.concat(chat, "\n", said + 1)
   check(printed:find("rewards: Staff of the Blessed Seer (9501; class 2/10, level 20", 1, true)
-    and printed:find("notable: [reward 2] Rewards Staff", 1, true), "/wf debug quest lists rewards and reasons")
+    and printed:find("quality 2, yours", 1, true) and printed:find("notable: [reward 2] Rewards Staff", 1, true),
+    "/wf debug quest lists rewards and reasons")
   said = #chat
   SlashCmdList.WAYFINDER("debug quest the long tale")
   printed = table.concat(chat, "\n", said + 1)
@@ -3622,6 +3641,7 @@ do
     [510] = 1, [90501] = 1, [90502] = 1 }) do QUESTS[id] = nil end
   for _, id in ipairs({ 9501, 9502, 9503, 9504 }) do ITEMS[id] = nil end
   GetItemInfo, C_Item.GetItemInfoInstant, GetFactionInfoByID = nil, savedInstant, savedFaction
+  C_Item.RequestLoadItemDataByID = nil
   UnitClass, UnitLevel = savedClass, savedLevel
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
     savedLog[1], savedLog[2], savedLog[3], savedLog[4]
