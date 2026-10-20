@@ -154,6 +154,9 @@ things to do next, one card per kind of thing, each labelled with its kind:
   (after one trainer visit), repairs at 50% durability or lower, ammo under
   200, food and drink under 5 (not mages, from level 6), and an undiscovered
   flight path within about 3 minutes.
+- **Don't miss** (right after what's due): the quest that stands out most
+  among those you can take nearby or have in your log, with its first stop
+  under 10 minutes away, whatever its XP. The card says why in plain words.
 - **Profession**: the next rank of a profession you can train now
   (Journeyman at 50 skill and level 10, Expert at 125 and 20, Artisan at 200
   and 35), at the nearest trainer known to teach it; due when you're at your
@@ -185,7 +188,7 @@ things to do next, one card per kind of thing, each labelled with its kind:
   named with the level their quests open at ("The Stockade at level 22").
   Without quest data, the best by level fit and travel time.
 
-Due now and Worth a visit come first, then the zones, then the dungeon; hand
+Due now, Don't miss and Worth a visit come first, then the zones, then the dungeon; hand
 in, finish and best quest follow in order of estimated XP per minute: XP over the
 trip plus 5 minutes per quest (`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes
 from a data source's quest XP table, with the vanilla penalty for quests below your
@@ -196,6 +199,19 @@ the summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
 The Quests page has every hub and your whole log. `/wf debug` shows how long a
 refresh took.
+
+**Notable quests.** XP isn't everything: Wayfinder also asks "am I missing
+something cool here?". A quest is notable when it is your class's quest, part
+of an epic or legendary line, rewards a green-or-better item your class would
+wear or wield (weapon skills, and only the heaviest armour you wear at the
+item's level; quality only when the game already has the item cached), leads
+into a dungeon or an epic quest further down its chain, or is new in Forever
+(an ID from 90000 whose name no original quest has). Profession and holiday
+quests and reputation outside your own cities are mentioned but don't tag a
+quest on their own. Notable quests carry a short tag on the Quests tab and on
+For you's quest lines; the tooltip says why. `/wf debug quest <id|name>`
+prints a quest's sort, flags, reward items and reasons
+(`ns.Quests.Notable(id)`, `ns.Quests.QuestSort(id)`, `ns.Quests.RewardItems(id)`).
 
 **Fanfare.** When a trip is done, a frame near the top of the screen says
 what it came to: XP earned (across level-ups), time taken, distance travelled
@@ -405,7 +421,12 @@ Wayfinder.RegisterSource({
 - Records are plain tables. Positions are `{ mapID, x, y, areaID }` with x and
   y 0-1 in Forever coordinates. Quest records use QuestieDB-style field names
   (`startedBy`, `preQuestSingle`, `objectives`, ...) except that races and
-  classes are sets.
+  classes are sets. `zoneOrSort` is signed, as in QuestieDB: positive, the
+  AreaID the quest belongs to (a dungeon's for a dungeon quest); negative, a
+  QuestSort (class, profession, holiday, legendary...). Optional quest fields
+  `questFlags`, `specialFlags`, `reputationReward` and `childQuests`, and item
+  `class`/`subClass`, feed the notable-quest reasons; without them those
+  reasons are left out (item classes then come from the client).
 - When sources overlap, the higher `priority` wins: per record for quests,
   items and objects, field by field for NPCs and class spells. What you
   learned in game beats any source.
