@@ -976,11 +976,13 @@ local function leftArea(a, step, stop, here, spot, cleared)
     for _, area in ipairs(areas) do
       if not ns.Journey.Cleared(stop, area.index) then left = left + 1 end
     end
-    if #areas > 1 then
-      ns.print(string.format("that spot's cleared: on to %s for %s.",
-        left > 0 and "another" or "the one that respawns first", questName(stop.action.questID)))
+    if left > 0 then
+      ns.print(string.format("that spot's cleared: on to another for %s.", questName(stop.action.questID)))
+    elseif journey.stops[1] ~= stop then
+      ns.print(string.format("that spot's cleared: other stops first while it respawns (%s).",
+        ns.FormatDuration(ns.Journey.RespawnIn(stop))))
     else
-      ns.print("re-routed from here (that spot's cleared).")
+      ns.print(string.format("that spot's cleared: back when it respawns (%s).", ns.FormatDuration(ns.Journey.RespawnIn(stop))))
     end
     adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
     return

@@ -387,8 +387,10 @@ panel to add it to the trip you're on.
     5 minutes (about a respawn): the trip is re-planned from where you are, on
     to another area, or to the stops on the way there first, and the
     directions box says "Next spot". A short step out points at the nearest
-    area you haven't cleared. When every area is cleared, the way goes to the
-    one cleared longest ago. Cleared areas are saved with the trip.
+    area you haven't cleared. When every area is cleared (a quest with one
+    camp, say), the stop waits for the first to respawn: the trip does other
+    stops first when they fit, and the directions box says when it respawns.
+    Cleared areas are saved with the trip.
   - Making progress on a later stop's objectives while you're in their area
     (another quest's camp on the way) makes that stop the next one.
   - Picking up a quest that isn't in your trip asks whether to add it (with

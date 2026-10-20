@@ -189,6 +189,22 @@ function Journey.Cleared(stop, index)
   return clearedAt(stop, index, time()) ~= nil
 end
 
+-- Seconds until a stop's objectives can be done again: when every area of
+-- them still open is one you've cleared lately (a quest with one camp, say),
+-- until the first respawns. 0 otherwise, and while you're in one.
+function Journey.RespawnIn(stop)
+  local action = stop and stop.action
+  if not (action and action.kind == "complete" and action.questID and stop.worked) or stop.inArea then return 0 end
+  local now, soonest = time(), nil
+  for _, area in ipairs(Journey.OpenAreas(action.questID)) do
+    local at = clearedAt(stop, area.index, now)
+    if not at then return 0 end
+    local left = at + CLEARED_FOR - now
+    if not soonest or left < soonest then soonest = left end
+  end
+  return soonest or 0
+end
+
 -- How many of a stop's areas you've cleared lately.
 function Journey.ClearedAreas(stop)
   local now, count = time(), 0
@@ -274,6 +290,13 @@ local function orderStops(start, stops, net)
     indexOf[stop] = i + 1
   end
   local cost = costTable(points, net)
+  -- Seconds until a stop can be done (its camps respawning): getting there
+  -- sooner means waiting, so other stops fit in first.
+  local readyIn = {}
+  for i, stop in ipairs(stops) do readyIn[i + 1] = Journey.RespawnIn(stop) end
+  local function arrive(t, from, i)
+    return math.max(t + cost(from, i), readyIn[i])
+  end
 
   -- A stop is ready once every stop it comes after (in this plan) is placed.
   local function ready(i, placed)
@@ -293,13 +316,13 @@ local function orderStops(start, stops, net)
     return true
   end
 
-  -- Nearest next stop that is ready.
-  local order, used, current = {}, {}, 1
+  -- Nearest next stop that is ready (soonest done, waits included).
+  local order, used, current, clock = {}, {}, 1, 0
   for _ = 1, #stops do
-    local best, bestCost
+    local best, bestAt
     for i = 2, #points do
-      if not used[i] and ready(i, used) and (not bestCost or cost(current, i) < bestCost) then
-        best, bestCost = i, cost(current, i)
+      if not used[i] and ready(i, used) and (not bestAt or arrive(clock, current, i) < bestAt) then
+        best, bestAt = i, arrive(clock, current, i)
       end
     end
     if not best then
@@ -308,14 +331,15 @@ local function orderStops(start, stops, net)
     end
     used[best] = true
     order[#order + 1] = best
+    clock = arrive(clock, current, best)
     current = best
   end
 
   -- Reverse segments while that shortens the trip (2-opt), keeping `after`.
   local function total(o)
-    local sum, prev = 0, 1
-    for _, i in ipairs(o) do sum, prev = sum + cost(prev, i), i end
-    return sum
+    local t, prev = 0, 1
+    for _, i in ipairs(o) do t, prev = arrive(t, prev, i), i end
+    return t
   end
   local best = total(order)
   for _ = 1, MAX_SWAP_PASSES do

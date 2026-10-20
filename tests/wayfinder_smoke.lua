@@ -2550,8 +2550,45 @@ do
   end
   check(murlocs and not murlocs.done, "the murlocs are still on the trip")
 
+  -- One camp, cleared: other stops first while it respawns, not straight back.
+  NPCS[9151] = { name = "Tarantula", minLevel = 18, maxLevel = 19, spawns = { [44] = { { 70, 40 } } } }
+  QUESTS[47] = { name = "Spider Legs", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9151 } } } }
+  refreshData()
+  log = { 47 }
+  local spiders = { { text = "Tarantula slain: 3/10", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 47 and spiders or {} end
+  ns.Nav.Stop()
+  player.x, player.y = 0.7, 0.4
+  here = ns.Geo.PlayerNode()
+  trip = ns.Journey.QuestStops(47, here)
+  local errand = { node = ns.Geo.Node(1433, 0.2, 0.8, "Lakeshire docks"), text = "Go to Lakeshire docks" }
+  trip[#trip + 1] = errand
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Spiders", stops = trip }))
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop.action.questID == 47 and ns.Nav.InArea(), "in the only spider camp")
+  clock = clock + 60
+  before = #chat
+  player.x, player.y = 0.7, 0.55
+  ns.HUD.Update()
+  local spiderStop
+  for _, s in ipairs(ns.Nav.active.journey.stops) do if s.action and s.action.kind == "complete" then spiderStop = s end end
+  check(ns.Nav.active.journey.stops[1] == errand and spiderStop and ns.Journey.RespawnIn(spiderStop) == 300,
+    "left it cleared: the errand first while it respawns, though the camp is nearer")
+  check(table.concat(chat, "\n", before + 1):find("other stops first while it respawns", 1, true), "and says so")
+  clock = clock + 400
+  check(ns.Journey.RespawnIn(spiderStop) == 0, "respawned: no wait")
+  ns.Nav.Recalculate()
+  check(ns.Nav.CurrentStep().stop == spiderStop, "and the camp is next again, being nearest")
+  -- With nothing else to do, the way goes back and the box says when it respawns.
+  ns.Nav.Stop()
+  spiderStop.worked, spiderStop.inArea = { [1] = clock - 100 }, nil
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spiders", stops = { spiderStop } }))
+  ns.HUD.Update()
+  check(ns.HUD.Lines()[4]:find("Respawns in ~3 min", 1, true), "the box says when it respawns: " .. ns.HUD.Lines()[4])
+
   time = os.time
-  QUESTS[46], NPCS[9150] = nil, nil
+  QUESTS[46], NPCS[9150], QUESTS[47], NPCS[9151] = nil, nil, nil, nil
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
