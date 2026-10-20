@@ -255,7 +255,7 @@ local pendingSearch = 0
 local function scheduleSearch()
   pendingSearch = pendingSearch + 1
   local token = pendingSearch
-  C_Timer.After(SEARCH_DELAY, function()
+  ns.After(SEARCH_DELAY, function()
     if token == pendingSearch then Panel.Refresh() end
   end)
 end
@@ -769,7 +769,32 @@ function Panel.Toggle()
   if frame:IsShown() then frame:Hide() else frame:Show() end
 end
 
-ns.Listen("DATA_CHANGED", function() Panel.Refresh() end)
+-- Data changes come in bursts (a vendor window records goods, repairs and
+-- the NPC) and in combat (durability): one refresh per burst, after it.
+local REFRESH_DELAY = 0.3
+local refreshPending, refreshDeferred = false, false
+
+function Panel.RefreshSoon()
+  if not (frame and frame:IsShown()) then return end
+  if refreshPending then return end
+  refreshPending = true
+  ns.After(REFRESH_DELAY, function()
+    refreshPending = false
+    if InCombatLockdown and InCombatLockdown() then
+      refreshDeferred = true
+      return
+    end
+    Panel.Refresh()
+  end)
+end
+
+ns.Listen("DATA_CHANGED", Panel.RefreshSoon)
+ns.On("PLAYER_REGEN_ENABLED", function()
+  if refreshDeferred then
+    refreshDeferred = false
+    Panel.RefreshSoon()
+  end
+end)
 -- Not for each zone a flight passes over: once, where you land.
 local function zoneChanged() Panel.Refresh() end
 ns.On("ZONE_CHANGED_NEW_AREA", function() ns.AfterFlight(zoneChanged) end)

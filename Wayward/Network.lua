@@ -82,5 +82,5 @@ function Network.Build()
 end
 
 ns.Listen("FLIGHTS_CHANGED", function() cached = nil end)
--- A newly met flight master names their flight path.
-ns.Listen("DATA_CHANGED", function() cached = nil end)
+-- A newly met flight master names their flight path; other NPCs change nothing here.
+ns.Listen("DATA_CHANGED", function(kind) if kind == nil or kind == "flightMaster" then cached = nil end end)

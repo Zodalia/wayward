@@ -202,7 +202,7 @@ end
 ns.On("GET_ITEM_INFO_RECEIVED", function(itemID)
   if pending[itemID] then
     pending[itemID] = nil
-    ns.Panel.Refresh()
+    ns.Panel.RefreshSoon()
   end
 end)
 
@@ -234,7 +234,9 @@ local function levelText(info)
 end
 
 -- [itemID] = { {id, npc}, ... }: vendors of your faction you visited, by what they sold.
+local goodsCache -- until a vendor is recorded (item tooltips ask on every hover)
 local function visitedGoods()
+  if goodsCache then return goodsCache end
   local faction = UnitFactionGroup("player")
   local goods = {}
   for id, npc in pairs(ns.Harvest.AllNPCs()) do
@@ -246,8 +248,11 @@ local function visitedGoods()
       end
     end
   end
+  goodsCache = goods
   return goods
 end
+ns.Listen("DATA_CHANGED", function() goodsCache = nil end)
+ns.Listen("SOURCES_CHANGED", function() goodsCache = nil end)
 
 ---------------------------------------------------------------- name search
 
@@ -793,12 +798,13 @@ ns.RegisterCommand("item", "/ww item <item link or name> - where an item comes f
 
 -- True when Wayward knows where an item comes from.
 function Items.HasSources(itemID)
+  if visitedGoods()[itemID] ~= nil then return true end
   if ns.Data.Has("Item") then
     for _, key in ipairs({ "npcDrops", "objectDrops", "itemDrops", "questRewards", "vendors" }) do
       if next(list(field("item", itemID, key))) then return true end
     end
   end
-  return visitedGoods()[itemID] ~= nil
+  return false
 end
 
 -- The line for an item's tooltip, or nil. Never in combat.

@@ -172,12 +172,16 @@ end
 -- Bumped whenever what you can take may have changed (quest events, levels).
 local questVersion = 0
 
-for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE" }) do
+for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED" }) do
   ns.On(event, function()
     questState = nil
     questVersion = questVersion + 1
   end)
 end
+-- QUEST_LOG_UPDATE fires on every kill and loot: the log is read again (once
+-- per QUEST_STATE_SECONDS at most), but what you can take hasn't changed, so
+-- the lists built per version stay.
+ns.On("QUEST_LOG_UPDATE", function() questState = nil end)
 -- Quests a giver didn't offer you (see Navigator.lua) count as locked until you
 -- hand something in or level up, when they may have opened.
 function Quests.MarkNotOffered(questID)
@@ -682,7 +686,7 @@ function Quests.QuestPrep(questID, here)
   local groups = type(q.objectives) == "table" and q.objectives or {}
   for _, item in ipairs(groups[3] or {}) do objectiveItems[item[1]] = true end
   for _, itemID in ipairs(type(q.requiredSourceItems) == "table" and q.requiredSourceItems or {}) do
-    local have = GetItemCount and (GetItemCount(itemID) or 0) > 0
+    local have = ns.ItemCount(itemID) > 0
     if type(itemID) == "number" and not objectiveItems[itemID] and not have then
       local item = Data.Item(itemID)
       local name = item and item.name or ("item " .. itemID)

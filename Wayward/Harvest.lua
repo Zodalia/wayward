@@ -37,33 +37,57 @@ local function npcID()
 end
 
 -- Records the NPC you are talking to at your current position.
+-- DATA_CHANGED(kind) goes out only when something about them changed (a new
+-- NPC, a new role, a new name, a move, extra details): the same vendor
+-- window opens many times a session.
+local MOVED = 0.002 -- map fraction: a few yards
 function Harvest.RecordNPC(kind, extra)
   local id = npcID()
   local here = ns.Geo.PlayerNode()
   if not (id and here) then return nil end
-  local npc = ns.db.npcs[id] or { kinds = {} }
-  npc.name = UnitName("npc") or npc.name
+  local npc = ns.db.npcs[id]
+  local changed = npc == nil or not npc.kinds[kind] or extra ~= nil
+  npc = npc or { kinds = {} }
+  local name = UnitName("npc")
+  if name and name ~= npc.name then npc.name, changed = name, true end
   npc.faction = UnitFactionGroup("npc")
-  npc.mapID, npc.x, npc.y = here.mapID, here.x, here.y
+  if npc.mapID ~= here.mapID or math.abs((npc.x or 0) - here.x) > MOVED or math.abs((npc.y or 0) - here.y) > MOVED then
+    npc.mapID, npc.x, npc.y = here.mapID, here.x, here.y
+    changed = true
+  end
   local subZone = GetSubZoneText and GetSubZoneText()
   npc.subZone = subZone ~= "" and subZone or nil
   npc.kinds[kind] = true
   npc.seen = time()
   for k, v in pairs(extra or {}) do npc[k] = v end
   ns.db.npcs[id] = npc
-  ns.Fire("DATA_CHANGED")
+  if changed then ns.Fire("DATA_CHANGED", kind) end
   return npc
 end
+
+-- The recorded NPCs of `kind` with their nodes: { {npc, node}, ... }, built
+-- once per kind until an NPC is recorded (Network asks per flight path).
+local nodesOf = {}
+function Harvest.NodesOf(kind)
+  if nodesOf[kind] then return nodesOf[kind] end
+  local out = {}
+  for _, npc in pairs(Harvest.AllNPCs()) do
+    if npc.kinds and npc.kinds[kind] then
+      local at = ns.Geo.Node(npc.mapID, npc.x, npc.y)
+      if at then out[#out + 1] = { npc = npc, node = at } end
+    end
+  end
+  nodesOf[kind] = out
+  return out
+end
+ns.Listen("DATA_CHANGED", function() nodesOf = {} end)
 
 -- The name of a recorded NPC of `kind` within `radius` yards of a node, or nil.
 function Harvest.NPCNear(kind, node, radius)
   local best, bestDistance
-  for _, npc in pairs(Harvest.AllNPCs()) do
-    if npc.kinds and npc.kinds[kind] then
-      local at = ns.Geo.Node(npc.mapID, npc.x, npc.y)
-      local d = at and ns.Geo.Distance(node, at)
-      if d and d <= radius and d < (bestDistance or math.huge) then best, bestDistance = npc.name, d end
-    end
+  for _, entry in ipairs(Harvest.NodesOf(kind)) do
+    local d = ns.Geo.Distance(node, entry.node)
+    if d and d <= radius and d < (bestDistance or math.huge) then best, bestDistance = entry.npc.name, d end
   end
   return best
 end
@@ -102,6 +126,8 @@ local function readService(index)
   return s
 end
 
+local MIN_CLASS_SERVICES = 20
+
 local function classify(services)
   local trainerType = C_Trainer and C_Trainer.GetTrainerType and C_Trainer.GetTrainerType()
   local T = Enum.TrainerType or {}
@@ -111,13 +137,20 @@ local function classify(services)
   end
   -- Recipes and "Journeyman Tailoring": a profession trainer.
   if ns.Professions and ns.Professions.FromServices(services) then return "professionTrainer" end
+  local allWeapons = true
   for _, s in ipairs(services) do
-    if not WEAPON_SKILLS[s.name] then return "classTrainer" end
+    if not WEAPON_SKILLS[s.name] then allWeapons = false break end
   end
-  return "weaponMaster"
+  if allWeapons then return "weaponMaster" end
+  -- On other locales the weapon names don't match: a class trainer lists
+  -- your whole class (a hundred and more services), a weapon master a dozen.
+  local locale = GetLocale and GetLocale()
+  if locale and locale ~= "enUS" and locale ~= "enGB" and #services < MIN_CLASS_SERVICES then return "weaponMaster" end
+  return "classTrainer"
 end
 
 local classTrainerOpen = false
+local lastServicesKey
 
 -- The service list is empty at TRAINER_SHOW and fills in shortly after.
 local function readTrainer()
@@ -158,6 +191,11 @@ local function readTrainer()
     teaches[class] = list
     extra = { weapons = weapons, teaches = teaches }
   end
+  -- TRAINER_UPDATE fires on every click in the window: one reading per list.
+  local key = #services
+  for _, s in ipairs(services) do key = key .. "|" .. tostring(s.type) end
+  if kind == "classTrainer" and classTrainerOpen and lastServicesKey == key then return end
+  lastServicesKey = key
   Harvest.RecordNPC(kind, extra)
   classTrainerOpen = kind == "classTrainer"
   if kind == "classTrainer" then
@@ -166,7 +204,7 @@ local function readTrainer()
   end
 end
 
-ns.On("TRAINER_SHOW", function() C_Timer.After(0.5, readTrainer) end)
+ns.On("TRAINER_SHOW", function() ns.After(0.5, readTrainer) end)
 ns.On("TRAINER_UPDATE", readTrainer)
 -- What you could have learned and didn't, you left there on purpose.
 ns.On("TRAINER_CLOSED", function()
@@ -205,8 +243,10 @@ local function readTaxi()
   local nodes = taxiMapID and C_TaxiMap.GetAllTaxiNodes(taxiMapID)
   if type(nodes) ~= "table" then return end
   local continent = playerContinent()
+  local newContinent = false
   if continent then
     ns.charDB.taxiSeen = ns.charDB.taxiSeen or {}
+    newContinent = not ns.charDB.taxiSeen[continent]
     ns.charDB.taxiSeen[continent] = true
   end
   local S = Enum.FlightPathState or { Current = 0, Reachable = 1 }
@@ -218,7 +258,7 @@ local function readTaxi()
     end
   end
   if learned > 0 then ns.Fire("FLIGHTS_CHANGED", learned) end
-  ns.Fire("DATA_CHANGED")
+  if learned > 0 or newContinent then ns.Fire("DATA_CHANGED") end
 end
 
 ns.On("TAXIMAP_OPENED", readTaxi)

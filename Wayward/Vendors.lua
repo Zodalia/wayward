@@ -196,9 +196,25 @@ end
 -- The item list can still be empty at MERCHANT_SHOW; read again shortly after.
 ns.On("MERCHANT_SHOW", function()
   readMerchant()
-  C_Timer.After(0.5, readMerchant)
+  ns.After(0.5, readMerchant)
 end)
-ns.On("UPDATE_INVENTORY_DURABILITY", function() ns.Fire("DATA_CHANGED") end)
+-- Gear wears with every hit: only a crossing of the lines the pages care
+-- about (repair soon, repair now, broken) is worth a refresh.
+local function durabilityBand()
+  local d = Vendors.Durability()
+  if d == nil then return "none" end
+  if d <= 0 then return "broken" end
+  if d <= LOW_DURABILITY then return "low" end
+  if d <= 0.75 then return "soon" end
+  return "fine"
+end
+local lastBand
+ns.On("UPDATE_INVENTORY_DURABILITY", function()
+  local band = durabilityBand()
+  if band == lastBand then return end
+  lastBand = band
+  ns.Fire("DATA_CHANGED")
+end)
 
 ---------------------------------------------------------------- data sources
 

@@ -77,7 +77,7 @@ ns.On("NAME_PLATE_UNIT_REMOVED", function(unit)
   if plate and stars[plate] then stars[plate]:Hide() end
 end)
 ns.Listen("NAV_CHANGED", scan)
-ns.Listen("SETTINGS_CHANGED", scan)
+ns.Listen("SETTINGS_CHANGED", function(key) if key == "markNPCs" then scan() end end)
 
 -- The game's own setting: friendly NPCs' nameplates. Off by default.
 function Marker.FriendlyNameplates()
@@ -104,9 +104,11 @@ end
 
 local function onUnitTooltip(tooltip)
   if tooltip ~= GameTooltip then return end
-  local _, unit = tooltip:GetUnit()
-  local line = unit and Marker.TooltipLine(unit)
-  if line then tooltip:AddLine(line, 0.5, 0.82, 0.68) end
+  local ok, line = pcall(function()
+    local _, unit = tooltip:GetUnit()
+    return unit and Marker.TooltipLine(unit)
+  end)
+  if ok and line then pcall(tooltip.AddLine, tooltip, line, 0.5, 0.82, 0.68) end
 end
 
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then

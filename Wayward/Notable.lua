@@ -444,7 +444,8 @@ function Quests.DescribeNotable(questID)
   return lines
 end
 
-ns.On("GET_ITEM_INFO_RECEIVED", function() notableCache = {} end)
+-- Item info arrives for every item the client loads: only one we asked about matters.
+ns.On("GET_ITEM_INFO_RECEIVED", function(itemID) if requested[itemID] then notableCache = {} end end)
 ns.Listen("SOURCES_CHANGED", function()
   rewardIndex, rewardCache, oldNames, notableCache = nil, {}, nil, {}
 end)
