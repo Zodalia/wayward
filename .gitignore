@@ -2,3 +2,4 @@
 
 # Private data companion (its own repo); never commit it here.
 Wayward_Data/
+dist/

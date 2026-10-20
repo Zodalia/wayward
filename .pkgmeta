@@ -1,0 +1,16 @@
+# BigWigs packager / CurseForge packaging. The addon lives in Wayward/; the
+# rest of the repository (the WFProbe dev addon, tests, tools, docs) stays out.
+package-as: Wayward
+
+move-folders:
+  Wayward/Wayward: Wayward
+
+ignore:
+  - WFProbe
+  - tests
+  - tools
+  - docs
+  - README.md
+  - .pkgmeta
+  - .gitignore
+  - .claude
