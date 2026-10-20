@@ -22,12 +22,13 @@ Optional: a data addon adds quests, items and every trainer (see
 [Data sources](#data-sources)); TomTom's arrow is supported.
 
 **Requirements and limits.** The Forever client (Interface 16001). English
-client: trainers and vendors from data sources are recognised by their
-English subtitles ("Warlock Trainer", "Food & Drink") and weapon masters by
-English skill names; on other locales, what you learn by visiting still
-works. Boat and zeppelin docks and dungeon entrances shipped with the addon
-are approximate until you record them (`/ww dock`, or walk into the
-dungeon).
+(enUS/enGB) client: directions work on any locale, but trainers and vendors
+from data sources are recognised by their English subtitles ("Warlock
+Trainer", "Food & Drink"), weapon masters and professions by English names,
+dungeons by their English names, and the nameplate star and target button
+look for the data's English NPC names. Boat and zeppelin docks and dungeon
+entrances shipped with the addon are approximate until you record them
+(`/ww dock`, or walk into the dungeon).
 
 ## Options
 

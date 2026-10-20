@@ -4422,6 +4422,7 @@ do
   C_QuestLog.GetNumQuestLogEntries = function() return 1 end
   C_QuestLog.GetInfo = function() return { questID = 504, isHeader = false } end
   C_QuestLog.IsComplete = function(id) return id == 504 end
+  fire("QUEST_ACCEPTED", 1, 504) -- into the log (the lists built per quest version start again)
   fire("QUEST_LOG_UPDATE")
   ns.ForYou.Invalidate()
   local ready
@@ -4602,6 +4603,76 @@ do
   debugprofilestop = realClock
 end
 ---------------------------------------------------------------- perf (end)
+---------------------------------------------------------------- fewer refreshes (begin)
+do
+  io.write("fewer refreshes\n")
+  ns.Nav.Stop()
+  local fired = 0
+  ns.Listen("DATA_CHANGED", function() fired = fired + 1 end)
+  -- The same vendor twice: recorded once.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  UnitGUID = function() return "Creature-0-1-0-2-777-AB" end
+  ns.db.npcs[777] = nil
+  ns.Harvest.RecordNPC("vendor")
+  local once = fired
+  ns.Harvest.RecordNPC("vendor")
+  check(once == 1 and fired == once, "talking to the same NPC again changes nothing, so nothing refreshes")
+  ns.Harvest.RecordNPC("innkeeper")
+  check(fired == once + 1, "a new role for them does")
+  player.x = 0.6
+  ns.Harvest.RecordNPC("vendor")
+  check(fired == once + 2 and math.abs(ns.db.npcs[777].x - 0.6) < 1e-6, "and so does meeting them somewhere else")
+  ns.db.npcs[777] = nil
+  UnitGUID = function() return "Creature-0-1-0-2-999-AB" end
+  -- Durability: only a crossing of a line refreshes.
+  local durability = 0.9
+  GetInventoryItemDurability = function() return durability * 100, 100 end
+  fired = 0
+  fire("UPDATE_INVENTORY_DURABILITY")
+  local first = fired
+  durability = 0.85
+  fire("UPDATE_INVENTORY_DURABILITY")
+  check(fired == first, "gear wearing a little doesn't refresh")
+  durability = 0.5
+  fire("UPDATE_INVENTORY_DURABILITY")
+  check(fired == first + 1, "gear reaching the repair line does")
+  GetInventoryItemDurability = nil
+  -- The panel refreshes once per burst, and not in combat.
+  if not ns.Panel.IsShown() then ns.Panel.Toggle() end
+  local runs = ns.ForYou.runs
+  ns.Fire("DATA_CHANGED")
+  ns.Fire("DATA_CHANGED")
+  ns.Fire("DATA_CHANGED")
+  check(ns.ForYou.runs == runs, "a burst of changes waits")
+  InCombatLockdown = function() return true end
+  runTimers()
+  check(ns.ForYou.runs == runs, "and not while in combat")
+  InCombatLockdown = function() return false end
+  fire("PLAYER_REGEN_ENABLED")
+  runTimers()
+  check(ns.ForYou.runs == runs + 1, "once combat ends, one refresh for the whole burst")
+  InCombatLockdown = nil
+  ns.Panel.Toggle()
+  -- For you's background check comes back after combat.
+  InCombatLockdown = function() return true end
+  runs = ns.ForYou.runs
+  fire("PLAYER_LEVEL_UP")
+  runTimers() -- the check runs, sees combat, waits
+  InCombatLockdown = function() return false end
+  fire("PLAYER_REGEN_ENABLED")
+  runTimers()
+  check(ns.ForYou.runs == runs + 1, "a level-up in combat is looked at once combat ends")
+  InCombatLockdown = nil
+  -- A timer callback's error is reported, not lost, and the loop goes on.
+  local reported
+  local realHandler = geterrorhandler
+  geterrorhandler = function() return function(err) reported = err end end
+  ns.After(0, function() error("timer boom") end)
+  runTimers()
+  geterrorhandler = realHandler
+  check(reported and tostring(reported):find("timer boom", 1, true), "ns.After reports its callback's error")
+end
+---------------------------------------------------------------- fewer refreshes (end)
 ---------------------------------------------------------------- release polish (begin)
 do
   io.write("release polish\n")

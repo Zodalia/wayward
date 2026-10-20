@@ -69,6 +69,41 @@ the project page early to hold the name.
       linked.
 - [ ] Tag `v0.4.0` on the branch that ships; merge to `main` (empty today).
 
+## Audit, 2026-10-20
+
+A read-only pass over every file for performance, client compatibility
+(retail 12.x API with the Midnight restrictions), error safety and locale.
+Fixed in this release:
+
+- `DATA_CHANGED` went out on every NPC window, every trainer click, every
+  flight map and every durability tick, and each one cleared every cache and
+  rebuilt For you at once, in combat too. Now an NPC fires it only when
+  something about them changed, a trainer list is read once, flight maps
+  only when a path or continent is new, durability only when it crosses the
+  repair lines, and the panel refreshes once per burst and never in combat.
+- The flight network no longer rebuilds for unrelated NPCs; flight-master
+  and visited-goods lookups are built once instead of per flight path or
+  per item tooltip; `QUEST_LOG_UPDATE` (every kill) no longer throws away
+  the per-version quest lists; Notable only reacts to item info it asked for.
+- The For you background check got stuck for the session after a level-up
+  in combat (a flag was reused); fixed and tested.
+- Timer callbacks, the 10 Hz directions update and the unit tooltip hook now
+  report errors instead of spamming or breaking Blizzard code; a trip saved
+  by an older version that fails to resume is dropped instead of failing
+  every login; an empty continent list isn't cached forever.
+- `C_Item.GetItemCount` and `C_SpellBook.IsSpellKnown` are tried before
+  the deprecated globals; `GetProfessions` falls back to skill lines when it
+  returns nothing; the `Wayfinder` alias no longer overwrites another
+  addon's global.
+- On non-English clients a weapon master could be recorded as your class
+  trainer and overwrite your class spell list; a service-count guard stops
+  that.
+
+Left for later (low impact): the directions box re-anchors and re-sets its
+text every tick (cheap in practice); the journey overview's drag OnUpdate
+is only cleared on drag stop; `readService` calls `GetTrainerServiceInfo`
+twice per row.
+
 ## Known limits to say on the listing
 
 - English client for data-source trainers, vendors and weapon masters.
