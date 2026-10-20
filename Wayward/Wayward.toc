@@ -1,8 +1,9 @@
 ## Interface: 16001
 ## Title: Wayward
-## Notes: Levelling helper: find class trainers (and more soon) and get step-by-step directions.
+## Notes: Levelling helper: what to do next for your character, with step-by-step directions by foot, flight path, boat and zeppelin.
+## X-Website: https://github.com/Zodalia/wow-forever-addon
 ## Author: Zodalia
-## Version: 0.3.0
+## Version: 0.4.0
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 ## SavedVariables: WaywardDB
 ## SavedVariablesPerCharacter: WaywardCharDB
@@ -51,4 +52,5 @@ UI\Cards.lua
 UI\Panel.lua
 UI\MinimapButton.lua
 UI\Options.lua
+UI\Welcome.lua
 Perf.lua

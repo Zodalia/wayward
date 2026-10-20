@@ -4602,6 +4602,67 @@ do
   debugprofilestop = realClock
 end
 ---------------------------------------------------------------- perf (end)
+---------------------------------------------------------------- release polish (begin)
+do
+  io.write("release polish\n")
+  -- The welcome window: once, on the first login, after a short delay.
+  ns.Welcome.Hide()
+  ns.db.settings.welcomed = nil
+  fire("PLAYER_LOGIN")
+  check(not ns.Welcome.IsShown(), "the welcome waits for the loading screen to clear")
+  runTimers()
+  check(ns.Welcome.IsShown() and ns.db.settings.welcomed == ns.VERSION, "the welcome shows on the first login, once")
+  local lines = ns.Welcome.Lines()
+  check(#lines == 5 and lines[2]:find("/ww", 1, true) and lines[4]:find("Data:", 1, true),
+    "it says how to open Wayward and which data it has: " .. lines[4])
+  ns.Welcome.Hide()
+  fire("PLAYER_LOGIN")
+  runTimers()
+  check(not ns.Welcome.IsShown(), "a later login doesn't show it again")
+  SlashCmdList.WAYWARD("welcome")
+  check(ns.Welcome.IsShown(), "/ww welcome shows it again")
+  if ns.Panel.IsShown() then ns.Panel.Toggle() end
+  -- The quick menu: open, settings, options; the trip entries only on a trip.
+  local texts = {}
+  for _, e in ipairs(ns.Options.MenuEntries()) do texts[#texts + 1] = e.title or e.text or "-" end
+  local menu = table.concat(texts, "|")
+  check(menu:find("^Wayward|Open Wayward|%-|") and menu:find("Compass", 1, true) and menu:find("Minimap button", 1, true)
+    and menu:find("Options...", 1, true) and not menu:find("Stop directions", 1, true),
+    "the quick menu has open, the quick settings and options: " .. menu)
+  local trainer = ns.Trainers.Results()[1]
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  texts = {}
+  for _, e in ipairs(ns.Options.MenuEntries()) do texts[#texts + 1] = e.title or e.text or "-" end
+  check(table.concat(texts, "|"):find("Stop directions", 1, true), "with directions on, the menu can stop them")
+  ns.Nav.Stop()
+  for _, e in ipairs(ns.Options.MenuEntries()) do
+    if e.text == "Compass in the directions box" then
+      local before = e.get()
+      e.set(not before)
+      check(e.get() ~= before and ns.db.settings.showArrow == (not before), "a menu checkbox changes the setting")
+      e.set(before)
+    end
+  end
+  -- Without MenuUtil the menu falls back to the options (a chat line here).
+  local chatBefore = #chat
+  ns.Options.ShowMenu(CreateFrame("Frame"))
+  check(#chat > chatBefore, "without a menu API, the options open instead")
+  -- Help is sorted, and an unknown command says so.
+  chatBefore = #chat
+  SlashCmdList.WAYWARD("nonsense")
+  local seenItem, seenWelcome
+  for i = chatBefore + 1, #chat do
+    if chat[i]:find("no command called nonsense", 1, true) then seenItem = seenItem or 0 end
+    if chat[i]:find("/ww item", 1, true) then seenItem = i end
+    if chat[i]:find("/ww welcome", 1, true) then seenWelcome = i end
+  end
+  check(seenItem and seenWelcome and seenItem < seenWelcome, "an unknown command prints the help, commands in order")
+  -- Reset positions.
+  ns.db.settings.hudPos = { "TOP", "TOP", 100, -100 }
+  SlashCmdList.WAYWARD("reset")
+  check(ns.db.settings.hudPos == nil and ns.db.settings.panelPos == nil, "/ww reset forgets every saved position")
+end
+---------------------------------------------------------------- release polish (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
