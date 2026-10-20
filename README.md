@@ -202,9 +202,11 @@ refresh took.
 
 **Notable quests.** XP isn't everything: Wayfinder also asks "am I missing
 something cool here?". A quest is notable when it is your class's quest, part
-of an epic or legendary line, rewards a green-or-better item your class would
-wear or wield (weapon skills, and only the heaviest armour you wear at the
-item's level; quality only when the game already has the item cached), leads
+of an epic or legendary line, rewards a green weapon or a blue piece of
+armour your class would use (weapon skills, and only the heaviest armour you
+wear at the item's level; the quality only once the game has the item cached,
+which Wayfinder asks for but never waits on, so until then a reward is only
+mentioned), leads
 into a dungeon or an epic quest further down its chain, or is new in Forever
 (an ID from 90000 whose name no original quest has). Profession and holiday
 quests and reputation outside your own cities are mentioned but don't tag a
@@ -426,7 +428,9 @@ Wayfinder.RegisterSource({
   QuestSort (class, profession, holiday, legendary...). Optional quest fields
   `questFlags`, `specialFlags`, `reputationReward` and `childQuests`, and item
   `class`/`subClass`, feed the notable-quest reasons; without them those
-  reasons are left out (item classes then come from the client).
+  reasons are left out (item classes then come from the client). An optional
+  `QuestRewards()` hands over the quest -> reward items index; without it
+  Wayfinder reads every item's `questRewards` once.
 - When sources overlap, the higher `priority` wins: per record for quests,
   items and objects, field by field for NPCs and class spells. What you
   learned in game beats any source.
