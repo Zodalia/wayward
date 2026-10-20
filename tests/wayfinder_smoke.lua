@@ -1914,6 +1914,141 @@ do
   refreshData()
 end
 ---------------------------------------------------------------- inferred chains (end)
+---------------------------------------------------------------- chain ahead (begin)
+do
+  io.write("chain ahead\n")
+  -- Three steps after Westfall Rumours, the last a Deadmines quest.
+  QUESTS[501] = { name = "Westfall Rumours", questLevel = 18, requiredLevel = 15, nextQuestInChain = 502,
+    startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  QUESTS[502] = { name = "Following the Trail", questLevel = 20, requiredLevel = 16, startedBy = { { 344 } },
+    finishedBy = { { 344 } } }
+  QUESTS[503] = { name = "The Defias Hideout", questLevel = 22, requiredLevel = 17, preQuestSingle = { 502 },
+    nextQuestInChain = 504, startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  QUESTS[504] = { name = "Into the Mines", questLevel = 24, requiredLevel = 18, zoneOrSort = 1581,
+    startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  -- A fork: two quests that close each other (the first Horde-only), both leading on.
+  QUESTS[510] = { name = "Pick a Side", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } } }
+  QUESTS[511] = { name = "Side of the Horde", questLevel = 19, requiredLevel = 15, requiredRaces = 2,
+    preQuestSingle = { 510 }, exclusiveTo = { 512 }, startedBy = { { 344 } } }
+  QUESTS[512] = { name = "Side of the Alliance", questLevel = 19, requiredLevel = 15, preQuestSingle = { 510 },
+    exclusiveTo = { 511 }, startedBy = { { 344 } } }
+  QUESTS[513] = { name = "Either Way", questLevel = 20, requiredLevel = 15, preQuestSingle = { 511, 512 },
+    startedBy = { { 344 } } }
+  -- A cycle in the data.
+  QUESTS[520] = { name = "Round and Round", questLevel = 19, requiredLevel = 15, nextQuestInChain = 521,
+    startedBy = { { 344 } } }
+  QUESTS[521] = { name = "And Round Again", questLevel = 19, requiredLevel = 15, nextQuestInChain = 520,
+    startedBy = { { 344 } } }
+  -- Forever's own, no chain data: the second of the name is inferred to follow the first.
+  QUESTS[98400] = { name = "Ledger Errand", questLevel = 20, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 344 } } }
+  QUESTS[98401] = { name = "Ledger Errand", questLevel = 21, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 344 } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy = 3
+  refreshData()
+  local function ids(steps)
+    local out = {}
+    for _, q in ipairs(steps or {}) do out[#out + 1] = q.id end
+    return table.concat(out, ",")
+  end
+
+  local ahead = ns.Quests.ChainAhead(501)
+  check(ahead and ids(ahead.steps) == "502,503,504" and ahead.count == 3 and ahead.reachable == 3,
+    "the chain ahead follows nextQuestInChain and preQuestSingle: " .. ids(ahead and ahead.steps))
+  check(ahead.levelSpan and ahead.levelSpan[1] == 20 and ahead.levelSpan[2] == 24, "with the levels of its steps")
+  check(#ahead.dungeons == 1 and ahead.dungeons[1].name == "The Deadmines" and ahead.dungeons[1].areaID == 1581
+    and ahead.dungeons[1].questID == 504, "and the dungeon quest in it")
+  check(ahead.endsAt and ahead.endsAt.name == "The Deadmines" and ahead.endsAt.dungeon, "ending in the dungeon")
+  check(ns.Quests.RewardItems ~= nil or ahead.items == nil, "no reward items without Quests.RewardItems")
+  check(ns.Quests.ChainText(501) == "Chain: 3 more quests (levels 20-24), ends in The Deadmines",
+    "chain text: " .. tostring(ns.Quests.ChainText(501)))
+  check(ns.Quests.ChainText(503) == "Leads to a Deadmines quest", "one step to a dungeon quest: "
+    .. tostring(ns.Quests.ChainText(503)))
+  check(ns.Quests.ChainText(504) == nil and ns.Quests.ChainAhead(504).count == 0, "nothing follows: no text")
+  check(ns.Quests.ChainAhead(502).endsAt.name == "The Deadmines" and ns.Quests.ChainDungeon(502) == "The Deadmines",
+    "the dungeon is named from a step further back")
+  local nonDungeon = ns.Quests.ChainAhead(98400)
+  check(nonDungeon.endsAt and nonDungeon.endsAt.name and not nonDungeon.endsAt.dungeon,
+    "a chain outside a dungeon ends at the last hand-in's place: " .. tostring(nonDungeon.endsAt and nonDungeon.endsAt.name))
+
+  local fork = ns.Quests.ChainAhead(510)
+  check(ids(fork.steps) == "512,513" and ids(fork.alternatives[512]) == "511" and fork.reachable == 2,
+    "quests that close each other are one step, the one you can do first: " .. ids(fork.steps))
+  check(ns.Quests.ChainText(510) == "Chain: 2 more quests (levels 19-20), ends in " .. fork.endsAt.name,
+    "the fork counts once: " .. tostring(ns.Quests.ChainText(510)))
+  check(ids(ns.Quests.ChainAhead(520).steps) == "521" and ids(ns.Quests.ChainAhead(521).steps) == "520",
+    "a cycle in the data ends the walk")
+  check(ids(nonDungeon.steps) == "98401" and ns.Quests.ChainText(98400):find("^Chain: 1 more quest %(level 21%)"),
+    "an inferred Forever link counts: " .. tostring(ns.Quests.ChainText(98400)))
+  check(ns.Quests.ChainHighlight(501) and ns.Quests.ChainHighlight(503) and not ns.Quests.ChainHighlight(98400),
+    "worth pointing out: a dungeon quest or a long chain, not one more quest")
+  check(ns.Quests.ChainAhead(501) == ahead, "kept until the data changes")
+  ns.Fire("DATA_CHANGED")
+  check(ns.Quests.ChainAhead(501) ~= ahead and ids(ns.Quests.ChainAhead(501).steps) == "502,503,504",
+    "and built again after")
+
+  -- Where it shows: Quests page search and log rows, the overview, the pickup question.
+  local function rowWith(results, id)
+    for _, r in ipairs(results) do
+      if r.id == id then return r end
+    end
+  end
+  local function detailWith(r, text)
+    for _, d in ipairs(r and r.details or {}) do
+      if d.text:find(text, 1, true) then return true end
+    end
+    return false
+  end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local row = rowWith(ns.QuestsPage.Results("Defias Hideout"), "quest503")
+  check(row and row.subtitle:find("leads to The Deadmines", 1, true) and detailWith(row, "Leads to a Deadmines quest"),
+    "a search result says where its chain leads: " .. tostring(row and row.subtitle))
+  row = rowWith(ns.QuestsPage.Results("Pick a Side"), "quest510")
+  check(row and not row.subtitle:find("leads to", 1, true) and detailWith(row, "Chain: 2 more quests"),
+    "no dungeon: only the tooltip line")
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  local log = { 501 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false, title = QUESTS[log[i]].name } end
+  C_QuestLog.IsComplete = function() return false end
+  row = rowWith(ns.QuestsPage.Results(""), "log501")
+  check(row and row.subtitle:find("leads to The Deadmines", 1, true) and detailWith(row, "Chain: 3 more quests"),
+    "a quest log row too: " .. tostring(row and row.subtitle))
+  check(ns.JourneyOverview.StopTooltipText({ action = { kind = "pickup", questID = 501 } })
+    == ns.Quests.ChainText(501) and ns.JourneyOverview.StopTooltipText({ text = "Fly" }) == nil,
+    "a quest stop in the overview has the chain in its tooltip")
+
+  ns.Nav.Stop()
+  local shown
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, a, b, data)
+    shown = { which = which, text = string.format(StaticPopupDialogs[which].text, a, b), data = data }
+  end
+  fire("QUEST_ACCEPTED", 501)
+  runTimers()
+  check(shown and shown.text:find("You picked up Westfall Rumours.\nChain: 3 more quests (levels 20-24), ends in The Deadmines.\n\nStart a trip", 1, true),
+    "the pickup question says it leads to a long chain: " .. tostring(shown and shown.text))
+  shown = nil
+  log = { 98400 }
+  fire("QUEST_ACCEPTED", 98400)
+  runTimers()
+  check(shown and shown.text:find("You picked up Ledger Errand.\n\nStart a trip", 1, true),
+    "but not about one more quest: " .. tostring(shown and shown.text))
+  ns.Nav.Stop()
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
+
+  -- /wf debug quest lists the steps.
+  local said = #chat
+  SlashCmdList.WAYFINDER("debug quest 510")
+  local listed = table.concat(chat, "\n", said + 1)
+  check(listed:find("chain ahead: 2 steps, 2 you can do", 1, true) and listed:find("or Side of the Horde (511)", 1, true),
+    "/wf debug quest prints the chain ahead with its alternatives")
+  for _, id in ipairs({ 501, 502, 503, 504, 510, 511, 512, 513, 520, 521, 98400, 98401 }) do QUESTS[id] = nil end
+  refreshData()
+end
+---------------------------------------------------------------- chain ahead (end)
 ---------------------------------------------------------------- objects and follow-ups (begin)
 do
   io.write("objects and follow-ups\n")
