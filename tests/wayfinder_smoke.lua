@@ -2229,6 +2229,42 @@ do
   SlashCmdList.WAYFINDER("sounds test step")
   check(chatSince(before):find("a sound test", 1, true) and last() == steps[1][1], "test step: a sample line and the click")
 
+  -- Any sound kit by its ID.
+  before = #chat
+  SlashCmdList.WAYFINDER("sounds step id 567")
+  check(last() == 567 and chatSince(before):find("#567 (not on the list)", 1, true)
+    and chatSince(before):find("/wf sounds use step id 567", 1, true), "/wf sounds step id 567 plays any kit")
+  count = #played
+  SlashCmdList.WAYFINDER("sounds step id abc")
+  SlashCmdList.WAYFINDER("sounds step id")
+  check(#played == count, "an id that isn't a number plays nothing")
+  PlaySound = function(id) played[#played + 1] = id return id ~= 999999 end
+  before = #chat
+  SlashCmdList.WAYFINDER("sounds step id 999999")
+  check(chatSince(before):find("didn't play it: no sound kit 999999", 1, true), "a kit the game won't play says so")
+  before = #chat
+  SlashCmdList.WAYFINDER("sounds test complete id 999999")
+  check(last() == 999999 and chatSince(before):find("didn't play it", 1, true), "and so does a test with it")
+  before = #chat
+  SlashCmdList.WAYFINDER("sounds step 1")
+  check(not chatSince(before):find("didn't play", 1, true), "a kit that plays says nothing more")
+  SlashCmdList.WAYFINDER("sounds use step id 567")
+  before = #chat
+  SlashCmdList.WAYFINDER("sounds")
+  check(ns.Sounds.Kit("step") == 567 and chatSince(before):find("step (a stop added to your trip): #567 (not on the list)", 1, true),
+    "use step id 567 keeps it, and the list shows it")
+
+  -- export: the choices on one line.
+  local copied
+  local realCopy = ns.ShowCopyBox
+  ns.ShowCopyBox = function(_, text) copied = text end
+  SlashCmdList.WAYFINDER("sounds use toast off")
+  SlashCmdList.WAYFINDER("sounds use start " .. #ns.Sounds.Options("start"))
+  SlashCmdList.WAYFINDER("sounds export")
+  check(copied and copied:match("^[^\n]*") == "popup=23404 step=567 start=race complete=44330 toast=off"
+    and copied:find("toast: off", 1, true), "export copies every moment's sound: " .. tostring(copied))
+  ns.ShowCopyBox = realCopy
+
   ns.db.settings.sounds = nil
   PlaySound = nil
 end

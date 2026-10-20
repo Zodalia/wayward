@@ -216,7 +216,11 @@ sound alone. `/wf sounds` lists each moment's shortlist;
 `/wf sounds <moment> <n|next>` plays one to compare,
 `/wf sounds use <moment> <n|off|default>` keeps it, and
 `/wf sounds test <moment> [n]` shows the real banner, toast or question with
-sample text. Moments: `popup`, `step`, `start`, `complete`, `toast`.
+sample text. Instead of a number, `id <kit>` is any sound kit ID, on the list
+or not (`/wf sounds step id 12345`); Wayfinder says so when the game doesn't
+play it. `/wf sounds export` opens your choices as one line to copy
+(`popup=23404 step=206497 …`). Moments: `popup`, `step`, `start`,
+`complete`, `toast`.
 
 ### Getting around
 

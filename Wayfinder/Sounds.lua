@@ -9,6 +9,8 @@ local _, ns = ...
 --   /wf sounds use <moment> <n|off|default>   keeps one (for the account)
 --   /wf sounds test <moment> [n]     the real banner, toast or question, with
 --                                    sample text, and its sound (or sound n)
+--   /wf sounds export                the choices as one line, to copy
+-- Instead of a number n, "id <kit>" is any sound kit ID, on the list or not.
 
 local Sounds = {}
 ns.Sounds = Sounds
@@ -128,6 +130,14 @@ local function describe(m, i)
   return string.format("%d. %s - %s", i, o[2], o[3])
 end
 
+-- A kit as a line: its number and name on the list, or its ID.
+local function describeKit(m, kit)
+  for i, o in ipairs(m.options) do
+    if o[1] == kit then return describe(m, i) end
+  end
+  return "#" .. tostring(kit) .. " (not on the list)"
+end
+
 -- A moment's shortlist ({ kit, name, what it is }), for the tests.
 function Sounds.Options(key)
   local m = find(key)
@@ -140,10 +150,19 @@ function Sounds.Kit(key)
   return m and kitID(chosen(m))
 end
 
--- Plays a moment's sound, or `kit` instead (to try one).
+local lastPlayed -- whether the last Play played: false when the game said no
+
+-- Plays a moment's sound, or `kit` instead (to try one). False when the game
+-- didn't play it (no such kit in this client, or sound effects off); nil when
+-- there was nothing to play.
 function Sounds.Play(key, kit)
   local id = kitID(kit) or Sounds.Kit(key)
-  if id and PlaySound then pcall(PlaySound, id) end
+  lastPlayed = nil
+  if id and PlaySound then
+    local ok, willPlay = pcall(PlaySound, id)
+    lastPlayed = ok and willPlay ~= false
+  end
+  return lastPlayed
 end
 
 ---------------------------------------------------------------- /wf sounds
@@ -152,17 +171,26 @@ local cursor = {} -- [moment] = the one last tried, for "next"
 
 local function usage()
   ns.print("/wf sounds <moment> <n|next> plays one; /wf sounds use <moment> <n|off|default> keeps it; "
-    .. "/wf sounds test <moment> [n] shows it. Moments: popup, step, start, complete, toast.")
+    .. "/wf sounds test <moment> [n] shows it; \"id <kit>\" instead of n is any sound kit; "
+    .. "/wf sounds export copies your choices. Moments: popup, step, start, complete, toast.")
+end
+
+local function nowText(m)
+  return chosen(m) == false and "off" or describeKit(m, chosen(m))
 end
 
 local function overview()
   for _, m in ipairs(MOMENTS) do
-    local i = current(m)
-    local now = chosen(m) == false and "off" or i and describe(m, i) or ("#" .. tostring(chosen(m)))
-    ns.print(string.format("%s (%s): %s", m.key, m.label, now))
+    ns.print(string.format("%s (%s): %s", m.key, m.label, nowText(m)))
   end
   ns.print("/wf sounds <moment> lists its choices.")
   usage()
+end
+
+local function didntPlay(kit)
+  if lastPlayed == false then
+    ns.print("the game didn't play it: no sound kit " .. tostring(kitID(kit)) .. " in this client, or sound effects are off.")
+  end
 end
 
 local function list(m)
@@ -173,35 +201,60 @@ local function list(m)
   end
 end
 
--- The option numbered `n` (a word from the command), or nil after saying why.
-local function pick(m, n)
-  local i = tonumber(n)
-  if i and m.options[i] then return i end
-  ns.print(string.format("%s has sounds 1 to %d (/wf sounds %s lists them)", m.key, #m.options, m.key))
+-- The kit the command's words name: a number on the list ("3", which
+-- becomes the one "next" goes on from) or "id <kit>". Nil after saying why.
+local function pick(m, word, id)
+  if word == "id" then
+    local kit = tonumber(id)
+    if kit and kit > 0 and kit == math.floor(kit) then return kit, "id " .. kit end
+    return ns.print("\"id\" takes a sound kit ID: /wf sounds " .. m.key .. " id 12345")
+  end
+  local i = tonumber(word)
+  if i and m.options[i] then
+    cursor[m.key] = i
+    return m.options[i][1], tostring(i)
+  end
+  ns.print(string.format("%s has sounds 1 to %d (/wf sounds %s lists them), or \"id <kit>\" for any other",
+    m.key, #m.options, m.key))
 end
 
-local function try(m, n)
-  local i = pick(m, n)
-  if not i then return end
-  cursor[m.key] = i
-  Sounds.Play(m.key, m.options[i][1])
-  ns.print(string.format("%s %s  (keep it: /wf sounds use %s %d)", m.key, describe(m, i), m.key, i))
+local function try(m, word, id)
+  local kit, words = pick(m, word, id)
+  if not kit then return end
+  Sounds.Play(m.key, kit)
+  ns.print(string.format("%s %s  (keep it: /wf sounds use %s %s)", m.key, describeKit(m, kit), m.key, words))
+  didntPlay(kit)
 end
 
-local function use(m, n)
+local function use(m, word, id)
   local sounds = ns.db.settings.sounds or {}
-  if n == "off" then
+  if word == "off" then
     sounds[m.key] = false
-  elseif n == "default" then
+  elseif word == "default" then
     sounds[m.key] = nil
   else
-    local i = pick(m, n)
-    if not i then return end
-    sounds[m.key] = m.options[i][1]
+    local kit = pick(m, word, id)
+    if not kit then return end
+    sounds[m.key] = kit
   end
   ns.SetSetting("sounds", sounds)
-  local i = current(m)
-  ns.print(m.key .. " sound: " .. (chosen(m) == false and "off" or describe(m, i)))
+  ns.print(m.key .. " sound: " .. nowText(m))
+end
+
+-- Every moment's sound as "moment=kit" (a kit ID, "race" or "off"), on one
+-- line to paste wherever the defaults are kept.
+function Sounds.Export()
+  local parts = {}
+  for _, m in ipairs(MOMENTS) do
+    parts[#parts + 1] = m.key .. "=" .. (chosen(m) == false and "off" or tostring(chosen(m)))
+  end
+  return table.concat(parts, " ")
+end
+
+local function export()
+  local lines = { Sounds.Export(), "" }
+  for _, m in ipairs(MOMENTS) do lines[#lines + 1] = m.key .. ": " .. nowText(m) end
+  ns.ShowCopyBox("Wayfinder sounds", table.concat(lines, "\n"))
 end
 
 -- Sample moments for "test", each playing `kit` or the chosen sound.
@@ -229,16 +282,16 @@ local TESTS = {
   toast = function(kit) ns.Fanfare.Preview("toast", kit) end,
 }
 
-local function test(m, n)
-  local kit, i = nil, current(m)
-  if n then
-    i = pick(m, n)
-    if not i then return end
-    kit, cursor[m.key] = m.options[i][1], i
+local function test(m, word, id)
+  local kit
+  if word then
+    kit = pick(m, word, id)
+    if not kit then return end
   end
-  local off = not kit and chosen(m) == false
-  ns.print("sound test, " .. m.key .. ": " .. (off and "sound off" or i and describe(m, i) or "?"))
+  ns.print("sound test, " .. m.key .. ": " .. (kit and describeKit(m, kit) or nowText(m)))
+  lastPlayed = nil
   TESTS[m.key](kit)
+  didntPlay(kit or chosen(m))
 end
 
 ns.RegisterCommand("sounds", "/wf sounds - try Wayfinder's sounds and pick one for each moment", function(rest)
@@ -246,14 +299,15 @@ ns.RegisterCommand("sounds", "/wf sounds - try Wayfinder's sounds and pick one f
   for w in (rest or ""):lower():gmatch("%S+") do words[#words + 1] = w end
   local verb = words[1]
   if not verb then return overview() end
+  if verb == "export" then return export() end
   if verb == "use" or verb == "test" then
     local m = find(words[2])
     if not m or (verb == "use" and not words[3]) then return usage() end
-    return (verb == "use" and use or test)(m, words[3])
+    return (verb == "use" and use or test)(m, words[3], words[4])
   end
   local m = find(verb)
   if not m then return usage() end
   if not words[2] then return list(m) end
   if words[2] == "next" then return try(m, ((cursor[m.key] or current(m) or 0) % #m.options) + 1) end
-  try(m, words[2])
+  try(m, words[2], words[3])
 end)
