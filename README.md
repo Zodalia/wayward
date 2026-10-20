@@ -197,6 +197,19 @@ only the time left for them; a dungeon's quests in your log count toward it.
 The Quests page has every hub and your whole log. `/wf debug` shows how long a
 refresh took.
 
+**Only have 20 minutes?** The buttons at the right of the summary line (15,
+30, 60, Any), or `/wf time 20` and `/wf time off`, set how long you have,
+per character. For you then shows only what its estimate (trip plus quest
+time) says fits, with each card's time in its corner: hand-ins and finishes
+by least travel rather than XP per minute, a questing zone only when the trip
+to its first hub plus one quest fits, and no dungeon under an hour. When
+nothing fits it says so and offers the quickest option anyway, "a bit over".
+The estimates are rough, so Wayfinder learns yours: each quest you accept
+and hand in in one session is timed (from the later of accepting it and your
+last hand-in, so quests done side by side share the time; at most an hour),
+and once 5 are timed the average of your last 20 replaces the 5 minutes per
+quest. `/wf debug` shows it.
+
 **Fanfare.** When a trip is done, a frame near the top of the screen says
 what it came to: XP earned (across level-ups), time taken, distance travelled
 and quests handed in. When For you has a new major suggestion (a questing
