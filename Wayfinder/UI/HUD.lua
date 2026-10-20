@@ -32,10 +32,11 @@ local MODE_ICONS = {
 local DISTANCE_ICON = "|TInterface\\Icons\\Ability_Tracking:13:13:0:0:64:64:5:59:5:59|t"
 local TIME_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:13:13:0:0:64:64:5:59:5:59|t"
 
+-- `text` can be a function, for a tip that depends on the moment.
 local function tooltip(b, text)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText(text)
+    GameTooltip:SetText(type(text) == "function" and text() or text)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -61,6 +62,17 @@ local function squareButton(parent, arrow, iconFile, fallback, onClick, tip)
   b:SetScript("OnClick", onClick)
   tooltip(b, tip)
   return b
+end
+
+-- What the move on button does right now (Nav.MoveOnKind).
+local MOVE_ON_TIPS = {
+  cleared = "Move on: this spot's cleared (on to another, or other stops while it respawns)",
+  done = "Move on: you've done this step",
+  later = "Move on: do the next stop first, this one later",
+}
+
+function HUD.MoveOnTip()
+  return MOVE_ON_TIPS[ns.Nav.MoveOnKind() or "later"]
 end
 
 local function create()
@@ -100,7 +112,7 @@ local function create()
   if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   f.icon:Hide()
 
-  -- Buttons top right: previous / next step, all stops, recalculate, stop.
+  -- Buttons top right: skip and move on (trips), all stops, recalculate, stop.
   f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   f.close:SetSize(24, 24)
   f.close:SetPoint("TOPRIGHT", -3, -3)
@@ -113,9 +125,11 @@ local function create()
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
     "All stops of this trip")
   f.list:SetPoint("RIGHT", f.recalc, "LEFT", -2, 0)
-  f.next = squareButton(f, "RIGHT", nil, ">", function() ns.Nav.Next() end, "Skip to the next step")
-  f.prev = squareButton(f, "LEFT", nil, "<", function() ns.Nav.Prev() end, "Previous step")
-  f.prev:SetPoint("RIGHT", f.next, "LEFT", -2, 0)
+  f.moveOn = squareButton(f, "RIGHT", nil, ">", function() ns.Nav.MoveOn() end, HUD.MoveOnTip)
+  f.moveOn:SetPoint("RIGHT", f.list, "LEFT", -2, 0)
+  f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
+    "Skip this stop: take it off the trip (asks first)")
+  f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.title:SetPoint("TOPLEFT", TEXT_LEFT, -PADDING - 2)
@@ -212,7 +226,7 @@ local function place(trip)
   frame.step:SetPoint("TOPLEFT", trip and frame.progress or frame.title, "BOTTOMLEFT", 0, trip and -7 or -5)
   frame.step:SetPoint("RIGHT", -PADDING, 0)
   -- The title stops short of the buttons.
-  frame.title:SetPoint("RIGHT", frame.prev, "LEFT", -6, 0)
+  frame.title:SetPoint("RIGHT", trip and frame.skip or frame.recalc, "LEFT", -6, 0)
 end
 
 function HUD.Update()
@@ -225,9 +239,9 @@ function HUD.Update()
   end
   applyCompass()
   local trip = a.journey ~= nil
-  frame.next:ClearAllPoints()
-  frame.next:SetPoint("RIGHT", trip and frame.list or frame.recalc, "LEFT", -2, 0)
   frame.list:SetShown(trip)
+  frame.moveOn:SetShown(trip)
+  frame.skip:SetShown(trip)
   place(trip)
 
   -- One count each: stops done in the title, steps to the next stop (or to
@@ -279,7 +293,7 @@ function HUD.Update()
   elseif ns.Nav.Waiting() then
     -- A quest step only you can tell is done.
     local manual = step.stop and step.stop.action and step.stop.action.kind == "manual"
-    frame.info:SetText((manual and "|cff7fd1aeYou're here:|r do it, then press next" or "|cff7fd1aeYou're here|r")
+    frame.info:SetText((manual and "|cff7fd1aeYou're here:|r do it, then move on (>)" or "|cff7fd1aeYou're here|r")
       .. "     " .. remaining)
   elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%s %d yd     %s", DISTANCE_ICON, math.floor(distance), remaining))

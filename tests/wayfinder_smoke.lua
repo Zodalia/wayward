@@ -1824,15 +1824,20 @@ do
   qs = ns.Journey.QuestStops(41, here)
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Blackwood", stops = qs }))
   check(ns.Nav.CurrentStep().stop.action.kind == "item", "first: collect the sample")
-  ns.Nav.Next()
-  check(ns.JourneyOverview.Rows()[1].state == "skipped", "skipped it")
+  ns.Nav.MoveOn()
+  check(ns.Nav.CurrentStep().stop == qs[1] and chat[#chat]:find("nothing else on the trip to do first", 1, true),
+    "move on: everything after needs the sample, so nothing can come first")
   bags[500] = 1
   fire("BAG_UPDATE_DELAYED")
-  check(ns.JourneyOverview.Rows()[1].state == "done", "a skipped stop you then do counts as done")
-  -- The extra step is confirmed with next: done, not skipped.
-  while ns.Nav.CurrentStep() and ns.Nav.CurrentStep().stop ~= qs[2] do ns.Nav.Next() end
-  ns.Nav.Next()
-  check(qs[2].done and not qs[2].passed, "next confirms a quest's extra step")
+  check(ns.JourneyOverview.Rows()[1].state == "done" and ns.Nav.CurrentStep().stop == qs[2], "collected: on to the bowl")
+  -- The extra step is confirmed with move on, there: done.
+  check(ns.Nav.MoveOnKind() == "later", "away from the moonwell, move on would do it later")
+  player.mapID, player.x, player.y = qs[2].node.mapID, qs[2].node.x, qs[2].node.y
+  ns.HUD.Update()
+  check(ns.Nav.MoveOnKind() == "done" and ns.HUD.Lines()[4]:find("then move on", 1, true),
+    "at it, move on confirms it: " .. ns.HUD.Lines()[4])
+  ns.Nav.MoveOn()
+  check(qs[2].done and not qs[2].passed and ns.Nav.CurrentStep().stop ~= qs[2], "move on confirms a quest's extra step")
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
 
@@ -2677,6 +2682,20 @@ do
   player.x, player.y = 0.31, 0.3
   ns.HUD.Update()
   check(ns.Nav.InArea() and scouts.visit and scouts.visit.since == 5100, "back in the camp: a new visit")
+  -- Move on in a camp: it's cleared now, whatever the time there.
+  check(ns.Nav.MoveOnKind() == "cleared" and ns.HUD.MoveOnTip():find("cleared", 1, true), "in a camp, move on clears it")
+  before = #chat
+  ns.Nav.MoveOn()
+  check(ns.Journey.Cleared(scouts, 3) and not ns.Nav.InArea()
+    and table.concat(chat, "\n", before + 1):find("cleared: on to another for Murloc Sweep", 1, true)
+    and at(ns.Nav.CurrentStep().stop.node, 0.8, 0.8), "and the trip goes on to the camp not cleared yet")
+  ns.HUD.Update()
+  check(not ns.Nav.InArea() and ns.HUD.ArrowShown(), "still standing in it: not the area now, the arrow shows the way")
+  player.x, player.y = 0.31, 0.6
+  ns.HUD.Update()
+  player.x, player.y = 0.31, 0.3
+  ns.HUD.Update()
+  check(ns.Nav.InArea(), "walk out and back: it's the area again")
 
   UnitGUID, UnitName, UnitIsDead, UnitIsTapDenied, UnitIsDeadOrGhost = savedGUID, savedName, nil, nil, nil
   time = os.time
@@ -3447,7 +3466,7 @@ do
   check(not ns.HUD.CompassShown() and ns.HUD.Width() < 330, "compass off: no circle, a narrower box")
   SlashCmdList.WAYFINDER("compass")
   check(ns.HUD.CompassShown() and ns.HUD.Width() == 330, "and back")
-  ns.Nav.Next()
+  fire("TAXIMAP_OPENED")
   check(#added == 2 and removed == 1, "each step replaces the TomTom waypoint")
   ns.Nav.Stop()
   check(removed == 2, "stopping clears it")
@@ -3615,11 +3634,6 @@ do
     "the directions box: trip and stops done, the step, distance and time (no step count for a one-step stop): "
       .. table.concat(lines, " | "))
 
-  -- Skipping ahead and back: the stops come back.
-  ns.Nav.Next()
-  ns.Nav.Next()
-  check(ns.Journey.StopsDone(ns.Nav.active.journey) == 0 and ns.JourneyOverview.Rows()[1].state == "skipped",
-    "skipped stops aren't counted as done; the overview says skipped")
   local function shape()
     local out = {}
     for _, line in ipairs(ns.JourneyOverview.Lines()) do
@@ -3629,19 +3643,6 @@ do
     end
     return table.concat(out, ",")
   end
-  check(shape() == "finished2-,skipped,skipped,now,next", "two finished stops: a line for them, open: " .. shape())
-  ns.JourneyOverview.ToggleFinished()
-  check(shape() == "finished2+,now,next", "click the line to fold them: " .. shape())
-  ns.JourneyOverview.ToggleFinished()
-  check(shape() == "finished2-,skipped,skipped,now,next", "and again to show them")
-  ns.Nav.Next()
-  check(shape() == "finished3-,skipped,skipped,skipped,now", "your choice holds for this trip: " .. shape())
-  ns.Nav.Prev()
-  ns.Nav.Prev()
-  ns.Nav.Prev()
-  local states = {}
-  for _, r in ipairs(ns.JourneyOverview.Rows()) do states[#states + 1] = r.state end
-  check(table.concat(states, ",") == "now,next,next,next", "going back opens them again: " .. table.concat(states, ","))
   ns.JourneyOverview.Show()
   check(ns.JourneyOverview.HandleCount() == 4, "every open stop has a drag handle")
   check(ns.JourneyOverview.Move(1, 2) and labels() == "B,A,Giver,Finisher", "dragging A below B swaps them: " .. labels())
@@ -3659,13 +3660,27 @@ do
   -- (Near is close enough to count as visited.)
   check(table.concat(order, ",") == "Giver,B,A,Finisher", "your order survives a reload: " .. table.concat(order, ","))
   -- A new trip folds by itself from three finished stops.
-  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Fold", stops = {
-    stopAt(0.52, "F1"), stopAt(0.53, "F2"), stopAt(0.54, "F3"), stopAt(0.55, "F4") } }))
-  ns.Nav.Next()
-  ns.Nav.Next()
-  check(shape() == "finished2-,skipped,skipped,now,next", "under three: shown")
-  ns.Nav.Next()
+  local function fold(title)
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = title, stops = {
+      stopAt(0.52, "F1"), stopAt(0.53, "F2"), stopAt(0.54, "F3"), stopAt(0.55, "F4") } }))
+    local f = ns.Nav.active.journey.stops
+    return f[1], f[2], f[3]
+  end
+  local f1, f2, f3 = fold("Fold")
+  ns.Nav.Drop(f1)
+  ns.Nav.Drop(f2)
+  check(shape() == "finished2-,dropped,dropped,now,next", "under three: shown, under a line for them: " .. shape())
+  ns.Nav.Drop(f3)
   check(shape() == "finished3+,now", "three finished: folded by themselves: " .. shape())
+  f1, f2, f3 = fold("Fold again")
+  ns.Nav.Drop(f1)
+  ns.Nav.Drop(f2)
+  ns.JourneyOverview.ToggleFinished()
+  check(shape() == "finished2+,now,next", "click the line to fold them: " .. shape())
+  ns.JourneyOverview.ToggleFinished()
+  check(shape() == "finished2-,dropped,dropped,now,next", "and again to show them")
+  ns.Nav.Drop(f3)
+  check(shape() == "finished3-,dropped,dropped,dropped,now", "your choice holds for this trip: " .. shape())
   -- A trip too long to show at once scrolls.
   local many = {}
   for i = 1, 14 do many[i] = stopAt(0.5 + i * 0.01, "S" .. i) end
@@ -3687,6 +3702,79 @@ do
   ns.JourneyOverview.Toggle()
 end
 ---------------------------------------------------------------- reordering a trip (end)
+---------------------------------------------------------------- move on and skip (begin)
+do
+  io.write("move on and skip\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1439, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local function stopAt(x, label) return { node = ns.Geo.Node(1439, x, 0.5, label), text = "Visit " .. label } end
+  local function labels()
+    local out = {}
+    for _, st in ipairs(ns.Nav.active.journey.stops) do out[#out + 1] = st.node.label end
+    return table.concat(out, ",")
+  end
+  local pickup = { node = ns.Geo.Node(1439, 0.52, 0.5, "Giver"), text = "Pick up Q", action = { kind = "pickup", questID = 882 } }
+  local turnin = { node = ns.Geo.Node(1439, 0.54, 0.5, "Finisher"), text = "Hand in Q", after = { pickup },
+    action = { kind = "turnin", questID = 882 } }
+  local far = stopAt(0.6, "Far")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { pickup, turnin, far } }))
+  check(labels() == "Giver,Finisher,Far", "planned nearest first: " .. labels())
+  ns.HUD.Update()
+  local f = ns.HUD.Frame()
+  check(f.moveOn:IsShown() and f.skip:IsShown() and f.next == nil and f.prev == nil,
+    "a trip's box has move on and skip, no next or back")
+
+  -- Move on, not in a camp: this stop later, after the next one that doesn't need it.
+  check(ns.Nav.MoveOnKind() == "later" and ns.HUD.MoveOnTip():find("later", 1, true), "move on would do it later")
+  local before = #chat
+  ns.Nav.MoveOn()
+  check(labels() == "Far,Giver,Finisher" and chat[before + 1] == "|cff7fd1aeWayfinder:|r later: Pick up Q, after Visit Far.",
+    "the pickup goes after Far (not after its own hand-in): " .. labels() .. " / " .. tostring(chat[before + 1]))
+  local root = ns.Nav.active.journey.root
+  check(not root.manual, "the rest is still planned for you")
+  local loaded = ns.Journey.Load(ns.Journey.Save(ns.Nav.active.journey))
+  check(loaded.stops[1].later and loaded.stops[1].later[1] == loaded.stops[3], "the choice is saved with the trip")
+  before = #chat
+  ns.Nav.MoveOn()
+  check(labels() == "Giver,Finisher,Far" and pickup.later == nil and far.later and far.later[1] == pickup,
+    "Far later too: your newest choice wins, no loop: " .. labels())
+
+  -- In a trip you ordered yourself it moves there.
+  ns.Nav.Stop()
+  local a, b, c = stopAt(0.52, "A"), stopAt(0.54, "B"), stopAt(0.56, "C")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Mine", stops = { a, b, c } }))
+  ns.Nav.MoveStop(c, a)
+  check(labels() == "C,A,B", "your order: " .. labels())
+  ns.Nav.MoveOn()
+  check(labels() == "A,C,B" and ns.Nav.active.journey.root.manual and c.later == nil, "move on keeps it: " .. labels())
+
+  -- Skip asks first, then takes the stop off with what needs it.
+  ns.Nav.Stop()
+  pickup.later, far.later, pickup.skipped, turnin.skipped = nil, nil, nil, nil
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { pickup, turnin, far } }))
+  local shown, popup = nil, nil
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, text, _, data) shown, popup = which, { text = text, data = data } end
+  ns.Nav.Skip()
+  check(shown == "WAYFINDER_SKIP" and popup.text:find('Skip "Pick up Q"?', 1, true)
+    and popup.text:find('with "Hand in Q", which needs it', 1, true) and not pickup.skipped,
+    "skip asks, naming what goes with it: " .. tostring(popup and popup.text))
+  StaticPopupDialogs.WAYFINDER_SKIP.OnAccept(nil, popup.data)
+  check(pickup.skipped and turnin.skipped and labels() == "Far", "yes: both off the trip: " .. labels())
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  ns.Nav.Skip()
+  check(ns.Nav.active == nil, "skipping the last stop ends the trip")
+
+  -- Plain directions: neither button.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local trainer = ns.Trainers.Results()[1]
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  ns.HUD.Update()
+  check(not f.moveOn:IsShown() and not f.skip:IsShown() and ns.Nav.MoveOnKind() == nil, "plain directions: no move on or skip")
+  ns.Nav.Stop()
+end
+---------------------------------------------------------------- move on and skip (end)
 ---------------------------------------------------------------- cards (begin)
 do
   io.write("cards\n")

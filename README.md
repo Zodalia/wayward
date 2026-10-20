@@ -25,7 +25,7 @@ What works in this MVP:
   without an arrow its circle shows what's ahead (quest pickup or hand-in,
   flight). It also shows the trip, a bar of stops done, the step, which stop
   you're on, and distance and time left, with Blizzard's square buttons for
-  previous / next step, all stops, recalculate and stop.
+  skip and move on (on a trip), all stops, recalculate and stop.
 - **Talking to NPCs** is a step of its own. At a flight path it's "Talk to
   Ariena Stormfeather, the flight master at Lakeshire" (named once you've met
   them, or from a data source) until the flight map opens, then "Fly to
@@ -366,7 +366,7 @@ panel to add it to the trip you're on.
     time. Action kinds: `pickup`, `complete` (the objectives; done when the game
     reports the quest complete), `turnin`, `item` (collect an item a quest
     needs; done when it's in your bags) and `manual` (a quest step only you can
-    tell is done; the directions box's next button confirms it).
+    tell is done; the directions box's move on button confirms it there).
   - `ns.Journey.QuestStops(questID, here)` gives the stops for a whole quest
     from where it stands now: pick it up, do the objectives (the game's quest
     area marker once it's in your log, else the quest data's objective mobs, objects,
@@ -413,8 +413,18 @@ panel to add it to the trip you're on.
   - When a trip gains a quest's hand-in, the quests that follow it (picked
     up where you hand it in, often from the same NPC) are offered if adding
     them costs 3 minutes of travel or less.
-  - Skipping a stop with next marks it skipped, not done; going back reopens
-    it, and doing it anyway (the quest log or your bags say so) marks it done.
+  - **Move on** (the directions box's > button) works on the stop you're
+    heading for: in one of its camps, that camp counts as cleared and the
+    trip goes on (another camp, or other stops while it respawns; the camp
+    isn't "the area" again until you've walked out of it); at a quest step
+    only you can tell is done, it's done; anywhere else, the stop comes after
+    the next one that doesn't need it (a pickup never goes after its own
+    hand-in). In a trip planned for you that's a rule the later plans keep
+    (`Journey.Postpone`, saved with the trip; your newest choice wins), so the
+    rest is still ordered for you; in a trip you ordered yourself it moves.
+  - **Skip** (the box's x button) asks first, then takes the stop off the trip
+    with the stops that need it (a hand-in when you skip the objectives), like
+    the overview's x.
   - Quest data can miss a step of a chain, so a follow-up looks available
     when it isn't. When you talk to a quest giver, the game lists what they
     offer you: a trip's pickup there that isn't on the list is dropped (with

@@ -22,6 +22,7 @@ local _, ns = ...
 --       { kind = "train", profession, cap, npc } (done when that profession's skill
 --       cap is over `cap`: you bought the next rank)
 --     after = { stop, ... },   -- optional: stops that must come first
+--     later = { stop, ... },   -- set by Journey.Postpone: stops you chose to do first
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
 --       (objectives in several areas: the area that fits the trip, see Journey.PickArea)
 --     worked = { [area index] = time },  -- set on the way: objective areas you've cleared
@@ -236,6 +237,18 @@ function Journey.ForgetVisit(stop)
   stop.areaAt, stop.visit, stop.inArea = nil, nil, nil
 end
 
+-- You say the area you're in is cleared (the directions box's move on). It
+-- isn't the area you're in again until you've walked out of it (stop.leaving,
+-- Nav). Returns false when you're in none of the stop's areas.
+function Journey.ClearArea(stop)
+  if not (stop and stop.areaAt) then return false end
+  stop.worked = stop.worked or {}
+  stop.worked[stop.areaAt] = time()
+  stop.leaving = stop.areaAt
+  Journey.ForgetVisit(stop)
+  return true
+end
+
 -- Where to do a stop's objectives from `from` when they're in more than one
 -- area: the one you're in; else one you haven't cleared lately, the least out
 -- of the way on to `toward` (the stop after it); else the one cleared longest
@@ -278,6 +291,16 @@ end
 
 ---------------------------------------------------------------- ordering
 
+-- The stops a stop comes after: the ones it needs (`after`) and the ones you
+-- chose to do first (`later`, Journey.Postpone).
+local function prerequisites(stop)
+  if not stop.later then return stop.after or {} end
+  local out = {}
+  for _, s in ipairs(stop.after or {}) do out[#out + 1] = s end
+  for _, s in ipairs(stop.later) do out[#out + 1] = s end
+  return out
+end
+
 -- Travel seconds between points, planned once per pair.
 local function costTable(points, net)
   local cache = {}
@@ -308,7 +331,7 @@ local function orderStops(start, stops, net)
 
   -- A stop is ready once every stop it comes after (in this plan) is placed.
   local function ready(i, placed)
-    for _, before in ipairs(stops[i - 1].after or {}) do
+    for _, before in ipairs(prerequisites(stops[i - 1])) do
       local j = indexOf[before]
       if j and not placed[j] then return false end
     end
@@ -375,7 +398,7 @@ end
 local function validOrder(order, inPlan)
   local placed = {}
   for _, stop in ipairs(order) do
-    for _, before in ipairs(stop.after or {}) do
+    for _, before in ipairs(prerequisites(stop)) do
       if inPlan[before] and not placed[before] then return false end
     end
     placed[stop] = true
@@ -578,6 +601,62 @@ function Journey.Move(journey, stop, target)
   return true
 end
 
+-- Puts an open stop after the next one in the current plan that doesn't need
+-- it (the directions box's move on: do that one first). In a trip you ordered
+-- yourself it moves there (Journey.Move); otherwise it becomes a rule for the
+-- plans after (stop.later), so the rest is still ordered for you. Returns the
+-- stop it now comes after, or nil when there's none. Re-plan afterwards.
+function Journey.Postpone(journey, stop)
+  local root = journey.root or journey.def
+  if not open(stop) or stop == root.finish then return nil end
+  -- Your newest choice wins: stops you put after this one before needn't wait for it now.
+  local waived = {}
+  for _, s in ipairs(root.stops or {}) do
+    for i = #(s.later or {}), 1, -1 do
+      if s.later[i] == stop then
+        waived[#waived + 1] = s
+        table.remove(s.later, i)
+      end
+    end
+    if s.later and #s.later == 0 then s.later = nil end
+  end
+  local target = Journey.PostponeAfter(journey, stop)
+  if not target then
+    for _, s in ipairs(waived) do
+      s.later = s.later or {}
+      table.insert(s.later, stop)
+    end
+  end
+  return target
+end
+
+function Journey.PostponeAfter(journey, stop)
+  local root = journey.root or journey.def
+  local needs, seen = { [stop] = true }, false
+  for _, s in ipairs(journey.stops) do
+    if s == stop then
+      seen = true
+    elseif seen and open(s) and s ~= root.finish then
+      local dependent = false
+      for _, before in ipairs(prerequisites(s)) do
+        if needs[before] then dependent = true end
+      end
+      if dependent then
+        needs[s] = true
+      else
+        if root.manual then
+          if not Journey.Move(journey, stop, s) then return nil end
+        else
+          stop.later = stop.later or {}
+          table.insert(stop.later, s)
+        end
+        return s
+      end
+    end
+  end
+  return nil
+end
+
 -- A journey's open stops as plain stops to add elsewhere; its fixed final stop
 -- (e.g. a dungeon entrance) comes after the rest.
 function Journey.OpenStops(journey)
@@ -654,10 +733,12 @@ function Journey.Save(journey)
   local index = {}
   for i, stop in ipairs(root.stops or {}) do index[stop] = i end
   local function save(stop)
-    local after = {}
+    local after, later = {}, {}
     for _, before in ipairs(stop.after or {}) do after[#after + 1] = index[before] end
+    for _, before in ipairs(stop.later or {}) do later[#later + 1] = index[before] end
     return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, npc = stop.npc, action = stop.action, resolve = stop.resolve,
-      done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = #after > 0 and after or nil }
+      done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = #after > 0 and after or nil,
+      later = #later > 0 and later or nil }
   end
   local saved = { title = root.title, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
@@ -674,9 +755,11 @@ function Journey.Load(saved)
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end
   for i, s in ipairs(saved.stops or {}) do
-    if s.after then
-      def.stops[i].after = {}
-      for _, j in ipairs(s.after) do table.insert(def.stops[i].after, def.stops[j]) end
+    for _, key in ipairs({ "after", "later" }) do
+      if s[key] then
+        def.stops[i][key] = {}
+        for _, j in ipairs(s[key]) do table.insert(def.stops[i][key], def.stops[j]) end
+      end
     end
   end
   if saved.finish then def.finish = load(saved.finish) end

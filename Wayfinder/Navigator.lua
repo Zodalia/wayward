@@ -282,33 +282,6 @@ local function arrive()
   Nav.Stop()
 end
 
--- "Skip" also counts the current stop as done, so the journey moves on.
--- Skipping a stop's step passes the stop (`passed`: left out of the plan, but
--- not counted as done); going back to it opens it again. A quest step you
--- confirm yourself ("Fill the bowl at the moonwell") is done instead.
-function Nav.Next()
-  local a = Nav.active
-  if not a then return end
-  local stop = a.route.steps[a.index].stop
-  if stop and not stop.done then
-    stop.done = true
-    stop.passed = not (stop.action and stop.action.kind == "manual") or nil
-  end
-  if a.index >= #a.route.steps then return arrive() end
-  a.index = a.index + 1
-  showStep()
-end
-
-function Nav.Prev()
-  local a = Nav.active
-  if a and a.index > 1 then
-    a.index = a.index - 1
-    local stop = a.route.steps[a.index].stop
-    if stop and stop.passed then stop.done, stop.passed = nil, nil end
-    showStep()
-  end
-end
-
 -- A fresh plan from `here` to the same goal (or the journey's remaining stops).
 local function planFrom(a, here)
   local net = ns.Network.Build()
@@ -667,23 +640,30 @@ end)
 
 -- Drops a stop (and the stops that need it, e.g. a quest's hand-in when you
 -- drop its pickup) and re-plans the rest.
-function Nav.Drop(stop)
-  local a = Nav.active
-  if not (a and a.journey and stop) then return end
-  local dropped = { [stop] = true }
-  stop.skipped = true
-  local root = a.journey.root or a.journey.def
+-- The open stops that need `stop` (directly or through others), in plan order.
+local function dependents(journey, stop)
+  local root = journey.root or journey.def
+  local dropped, out = { [stop] = true }, {}
   local changed = true
   while changed do
     changed = false
     for _, other in ipairs(root.stops or {}) do
       for _, before in ipairs(other.after or {}) do
         if dropped[before] and not dropped[other] then
-          dropped[other], other.skipped, changed = true, true, true
+          dropped[other], changed = true, true
+          if not other.done and not other.skipped then out[#out + 1] = other end
         end
       end
     end
   end
+  return out
+end
+
+function Nav.Drop(stop)
+  local a = Nav.active
+  if not (a and a.journey and stop) then return end
+  stop.skipped = true
+  for _, other in ipairs(dependents(a.journey, stop)) do other.skipped = true end
   local here = ns.Geo.PlayerNode()
   local journey = here and ns.Journey.Replan(a.journey, here)
   if not journey then
@@ -957,7 +937,11 @@ local function areaOf(stop, here)
   local best, bestDistance, bestArea
   for _, area in ipairs(areas) do
     local node, d = ns.Data.Nearest(area.nodes, here)
-    if d < (bestDistance or math.huge) then best, bestDistance, bestArea = node, d, area.index end
+    -- The camp you just moved on from isn't the area till you're out of it.
+    if area.index == stop.leaving then
+      if d > AREA_LEAVE then stop.leaving = nil else node = nil end
+    end
+    if node and d < (bestDistance or math.huge) then best, bestDistance, bestArea = node, d, area.index end
   end
   if not best then return false end
   return bestDistance <= (stop.inArea and AREA_LEAVE or AREA_RADIUS), best, bestArea
@@ -971,25 +955,30 @@ end
 -- Left the area of the stop you're on, its objectives not done. A cleared
 -- area: the trip from here, on to another. A short step out: the way back to
 -- the nearest area you haven't cleared.
-local function leftArea(a, step, stop, here, spot, cleared)
-  local journey = cleared and a.journey and ns.Journey.Replan(a.journey, here)
-  if journey then
-    a.lastReplan = GetTime and GetTime()
-    local areas, left = ns.Journey.OpenAreas(stop.action.questID), 0
-    for _, area in ipairs(areas) do
-      if not ns.Journey.Cleared(stop, area.index) then left = left + 1 end
-    end
-    if left > 0 then
-      ns.print(string.format("that spot's cleared: on to another for %s.", questName(stop.action.questID)))
-    elseif journey.stops[1] ~= stop then
-      ns.print(string.format("that spot's cleared: other stops first while it respawns (%s).",
-        ns.FormatDuration(ns.Journey.RespawnIn(stop))))
-    else
-      ns.print(string.format("that spot's cleared: back when it respawns (%s).", ns.FormatDuration(ns.Journey.RespawnIn(stop))))
-    end
-    adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
-    return
+-- A camp of the stop's is cleared: the trip from here, on to another camp
+-- (or other stops while it respawns), saying which. False without a route.
+local function onFromCamp(a, stop, here)
+  local journey = a.journey and ns.Journey.Replan(a.journey, here)
+  if not journey then return false end
+  a.lastReplan = GetTime and GetTime()
+  local areas, left = ns.Journey.OpenAreas(stop.action.questID), 0
+  for _, area in ipairs(areas) do
+    if not ns.Journey.Cleared(stop, area.index) then left = left + 1 end
   end
+  if left > 0 then
+    ns.print(string.format("that spot's cleared: on to another for %s.", questName(stop.action.questID)))
+  elseif journey.stops[1] ~= stop then
+    ns.print(string.format("that spot's cleared: other stops first while it respawns (%s).",
+      ns.FormatDuration(ns.Journey.RespawnIn(stop))))
+  else
+    ns.print(string.format("that spot's cleared: back when it respawns (%s).", ns.FormatDuration(ns.Journey.RespawnIn(stop))))
+  end
+  adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+  return true
+end
+
+local function leftArea(a, step, stop, here, spot, cleared)
+  if cleared and onFromCamp(a, stop, here) then return end
   local node = ns.Journey.PickArea(stop, here) or spot
   if node then
     step.to = ns.Geo.Node(node.mapID, node.x, node.y, stop.node.label) or node
@@ -1039,6 +1028,77 @@ local function doingLater()
 end
 
 ns.On("QUEST_LOG_UPDATE", doingLater)
+
+---------------------------------------------------------------- move on, skip
+
+-- The stop the current leg of a trip leads to (the step may be a flight on the way).
+function Nav.HeadingFor()
+  local a = Nav.active
+  if not (a and a.journey) then return nil end
+  for k = a.index, #a.route.steps do
+    local stop = a.route.steps[k].stop
+    if stop then return stop end
+  end
+  return nil
+end
+
+-- What move on does now: "cleared" (you're in one of the stop's camps: it
+-- counts as cleared), "done" (a quest step only you can tell is done, and
+-- you're at it), "later" (the next stop first), or nil off a trip.
+function Nav.MoveOnKind()
+  local stop = Nav.HeadingFor()
+  if not stop then return nil end
+  if stop.inArea and stop.areaAt then return "cleared" end
+  local current = Nav.CurrentStep()
+  if stop.action and stop.action.kind == "manual" and Nav.Waiting() and current and current.stop == stop then
+    return "done"
+  end
+  return "later"
+end
+
+function Nav.MoveOn()
+  local a = Nav.active
+  local stop = Nav.HeadingFor()
+  local here = ns.Geo.PlayerNode()
+  if not (stop and here) then return end
+  local kind = Nav.MoveOnKind()
+  if kind == "cleared" then
+    ns.Journey.ClearArea(stop)
+    onFromCamp(a, stop, here)
+  elseif kind == "done" then
+    finishStop(function(action) return action == stop.action end)
+  else
+    local first = ns.Journey.Postpone(a.journey, stop)
+    if not first then
+      ns.print("nothing else on the trip to do first; skip it to take it off.")
+      return
+    end
+    local journey = ns.Journey.Replan(a.journey, here)
+    if not journey then return end
+    ns.print(string.format("later: %s, after %s.", stop.text or "that stop", first.text or "the next stop"))
+    adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+  end
+end
+
+-- Takes the stop you're heading for off the trip, with the stops that need it
+-- (a hand-in when you skip the objectives), once you say yes.
+function Nav.Skip()
+  local a = Nav.active
+  local stop = Nav.HeadingFor()
+  if not stop then return end
+  local also = dependents(a.journey, stop)
+  if not (StaticPopupDialogs and StaticPopup_Show) then return Nav.Drop(stop) end
+  StaticPopupDialogs.WAYFINDER_SKIP = StaticPopupDialogs.WAYFINDER_SKIP or {
+    text = "%s",
+    button1 = "Skip", button2 = "Cancel",
+    OnAccept = function(_, data) if Nav.active then Nav.Drop(data.stop) end end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  local text = string.format("Skip \"%s\"?\n\nIt's taken off the trip%s.", stop.text or "this stop",
+    #also == 0 and "" or #also == 1 and string.format(", with \"%s\", which needs it", also[1].text or "a stop")
+    or string.format(", with the %d stops that need it", #also))
+  askPlayer("WAYFINDER_SKIP", text, { stop = stop })
+end
 
 -- True while you're in the area of the stop you're working on.
 function Nav.InArea()
