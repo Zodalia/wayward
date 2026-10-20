@@ -11,5 +11,9 @@ lua tests/wayward_smoke.lua >/dev/null
 mkdir -p dist
 out="dist/Wayward-$version.zip"
 rm -f "$out"
-zip -qr "$out" Wayward -x '*.DS_Store' -x '*/.*'
+stage=$(mktemp -d)
+cp -R Wayward "$stage/Wayward"
+cp LICENSE "$stage/Wayward/LICENSE.txt"
+(cd "$stage" && zip -qr "$OLDPWD/$out" Wayward -x '*.DS_Store' -x '*/.*')
+rm -rf "$stage"
 echo "$out ($(du -h "$out" | cut -f1))"

@@ -18,8 +18,10 @@ what is worth doing near you and gets you there.
 3. Open a flight map once on each continent and visit your class trainer.
    Wayward learns flight paths, trainers and vendors as you meet them.
 
-Optional: a data addon adds quests, items and every trainer (see
-[Data sources](#data-sources)); TomTom's arrow is supported.
+Optional: install [QuestieDB](https://github.com/Questie/QuestieDB) (the
+Questie team's free database, Forever flavour) and Wayward reads it for
+quests, items and every trainer; nothing to configure. TomTom's arrow is
+supported.
 
 **Requirements and limits.** The Forever client (Interface 16001). English
 (enUS/enGB) client: directions work on any locale, but trainers and vendors
@@ -516,15 +518,29 @@ panel to add it to the trip you're on.
 
 ### Data sources
 
-Wayward ships no third-party data. Everything it knows comes from the game
-client, from what it records while you play (`Harvest.lua`), and from the
-hand-made files in `Wayward/Data/` (a seeded trainer, transports, dungeon
-entrances, vendor goods: our own, approximate, vanilla knowledge). Quest
-databases for Forever exist, but none is under a licence that allows
-bundling it here, so quest, item and NPC data come from a separate data
-addon that registers a **source** at runtime; `docs/RELEASE.md` has the
-licensing notes. `Wayward/Sources.lua` documents the interface in full. In
-short:
+Wayward ships no third-party quest database: none for Forever is under a
+licence that allows bundling it. What it knows comes from the game client,
+from what it records while you play (`Harvest.lua`), from the hand-made
+files in `Wayward/Data/` (a seeded trainer, transports, dungeon entrances,
+vendor goods: our own, approximate, vanilla knowledge), and from two
+**sources** of its own in `Wayward/Sources/`:
+
+- **QuestieDB** (`Sources/QuestieLive.lua`, `Sources/Questie.lua`): when the
+  [QuestieDB](https://github.com/Questie/QuestieDB) addon is installed
+  (`## OptionalDeps: QuestieDB`), Wayward reads it at runtime through its
+  documented consumer API (contract 4): quests, NPCs, objects, items, dungeon
+  entrances and quest XP. Nothing of it is copied or shipped; the player
+  installs it from the Questie team's releases.
+- **Class spells** (`Sources/Spells.lua`, `Data/ClassSpells.lua`): every
+  class's trainer spells with level, cost and required ranks, what weapon
+  masters teach, and flight costs, generated from the Forever client's own
+  tables (wago.tools) and [WhatsTraining](https://github.com/fusionpit/WhatsTraining)
+  (MIT, `Wayward/LICENSES/WhatsTraining.txt`). Regenerated in the author's
+  data repository and copied in.
+
+`docs/RELEASE.md` has the licensing notes. Any addon can add another source
+(or replace one of those by registering its id again); `Wayward/Sources.lua`
+documents the interface in full. In short:
 
 ```lua
 -- In a companion addon whose TOC has "## Dependencies: Wayward":

@@ -283,7 +283,10 @@ end
 local function footerText(net)
   local source = ns.Data.Status()
   source = source and ("Data: " .. source .. " + places you visited. ")
-    or "Data: places you visited (install " .. ns.Data.ADDON .. " for more). "
+    or "Data: places you visited. "
+  if not ns.Data.Has("Quest") then
+    source = source .. "Install " .. ns.Data.ADDON .. " for quests, items and every trainer. "
+  end
   local flights = net and net.knownFlights or 0
   if flights == 0 then
     return source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight "

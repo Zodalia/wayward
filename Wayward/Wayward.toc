@@ -5,6 +5,8 @@
 ## Author: Zodalia
 ## Version: 0.4.0
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
+## X-License: MIT
+## OptionalDeps: QuestieDB
 ## SavedVariables: WaywardDB
 ## SavedVariablesPerCharacter: WaywardCharDB
 ## AddonCompartmentFunc: Wayward_OnAddonCompartmentClick
@@ -19,6 +21,10 @@ Data\Dungeons.lua
 Data\Transports.lua
 Data\VendorGoods.lua
 Data\Seed.lua
+Data\ClassSpells.lua
+Sources\Questie.lua
+Sources\QuestieLive.lua
+Sources\Spells.lua
 Harvest.lua
 Network.lua
 Router.lua

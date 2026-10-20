@@ -26,24 +26,20 @@ Checked 2026-10-20 (GitHub API, repo docs, CurseForge listings).
 | VMaNGOS trainer lists (which NPC teaches what) | GPL-2.0 | **Do not ship** unless the whole data addon is released under the GPL. Without it, trainer lists come from visiting trainers and from QuestieDB's NPC flags; weapon masters list what they teach once you visit them. |
 | Wowhead | no API, scraping disallowed | never |
 
-Recommendation: publish a second, public addon, **Wayward Data**, that
-contains only the QuestieDB bridge (`Sources/QuestieLive.lua` +
-`Questie.lua`) and the class spells source (`Sources/Spells.lua` +
-`Generated/ClassSpells.lua`, from the private companion repository), with
-the WhatsTraining licence file. The private companion keeps the snapshot and
-the VMaNGOS lists for personal use. Then set `Data.ADDON` in
-`Wayward/Sources.lua` to the published name (every hint in the addon uses
-it) and link both addons from each other's listing.
+Done 2026-10-20: the QuestieDB bridge (`Wayward/Sources/QuestieLive.lua`,
+`Sources/Questie.lua`) and the class spells source (`Sources/Spells.lua`,
+`Data/ClassSpells.lua`, `LICENSES/WhatsTraining.txt`) are part of Wayward
+itself, with `## OptionalDeps: QuestieDB`; every in-game hint says "install
+QuestieDB" (`Data.ADDON` in `Wayward/Sources.lua`). The private companion
+(`~/Repositories/wayfinder-data`, addons Wayward_Data and
+Wayward_Data_Questie) keeps the snapshot and the VMaNGOS lists for personal
+use: its sources register the same ids (`questie`, `spells`) at the same or
+higher priority, so installing it next to Wayward replaces the built-in
+ones. The class spell table is generated there (`tools/build.py spells`) and
+copied into `Wayward/Data/ClassSpells.lua`.
 
-Simpler for players: fold those two sources into Wayward itself (one
-install, "install QuestieDB for quests"). The bridge is our code and the
-spell table is Blizzard data plus MIT, so this keeps Wayward clean as well;
-it only departs from the earlier "no QuestieDB calls in Wayward" split, which
-was made before the consumer API's intended use was confirmed.
-
-Either way, Wayward itself needs a licence file before it is public. MIT
-matches the sources we build on (pfQuest, WhatsTraining) and is what most
-addons use; the choice is the author's.
+Wayward is MIT licensed (`LICENSE`, `## X-License: MIT`; the zip carries it
+as `Wayward/LICENSE.txt`).
 
 ## Names
 
@@ -54,19 +50,20 @@ the project page early to hold the name.
 
 ## Checklist
 
-- [ ] `LICENSE` file in the repository and `## X-License` in the TOC.
+- [x] `LICENSE` file in the repository and `## X-License` in the TOC.
 - [ ] `lua tests/wayward_smoke.lua` and `lua tests/smoke.lua` pass.
 - [ ] `tools/package.sh`; install the zip (not the symlink) on a clean
       AddOns folder and log in: the welcome shows, `/ww` opens, no Lua errors
       with script errors on (`/console scriptErrors 1`).
-- [ ] Same with QuestieDB and the data addon installed: `/ww debug` lists the
-      sources.
+- [ ] Same with QuestieDB installed: `/ww debug` lists "QuestieDB (baked),
+      Class spells" and the Quests tab searches. Then with the private
+      companion too: its sources replace the built-in ones.
 - [ ] Walk one trip end to end in the beta (flight, boat, quest pickup and
       hand-in), and one with TomTom installed.
 - [ ] Screenshots: the For you cards, the directions box, the quick menu.
 - [ ] CurseForge project: game version Forever, category Quests & Leveling,
-      description from the README's first three sections, the data addon
-      linked.
+      description from the README's first three sections, QuestieDB named
+      as the optional dependency.
 - [ ] Tag `v0.4.0` on the branch that ships; merge to `main` (empty today).
 
 ## Audit, 2026-10-20
@@ -108,7 +105,8 @@ twice per row.
 
 - English client for data-source trainers, vendors and weapon masters.
 - Shipped docks and entrances are approximate until recorded in Forever.
-- Without a data addon: trainers, vendors and flight masters you have
-  visited; no quest search, hubs or item sources.
+- Without QuestieDB: trainers, vendors and flight masters you have
+  visited plus every class's spell list; no quest search, hubs or item
+  sources.
 - The in-world marker's height is the game's guess (addons get no height).
 - Flight paths are learned per continent (open a flight map once on each).

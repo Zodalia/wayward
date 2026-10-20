@@ -14,7 +14,7 @@ local frame
 
 -- The paragraphs, top to bottom (for tests too).
 function Welcome.Lines()
-  local status = ns.Data and ns.Data.Status()
+  local status = ns.Data and ns.Data.Has("Quest") and ns.Data.Status()
   return {
     "Wayward suggests what to do next for this character and gives step-by-step directions: "
       .. "on foot, by flight path, boat, zeppelin and tram.",
@@ -24,7 +24,8 @@ function Welcome.Lines()
       .. "and talk to vendors and flight masters as you meet them.",
     status and ("Data: " .. status .. ", plus the places you visit.")
       or ("Wayward ships no quest database. For quests, items and every trainer, install "
-        .. ns.Data.ADDON .. "; until then it knows the places you've been."),
+        .. ns.Data.ADDON .. " (the Questie team's free database); Wayward reads it by itself. "
+        .. "Until then it knows the places you've been."),
     "Directions open in a box you can drag; its compass points the way. /ww help lists every command.",
   }
 end

@@ -199,6 +199,14 @@ fire("ADDON_LOADED", "Wayward")
 
 ---------------------------------------------------------------- tests
 
+io.write("built-in sources\n")
+check(ns.Data.Has("ClassSpells") and ns.Data.ClassSpells("WARLOCK") and #ns.Data.ClassSpells("WARLOCK") > 50
+  and ns.Data.Status() == "Class spells", "the built-in class spells register at load: " .. tostring(ns.Data.Status()))
+check(not ns.Data.Has("Quest") and not ns.questieLive, "without QuestieDB there is no quest source")
+-- The rest of the run uses fixtures only.
+Wayward.UnregisterSource("spells")
+check(ns.Data.Status() == nil, "unregistered for the fixture tests")
+
 io.write("rename\n")
 check(ns.db == WaywardDB and ns.db.legacy and ns.db.legacy.note == "Old" and ns.db.settings.legacyFlag == true,
   "WayfinderDB is copied into WaywardDB on the first load")
@@ -894,7 +902,7 @@ dropData()
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
 local dungeons = ns.Dungeons.Results()
 local all = titles(dungeons)
-check(not ns.Quests.Available() and ns.Dungeons.SummaryText():find("Install a Wayward data addon"),
+check(not ns.Quests.Available() and ns.Dungeons.SummaryText():find("Install QuestieDB"),
   "without QuestieDB: summary suggests installing it")
 check(dungeons[1] and dungeons[1].title == "The Deadmines  ·  level 20",
   "client level wins over data, matched by name without \"The\" (" .. all .. ")")
@@ -1213,8 +1221,8 @@ do
 
   dropData()
   local none, err = ns.QuestsPage.Results("chain")
-  check(#none == 0 and err and err:find("Install a Wayward data addon"), "without QuestieDB: the page says it is needed")
-  check(ns.QuestsPage.SummaryText(""):find("Install a Wayward data addon"), "without QuestieDB: summary too")
+  check(#none == 0 and err and err:find("Install QuestieDB"), "without QuestieDB: the page says it is needed")
+  check(ns.QuestsPage.SummaryText(""):find("Install QuestieDB"), "without QuestieDB: summary too")
   for _, d in ipairs(ns.Dungeons.Results()) do
     if d.actions then check(false, "no dungeon quest action without QuestieDB") end
   end
@@ -1385,8 +1393,8 @@ do
   list = rows("item:1205")
   check(#list == 1 and list[1].title == "Sold by Lakeshire Cook" and detailText(list[1]):find("last visited"),
     "without QuestieDB: the visited vendor that sold it (" .. names(list) .. ")")
-  check(ns.Items.SummaryText("item:1205"):find("Install a Wayward data addon"), "summary says QuestieDB is needed for the rest")
-  check(#rows("item:9001") == 0 and ns.Items.EmptyText("item:9001"):find("Install a Wayward data addon"),
+  check(ns.Items.SummaryText("item:1205"):find("Install QuestieDB"), "summary says QuestieDB is needed for the rest")
+  check(#rows("item:9001") == 0 and ns.Items.EmptyText("item:9001"):find("Install QuestieDB"),
     "without QuestieDB: no drops, and the page says why")
   list = rows("melon")
   check(list[1] and list[1].title == "Sold by Lakeshire Cook", "without QuestieDB: names searched among visited goods")
@@ -1598,7 +1606,7 @@ do
   -- Without QuestieDB: needs and dungeons by level fit.
   dropData()
   list = rows()
-  check(ns.ForYou.SummaryText():find("Install a Wayward data addon"), "without QuestieDB the summary says so")
+  check(ns.ForYou.SummaryText():find("Install QuestieDB"), "without QuestieDB the summary says so")
   check(list[1] and list[1].title:find("^Train") and find(list, "Run The Deadmines") and not find(list, "Pick up"),
     "without QuestieDB: training, then dungeons (" .. titles(list) .. ")")
   refreshData()
@@ -2897,7 +2905,7 @@ do
   check(#rows == 3 and cull and cull.title == "[19] Murloc Cull" and not cull.journey and not cull.actions
     and cull.subtitle:find("directions need quest data") and cull.subtitle:find("3/8", 1, true),
     "without QuestieDB: the log lists, says directions need it, no trips: " .. tostring(cull and cull.subtitle))
-  check(ns.QuestsPage.SummaryText(""):find("Install a Wayward data addon"), "without QuestieDB: the summary says so")
+  check(ns.QuestsPage.SummaryText(""):find("Install QuestieDB"), "without QuestieDB: the summary says so")
   ns.Panel.Search("quests", "")
   check(ns.Panel.IsShown(), "panel shows the quest log without QuestieDB")
   log = {}

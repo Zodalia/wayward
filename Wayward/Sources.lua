@@ -1,8 +1,11 @@
 local _, ns = ...
 
--- Game data from outside the game, through one interface. Wayward bundles
--- none: a companion addon registers a source, and without one every page runs
--- on what you learned in game (Harvest.lua) and the client's own API.
+-- Game data from outside the game, through one interface. Wayward ships two
+-- sources of its own (Sources/): class spells from the client's tables, and
+-- a bridge that reads QuestieDB when it's installed. A companion addon can
+-- register more (or replace one of those by registering its id again), and
+-- without any, every page runs on what you learned in game (Harvest.lua) and
+-- the client's own API.
 --
 -- A companion adds `## Dependencies: Wayward` to its TOC and calls
 --   Wayward.RegisterSource(source)
@@ -122,8 +125,8 @@ function Data.Sources()
   return sources
 end
 
--- How hints name a data source, in one place ("install a Wayward data addon").
-Data.ADDON = "a Wayward data addon"
+-- How hints name the quest data to install, in one place ("install QuestieDB").
+Data.ADDON = "QuestieDB"
 
 -- True when a registered source has this function ("Quest", "ClassSpells", ...).
 function Data.Has(capability)
