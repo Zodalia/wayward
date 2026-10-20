@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 
-ns.VERSION = "0.3.0"
+ns.VERSION = "0.4.0"
 ns.data = {}
 
 function ns.print(msg)
@@ -218,6 +218,7 @@ end
 
 local HELP = {
   "/ww - open or close the Wayward panel",
+  "/ww help - this list",
   "/ww stop - stop the current directions",
   "/ww compass - the compass in the directions box on or off (text directions stay)",
   "/ww tomtom - TomTom's arrow on or off for Wayward's directions (when TomTom is installed)",
@@ -274,7 +275,7 @@ SlashCmdList.WAYWARD = function(msg)
       end
       return
     end
-    ns.print("data sources: " .. (ns.Data.Status() or "none (install a Wayward data addon for quests, items and more NPCs)"))
+    ns.print("data sources: " .. (ns.Data.Status() or "none (install " .. ns.Data.ADDON .. " for quests, items and more NPCs)"))
     local function count(t)
       local n = 0
       for _ in pairs(t) do n = n + 1 end
@@ -288,7 +289,11 @@ SlashCmdList.WAYWARD = function(msg)
     if ns.QuestTimes then ns.print(ns.QuestTimes.Describe(ns.ForYou and ns.ForYou.SECONDS_PER_QUEST)) end
     if ns.unknownEvents then ns.print("events this client doesn't have: " .. table.concat(ns.unknownEvents, ", ")) end
   else
+    if cmd ~= "help" then ns.print("no command called " .. cmd) end
     for _, line in ipairs(HELP) do ns.print(line) end
-    for _, command in pairs(ns.commands) do ns.print(command.help) end
+    local names = {}
+    for name in pairs(ns.commands) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do ns.print(ns.commands[name].help) end
   end
 end

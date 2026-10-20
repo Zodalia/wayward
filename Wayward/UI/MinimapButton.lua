@@ -14,9 +14,15 @@ local atan2 = math.atan2 or math.atan
 
 local button, usingLibIcon
 
-local function onClick(mouseButton)
-  if mouseButton == "RightButton" and ns.Nav.active and ns.Nav.active.journey then
-    ns.JourneyOverview.Toggle()
+-- Left: the panel. Right: the quick menu (journey overview, stop, settings,
+-- options); shift-right-click goes straight to the journey overview on a trip.
+local function onClick(anchor, mouseButton)
+  if mouseButton == "RightButton" then
+    if IsShiftKeyDown and IsShiftKeyDown() and ns.Nav.active and ns.Nav.active.journey then
+      ns.JourneyOverview.Toggle()
+    else
+      ns.Options.ShowMenu(anchor)
+    end
   else
     ns.Panel.Toggle()
   end
@@ -25,7 +31,8 @@ end
 local function tooltip(tt)
   tt:AddLine("Wayward")
   tt:AddLine("Left-click: open the panel", 1, 1, 1)
-  if ns.Nav.active and ns.Nav.active.journey then tt:AddLine("Right-click: journey overview", 1, 1, 1) end
+  tt:AddLine("Right-click: options and quick settings", 1, 1, 1)
+  if ns.Nav.active and ns.Nav.active.journey then tt:AddLine("Shift-right-click: journey overview", 1, 1, 1) end
   if not usingLibIcon then tt:AddLine("Drag to move", 0.6, 0.6, 0.6) end
 end
 
@@ -60,7 +67,7 @@ local function createButton()
   icon:SetTexture(ICON)
   icon:SetPoint("TOPLEFT", 7, -6)
 
-  b:SetScript("OnClick", function(_, mouseButton) onClick(mouseButton) end)
+  b:SetScript("OnClick", function(self, mouseButton) onClick(self, mouseButton) end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     tooltip(GameTooltip)
@@ -96,7 +103,7 @@ function MinimapButton.Setup()
     local ok = pcall(function()
       local launcher = ldb:NewDataObject("Wayward", {
         type = "launcher", icon = ICON, label = "Wayward",
-        OnClick = function(_, mouseButton) onClick(mouseButton) end,
+        OnClick = function(self, mouseButton) onClick(self, mouseButton) end,
         OnTooltipShow = tooltip,
       })
       icon:Register("Wayward", launcher, ns.db.settings.minimapIcon)
@@ -135,8 +142,8 @@ ns.RegisterCommand("minimap", "/ww minimap - show or hide the minimap button", f
 end)
 
 -- Addon compartment (the addons menu by the minimap).
-function Wayward_OnAddonCompartmentClick(_, mouseButton)
-  onClick(mouseButton)
+function Wayward_OnAddonCompartmentClick(_, mouseButton, menuButton)
+  onClick(menuButton or button, mouseButton)
 end
 
 function Wayward_OnAddonCompartmentEnter(_, menuButton)

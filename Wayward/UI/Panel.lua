@@ -283,7 +283,7 @@ end
 local function footerText(net)
   local source = ns.Data.Status()
   source = source and ("Data: " .. source .. " + places you visited. ")
-    or "Data: places you visited (install a Wayward data addon for more). "
+    or "Data: places you visited (install " .. ns.Data.ADDON .. " for more). "
   local flights = net and net.knownFlights or 0
   if flights == 0 then
     return source .. "|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight "
@@ -426,6 +426,19 @@ local function create()
   title:SetText("Wayward")
   ns.Skin.Text(title)
   ns.Skin.CloseButton(f.close)
+  -- Options, in the title bar: the quick menu (settings, the options panel).
+  f.options = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.options:SetSize(64, 20)
+  f.options:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
+  f.options:SetText("Options")
+  f.options:SetScript("OnClick", function(self) ns.Options.ShowMenu(self) end)
+  f.options:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    GameTooltip:SetText("Wayward's settings. Also: right-click the minimap button, or /ww options.", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  f.options:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(f.options)
   if templated then
     -- The footer stays inside the inset.
     f.Inset:ClearAllPoints()
@@ -738,6 +751,13 @@ end
 
 function Panel.IsShown()
   return frame ~= nil and frame:IsShown()
+end
+
+-- The window back in the middle of the screen (/ww reset, the options).
+function Panel.ResetPosition()
+  if not frame then return end
+  frame:ClearAllPoints()
+  frame:SetPoint("CENTER")
 end
 
 function Panel.SideShown()
