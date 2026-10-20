@@ -714,7 +714,7 @@ local function sourcesFor(id, query, alsoMatching)
     text = text .. string.format(" (%s match too; type more of the name)", plural(alsoMatching, "other item"))
   end
   if not available then
-    text = text .. ". Install a Wayward data addon to see where items drop and which quests reward them."
+    text = text .. ". Install " .. ns.Data.ADDON .. " to see where items drop and which quests reward them."
   end
   summary = { query = query, text = text }
   return out, nil, ctx.net
@@ -770,12 +770,12 @@ function Items.EmptyText(query)
   if Items.ParseID(q) then
     if available then return "The data knows no source of this item that is open to you." end
     return "Without item data, Wayward only knows vendors you visited, and none of them sold this item. "
-      .. "Install a Wayward data addon to see where items drop and which quests reward them."
+      .. "Install " .. ns.Data.ADDON .. " to see where items drop and which quests reward them."
   end
   if #q < MIN_QUERY then return string.format("Type at least %d letters of the item's name.", MIN_QUERY) end
   if available then return string.format('No item called "%s".', q) end
   return string.format('No item called "%s" among the goods of vendors you visited. Shift-click the item '
-    .. "instead, or install a Wayward data addon to search every item.", q)
+    .. "instead, or install " .. ns.Data.ADDON .. " to search every item.", q)
 end
 
 ns.RegisterPage({

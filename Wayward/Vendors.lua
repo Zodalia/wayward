@@ -391,7 +391,7 @@ end
 
 function Vendors.EmptyText()
   return "No vendors known yet. Talk to any vendor once and Wayward remembers where they are and what "
-    .. "they sell, or install a Wayward data addon."
+    .. "they sell, or install " .. ns.Data.ADDON .. "."
 end
 
 -- Results: one row per vendor, labelled with what it does for you. The

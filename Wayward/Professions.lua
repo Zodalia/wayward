@@ -176,7 +176,7 @@ function Professions.SummaryText()
 end
 
 function Professions.EmptyText()
-  return "No profession trainers known yet. Talk to one once and Wayward remembers where they are, or install a Wayward data addon."
+  return "No profession trainers known yet. Talk to one once and Wayward remembers where they are, or install " .. ns.Data.ADDON .. "."
 end
 
 -- Your professions first (the next rank, and where to train it), then the

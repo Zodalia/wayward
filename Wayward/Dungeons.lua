@@ -354,7 +354,7 @@ function Dungeons.Results()
   end)
   summary = string.format("Dungeons for level %d, best level fit and shortest trip first.", level)
   if not ns.Quests.Available() then
-    summary = summary .. " Install a Wayward data addon for exact entrances and dungeon quests."
+    summary = summary .. " Install " .. ns.Data.ADDON .. " for exact entrances and dungeon quests."
   end
   return results, nil, net
 end

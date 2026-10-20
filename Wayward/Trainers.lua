@@ -149,7 +149,7 @@ end
 function Trainers.EmptyText()
   local className = UnitClass("player")
   return string.format("No %s trainers known yet. Talk to one once and Wayward remembers where "
-    .. "they are, or install a Wayward data addon. City guards can point you to one.", className:lower())
+    .. "they are, or install " .. ns.Data.ADDON .. ". City guards can point you to one.", className:lower())
 end
 
 -- Trainers this close together (one room or building) are one result.
@@ -303,7 +303,7 @@ function WeaponMasters.EmptyText()
   end
   if knowsAll then return "You know every weapon skill your class can learn." end
   return "No weapon masters known yet. Talk to one once and Wayward remembers where they are and what they teach, "
-    .. "or install a Wayward data addon."
+    .. "or install " .. ns.Data.ADDON .. "."
 end
 
 -- One row per weapon you can learn, "Polearms (Woo Ping)": the nearest weapon

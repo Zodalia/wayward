@@ -34,7 +34,7 @@ local STATUS = {
 local summary
 
 local function unavailableText()
-  return "No quest data. Install a Wayward data addon to search quests."
+  return "No quest data. Install " .. ns.Data.ADDON .. " to search quests."
 end
 
 local function label(status, extra)
@@ -397,7 +397,7 @@ local function logResults()
   if #log == 0 then
     summary = nil
   elseif not available then
-    summary = string.format("Your quest log: %s. No quest data. Install a Wayward data addon for directions and to search quests.",
+    summary = string.format("Your quest log: %s. No quest data. Install " .. ns.Data.ADDON .. " for directions and to search quests.",
       plural(#log, "quest"))
   else
     summary = string.format("Your quest log: %s. Click one for a trip, or Add it to the trip you're on. "

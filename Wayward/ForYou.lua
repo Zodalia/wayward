@@ -1231,7 +1231,7 @@ end
 local function plainRow(option)
   local r = option.result
   local details = { { text = ns.Quests.Available() and "No quests for it: ranked by level fit and travel time."
-    or "Ranked by level fit and travel time. Install a Wayward data addon for its quests and XP.", color = GOLD } }
+    or "Ranked by level fit and travel time. Install " .. ns.Data.ADDON .. " for its quests and XP.", color = GOLD } }
   for _, line in ipairs(r.details or {}) do details[#details + 1] = line end
   local stats = {}
   local level = option.title and option.title:match("level (%d+)$")
@@ -1335,7 +1335,7 @@ local function summaryFor(ctx, needs)
     end
   end
   if not ctx.quests then
-    parts[#parts + 1] = "Install a Wayward data addon for quest hubs and XP; dungeons are ranked by level fit and travel time."
+    parts[#parts + 1] = "Install " .. ns.Data.ADDON .. " for quest hubs and XP; dungeons are ranked by level fit and travel time."
   elseif level >= MAX_LEVEL then
     parts[#parts + 1] = "At the level cap quests give no XP, so options are ranked by quests per hour."
   elseif not ctx.db then
@@ -1600,7 +1600,7 @@ end
 
 function ForYou.EmptyText()
   return "Nothing to suggest from here yet. Visit a trainer for your class, open a flight map, or install "
-    .. "a Wayward data addon for quest hubs and XP estimates."
+    .. "" .. ns.Data.ADDON .. " for quest hubs and XP estimates."
 end
 
 -- Computed once per refresh and reused for CACHE_SECONDS: the providers plan

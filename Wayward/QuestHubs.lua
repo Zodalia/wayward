@@ -14,7 +14,7 @@ ns.On("QUEST_ACCEPTED", function() ns.Fire("DATA_CHANGED") end)
 ns.On("QUEST_TURNED_IN", function() ns.Fire("DATA_CHANGED") end)
 
 local function unavailableText()
-  return "No quest data. Install a Wayward data addon to see quest hubs near you."
+  return "No quest data. Install " .. ns.Data.ADDON .. " to see quest hubs near you."
 end
 
 function QuestHubs.SummaryText()

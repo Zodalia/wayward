@@ -122,6 +122,9 @@ function Data.Sources()
   return sources
 end
 
+-- How hints name a data source, in one place ("install a Wayward data addon").
+Data.ADDON = "a Wayward data addon"
+
 -- True when a registered source has this function ("Quest", "ClassSpells", ...).
 function Data.Has(capability)
   for _, s in ipairs(sources) do
