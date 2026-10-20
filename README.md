@@ -1,19 +1,49 @@
-# WoW Forever levelling helper
+# Wayward
 
-A "Google Maps for levelling" addon for WoW Forever: search or pick a page
-(Quests, Vendors, Trainers, Dungeons, Items), get options ranked for
-your character (level fit, travel time, why it's worth going), then step-by-step
-directions including flight paths, boats and zeppelins.
+A levelling helper for World of Warcraft: Forever that works like a map app,
+not a guide. It suggests what to do next for your character (quests to hand
+in or pick up, where to quest, a dungeon, spells to train, repairs) and gives
+step-by-step directions there: on foot, by flight path, boat, zeppelin, tram
+and portal.
 
-Status: **MVP, "Class trainer" with directions.** Phase 0 used the WFProbe
-dev addon (described below) to find out what the Forever client provides and
-what we have to ship or learn as you play.
+It is not a speed-levelling route. Explore as you like; Wayward tells you
+what is worth doing near you and gets you there.
 
-## Wayward (the addon)
+## Install
 
-`Wayward/` is the levelling helper. `/wayward` (or `/ww`) opens the panel.
+1. Put the `Wayward` folder in `World of Warcraft/_forever_/Interface/AddOns/`
+   (from a release zip, `tools/package.sh`, or a symlink to this checkout).
+2. Log in. A short welcome explains the basics; `/ww` or the minimap button
+   opens the window, and right-clicking the button opens the quick menu.
+3. Open a flight map once on each continent and visit your class trainer.
+   Wayward learns flight paths, trainers and vendors as you meet them.
 
-What works in this MVP:
+Optional: a data addon adds quests, items and every trainer (see
+[Data sources](#data-sources)); TomTom's arrow is supported.
+
+**Requirements and limits.** The Forever client (Interface 16001). English
+client: trainers and vendors from data sources are recognised by their
+English subtitles ("Warlock Trainer", "Food & Drink") and weapon masters by
+English skill names; on other locales, what you learn by visiting still
+works. Boat and zeppelin docks and dungeon entrances shipped with the addon
+are approximate until you record them (`/ww dock`, or walk into the
+dungeon).
+
+## Options
+
+Options > AddOns > Wayward has every setting: the compass in the directions
+box, TomTom's arrow, the star over the NPC you are heading for (and the
+game's friendly nameplates it needs), the question when you pick up a quest,
+the new-journey toasts and the minimap button, plus buttons to reset window
+positions, show the welcome again and list the slash commands. The same
+checkboxes are on the quick menu: right-click the minimap button or the
+addon compartment entry, or click Options in the window's title bar.
+`/ww options` opens the panel, `/ww help` lists the commands, `/ww welcome`
+shows the introduction again, `/ww reset` puts every window back.
+
+## What it does
+
+`Wayward/` is the addon; `/wayward` (or `/ww`) opens the panel. In detail:
 
 - **Class trainer**: trainers for your class, ranked by travel time from where
   you stand, with what you can train now ("1 new spell to train for 10s · next:
@@ -271,10 +301,9 @@ play it. `/ww sounds export` opens your choices as one line to copy
   The game keeps its own map pin across a logout or reload; Wayward takes
   its pin from last time down when TomTom shows the way or no trip resumes
   (a pin you placed yourself since stays).
-- **Options** (Options > AddOns > Wayward, or `/ww options`): the compass in
-  the directions box, TomTom's arrow and the minimap button. The compass and
-  TomTom are separate: use either, both, or neither for text directions
-  only; with the compass off the directions box is narrower.
+- **Options** (see [Options](#options) above): the compass and TomTom are
+  separate: use either, both, or neither for text directions only; with the
+  compass off the directions box is narrower.
 - **Flight paths** are learned per continent: a flight map only lists the
   continent you're on, so open one once per continent. "New flight path
   discovered!" also marks the nearest one as known.
@@ -487,9 +516,13 @@ panel to add it to the trip you're on.
 
 Wayward ships no third-party data. Everything it knows comes from the game
 client, from what it records while you play (`Harvest.lua`), and from the
-hand-made files in `Wayward/Data/`. Other addons can add data by
-registering a **source**; `Wayward/Sources.lua` documents the interface in
-full. In short:
+hand-made files in `Wayward/Data/` (a seeded trainer, transports, dungeon
+entrances, vendor goods: our own, approximate, vanilla knowledge). Quest
+databases for Forever exist, but none is under a licence that allows
+bundling it here, so quest, item and NPC data come from a separate data
+addon that registers a **source** at runtime; `docs/RELEASE.md` has the
+licensing notes. `Wayward/Sources.lua` documents the interface in full. In
+short:
 
 ```lua
 -- In a companion addon whose TOC has "## Dependencies: Wayward":
