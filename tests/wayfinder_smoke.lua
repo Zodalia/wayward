@@ -2283,16 +2283,16 @@ do
   local function last() return played[#played] end
   local function chatSince(n) return table.concat(chat, "\n", n + 1) end
   local steps = ns.Sounds.Options("step")
-  check(ns.Sounds.Kit("popup") == 23404 and ns.Sounds.Kit("step") == 206497 and ns.Sounds.Kit("start") == 44323
-    and ns.Sounds.Kit("complete") == 44330 and ns.Sounds.Kit("toast") == 878, "each moment has its default sound")
+  check(ns.Sounds.Kit("popup") == 7355 and ns.Sounds.Kit("step") == 836 and ns.Sounds.Kit("start") == 231913
+    and ns.Sounds.Kit("complete") == 218238 and ns.Sounds.Kit("toast") == 73280, "each moment has its default sound")
 
   local before = #chat
   SlashCmdList.WAYFINDER("sounds")
-  check(chatSince(before):find("step (a stop added to your trip): 1. UI_PROFESSION_TRACK_RECIPE_CHECKBOX", 1, true),
+  check(chatSince(before):find("step (a stop added to your trip): 1. IG_ABILITY_PAGE_TURN", 1, true),
     "/wf sounds lists the moments and what each plays")
   before = #chat
   SlashCmdList.WAYFINDER("sounds step")
-  check(chatSince(before):find("> 1. UI_PROFESSION_TRACK_RECIPE_CHECKBOX", 1, true)
+  check(chatSince(before):find("> 1. IG_ABILITY_PAGE_TURN", 1, true)
     and chatSince(before):find("15. IG_WRITE_QUEST", 1, true), "/wf sounds step lists its shortlist, the chosen one marked")
 
   SlashCmdList.WAYFINDER("sounds step 3")
@@ -2321,19 +2321,19 @@ do
   local a = { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" }
   local b = { node = ns.Geo.Node(1433, 0.56, 0.5, "Second"), text = "Visit Second" }
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { a } }))
-  check(#played == 1 and played[1] == 44323, "starting a trip plays the start sound")
+  check(#played == 1 and played[1] == 231913, "starting a trip plays the start sound")
   ns.Nav.AddToTrip({ b }, "Second")
   check(#played == 2 and played[2] == steps[3][1], "adding a stop plays the chosen click")
   player.x = 0.53
   ns.HUD.Update()
   player.x = 0.56
   ns.HUD.Update()
-  check(ns.Nav.active == nil and #played == 3 and played[3] == 44330, "the end of the trip plays the complete sound")
+  check(ns.Nav.active == nil and #played == 3 and played[3] == 218238, "the end of the trip plays the complete sound")
   ns.Nav.Start("Second", b.node, ns.Router.Plan(here, b.node, ns.Network.Build()))
-  check(#played == 4 and played[4] == 44330, "directions to where you are: the fanfare's sound, no start sound after it")
+  check(#played == 4 and played[4] == 218238, "directions to where you are: the fanfare's sound, no start sound after it")
   player.x = 0.5
   ns.Nav.Start("Second", b.node, ns.Router.Plan(here, b.node, ns.Network.Build()))
-  check(#played == 5 and played[5] == 44323, "plain directions play the start sound too")
+  check(#played == 5 and played[5] == 231913, "plain directions play the start sound too")
   ns.Nav.Stop()
 
   SlashCmdList.WAYFINDER("sounds use step off")
@@ -2352,13 +2352,13 @@ do
   check(last() == ns.Sounds.Options("complete")[2][1] and ns.Fanfare.lastTrip == lastTrip and ns.Nav.active == nil,
     "test complete shows the banner with sound 2, and isn't a real trip")
   SlashCmdList.WAYFINDER("sounds test toast")
-  check(last() == 878 and ns.Nav.active == nil, "test toast shows a toast now, with the chosen sound")
+  check(last() == 73280 and ns.Nav.active == nil, "test toast shows a toast now, with the chosen sound")
   local shown
   StaticPopupDialogs = {}
   StaticPopup_Show = function(which, a1) shown = { which = which, text = string.format(StaticPopupDialogs[which].text, a1) } end
   SlashCmdList.WAYFINDER("sounds test popup")
   check(shown and shown.which == "WAYFINDER_SOUND_TEST" and shown.text:find("You picked up Sample Quest", 1, true)
-    and last() == 23404, "test popup shows the question with its sound")
+    and last() == 7355, "test popup shows the question with its sound")
   StaticPopupDialogs.WAYFINDER_SOUND_TEST.OnAccept()
   check(ns.Nav.active == nil, "and its button starts nothing")
   StaticPopupDialogs, StaticPopup_Show = nil, nil
@@ -2398,7 +2398,7 @@ do
   SlashCmdList.WAYFINDER("sounds use toast off")
   SlashCmdList.WAYFINDER("sounds use start " .. #ns.Sounds.Options("start"))
   SlashCmdList.WAYFINDER("sounds export")
-  check(copied and copied:match("^[^\n]*") == "popup=23404 step=567 start=race complete=44330 toast=off"
+  check(copied and copied:match("^[^\n]*") == "popup=7355 step=567 start=race complete=218238 toast=off"
     and copied:find("toast: off", 1, true), "export copies every moment's sound: " .. tostring(copied))
   ns.ShowCopyBox = realCopy
 

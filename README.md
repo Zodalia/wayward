@@ -250,7 +250,7 @@ sound alone. `/wf sounds` lists each moment's shortlist;
 sample text. Instead of a number, `id <kit>` is any sound kit ID, on the list
 or not (`/wf sounds step id 12345`); Wayfinder says so when the game doesn't
 play it. `/wf sounds export` opens your choices as one line to copy
-(`popup=23404 step=206497 …`). Moments: `popup`, `step`, `start`,
+(`popup=7355 step=836 …`). Moments: `popup`, `step`, `start`,
 `complete`, `toast`.
 
 ### Getting around

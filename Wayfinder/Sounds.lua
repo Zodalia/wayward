@@ -19,14 +19,15 @@ ns.Sounds = Sounds
 -- sound kit ID (the game's SOUNDKIT name shown when it has one), or "race".
 local MOMENTS = {
   { key = "popup", label = "the question when you pick up a quest or a chain continues", options = {
+    { 7355, "TUTORIAL_POPUP", "a short text ping" },
     { 23404, "UI_AUTO_QUEST_COMPLETE", "the quest tracker's \"!\" popup" },
     { 43936, "UI_QUEST_ROLLING_FORWARD_01", "a new objective rolling into the tracker" },
-    { 7355, "TUTORIAL_POPUP", "a short text ping" },
     { 3093, "IG_WRITE_QUEST", "quill scribble" },
     { 3175, "MAP_PING", "minimap ping" },
     { 618, "#618", "the vanilla quest chime" },
   } },
   { key = "step", label = "a stop added to your trip", options = {
+    { 836, "IG_ABILITY_PAGE_TURN", "spellbook page turn" },
     { 206497, "UI_PROFESSION_TRACK_RECIPE_CHECKBOX", "tiny tick, the quietest" },
     { 856, "IG_MAINMENU_OPTION_CHECKBOX_ON", "the same tick, louder (every checkbox)" },
     { 62538, "UI_TRANSMOG_ITEM_CLICK", "the same tick, louder still" },
@@ -39,11 +40,11 @@ local MOMENTS = {
     { 841, "IG_CHARACTER_INFO_TAB", "tab click" },
     { 1212, "PUT_DOWN_SMALL_CHAIN", "item put-down jingle" },
     { 170266, "UI_MAP_WAYPOINT_BUTTON_CLICK_ON", "mechanical gear ka-chunk" },
-    { 836, "IG_ABILITY_PAGE_TURN", "spellbook page turn" },
     { 43936, "UI_QUEST_ROLLING_FORWARD_01", "a new objective rolling into the tracker" },
     { 3093, "IG_WRITE_QUEST", "quill scribble" },
   } },
   { key = "start", label = "a trip or directions started", options = {
+    { 231913, "CONTENT_TRACKING_ITEM_ACQUIRED_TOAST", "quest objective complete" },
     { 44323, "UI_GARRISON_COMMAND_TABLE_MISSION_START", "a mission sent off" },
     { 73275, "UI_WORLDQUEST_START", "world quest banner swell" },
     { 231912, "CONTENT_TRACKING_OBJECTIVE_TRACKING_START", "starting to track something" },
@@ -60,6 +61,7 @@ local MOMENTS = {
     { "race", "#4140-4147", "your race's exploration sting" },
   } },
   { key = "complete", label = "the \"Journey complete!\" banner", options = {
+    { 218238, "TRADING_POST_UI_REWARD_TIER_COMPLETE", "Traveler's Log reward tier (big)" },
     { 44330, "UI_GARRISON_COMMAND_TABLE_MISSION_SUCCESS_STINGER", "mission success stinger" },
     { 218518, "TRADING_POST_UI_COMPLETED_ACTIVITY", "Traveler's Log activity done" },
     { 73277, "UI_WORLDQUEST_COMPLETE", "world quest complete" },
@@ -72,7 +74,6 @@ local MOMENTS = {
     { 31757, "UI_SCENARIO_STAGE_END", "small stage-complete chime" },
     { 72978, "UI_70_BOOST_THANKSFORPLAYING_SMALLER", "soft sting" },
     { 54127, "UI_70_ARTIFACT_FORGE_TRAIT_FINALRANK", "trait unlocked" },
-    { 218238, "TRADING_POST_UI_REWARD_TIER_COMPLETE", "Traveler's Log reward tier (big)" },
     { 33338, "UI_CHALLENGES_NEW_RECORD", "challenge mode new record (big)" },
     { 31754, "UI_SCENARIO_ENDING", "scenario complete (big)" },
     { 17316, "LFG_REWARDS", "dungeon finder rewards (big)" },
@@ -81,8 +82,8 @@ local MOMENTS = {
     { 878, "IG_QUEST_LIST_COMPLETE", "quest hand-in (the old sound)" },
   } },
   { key = "toast", label = "the \"New journey available\" toast", options = {
-    { 878, "IG_QUEST_LIST_COMPLETE", "quest hand-in" },
     { 73280, "UI_ORDERHALL_TALENT_READY_TOAST", "research ready toast" },
+    { 878, "IG_QUEST_LIST_COMPLETE", "quest hand-in (the old sound)" },
     { 73919, "UI_PROFESSIONS_NEW_RECIPE_LEARNED_TOAST", "recipe learned toast" },
     { 44296, "UI_GARRISON_TOAST_FOLLOWER_GAINED", "follower gained toast" },
     { 7355, "TUTORIAL_POPUP", "a short text ping" },
