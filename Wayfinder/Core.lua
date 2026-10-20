@@ -152,8 +152,9 @@ function ns.SavePosition(frame, key)
   ns.db.settings[key] = { point, relativePoint, x, y }
 end
 
-function ns.RestorePosition(frame, key)
-  local p = ns.db.settings[key]
+-- `home`: { point, relativePoint, x, y } to use when nothing is saved.
+function ns.RestorePosition(frame, key, home)
+  local p = ns.db.settings[key] or home
   if p then
     frame:ClearAllPoints()
     frame:SetPoint(p[1], UIParent, p[2], p[3], p[4])

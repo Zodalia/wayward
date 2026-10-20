@@ -27,6 +27,7 @@ local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
 
 local frame
+local HOME = { "TOPLEFT", "TOP", 170, -140 }
 local unfolded -- nil: fold by the rule above; true / false: the player's choice for this trip
 local opened = setmetatable({}, { __mode = "k" }) -- [stop] = true / false: its steps shown (nil: the current stop's)
 local scroll = 0 -- lines scrolled past at the top (the mouse wheel)
@@ -68,7 +69,6 @@ end
 local function create()
   local f = ns.Skin.CreateBox("WayfinderJourneyOverview")
   f:SetSize(380, 64 + MAX_ROWS * ROW_HEIGHT)
-  f:SetPoint("TOPLEFT", UIParent, "TOP", 170, -140)
   f:SetFrameStrata("MEDIUM")
   f:SetClampedToScreen(true)
   f:SetMovable(true)
@@ -80,7 +80,7 @@ local function create()
     ns.SavePosition(self, "overviewPos")
   end)
   f:SetBackdropColor(0, 0, 0, 0.85)
-  ns.RestorePosition(f, "overviewPos")
+  ns.RestorePosition(f, "overviewPos", HOME)
   f:EnableMouseWheel(true)
   f:SetScript("OnMouseWheel", function(_, delta) Overview.Scroll(delta) end)
 
@@ -542,6 +542,15 @@ end
 function Overview.IsShown()
   return frame ~= nil and frame:IsShown()
 end
+
+-- The window, made (hidden) if there isn't one yet: edit modes move it anyway.
+function Overview.EnsureFrame()
+  frame = frame or create()
+  return frame
+end
+
+ns.Movers.Add({ key = "Journey", label = "Journey", posKey = "overviewPos", home = HOME,
+  frame = Overview.EnsureFrame })
 
 -- A new trip folds by the rule again.
 ns.Listen("JOURNEY_STARTED", function()

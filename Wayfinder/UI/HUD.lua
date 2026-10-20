@@ -16,6 +16,7 @@ local MIN_HEIGHT = 84
 local PADDING = 10
 local CIRCLE = 42
 local TEXT_LEFT = PADDING + CIRCLE + 10
+local HOME = { "TOP", "TOP", 0, -140 }
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -95,7 +96,6 @@ end
 local function create()
   local f = ns.Skin.CreateBox("WayfinderHUD")
   f:SetSize(WIDTH, MIN_HEIGHT)
-  f:SetPoint("TOP", 0, -140)
   f:SetClampedToScreen(true)
   f:SetMovable(true)
   f:EnableMouse(true)
@@ -107,7 +107,7 @@ local function create()
     ns.Fire("HUD_MOVED")
   end)
   f:SetBackdropColor(0, 0, 0, 0.8)
-  ns.RestorePosition(f, "hudPos")
+  ns.RestorePosition(f, "hudPos", HOME)
 
   -- The arrow (or the stop's icon) in a dark circle, on its own frame: skins
   -- fade every texture of the box itself.
@@ -345,6 +345,18 @@ function HUD.ArrowShown() return frame ~= nil and frame.arrow:IsShown() end
 
 -- The directions box (the target button sits beside it).
 function HUD.Frame() return frame end
+
+-- The box, made (hidden) if there isn't one yet: edit modes move it anyway.
+function HUD.EnsureFrame()
+  if not frame then
+    frame = create()
+    if not ns.Nav.active then frame:Hide() end
+  end
+  return frame
+end
+
+ns.Movers.Add({ key = "Directions", label = "Directions", posKey = "hudPos", home = HOME,
+  frame = HUD.EnsureFrame, moved = function() ns.Fire("HUD_MOVED") end })
 
 -- Whether the compass circle shows, and the box's width (for tests).
 function HUD.CompassShown() return frame ~= nil and frame.holder:IsShown() end

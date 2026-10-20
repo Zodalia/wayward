@@ -15,6 +15,8 @@ ns.Fanfare = Fanfare
 
 local TRIP_SECONDS, TOAST_SECONDS, FADE = 12, 8, 1
 local GOLD = { 1, 0.82, 0 }
+local TRIP_HOME = { "TOP", "TOP", 0, -150 }
+local TOAST_HOME = { "TOP", "TOP", 0, -96 }
 
 -- Fades `f` after `seconds` on screen, unless the mouse is over it.
 local function fadeAfter(f, seconds)
@@ -53,7 +55,7 @@ local trip
 local function createTrip()
   local f = ns.Skin.CreateBox("WayfinderTripFanfare")
   f:SetSize(380, 112)
-  f:SetPoint("TOP", UIParent, "TOP", 0, -150)
+  ns.RestorePosition(f, "tripPos", TRIP_HOME)
   f:SetFrameStrata("HIGH")
   f:SetBackdropColor(0, 0, 0, 0.85)
   f:EnableMouse(true)
@@ -107,7 +109,7 @@ local queue = {}
 local function createToast()
   local f = ns.Skin.CreateBox("WayfinderJourneyToast")
   f:SetSize(320, 64)
-  f:SetPoint("TOP", UIParent, "TOP", 0, -96)
+  ns.RestorePosition(f, "toastPos", TOAST_HOME)
   f:SetFrameStrata("HIGH")
   f:SetBackdropColor(0, 0, 0, 0.85)
   f:EnableMouse(true)
@@ -206,6 +208,13 @@ function Fanfare.Preview(kind, sound)
   table.insert(queue, 1, r)
   showNext()
 end
+
+-- Edit modes move the banner and the toast while they're hidden.
+ns.Movers.Add({ key = "TripDone", label = "Journey complete", posKey = "tripPos", home = TRIP_HOME,
+  frame = function() trip = trip or createTrip(); return trip end })
+ns.Movers.Add({ key = "NewJourney", label = "New journey toast", posKey = "toastPos", home = TOAST_HOME,
+  frame = function() toast = toast or createToast(); return toast end,
+  hidden = function() return ns.db.settings.toasts == false end })
 
 ns.RegisterCommand("toasts", "/wf toasts - the 'new journey available' toasts on or off", function()
   ns.SetSetting("toasts", ns.db.settings.toasts == false)

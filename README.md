@@ -298,6 +298,14 @@ for other addons allowed. ElvUI's Skins module is used when present
 (unverified). `/wf skin` turns the skin off; windows already restyled keep it
 until `/reload`.
 
+Moving things: drag the directions box or the journey overview anywhere. In
+the game's Edit Mode, the directions, the journey overview, the "Journey
+complete!" banner and the "New journey available" toast each show a box you
+can drag, even while they're hidden; right-click one to put it back where it
+started. With EllesmereUI, the same four are in its unlock mode (group
+"Wayfinder", through `EllesmereUI:RegisterUnlockElements`). The toast's box is
+left out while toasts are off. Not yet tried in game.
+
 Install the same way as WFProbe below, with the `Wayfinder` folder.
 
 Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,

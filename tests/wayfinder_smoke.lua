@@ -3213,6 +3213,7 @@ do
       table.insert(ui.listeners[message], fn)
     end
     function ui.On() end
+    ui.Movers = { Add = function() end } -- the real panes stay ns's own
     for _, page in ipairs(ns.pages) do
       -- Panel.lua registers its own category pages again.
       if not ({ quests = true, vendors = true, trainers = true, dungeons = true })[page.id] then ui.RegisterPage(page) end
@@ -4351,6 +4352,106 @@ do
   ns.ForYou.Invalidate()
 end
 ---------------------------------------------------------------- notable quests (end)
+---------------------------------------------------------------- movers (begin)
+do
+  io.write("movers\n")
+  -- Frames that keep their points and size (UIParent: 1000 x 800, scale 1).
+  local function placed(o)
+    o.SetPoint = function(self, point, rel, relPoint, x, y)
+      self.point = { point, rel, relPoint or point, x or 0, y or 0 }
+    end
+    o.GetPoint = function(self)
+      local p = self.point or { "CENTER", nil, "CENTER", 0, 0 }
+      return p[1], p[2], p[3], p[4], p[5]
+    end
+    o.ClearAllPoints = function(self) self.point = nil end
+    o.SetSize = function(self, w, h) self.w, self.h = w, h end
+    o.GetSize = function(self) return self.w or 0, self.h or 0 end
+    o.GetEffectiveScale = function() return 1 end
+    return o
+  end
+  placed(UIParent):SetSize(1000, 800)
+  local savedCreate = CreateFrame
+  CreateFrame = function(...) return placed(savedCreate(...)) end
+
+  local byKey = {}
+  for _, pane in ipairs(ns.Movers.Panes()) do
+    byKey[pane.key] = pane
+    placed(pane.frame())
+    ns.Movers.Reset(pane)
+  end
+  check(byKey.Directions and byKey.Journey and byKey.TripDone and byKey.NewJourney,
+    "the directions, journey, banner and toast can be moved")
+  local hud = byKey.Directions.frame()
+  hud:SetSize(330, 84)
+  check(hud == ns.HUD.Frame() and hud:GetPoint() == "TOP" and select(5, hud:GetPoint()) == -140,
+    "the directions box starts at its usual spot")
+
+  -- Blizzard's Edit Mode: a box over each pane while it's open.
+  EditModeManagerFrame = newObj()
+  rawset(EditModeManagerFrame, "shown", false)
+  fire("PLAYER_LOGIN")
+  runTimers()
+  ns.db.settings.toasts = false
+  EditModeManagerFrame:Show()
+  local boxes = ns.Movers.Overlays()
+  check(ns.Movers.Editing() and boxes.Directions and boxes.Journey and boxes.TripDone and not boxes.NewJourney,
+    "Edit Mode shows a box per pane (not the toast while toasts are off)")
+  local moved = 0
+  ns.Listen("HUD_MOVED", function() moved = moved + 1 end)
+  local box, cx, cy = boxes.Directions, 500, 358
+  box.GetCenter = function() return cx, cy end
+  box.scripts.OnDragStart(box)
+  cx, cy = 530, 338
+  box.scripts.OnDragStop(box)
+  local p = ns.db.settings.hudPos
+  check(p and p[1] == "TOP" and p[2] == "TOP" and p[3] == 30 and p[4] == -160 and moved == 1,
+    "dragging the box moves the directions by as much, keeps its anchor and saves it")
+  box.scripts.OnClick(box)
+  check(ns.db.settings.hudPos == nil and select(4, hud:GetPoint()) == 0 and select(5, hud:GetPoint()) == -140,
+    "right-click puts it back")
+  EditModeManagerFrame.scripts.OnHide(EditModeManagerFrame)
+  check(not ns.Movers.Editing() and next(ns.Movers.Overlays()) == nil, "closing Edit Mode hides the boxes")
+  ns.db.settings.toasts = nil
+
+  -- EllesmereUI's unlock mode, through its MakeUnlockElement whitelist.
+  local got, folder = {}, nil
+  EllesmereUI = {
+    MakeUnlockElement = function(o)
+      return { key = o.key, label = o.label, group = o.group, getFrame = o.getFrame, getSize = o.getSize,
+        savePosition = o.savePos, loadPosition = o.loadPos, clearPosition = o.clearPos,
+        applyPosition = o.applyPos, isHidden = o.isHidden, ownsPosition = o.ownsPosition, noInitHook = o.noInitHook }
+    end,
+    RegisterUnlockElements = function(_, elements, f)
+      folder = f
+      for _, e in ipairs(elements) do got[e.key] = e end
+    end,
+  }
+  fire("PLAYER_LOGIN")
+  runTimers()
+  local e = got.Wayfinder_Directions
+  check(folder == "Wayfinder" and e and got.Wayfinder_Journey and got.Wayfinder_TripDone and got.Wayfinder_NewJourney
+    and e.getFrame() == hud and e.ownsPosition and e.noInitHook, "the four panes are in EllesmereUI's unlock mode")
+  local pos = e.loadPosition("Wayfinder_Directions")
+  check(pos.point == "CENTER" and pos.x == 0 and pos.y == 400 - 140 - 42,
+    "it's told where the directions' centre is (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ")")
+  moved = 0
+  e.savePosition("Wayfinder_Directions", "CENTER", "CENTER", 100, 50)
+  p = ns.db.settings.hudPos
+  check(p and p[1] == "TOP" and p[2] == "CENTER" and p[3] == 100 and p[4] == 92 and moved == 1,
+    "a centre it hands back places the box by its top, so it still grows downwards")
+  pos = e.loadPosition("Wayfinder_Directions")
+  check(pos.x == 100 and pos.y == 50, "and reads back the same")
+  e.clearPosition("Wayfinder_Directions")
+  check(ns.db.settings.hudPos == nil and select(3, hud:GetPoint()) == "TOP", "its reset puts it back")
+  ns.db.settings.toasts = false
+  check(got.Wayfinder_NewJourney.isHidden() and not got.Wayfinder_Directions.isHidden,
+    "no toast mover while toasts are off")
+  ns.db.settings.toasts = nil
+
+  CreateFrame, EllesmereUI, EditModeManagerFrame = savedCreate, nil, nil
+end
+---------------------------------------------------------------- movers (end)
 ---------------------------------------------------------------- perf (begin)
 do
   io.write("perf\n")
