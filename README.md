@@ -34,7 +34,8 @@ dungeon).
 Options > AddOns > Wayward has every setting: the compass in the directions
 box, TomTom's arrow, the star over the NPC you are heading for (and the
 game's friendly nameplates it needs), the question when you pick up a quest,
-the new-journey toasts and the minimap button, plus buttons to reset window
+whether the journey overview opens by itself when a trip starts, the
+new-journey toasts and the minimap button, plus buttons to reset window
 positions, show the welcome again and list the slash commands. The same
 checkboxes are on the quick menu: right-click the minimap button or the
 addon compartment entry, or click Options in the window's title bar.
