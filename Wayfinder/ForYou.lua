@@ -4,6 +4,10 @@ local _, ns = ...
 -- this character, right now, one card per kind of thing (its `category`):
 --   Due now     spells you can train and afford, repairs, ammo, food, a flight
 --               path close by (at most MAX_NEEDS), always first;
+--   Don't miss  the quest that stands out most (Notable.lua: a class quest, a
+--               reward for your class, a Forever-only quest...) that you can
+--               take or have in your log within NOTABLE_SECONDS of travel,
+--               whatever its XP; right after what's due;
 --   Hand in     the best group of quests ready to hand in;
 --   Finish      the best group of unfinished quests in your log;
 --   Best quest  the single quest worth the most XP that you can pick up nearby,
@@ -55,9 +59,12 @@ local MIN_SHARE_LEFT = 0.25     -- an unfinished quest takes at least this share
 local FINISH_RADIUS = 600       -- yards between objective areas done in one "Finish" trip
 local MAX_FINISH = 3            -- log quests per "Finish" trip (up to two stops each)
 local FINISH_TRIPS = 3          -- nearest groups of unfinished log quests offered
+local NOTABLE_SECONDS = 600     -- "Don't miss": travel to the quest's first stop, at most
+local NOTABLE_TRIES = 4         -- notable quests planned before giving up on the card
 
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
+local NOTABLE = { r = 0.77, g = 0.55, b = 1 }
 
 -- Lower comes first among needs; soft ones ("Worth a visit") after all of these.
 local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5, profession = 6 }
@@ -139,6 +146,22 @@ end
 
 local function zoneName(node)
   return ns.MapName((ns.Geo.ZonePoint(node)))
+end
+
+-- A notable quest's tag ("Class quest") and its reasons (Notable.lua), or nil.
+local function notableTag(questID)
+  if not ns.Quests.NotableTag then return nil end
+  local tag, reasons = try(ns.Quests.NotableTag, questID)
+  return tag, reasons
+end
+
+-- A quest line on a card: its tag on the line, its strongest reason in the
+-- tooltip only.
+local function addQuestLine(details, line, questID)
+  local tag, reasons = notableTag(questID)
+  if tag then line.text = line.text .. "  ·  " .. tag end
+  details[#details + 1] = line
+  if tag then details[#details + 1] = { text = "    " .. reasons[1].text, color = NOTABLE, more = true } end
 end
 
 ---------------------------------------------------------------- quest XP
@@ -850,6 +873,65 @@ local function bestQuestOption(hubs, ctx, start, net)
   return option
 end
 
+-- Seconds from the start of a journey to its first stop.
+local function firstLeg(journey)
+  local total = 0
+  for _, step in ipairs(journey.steps) do
+    total = total + (step.seconds or 0)
+    if step.stop then break end
+  end
+  return total
+end
+
+-- "Don't miss": the quest that stands out most (Quests.NotableScore), among
+-- those you can take at the hubs and those in your log (not dungeon ones, nor
+-- `skip`), whose first stop is within NOTABLE_SECONDS. Not ranked by XP: a
+-- class quest worth little XP still gets the card.
+local function notableOption(hubs, ctx, start, net, skip)
+  if not ns.Quests.NotableTag then return nil end
+  local candidates, seen = {}, {}
+  local function consider(id, name, level, inLog, near)
+    if seen[id] or skip[id] then return end
+    seen[id] = true
+    local row = ns.Quests.Quest(id)
+    if not row or dungeonQuest(row) then return end
+    local tag, reasons = notableTag(id)
+    if not tag then return end
+    candidates[#candidates + 1] = { id = id, name = name or row.name, level = level, inLog = inLog, tag = tag,
+      reasons = reasons, score = ns.Quests.NotableScore(id), near = near or math.huge }
+  end
+  for _, hub in ipairs(hubs) do
+    -- A hub farther than that can't have a quest whose giver is near enough.
+    if hub.trip <= NOTABLE_SECONDS then
+      for _, q in ipairs(hub.quests) do
+        if not q.inLog then consider(q.id, q.name, q.level, false, hub.trip) end
+      end
+    end
+  end
+  for _, e in ipairs(ctx.log) do consider(e.id, e.name, e.level, true) end
+  table.sort(candidates, function(a, b)
+    if a.score ~= b.score then return a.score > b.score end
+    return a.near < b.near
+  end)
+  for i, c in ipairs(candidates) do
+    if i > NOTABLE_TRIES then break end
+    local stops = ns.Journey.QuestStops(c.id, start)
+    local name = c.name or ("quest " .. c.id)
+    local title = (c.inLog and "Finish " or "Do ") .. name
+    local journey = #stops > 0 and ns.Journey.Plan(start, { title = title, stops = stops }, net) or nil
+    local travel = journey and firstLeg(journey)
+    if travel and travel <= NOTABLE_SECONDS then
+      local first = journey.stops[1].node
+      return {
+        kind = "notable", title = title, zone = zoneName(first), goal = journey.stops[#journey.stops].node,
+        trip = journey.seconds, travel = travel, journey = journey, stops = stops, tag = c.tag, reasons = c.reasons,
+        quests = { { id = c.id, name = c.name, level = c.level, inLog = c.inLog } },
+      }
+    end
+  end
+  return nil
+end
+
 -- Where to quest at your level, anywhere: per zone (Quests.ZoneQuests), the
 -- quests you can take now and those their chains unlock, worth their XP; the
 -- hub to start at is the one with the most quests for you now, and the card's
@@ -1007,10 +1089,10 @@ local function questLines(details, option, ctx)
   for _, q in ipairs(option.quests) do
     local value = ctx.xpMode and string.format("  -  %s XP", formatNumber(q.value)) or ""
     local who = q.inLog and logText(q) or (q.giver and ("  (" .. q.giver .. ")") or "")
-    details[#details + 1] = {
+    addQuestLine(details, {
       text = string.format("[%d] %s%s%s", q.level or 0, q.name or ("Quest " .. q.id), value, who),
       color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true,
-    }
+    }, q.id)
   end
 end
 
@@ -1128,6 +1210,26 @@ local function plainRow(option)
   }
 end
 
+-- "Don't miss": what makes the quest stand out, in plain words; its XP doesn't rank it.
+local function notableRow(option, ctx)
+  local q = option.quests[1]
+  local details = { { text = string.format("Don't miss: %s Shown whatever its XP: it's %s away.",
+    option.reasons[1].text, ns.FormatDuration(option.travel)), color = GOLD } }
+  for i = 2, #option.reasons do details[#details + 1] = { text = option.reasons[i].text, color = NOTABLE } end
+  local line = string.format("[%d] %s%s", q.level or 0, q.name or ("Quest " .. q.id), q.inLog and "  (in your log)" or "")
+  if ctx.xpMode then line = line .. string.format("  -  %s XP", formatNumber((questValue(q, ctx)))) end
+  details[#details + 1] = { text = line, quest = true,
+    color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level) }
+  local stats = { { "Level", tostring(q.level or "?") }, { "Travel", ns.FormatDuration(option.travel) } }
+  if option.trip > option.travel then stats[#stats + 1] = { "Trip", ns.FormatDuration(option.trip) } end
+  return {
+    id = "notable" .. q.id, kind = "notable", category = "Don't miss", title = option.title,
+    subtitle = string.format("%s  ·  %s  ·  %s", option.zone, ns.FormatDuration(option.travel), option.tag),
+    place = string.format("%s  ·  %s", option.tag, option.zone), stats = stats,
+    goal = option.goal, journey = option.journey, details = details,
+  }
+end
+
 local function zoneRow(z, ctx)
   local levels = z.lowest == z.highest and ("Level " .. z.lowest) or string.format("Levels %d-%d", z.lowest, z.highest)
   local details = { {
@@ -1153,10 +1255,10 @@ local function zoneRow(z, ctx)
   for i = 1, math.min(#listed, ZONE_QUEST_LINES) do
     local q = listed[i]
     local value = ctx.xpMode and string.format("  -  %s XP", formatNumber(q.value)) or ""
-    details[#details + 1] = {
+    addQuestLine(details, {
       text = string.format("[%d] %s%s  (%s)", q.level or 0, q.name or ("Quest " .. q.id), value, q.giver or "?"),
       color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true, more = i > 2,
-    }
+    }, q.id)
   end
   local quests = tostring(#z.now)
   if #z.later > 0 then quests = string.format("%d + %d", #z.now, #z.later) end
@@ -1285,6 +1387,8 @@ local function build()
   end
   pick(quest)
   table.sort(picks, byRate)
+  local notable = timed("don't miss", notableOption, hubs, ctx, start, net,
+    quest and { [quest.quests[1].id] = true } or {})
 
   -- The other dungeons for your level, named on the dungeon card; and the
   -- ones held back until more of their quests open.
@@ -1307,7 +1411,14 @@ local function build()
 
   local results = {}
   local function add(row) if row and #results < MAX_RESULTS then results[#results + 1] = row end end
-  for _, need in ipairs(needs) do add(needRow(need)) end
+  -- What's due, then the quest not to miss, then the rest of the needs.
+  for _, need in ipairs(needs) do
+    if not need.soft then add(needRow(need)) end
+  end
+  if notable then add(notableRow(notable, ctx)) end
+  for _, need in ipairs(needs) do
+    if need.soft then add(needRow(need)) end
+  end
   for _, zone in ipairs(timed("zones", zoneOptions, ctx, start, net) or {}) do add(zoneRow(zone, ctx)) end
   local dungeonRow
   if dungeon then
@@ -1357,6 +1468,7 @@ local ICONS = {
   repair = "Interface\\Icons\\Trade_BlackSmithing", food = "Interface\\Icons\\INV_Misc_Food_15",
   ammo = "Interface\\Icons\\INV_Ammo_Arrow_01", reagents = "Interface\\Icons\\INV_Misc_Dust_02",
   quest = "Interface\\Icons\\INV_Scroll_03", zone = "Interface\\Icons\\INV_Misc_Spyglass_03",
+  notable = "Interface\\Icons\\INV_Misc_Gem_Variety_02",
 }
 
 local function iconFor(r)

@@ -3570,6 +3570,54 @@ do
   results = ns.QuestsPage.Results("Lakeshire Logs")
   check(results[1] and not results[1].subtitle:find("  ·  |c", 1, true), "an ordinary quest has no tag")
 
+  -- For you: "Don't miss" the most notable quest close by, right after what's due.
+  ns.ForYou.Invalidate()
+  local list = ns.ForYou.Results()
+  local order, card, zone = {}, nil, nil
+  for _, r in ipairs(list) do
+    order[#order + 1] = r.category
+    if r.category == "Don't miss" then card = r end
+    if r.category == "Questing zone" then zone = zone or r end
+  end
+  local text = table.concat(order, ",")
+  check(card and card.title == "Do The Long Tale" and card.journey and card.icon,
+    "Don't miss: the epic quest, the most notable one close by (" .. text .. ")")
+  check(text:find("^Due now,Don't miss") or text:find("^Don't miss"), "right after what's due: " .. text)
+  local why = {}
+  for _, d in ipairs(card and card.details or {}) do why[#why + 1] = d.text end
+  check(card and card.details[1].text:find("^Don't miss: Epic quest line") and card.place:find("^Epic"),
+    "the card says why in plain words: " .. table.concat(why, " / "))
+  local tagged, why
+  for i, d in ipairs(zone and zone.details or {}) do
+    if d.quest and d.text:find("The Long Tale  (Magistrate Solomon)  ·  Epic", 1, true) then
+      tagged, why = true, zone.details[i + 1]
+    end
+  end
+  check(tagged and why and why.more and why.text:find("Epic quest line", 1, true),
+    "quest lines on other cards carry their tag; the reason is in the tooltip only")
+
+  -- Slow roads (every trip 100 times longer): nothing notable within ten minutes.
+  local realPlan = ns.Router.Plan
+  ns.Router.Plan = function(...)
+    local r = realPlan(...)
+    if not r then return nil end
+    local slow = {}
+    for k, v in pairs(r) do slow[k] = v end
+    slow.seconds, slow.steps = r.seconds * 100, {}
+    for i, st in ipairs(r.steps) do
+      local c = {}
+      for k, v in pairs(st) do c[k] = v end
+      c.seconds = (st.seconds or 0) * 100
+      slow.steps[i] = c
+    end
+    return slow
+  end
+  ns.ForYou.Invalidate()
+  local far
+  for _, r in ipairs(ns.ForYou.Results()) do if r.category == "Don't miss" then far = r end end
+  ns.Router.Plan = realPlan
+  check(not far, "no Don't miss card when the notable quests are far away: " .. tostring(far and far.subtitle))
+
   for id in pairs({ [501] = 1, [502] = 1, [503] = 1, [504] = 1, [505] = 1, [506] = 1, [507] = 1, [508] = 1, [509] = 1,
     [510] = 1, [90501] = 1, [90502] = 1 }) do QUESTS[id] = nil end
   for _, id in ipairs({ 9501, 9502, 9503, 9504 }) do ITEMS[id] = nil end
