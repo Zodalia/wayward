@@ -552,11 +552,16 @@ end
 ns.Movers.Add({ key = "Journey", label = "Journey", posKey = "overviewPos", home = HOME,
   frame = Overview.EnsureFrame })
 
--- A new trip folds by the rule again.
+-- A new trip folds by the rule again, and opens the overview unless the
+-- options say not to (the directions box's book button opens it any time).
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
   opened = setmetatable({}, { __mode = "k" })
   scroll = 0
-  Overview.Show()
+  if ns.db.settings.overviewOnStart ~= false then
+    Overview.Show()
+  elseif frame and frame:IsShown() then
+    Overview.Refresh()
+  end
 end)
 ns.Listen("NAV_CHANGED", Overview.Refresh)

@@ -4657,6 +4657,23 @@ do
     if chat[i]:find("/ww welcome", 1, true) then seenWelcome = i end
   end
   check(seenItem and seenWelcome and seenItem < seenWelcome, "an unknown command prints the help, commands in order")
+  -- The overview opens by itself when a trip starts, unless turned off.
+  ns.Nav.Stop()
+  ns.JourneyOverview.EnsureFrame():Hide()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local function stop(x, label) return { node = ns.Geo.Node(1433, x, 0.5, label), text = "Visit " .. label } end
+  local function trip() return ns.Journey.Plan(here, { title = "Two stops", stops = { stop(0.6, "A"), stop(0.7, "B") } }) end
+  ns.db.settings.overviewOnStart = false
+  ns.Nav.StartJourney(trip())
+  check(ns.Nav.active and ns.Nav.active.journey and not ns.JourneyOverview.IsShown(),
+    "with the option off, a new trip doesn't open the overview")
+  ns.Nav.Stop()
+  ns.db.settings.overviewOnStart = nil
+  ns.Nav.StartJourney(trip())
+  check(ns.JourneyOverview.IsShown(), "by default it does")
+  ns.Nav.Stop()
+  ns.JourneyOverview.EnsureFrame():Hide()
   -- Reset positions.
   ns.db.settings.hudPos = { "TOP", "TOP", 100, -100 }
   SlashCmdList.WAYWARD("reset")

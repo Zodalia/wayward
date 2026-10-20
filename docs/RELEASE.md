@@ -48,9 +48,9 @@ addons use; the choice is the author's.
 ## Names
 
 "Forever Wayfinder" (a quest companion for Forever) and "Wayfinder" (a
-compass banner) already exist, which is why this addon is Wayward. Check
-CurseForge and WoWInterface once more for "Wayward" before creating the
-project page.
+compass banner) already exist, which is why this addon is Wayward. Checked
+2026-10-20: no addon called "Wayward" on CurseForge or WoWInterface. Create
+the project page early to hold the name.
 
 ## Checklist
 
