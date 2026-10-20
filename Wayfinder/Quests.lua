@@ -778,8 +778,8 @@ end
 
 -- A spawn of whoever takes the quest in (else gives it out).
 local function questEndNode(q)
-  for _, ends in ipairs({ q.finishedBy, q.startedBy }) do
-    for _, id in ipairs(ends and ends[1] or {}) do
+  for _, ends in ipairs({ q.finishedBy or {}, q.startedBy or {} }) do
+    for _, id in ipairs(ends[1] or {}) do
       local npc = Data.Npc(id)
       local node = npc and Data.Nodes(npc.positions, npc.name)[1]
       if node then return node end
