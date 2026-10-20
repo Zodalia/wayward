@@ -31,7 +31,8 @@ local _, ns = ...
 local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
 ns.ForYou = ForYou
 
-local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip
+local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip (until QuestTimes has
+                                -- learned how long yours take: perQuest)
 local MAX_RESULTS = 9           -- cards the page shows (three pages)
 local MAX_NEEDS = 2             -- "Due now" and "Worth a visit" cards
 local REPAIR_SOON = 0.75        -- gear at or under this: repair if a vendor is close
@@ -63,7 +64,9 @@ local GREY = { r = 0.6, g = 0.6, b = 0.6 }
 local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5, profession = 6 }
 local SOFT_PRIORITY = 10
 
+ForYou.SECONDS_PER_QUEST = SECONDS_PER_QUEST
 local cache, summary
+local perQuest = SECONDS_PER_QUEST -- this refresh's time per quest: your average once known
 ForYou.runs = 0 -- refreshes computed, not served from the cache
 
 ---------------------------------------------------------------- helpers
@@ -201,7 +204,7 @@ local function questValue(q, ctx)
 end
 
 -- value: XP (or quests) for the option; rate: per minute, trip included. A
--- quest takes SECONDS_PER_QUEST unless it says otherwise (log quests: q.seconds).
+-- quest takes perQuest unless it says otherwise (log quests: q.seconds).
 local function score(option, ctx)
   option.value, option.estimated = 0, 0
   option.seconds = option.trip
@@ -209,7 +212,7 @@ local function score(option, ctx)
     local v, estimated = questValue(q, ctx)
     q.value = v
     option.value = option.value + v
-    option.seconds = option.seconds + (q.seconds or SECONDS_PER_QUEST)
+    option.seconds = option.seconds + (q.seconds or perQuest)
     if estimated then option.estimated = option.estimated + 1 end
   end
   option.rate = option.value / math.max(option.seconds / 60, 1)
@@ -548,7 +551,7 @@ end
 -- A log quest as an option's quest: full XP, only the time left counted.
 local function logQuest(e)
   return { id = e.id, name = e.name, level = e.level, inLog = true, handin = e.complete, left = e.left,
-    seconds = e.complete and HANDIN_SECONDS or SECONDS_PER_QUEST * e.left }
+    seconds = e.complete and HANDIN_SECONDS or perQuest * e.left }
 end
 
 -- Quests done inside a dungeon count toward its option instead. Dungeons.lua
@@ -730,7 +733,7 @@ local function dungeonOptions(ctx)
     for _, q in ipairs(inLog) do
       local e = logged[q.id]
       quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, inLog = true, left = e and e.left,
-        seconds = e and SECONDS_PER_QUEST * e.left }
+        seconds = e and perQuest * e.left }
     end
     local name = entry and entry.name or r.title
     local later = r.quests and r.quests.later or {}
@@ -983,7 +986,7 @@ local function questCounts(option)
     if q.handin then
       handins = handins + 1
     elseif q.inLog then
-      logged, left = logged + 1, left + (q.seconds or SECONDS_PER_QUEST)
+      logged, left = logged + 1, left + (q.seconds or perQuest)
     else
       fresh = fresh + 1
     end
@@ -991,11 +994,18 @@ local function questCounts(option)
   return fresh, logged, handins, left
 end
 
+-- "5 min", or "7 min (your average)" once QuestTimes knows.
+local function perQuestText()
+  local text = string.format("%d min", math.floor(perQuest / 60 + 0.5))
+  if perQuest ~= SECONDS_PER_QUEST then text = text .. " (your average)" end
+  return text
+end
+
 -- "trip ~4 min + 3 x 5 min per quest + ~4 min left on 2 in your log + 2 x 30 s per hand-in"
 local function timeText(option)
   local fresh, logged, handins, left = questCounts(option)
   local parts = { "trip " .. ns.FormatDuration(option.trip) }
-  if fresh > 0 then parts[#parts + 1] = string.format("%d x %d min per quest", fresh, SECONDS_PER_QUEST / 60) end
+  if fresh > 0 then parts[#parts + 1] = string.format("%d x %s per quest", fresh, perQuestText()) end
   if logged > 0 then
     parts[#parts + 1] = string.format("%s left on %d in your log", ns.FormatDuration(left), logged)
   end
@@ -1028,8 +1038,8 @@ local function optionRow(option, rank, total, ctx)
     local how = {}
     if handins > 0 then how[#how + 1] = string.format("handing one in takes ~%d s", HANDIN_SECONDS) end
     if logged > 0 then
-      how[#how + 1] = string.format("unfinished ones take %d min times the share of objectives left",
-        SECONDS_PER_QUEST / 60)
+      how[#how + 1] = string.format("unfinished ones take %s times the share of objectives left",
+        perQuestText())
     end
     -- The same on most cards: in the breakdown and tooltip only.
     details[#details + 1] = { text = "Quests in your log count at full XP; " .. table.concat(how, ", ") .. ".",
@@ -1225,6 +1235,7 @@ local function build()
   local net = ns.Network.Build()
   local level = UnitLevel("player")
   local db = xpTable()
+  perQuest = ns.QuestTimes.Seconds() or SECONDS_PER_QUEST
   local ctx = { level = level, db = db, xpMode = db ~= nil and level < MAX_LEVEL,
     quests = ns.Quests.Available() and true or false, notes = {}, unplaced = 0 }
   ctx.log = try(readLog) or {}

@@ -35,6 +35,7 @@ Docks.lua
 Dungeons.lua
 Vendors.lua
 ItemsPage.lua
+QuestTimes.lua
 ForYou.lua
 UI\Skin.lua
 UI\CopyBox.lua

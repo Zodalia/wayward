@@ -228,6 +228,7 @@ SlashCmdList.WAYFINDER = function(msg)
       ns.print(string.format("%s scan: %.0f ms", name, ms))
     end
     if ns.ForYou and ns.ForYou.lastParts then ns.print("forYou parts (ms): " .. ns.ForYou.lastParts) end
+    if ns.QuestTimes then ns.print(ns.QuestTimes.Describe(ns.ForYou and ns.ForYou.SECONDS_PER_QUEST)) end
     if ns.unknownEvents then ns.print("events this client doesn't have: " .. table.concat(ns.unknownEvents, ", ")) end
   else
     for _, line in ipairs(HELP) do ns.print(line) end

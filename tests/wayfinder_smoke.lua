@@ -2569,6 +2569,70 @@ do
   ns.ForYou.Invalidate()
 end
 ---------------------------------------------------------------- for you: quest log (end)
+---------------------------------------------------------------- quest times (begin)
+do
+  io.write("quest times\n")
+  local savedTime, clock = time, 100000
+  time = function() return clock end
+  ns.charDB.questTimes = nil
+  local function minutes(n) clock = clock + n * 60 end
+  local function quest(id, took)
+    fire("QUEST_ACCEPTED", id)
+    minutes(took)
+    fire("QUEST_TURNED_IN", id)
+  end
+  fire("PLAYER_ENTERING_WORLD", true, false)
+  for i, took in ipairs({ 4, 6, 8, 10 }) do quest(700 + i, took) end
+  check(ns.QuestTimes.Seconds() == nil and ns.QuestTimes.Describe(300):find("4 of 5 quests timed", 1, true),
+    "under 5 quests timed: no average yet (" .. ns.QuestTimes.Describe(300) .. ")")
+  quest(705, 90)
+  check(ns.charDB.questTimes.samples[5] == 60, "a quest over an hour counts as 60 min")
+  check(math.abs(ns.QuestTimes.Seconds() - (4 + 6 + 8 + 10 + 60) / 5 * 60) < 1e-6,
+    "from 5 quests, the average: " .. tostring(ns.QuestTimes.Seconds()))
+
+  -- Quests done side by side share the time: each counts from the last hand-in.
+  ns.charDB.questTimes = nil
+  fire("QUEST_ACCEPTED", 711)
+  fire("QUEST_ACCEPTED", 712)
+  fire("QUEST_ACCEPTED", 713)
+  minutes(9)
+  fire("QUEST_TURNED_IN", 711)
+  minutes(6)
+  fire("QUEST_TURNED_IN", 712)
+  fire("QUEST_TURNED_IN", 713)
+  local samples = ns.charDB.questTimes.samples
+  check(#samples == 3 and samples[1] == 9 and samples[2] == 6 and samples[3] == 0,
+    "three quests at once: 9, 6 and 0 min, not 9, 15 and 15 (" .. table.concat(samples, ",") .. ")")
+
+  -- A logout in between: not counted; a /reload is.
+  fire("QUEST_ACCEPTED", 720)
+  fire("QUEST_ACCEPTED", 721)
+  minutes(5)
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  minutes(5)
+  fire("QUEST_TURNED_IN", 720)
+  check(#samples == 4 and samples[4] == 10, "a /reload keeps the quests being timed")
+  minutes(600)
+  fire("PLAYER_ENTERING_WORLD", true, false)
+  minutes(3)
+  fire("QUEST_TURNED_IN", 721)
+  check(#samples == 4, "a quest accepted before a logout isn't timed")
+  fire("QUEST_TURNED_IN", 799)
+  check(#samples == 4, "a quest accepted before Wayfinder saw it isn't timed")
+
+  -- Only the last 20 count.
+  for i = 1, 25 do quest(800 + i, i <= 5 and 50 or 7) end
+  check(#samples == 20 and math.abs(ns.QuestTimes.Seconds() - 7 * 60) < 1e-6, "a rolling average of the last 20")
+  local chat0 = #chat
+  SlashCmdList.WAYFINDER("debug")
+  local said
+  for i = chat0 + 1, #chat do if chat[i]:find("quest time: ~7.0 min, the average of your last 20", 1, true) then said = true end end
+  check(said, "/wf debug shows the average")
+
+  ns.charDB.questTimes = nil
+  time = savedTime
+end
+---------------------------------------------------------------- quest times (end)
 ---------------------------------------------------------------- look (begin)
 io.write("look\n")
 do
