@@ -380,6 +380,17 @@ panel to add it to the trip you're on.
     aside and the directions box says "In the area" with your progress.
     Past 120 yards you've left, and the way points at the nearest spawn from
     where you are. A finished objective's spawns stop counting.
+  - Spawns close together are one area (a camp; `ns.Quests.ObjectiveAreas`),
+    and a quest's objectives can have several. The trip heads for the one
+    least out of the way between the stops either side (`ns.Journey.PickArea`).
+    Leave an area after 30 seconds or more in it and it counts as cleared for
+    5 minutes (about a respawn): the trip is re-planned from where you are, on
+    to another area, or to the stops on the way there first, and the
+    directions box says "Next spot". A short step out points at the nearest
+    area you haven't cleared. When every area is cleared, the way goes to the
+    one cleared longest ago. Cleared areas are saved with the trip.
+  - Making progress on a later stop's objectives while you're in their area
+    (another quest's camp on the way) makes that stop the next one.
   - Picking up a quest that isn't in your trip asks whether to add it (with
     how much longer the trip gets), start a new trip for it (with its time),
     or not now; quests picked up one after another are asked about together,

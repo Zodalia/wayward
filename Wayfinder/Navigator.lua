@@ -935,44 +935,105 @@ end)
 
 -- Called by the HUD several times a second. Returns your node and the step.
 -- Objective areas. A quest's objectives are places, not a point: every spawn
--- of what you still need (quest data, Quests.ObjectiveGroups; a finished
+-- of what you still need (quest data, Journey.OpenAreas; a finished
 -- objective's go when the quest log says so). Within AREA_RADIUS of any of
 -- them you're in the area: the stop counts as reached, and the compass and
--- waypoints step aside. Past AREA_LEAVE you've left it, and the way points at
--- the nearest of them from where you are.
+-- waypoints step aside. Past AREA_LEAVE you've left it. Spawns close together
+-- are one area (a camp); a stop remembers the areas you've cleared, so leaving
+-- one you worked re-plans the trip on to another area (or the stops on the
+-- way there), and a short step out points at the nearest area you haven't.
 local AREA_RADIUS, AREA_LEAVE = 80, 120
 
-local function openSpots(questID)
-  local groups = ns.Quests.ObjectiveGroups(questID)
-  if #groups == 0 then return nil end
-  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}
-  local spots = {}
-  for _, g in ipairs(groups) do
-    local finished = false
-    for _, o in ipairs(objectives) do
-      if o.finished and g.name and type(o.text) == "string" and o.text:find(g.name, 1, true) then finished = true end
-    end
-    if not finished then
-      for _, node in ipairs(g.nodes) do spots[#spots + 1] = node end
-    end
-  end
-  return spots
-end
-
--- inside (true / false, or nil when the stop has no area) and the nearest spot.
+-- inside (true / false, or nil when the stop has no area), the nearest spot
+-- and the index of its area.
 local function areaOf(stop, here)
   local action = stop and stop.action
   if not (action and action.kind == "complete") then return nil end
-  local spots = openSpots(action.questID)
-  if not (spots and #spots > 0) then return nil end
-  local best, bestDistance
-  for _, node in ipairs(spots) do
-    local d = ns.Geo.Distance(here, node)
-    if d < (bestDistance or math.huge) then best, bestDistance = node, d end
+  local areas = ns.Journey.OpenAreas(action.questID)
+  if #areas == 0 then return nil end
+  local best, bestDistance, bestArea
+  for _, area in ipairs(areas) do
+    local node, d = ns.Data.Nearest(area.nodes, here)
+    if d < (bestDistance or math.huge) then best, bestDistance, bestArea = node, d, area.index end
   end
   if not best then return false end
-  return bestDistance <= (stop.inArea and AREA_LEAVE or AREA_RADIUS), best
+  return bestDistance <= (stop.inArea and AREA_LEAVE or AREA_RADIUS), best, bestArea
 end
+
+local function questName(questID)
+  local q = ns.Quests.Quest(questID)
+  return q and q.name or ("quest " .. questID)
+end
+
+-- Left the area of the stop you're on, its objectives not done. A cleared
+-- area: the trip from here, on to another. A short step out: the way back to
+-- the nearest area you haven't cleared.
+local function leftArea(a, step, stop, here, spot, cleared)
+  local journey = cleared and a.journey and ns.Journey.Replan(a.journey, here)
+  if journey then
+    a.lastReplan = GetTime and GetTime()
+    local areas, left = ns.Journey.OpenAreas(stop.action.questID), 0
+    for _, area in ipairs(areas) do
+      if not ns.Journey.Cleared(stop, area.index) then left = left + 1 end
+    end
+    if #areas > 1 then
+      ns.print(string.format("that spot's cleared: on to %s for %s.",
+        left > 0 and "another" or "the one that respawns first", questName(stop.action.questID)))
+    else
+      ns.print("re-routed from here (that spot's cleared).")
+    end
+    adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+    return
+  end
+  local node = ns.Journey.PickArea(stop, here) or spot
+  if node then
+    step.to = ns.Geo.Node(node.mapID, node.x, node.y, stop.node.label) or node
+    stop.node = step.to
+    showStep()
+  end
+end
+
+-- Progress on a later stop's objectives while you're in their area (a camp on
+-- the way to the next): you're doing that one now, so it comes first.
+local function progressOf(questID)
+  local parts = {}
+  for _, o in ipairs(C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}) do
+    parts[#parts + 1] = tostring(o.numFulfilled or o.text)
+  end
+  return table.concat(parts, "|")
+end
+
+local function doingLater()
+  local a = Nav.active
+  if not (a and a.journey) or onTaxi() then return end
+  local here = ns.Geo.PlayerNode()
+  if not here then return end
+  local current = a.route.steps[a.index]
+  local busy = a.waiting or (current and current.stop and current.stop.inArea)
+  for k = a.index, #a.route.steps do
+    local stop = ns.Journey.PendingAction(a.route.steps[k])
+    if stop and stop.action.kind == "complete" then
+      local before, now = stop.progress, progressOf(stop.action.questID)
+      stop.progress = now
+      if before and before ~= now and not busy and stop ~= (current and current.stop) then
+        local inside, _, area = areaOf(stop, here)
+        if inside then
+          stop.inArea = true
+          ns.Journey.EnterArea(stop, area)
+          local journey = ns.Journey.Replan(a.journey, here, nil, stop)
+          if journey then
+            a.lastReplan = GetTime and GetTime()
+            ns.print(string.format("you're doing %s here: it's next on the trip now.", questName(stop.action.questID)))
+            adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+          end
+          return
+        end
+      end
+    end
+  end
+end
+
+ns.On("QUEST_LOG_UPDATE", doingLater)
 
 -- True while you're in the area of the stop you're working on.
 function Nav.InArea()
@@ -1038,17 +1099,16 @@ function Nav.Tick()
       or ns.Geo.ZoneAt(here.instance, here.wx, here.wy) == step.zoneEntry)
     -- A quest's objectives: being anywhere in their area counts.
     local pending = ns.Journey.PendingAction(step)
-    local inside, spot = areaOf(pending, here)
+    local inside, spot, area = areaOf(pending, here)
     if inside ~= nil then
-      if inside and not pending.inArea then
+      local cleared = ns.Journey.EnterArea(pending, inside and area or nil)
+      if inside then
         pending.inArea = true
-      elseif not inside and pending.inArea then
-        -- Left the area: the nearest spot from here, for the way back.
+      elseif pending.inArea then
         pending.inArea = nil
-        if k == a.index and spot then
-          step.to = ns.Geo.Node(spot.mapID, spot.x, spot.y, pending.node.label) or spot
-          pending.node = step.to
-          showStep()
+        if k == a.index then
+          leftArea(a, step, pending, here, spot, cleared)
+          return here, a.route.steps[a.index]
         end
       end
     end

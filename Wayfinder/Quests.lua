@@ -1016,6 +1016,65 @@ function Quests.ObjectiveGroups(questID)
   return groupCache[questID]
 end
 
+-- The same places as areas: spawns within AREA_LINK yards of each other (in a
+-- chain) are one area, e.g. one murloc camp up the coast from the next. Each
+-- area is a list of { node, group } (group: its index in ObjectiveGroups);
+-- the order is stable, so an area's index names it. Built once per quest.
+local AREA_LINK = 70
+local areaCache = {}
+
+local function buildAreas(questID)
+  local members = {}
+  for g, group in ipairs(Quests.ObjectiveGroups(questID)) do
+    for _, node in ipairs(group.nodes) do members[#members + 1] = { node = node, group = g } end
+  end
+  -- Single linkage over a grid of AREA_LINK cells: only neighbouring cells are compared.
+  local parent, cells = {}, {}
+  local function find(i)
+    while parent[i] ~= i do
+      parent[i] = parent[parent[i]]
+      i = parent[i]
+    end
+    return i
+  end
+  local function cell(node, dx, dy)
+    return node.instance .. ":" .. (math.floor(node.wx / AREA_LINK) + dx) .. ":" .. (math.floor(node.wy / AREA_LINK) + dy)
+  end
+  for i, m in ipairs(members) do
+    parent[i] = i
+    for dx = -1, 1 do
+      for dy = -1, 1 do
+        for _, j in ipairs(cells[cell(m.node, dx, dy)] or {}) do
+          if ns.Geo.Distance(m.node, members[j].node) <= AREA_LINK then
+            local a, b = find(i), find(j)
+            if a ~= b then parent[a] = b end
+          end
+        end
+      end
+    end
+    local key = cell(m.node, 0, 0)
+    cells[key] = cells[key] or {}
+    table.insert(cells[key], i)
+  end
+  local byRoot, areas = {}, {}
+  for i, m in ipairs(members) do
+    local root = find(i)
+    if not byRoot[root] then
+      byRoot[root] = {}
+      areas[#areas + 1] = byRoot[root]
+    end
+    table.insert(byRoot[root], m)
+  end
+  return areas
+end
+
+function Quests.ObjectiveAreas(questID)
+  if areaCache[questID] then return areaCache[questID] end
+  local ok, areas = pcall(buildAreas, questID)
+  areaCache[questID] = ok and areas or {}
+  return areaCache[questID]
+end
+
 -- The level shown for a quest (your level for quests that scale with you).
 function Quests.QuestLevel(questID)
   local q = Quests.Quest(questID)
@@ -1105,7 +1164,7 @@ end
 -- Indexes are rebuilt when a source registers (a companion loading later).
 ns.Listen("SOURCES_CHANGED", function()
   questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
-  giverNodes, objectiveCache, groupCache, zoneCache, takeable = {}, {}, {}, nil, nil
+  giverNodes, objectiveCache, groupCache, areaCache, zoneCache, takeable = {}, {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
   chainCache = {}
 end)

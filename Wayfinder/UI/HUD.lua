@@ -256,7 +256,9 @@ function HUD.Update()
     -- Among what you need: no arrow, just how it's going.
     frame.info:SetText("|cff7fd1aeIn the area|r  ·  " .. objective .. "     " .. remaining)
   elseif objective then
-    frame.info:SetText(objective .. "     " .. remaining)
+    -- On the way from a spot you've cleared to the next.
+    local lead = ns.Journey.ClearedAreas(step.stop) > 0 and "|cff9d9d9dNext spot|r  ·  " or ""
+    frame.info:SetText(lead .. objective .. "     " .. remaining)
   elseif ns.Nav.Interaction() == "fly" then
     frame.info:SetText(string.format("Pick %s on the flight map     %s", step.to.label, remaining))
   elseif ns.Nav.Interaction() == "use" then

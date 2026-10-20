@@ -2458,6 +2458,100 @@ do
   ns.HUD.Update()
   check(ns.Nav.InArea(), "the open objective's do")
 
+  -- Several areas: spawns close together are one (a camp); each spawn here is its own.
+  ns.Nav.Stop()
+  objectives[1] = { text = "Murloc Forager slain: 2/8", finished = false }
+  local areas = ns.Quests.ObjectiveAreas(43)
+  check(#areas == 3 and #areas[1] == 1 and areas[1][1].group == 1 and areas[3][1].group == 2,
+    "the objectives' spawns as areas, in a stable order: " .. #areas)
+  local clock = 1000
+  time = function() return clock end
+  local function at(node, x, y) return node and math.abs(node.x - x) < 1e-6 and math.abs(node.y - y) < 1e-6 end
+
+  -- Clear the camp at 60,60 (a minute there) and walk off: on to another,
+  -- the one on the way to the hand-in (Scouts at 30,30; Oslow at 36,30).
+  player.x, player.y = 0.62, 0.6
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Murloc Sweep", stops = ns.Journey.QuestStops(43, here) }))
+  ns.HUD.Update()
+  check(ns.Nav.InArea(), "in the first camp")
+  clock = clock + 60
+  local before = #chat
+  player.x, player.y = 0.6, 0.4
+  ns.HUD.Update()
+  local stop = ns.Nav.CurrentStep().stop
+  check(stop.action.kind == "complete" and not ns.Nav.InArea() and at(stop.node, 0.3, 0.3),
+    string.format("left a cleared camp: on to the one on the way, not back (%.2f, %.2f)", stop.node.x, stop.node.y))
+  check(table.concat(chat, "\n", before + 1):find("cleared: on to another for Murloc Sweep", 1, true),
+    "and says so")
+  check(ns.HUD.Lines()[4]:find("Next spot", 1, true), "the box says it's the next spot: " .. ns.HUD.Lines()[4])
+  check(ns.Journey.ClearedAreas(stop) == 1, "one area cleared")
+
+  -- Back in the cleared camp: still the area. A short step out again points
+  -- at the nearest camp not cleared, though the cleared one is nearer.
+  player.x, player.y = 0.62, 0.6
+  ns.HUD.Update()
+  check(ns.Nav.InArea(), "a cleared camp is still the area when you're in it")
+  clock = clock + 5
+  player.x, player.y = 0.6, 0.4
+  ns.HUD.Update()
+  check(at(ns.Nav.CurrentStep().to, 0.3, 0.3), "a short step out doesn't point back at a cleared camp")
+  ns.Nav.Recalculate()
+  check(at(ns.Nav.CurrentStep().stop.node, 0.3, 0.3), "nor does planning the trip again (a stop done on the way)")
+
+  -- Remembered with the trip, and for about a respawn.
+  local saved = ns.Journey.Save(ns.Nav.active.journey)
+  local loaded = ns.Journey.Load(saved)
+  local doStop
+  for _, s in ipairs(loaded.stops) do if s.action.kind == "complete" then doStop = s end end
+  check(doStop and doStop.worked and doStop.worked[1] == 1060, "the trip saves the cleared camps")
+  doStop.worked = { [1] = clock - 100, [2] = clock - 10, [3] = clock - 50 }
+  check(at(ns.Journey.PickArea(doStop, ns.Geo.PlayerNode()), 0.6, 0.6),
+    "all cleared: the one cleared longest ago (it respawns first)")
+  clock = clock + 400
+  check(ns.Journey.ClearedAreas(doStop) == 0, "after a respawn nothing counts as cleared")
+
+  -- Another quest's camp on the way: making progress there makes it the next stop.
+  NPCS[9150] = { name = "Redridge Gnoll", minLevel = 18, maxLevel = 19, spawns = { [44] = { { 90, 20 } } } }
+  QUESTS[46] = { name = "Gnoll Patrol", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9150 } } } }
+  refreshData()
+  local log = { 43, 46 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  local gnolls = { { text = "Redridge Gnoll slain: 0/6", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 43 and objectives or id == 46 and gnolls or {} end
+  ns.Nav.Stop()
+  player.x, player.y = 0.62, 0.6
+  here = ns.Geo.PlayerNode()
+  local trip = ns.Journey.QuestStops(43, here)
+  for _, s in ipairs(ns.Journey.QuestStops(46, here)) do trip[#trip + 1] = s end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge", stops = trip }))
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop.action.questID == 43 and ns.Nav.InArea(), "doing the murlocs first")
+  player.x, player.y = 0.62, 0.45
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop.action.questID == 43 and not ns.Nav.InArea(), "stepped out of the murloc camp")
+  player.x, player.y = 0.9, 0.2
+  fire("QUEST_LOG_UPDATE")
+  check(ns.Nav.CurrentStep().stop.action.questID == 43, "in the gnoll camp, nothing done there yet: murlocs still next")
+  before = #chat
+  gnolls[1] = { text = "Redridge Gnoll slain: 1/6", finished = false }
+  fire("QUEST_LOG_UPDATE")
+  local current = ns.Nav.CurrentStep().stop
+  check(current.action.questID == 46 and current.action.kind == "complete",
+    "a gnoll killed there: the gnolls are the next stop")
+  check(table.concat(chat, "\n", before + 1):find("you're doing Gnoll Patrol here", 1, true), "and it says so")
+  ns.HUD.Update()
+  check(ns.Nav.InArea() and ns.Nav.CurrentStep().stop.action.questID == 46, "in their area, no arrow")
+  local murlocs
+  for _, s in ipairs(ns.Nav.active.journey.stops) do
+    if s.action and s.action.questID == 43 and s.action.kind == "complete" then murlocs = s end
+  end
+  check(murlocs and not murlocs.done, "the murlocs are still on the trip")
+
+  time = os.time
+  QUESTS[46], NPCS[9150] = nil, nil
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =

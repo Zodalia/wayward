@@ -23,6 +23,8 @@ local _, ns = ...
 --       cap is over `cap`: you bought the next rank)
 --     after = { stop, ... },   -- optional: stops that must come first
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
+--       (objectives in several areas: the area that fits the trip, see Journey.PickArea)
+--     worked = { [area index] = time },  -- set on the way: objective areas you've cleared
 --   }
 -- A stop with an action waits there until the quest is accepted, its
 -- objectives are complete, or it is handed in; one without an action is done
@@ -142,12 +144,110 @@ function Journey.QuestStops(questID, here)
   return stops
 end
 
+---------------------------------------------------------------- objective areas
+
+-- A quest's objectives can be in several areas (Quests.ObjectiveAreas: one
+-- camp, then the next one up the coast). A stop remembers the areas you've
+-- cleared: after WORK_SECONDS in one, leaving it counts it as cleared for
+-- CLEARED_FOR (about a respawn), and the way goes elsewhere meanwhile.
+local WORK_SECONDS, CLEARED_FOR = 30, 300
+
+-- The areas that still have something you need (a finished objective's
+-- spawns don't count; the quest log says which are finished):
+-- { {index, nodes}, ... }.
+function Journey.OpenAreas(questID)
+  local areas = ns.Quests.ObjectiveAreas(questID)
+  if #areas == 0 then return {} end
+  local groups = ns.Quests.ObjectiveGroups(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}
+  local finished = {}
+  for g, group in ipairs(groups) do
+    for _, o in ipairs(objectives) do
+      if o.finished and group.name and type(o.text) == "string" and o.text:find(group.name, 1, true) then
+        finished[g] = true
+      end
+    end
+  end
+  local out = {}
+  for index, area in ipairs(areas) do
+    local nodes = {}
+    for _, m in ipairs(area) do
+      if not finished[m.group] then nodes[#nodes + 1] = m.node end
+    end
+    if #nodes > 0 then out[#out + 1] = { index = index, nodes = nodes } end
+  end
+  return out
+end
+
+local function clearedAt(stop, index, now)
+  local at = stop.worked and stop.worked[index]
+  return at and now - at < CLEARED_FOR and at or nil
+end
+
+-- Whether you've cleared one of a stop's areas lately.
+function Journey.Cleared(stop, index)
+  return clearedAt(stop, index, time()) ~= nil
+end
+
+-- How many of a stop's areas you've cleared lately.
+function Journey.ClearedAreas(stop)
+  local now, count = time(), 0
+  for index in pairs(stop and stop.worked or {}) do
+    if clearedAt(stop, index, now) then count = count + 1 end
+  end
+  return count
+end
+
+-- Tracks which of a stop's areas you're in (`index`, nil when in none).
+-- Returns true when that just counted the one you left as cleared.
+function Journey.EnterArea(stop, index)
+  if stop.areaAt == index then return false end
+  local now, cleared = time(), false
+  if stop.areaAt and stop.areaSince and now - stop.areaSince >= WORK_SECONDS then
+    stop.worked = stop.worked or {}
+    stop.worked[stop.areaAt] = now
+    cleared = true
+  end
+  stop.areaAt, stop.areaSince = index, index and now or nil
+  return cleared
+end
+
+-- Where to do a stop's objectives from `from` when they're in more than one
+-- area: the one you're in; else one you haven't cleared lately, the least out
+-- of the way on to `toward` (the stop after it); else the one cleared longest
+-- ago (it respawns first). Returns the node to head for (the area's open
+-- spawn nearest `from`) and the area's index, or nil with fewer than two areas.
+function Journey.PickArea(stop, from, toward)
+  local action = stop and stop.action
+  if not (action and action.questID and from) then return nil end
+  local areas = Journey.OpenAreas(action.questID)
+  if #areas < 2 then return nil end
+  local now = time()
+  local best, bestIndex, bestRank, bestValue
+  for _, area in ipairs(areas) do
+    local node, distance = ns.Data.Nearest(area.nodes, from)
+    local cleared = clearedAt(stop, area.index, now)
+    local rank, value
+    if stop.inArea and stop.areaAt == area.index then
+      rank, value = 0, 0
+    elseif cleared then
+      rank, value = 2, cleared
+    else
+      rank, value = 1, distance + (toward and ns.Geo.Distance(node, toward) or 0)
+    end
+    if not bestRank or rank < bestRank or (rank == bestRank and value < bestValue) then
+      best, bestIndex, bestRank, bestValue = node, area.index, rank, value
+    end
+  end
+  return best, bestIndex
+end
+
 -- Refreshes nodes found at planning time (the objectives marker appears once
--- the quest is in your log).
+-- the quest is in your log; objectives in several areas pick one).
 local function resolve(stop, here)
   local r = stop.resolve
   if r and r.kind == "objectives" then
-    local node = ns.Quests.ObjectiveNode(r.questID, here)
+    local node = Journey.PickArea(stop, here) or ns.Quests.ObjectiveNode(r.questID, here)
     if node then stop.node = node end
   end
 end
@@ -298,9 +398,22 @@ function Journey.Plan(start, def, net)
   for _, stop in ipairs(def.stops or {}) do resolve(stop, start) end
   if def.finish then resolve(def.finish, start) end
   local root = def.root or def
-  local ordered
+  local ordered = root.manual and manualOrder(start, def.stops or {}, net) or orderStops(start, def.stops or {}, net)
+  -- `first`: the stop you're doing now (another quest's objectives, on the
+  -- way), when nothing it needs is still open.
+  for i, stop in ipairs(ordered) do
+    if stop == def.first and i > 1 then
+      local candidate = { stop }
+      for _, s in ipairs(ordered) do
+        if s ~= stop then candidate[#candidate + 1] = s end
+      end
+      local inPlan = {}
+      for _, s in ipairs(ordered) do inPlan[s] = true end
+      if validOrder(candidate, inPlan) then ordered = candidate end
+      break
+    end
+  end
   if root.manual then
-    ordered = manualOrder(start, def.stops or {}, net)
     -- Keep the root in this order, so later re-plans start from it.
     if root.stops and root.stops ~= def.stops then
       local planned, stops = {}, {}
@@ -311,10 +424,19 @@ function Journey.Plan(start, def, net)
       for _, stop in ipairs(ordered) do stops[#stops + 1] = stop end
       root.stops = stops
     end
-  else
-    ordered = orderStops(start, def.stops or {}, net)
   end
   if def.finish then ordered[#ordered + 1] = def.finish end
+
+  -- Objectives in several areas: the one least out of the way between the
+  -- stops either side of it.
+  local previous = start
+  for i, stop in ipairs(ordered) do
+    if stop.resolve and stop.resolve.kind == "objectives" then
+      local node = Journey.PickArea(stop, previous, ordered[i + 1] and ordered[i + 1].node)
+      if node then stop.node = node end
+    end
+    previous = stop.node or previous
+  end
 
   local journey = { title = def.title, def = def, root = root, stops = {}, skipped = {}, steps = {},
     seconds = 0 }
@@ -348,14 +470,15 @@ end
 
 -- The same journey from here, without the stops already done or dropped. The
 -- original plan (root) is the source, so stops added since are included.
-function Journey.Replan(journey, start, net)
+-- `first`: a stop to put first when it can be (the one you're doing now).
+function Journey.Replan(journey, start, net, first)
   local root = journey.root or journey.def
   local remaining = {}
   for _, stop in ipairs(root.stops or {}) do
     if open(stop) then remaining[#remaining + 1] = stop end
   end
   local finish = open(root.finish) and root.finish or nil
-  return Journey.Plan(start, { title = root.title, stops = remaining, finish = finish, root = root }, net)
+  return Journey.Plan(start, { title = root.title, stops = remaining, finish = finish, root = root, first = first }, net)
 end
 
 local function questKey(stop)
@@ -500,7 +623,7 @@ function Journey.Save(journey)
     local after = {}
     for _, before in ipairs(stop.after or {}) do after[#after + 1] = index[before] end
     return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, npc = stop.npc, action = stop.action, resolve = stop.resolve,
-      done = stop.done, passed = stop.passed, skipped = stop.skipped, after = #after > 0 and after or nil }
+      done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = #after > 0 and after or nil }
   end
   local saved = { title = root.title, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
@@ -513,7 +636,7 @@ function Journey.Load(saved)
   local def = { title = saved.title, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, giver = s.giver, npc = s.npc, action = s.action, resolve = s.resolve, done = s.done,
-      passed = s.passed, skipped = s.skipped }
+      passed = s.passed, skipped = s.skipped, worked = s.worked }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end
   for i, s in ipairs(saved.stops or {}) do
