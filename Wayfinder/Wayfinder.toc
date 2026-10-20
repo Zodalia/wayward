@@ -23,6 +23,7 @@ Network.lua
 Router.lua
 Places.lua
 Quests.lua
+Notable.lua
 Trainers.lua
 Professions.lua
 QuestHubs.lua

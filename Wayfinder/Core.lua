@@ -170,7 +170,7 @@ local HELP = {
   "/wf where - print your map ID and coordinates (to report data fixes)",
   "/wf dock [boat|zeppelin|portal] - record a transport: once where you board, once where you get off",
   "/wf dock list - copy recorded transports",
-  "/wf debug - version, data sources and scan times (/wf debug cards: the For you cards; /wf debug quest <name>: a quest's chain data)",
+  "/wf debug - version, data sources and scan times (/wf debug cards: the For you cards; /wf debug quest <id|name>: a quest's chain data and why it's notable)",
 }
 
 SLASH_WAYFINDER1 = "/wf"
@@ -214,6 +214,7 @@ SlashCmdList.WAYFINDER = function(msg)
       if #matches == 0 then ns.print("no quest called " .. questQuery) end
       for i = 1, math.min(#matches, 3) do
         for _, line in ipairs(ns.Quests.Describe(matches[i].id)) do ns.print(line) end
+        for _, line in ipairs(ns.Quests.DescribeNotable(matches[i].id)) do ns.print(line) end
       end
       return
     end
