@@ -53,13 +53,15 @@ local continents
 -- Continent uiMaps (including any new Forever continents), keyed by instance.
 function Geo.Continents()
   if continents then return continents end
-  continents = {}
+  local found = {}
   local children = C_Map.GetMapChildrenInfo(AZEROTH, Enum.UIMapType.Continent, false) or {}
   for _, info in ipairs(children) do
     local instance = Geo.ToWorld(info.mapID, 0.5, 0.5)
-    if instance and not continents[instance] then continents[instance] = info.mapID end
+    if instance and not found[instance] then found[instance] = info.mapID end
   end
-  return continents
+  -- Map data not ready yet (early in the login): ask again next time.
+  if next(found) then continents = found end
+  return found
 end
 
 -- Zone-level map point for a world position, for placing a user waypoint.

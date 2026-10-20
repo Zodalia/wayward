@@ -1754,13 +1754,13 @@ end
 -- in, a new zone (not in combat: it plans many routes; not on a flight: the
 -- zones passed over aren't where you'll be, so it waits for the landing).
 local CHECK_DELAY = 4
-local checking = false
+local checking, deferred = false, false
 local soon
 
 local function check()
   checking = false
   if InCombatLockdown and InCombatLockdown() then
-    checking = true
+    deferred = true
     return
   end
   if ns.OnTaxi() then return ns.AfterFlight(soon) end
@@ -1772,13 +1772,18 @@ end
 function soon()
   if checking then return end
   checking = true
-  C_Timer.After(CHECK_DELAY, check)
+  ns.After(CHECK_DELAY, check)
 end
 
 ns.On("PLAYER_LEVEL_UP", soon)
 ns.On("QUEST_TURNED_IN", soon)
 ns.On("ZONE_CHANGED_NEW_AREA", soon)
-ns.On("PLAYER_REGEN_ENABLED", function() if checking then soon() end end)
+ns.On("PLAYER_REGEN_ENABLED", function()
+  if deferred then
+    deferred = false
+    soon()
+  end
+end)
 
 -- Registered before the panel's own listeners, so its refresh sees fresh data.
 ns.Listen("DATA_CHANGED", ForYou.Invalidate)

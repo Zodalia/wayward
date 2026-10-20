@@ -70,6 +70,6 @@ function TargetButton.Macro()
   return macro
 end
 
-ns.Listen("NAV_CHANGED", function() C_Timer.After(0, TargetButton.Sync) end)
+ns.Listen("NAV_CHANGED", function() ns.After(0, TargetButton.Sync) end)
 ns.Listen("HUD_MOVED", TargetButton.Sync)
 ns.On("PLAYER_REGEN_ENABLED", function() if pending then TargetButton.Sync() end end)

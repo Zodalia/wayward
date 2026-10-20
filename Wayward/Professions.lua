@@ -78,7 +78,7 @@ function Professions.Mine()
         if name and BY_NAME[name] then out[name] = { rank = rank or 0, cap = cap or 0 } end
       end
     end
-    return out
+    if next(out) or not (GetNumSkillLines and GetSkillLineInfo) then return out end
   end
   if GetNumSkillLines and GetSkillLineInfo then
     for i = 1, GetNumSkillLines() do

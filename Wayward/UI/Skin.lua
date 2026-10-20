@@ -240,7 +240,7 @@ local function detect()
   flush()
 end
 
-ns.On("PLAYER_LOGIN", function() C_Timer.After(0, detect) end)
+ns.On("PLAYER_LOGIN", function() ns.After(0, detect) end)
 
 ns.RegisterCommand("skin", "/ww skin - match your UI suite's look (EllesmereUI, ElvUI) on or off", function()
   ns.db.settings.skin = not enabled()

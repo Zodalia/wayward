@@ -123,7 +123,7 @@ end
 
 ns.On("PLAYER_LOGIN", function()
   if not Welcome.Due() then return end
-  C_Timer.After(SHOW_DELAY, function()
+  ns.After(SHOW_DELAY, function()
     if Welcome.Due() and not (InCombatLockdown and InCombatLockdown()) then Welcome.Show() end
   end)
 end)

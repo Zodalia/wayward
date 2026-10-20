@@ -11,9 +11,7 @@ local WeaponMasters = { id = "weaponMaster", label = "Weapons" }
 ns.WeaponMasters = WeaponMasters
 
 local function knowsSpell(spellID)
-  if IsPlayerSpell then return IsPlayerSpell(spellID) and true or false end
-  if IsSpellKnown then return IsSpellKnown(spellID) and true or false end
-  return false
+  return ns.KnowsSpell(spellID) == true
 end
 
 local function spellName(spellID)
@@ -264,8 +262,8 @@ local GREEN, RED, GREY = "|cff7fd1ae", "|cffff7f3f", "|cff9d9d9d"
 
 -- Whether you know a weapon skill: true / false, or nil when this client can't say.
 local function knows(weapon)
-  if IsPlayerSpell then return IsPlayerSpell(weapon.spell) and true or false end
-  if IsSpellKnown then return IsSpellKnown(weapon.spell) and true or false end
+  local known = ns.KnowsSpell(weapon.spell)
+  if known ~= nil then return known end
   if GetNumSkillLines and GetSkillLineInfo then
     for i = 1, GetNumSkillLines() do
       if GetSkillLineInfo(i) == weapon.name then return true end

@@ -116,7 +116,7 @@ Wayward.UnregisterSource = unregister
 -- The addon was called Wayfinder before it was published. Companions built
 -- against that name still register through this alias; drop it one release
 -- after the first one shipped as Wayward.
-Wayfinder = Wayward
+Wayfinder = Wayfinder or Wayward
 
 function Data.Sources()
   return sources

@@ -49,6 +49,30 @@ function ns.Fire(message, ...)
   end
 end
 
+-- C_Timer.After, with the callback's error reported instead of lost (a
+-- timer callback isn't inside any pcall'd handler).
+function ns.After(delay, fn)
+  C_Timer.After(delay, function()
+    local ok, err = pcall(fn)
+    if not ok then geterrorhandler()(err) end
+  end)
+end
+
+-- Client functions that moved between API versions, looked up on each call
+-- (tests swap them in late).
+function ns.ItemCount(itemID)
+  local fn = C_Item and C_Item.GetItemCount or GetItemCount
+  return fn and fn(itemID) or 0
+end
+
+-- true / false, or nil when this client can't say.
+function ns.KnowsSpell(spellID)
+  if C_SpellBook and C_SpellBook.IsSpellKnown then return C_SpellBook.IsSpellKnown(spellID) and true or false end
+  if IsPlayerSpell then return IsPlayerSpell(spellID) and true or false end
+  if IsSpellKnown then return IsSpellKnown(spellID) and true or false end
+  return nil
+end
+
 ---------------------------------------------------------------- flights
 
 -- On a flight path the zones you pass over aren't places you're in: what a

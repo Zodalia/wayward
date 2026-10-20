@@ -193,7 +193,7 @@ end
 -- comes first on a first login; the TomTom question waits for it.
 ns.On("PLAYER_LOGIN", function()
   register()
-  C_Timer.After(2, function()
+  ns.After(2, function()
     if ns.Welcome and ns.Welcome.IsShown() then return end
     Options.AskTomTom()
   end)

@@ -59,7 +59,7 @@ local function objectivesDone(questID)
 end
 
 local function hasItem(itemID)
-  return GetItemCount ~= nil and (GetItemCount(itemID) or 0) > 0
+  return ns.ItemCount(itemID) > 0
 end
 
 -- Marks quest stops done when the quest has already moved past them (e.g.

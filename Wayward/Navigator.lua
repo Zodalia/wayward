@@ -511,7 +511,7 @@ end
 
 local function askPickups()
   if stillPicking() then
-    C_Timer.After(PICKUP_WAIT, askPickups)
+    ns.After(PICKUP_WAIT, askPickups)
     return
   end
   waiting = false
@@ -554,7 +554,7 @@ ns.On("QUEST_ACCEPTED", function(questID)
   picked[#picked + 1] = questID
   if not waiting then
     waiting = true
-    C_Timer.After(PICKUP_WAIT, askPickups)
+    ns.After(PICKUP_WAIT, askPickups)
   end
 end)
 ns.On("QUEST_TURNED_IN", function(questID)
@@ -636,13 +636,12 @@ local function trainedCheck()
 end
 
 for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_UPDATE", "CHAT_MSG_SKILL" }) do
-  ns.On(event, function() C_Timer.After(0.2, trainedCheck) end)
+  ns.On(event, function() ns.After(0.2, trainedCheck) end)
 end
 
 -- Collecting an item a quest needs.
 ns.On("BAG_UPDATE_DELAYED", function()
-  if not GetItemCount then return end
-  finishStop(function(action) return action.kind == "item" and (GetItemCount(action.itemID) or 0) > 0 end)
+  finishStop(function(action) return action.kind == "item" and ns.ItemCount(action.itemID) > 0 end)
   syncStops()
 end)
 
@@ -888,9 +887,15 @@ end)
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   if not (isLogin or isReload) then return end
-  C_Timer.After(1, function()
+  ns.After(1, function()
     adoptPin()
-    Nav.Resume()
+    local ok, err = pcall(Nav.Resume)
+    if not ok then
+      -- A trip saved by an older version: drop it rather than fail every login.
+      ns.charDB.nav = nil
+      Nav.active = nil
+      geterrorhandler()(err)
+    end
     if not Nav.active then clearPin() end
   end)
 end)
@@ -938,7 +943,7 @@ end
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   if isLogin or isReload then return end
   -- Tick compares with where you were before the loading screen.
-  C_Timer.After(1, function()
+  ns.After(1, function()
     if Nav.active then Nav.Tick() end
   end)
 end)

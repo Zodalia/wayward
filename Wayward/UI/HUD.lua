@@ -188,7 +188,13 @@ local function create()
     elapsed = elapsed + dt
     if elapsed >= UPDATE_INTERVAL then
       elapsed = 0
-      HUD.Update()
+      local ok, err = pcall(HUD.Update)
+      if not ok then
+        -- Reported once, and the trip stops rather than failing ten times a second.
+        pcall(ns.Nav.Stop)
+        f:Hide()
+        geterrorhandler()(err)
+      end
     end
   end)
   ns.Skin.Box(f)
@@ -267,10 +273,10 @@ function HUD.Update()
   -- the destination) under the step, only when there's more than one.
   if trip then
     local done, total = ns.Journey.StopsDone(a.journey), #a.journey.stops
-    frame.title:SetText(string.format("%s  |cff9d9d9d%d of %d done|r", a.title, done, total))
+    frame.title:SetText(string.format("%s  |cff9d9d9d%d of %d done|r", a.title or "", done, total))
     frame.progress:SetValue(total > 0 and done / total or 0)
   else
-    frame.title:SetText(a.title)
+    frame.title:SetText(a.title or "")
   end
   frame.step:SetText(ns.Router.Describe(a.route, a.index))
   local position, count = legPosition(a)
@@ -301,7 +307,7 @@ function HUD.Update()
       or ns.Journey.ClearedAreas(step.stop) > 0 and "|cff9d9d9dNext spot|r  ·  " or ""
     frame.info:SetText(lead .. objective .. "     " .. remaining)
   elseif ns.Nav.Interaction() == "fly" then
-    frame.info:SetText(string.format("Pick %s on the flight map     %s", step.to.label, remaining))
+    frame.info:SetText(string.format("Pick %s on the flight map     %s", step.to.label or "your destination", remaining))
   elseif ns.Nav.Interaction() == "use" then
     frame.info:SetText(string.format("|cff7fd1aeYou're here:|r use %s     %s", (ns.Nav.TargetObject()), remaining))
   elseif ns.Nav.Interaction() == "talk" and not (step.stop and step.stop.action and step.stop.action.kind == "manual") then
