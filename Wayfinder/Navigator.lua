@@ -52,16 +52,40 @@ local function setTomTom(mapID, x, y, title)
   return false
 end
 
+-- The game's map pin (and its marker on screen) outlasts a logout or reload,
+-- so where we put ours is saved: one still there next time is ours to take
+-- down, not left pointing at an old step (TomTom showing the way instead,
+-- or no trip to resume).
+local function clearPin()
+  if Nav.ownsWaypoint then
+    C_Map.ClearUserWaypoint()
+    Nav.ownsWaypoint = false
+  end
+  ns.charDB.pin = nil
+end
+
+local PIN_SAME = 1e-4
+
+local function adoptPin()
+  local pin = ns.charDB.pin
+  local current = pin and C_Map.GetUserWaypoint and C_Map.GetUserWaypoint()
+  local x, y
+  if current and current.position then x, y = current.position:GetXY() end
+  if x and current.uiMapID == pin.mapID and math.abs(x - pin.x) < PIN_SAME and math.abs(y - pin.y) < PIN_SAME then
+    Nav.ownsWaypoint = true
+  else
+    -- Gone, or one you placed yourself since: not ours.
+    ns.charDB.pin = nil
+  end
+end
+
 -- `title` says what to do there (the step text), for TomTom's arrow and pin.
 local function setWaypoint(node, title)
   local mapID, x, y = ns.Geo.ZonePoint(node)
   if not (mapID and x and y) then return end
   if Nav.UsingTomTom() and setTomTom(mapID, x, y, title or node.label or "Wayfinder") then
     -- TomTom shows the way now: take down the map pin we put up before.
-    if Nav.ownsWaypoint then
-      C_Map.ClearUserWaypoint()
-      Nav.ownsWaypoint = false
-    end
+    clearPin()
     return
   end
   if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then return end
@@ -70,6 +94,7 @@ local function setWaypoint(node, title)
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
   end
   Nav.ownsWaypoint = true
+  ns.charDB.pin = { mapID = mapID, x = x, y = y }
 end
 
 function Nav.CurrentStep()
@@ -205,10 +230,7 @@ end
 
 local function clearWaypoints()
   clearTomTom()
-  if Nav.ownsWaypoint then
-    C_Map.ClearUserWaypoint()
-    Nav.ownsWaypoint = false
-  end
+  clearPin()
 end
 
 function Nav.Stop()
@@ -865,7 +887,12 @@ ns.On("PLAYER_XP_UPDATE", function()
 end)
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
-  if isLogin or isReload then C_Timer.After(1, Nav.Resume) end
+  if not (isLogin or isReload) then return end
+  C_Timer.After(1, function()
+    adoptPin()
+    Nav.Resume()
+    if not Nav.active then clearPin() end
+  end)
 end)
 
 -- True while standing at a journey stop that waits for a quest action.

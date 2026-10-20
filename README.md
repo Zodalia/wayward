@@ -235,8 +235,10 @@ zone, a dungeon, spells to train, a profession's next rank) a short "New
 journey available" toast pops up; click it to start the journey, or to add
 it to the trip you're on (the usual question). Both fade after a few seconds,
 not while the mouse is over them. For you checks for new ones after a level,
-a quest handed in or a new zone (not in combat); the first look after this
-update only learns what's there. `/wf toasts` or the options turn the toasts
+a quest handed in or a new zone (not in combat, and not on a flight: the
+zones flown over wait for the landing); the first look after this update
+only learns what's there. A trainer card pops up only for a spell no toast
+has shown yet, whichever town's trainer is nearest. `/wf toasts` or the options turn the toasts
 off.
 
 **Sounds.** Wayfinder plays one of the game's own sounds when it asks about a
@@ -264,6 +266,9 @@ play it. `/wf sounds export` opens your choices as one line to copy
 - **TomTom**: when it's installed, Wayfinder asks once whether to use it;
   then each step goes on TomTom's arrow and map pins, titled with what to do
   there (`/wf tomtom` or the options switch it, or retry after TomTom failed).
+  The game keeps its own map pin across a logout or reload; Wayfinder takes
+  its pin from last time down when TomTom shows the way or no trip resumes
+  (a pin you placed yourself since stays).
 - **Options** (Options > AddOns > Wayfinder, or `/wf options`): the compass in
   the directions box, TomTom's arrow and the minimap button. The compass and
   TomTom are separate: use either, both, or neither for text directions

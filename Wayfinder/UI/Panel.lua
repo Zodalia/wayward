@@ -750,4 +750,6 @@ function Panel.Toggle()
 end
 
 ns.Listen("DATA_CHANGED", function() Panel.Refresh() end)
-ns.On("ZONE_CHANGED_NEW_AREA", function() Panel.Refresh() end)
+-- Not for each zone a flight passes over: once, where you land.
+local function zoneChanged() Panel.Refresh() end
+ns.On("ZONE_CHANGED_NEW_AREA", function() ns.AfterFlight(zoneChanged) end)

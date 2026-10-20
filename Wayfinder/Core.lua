@@ -49,6 +49,43 @@ function ns.Fire(message, ...)
   end
 end
 
+---------------------------------------------------------------- flights
+
+-- On a flight path the zones you pass over aren't places you're in: what a
+-- new zone sets off (suggestions planned again, "new journey" toasts) waits
+-- for the landing. Checked every few seconds rather than trusting an event
+-- to say you landed.
+local LANDING_POLL = 2
+local afterLanding, polling = {}, false
+
+function ns.OnTaxi()
+  return UnitOnTaxi ~= nil and UnitOnTaxi("player") and true or false
+end
+
+local function poll()
+  if ns.OnTaxi() then return C_Timer.After(LANDING_POLL, poll) end
+  polling = false
+  local fns = afterLanding
+  afterLanding = {}
+  for _, fn in ipairs(fns) do
+    local ok, err = pcall(fn)
+    if not ok then geterrorhandler()(err) end
+  end
+end
+
+-- Runs `fn` now, or once you land (once, however often it was asked for).
+function ns.AfterFlight(fn)
+  if not ns.OnTaxi() then return fn() end
+  for _, queued in ipairs(afterLanding) do
+    if queued == fn then return end
+  end
+  afterLanding[#afterLanding + 1] = fn
+  if not polling then
+    polling = true
+    C_Timer.After(LANDING_POLL, poll)
+  end
+end
+
 ---------------------------------------------------------------- panel pages
 
 -- Pages register themselves from their own files; UI/Panel.lua (loaded last)

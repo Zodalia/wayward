@@ -308,7 +308,7 @@ local function trainingNeed(ctx)
     why = s.costUnknown and spells or string.format("%s for %s", spells, cost),
     rank = s.costUnknown and string.format("Needs come first: you can train %s.", spells)
       or string.format("Needs come first: you can train and afford %s (%s).", spells, cost),
-    details = details,
+    details = details, spells = s.names,
     stop = { node = best.goal, text = "Train your new spells at " .. best.title, phrase = "train in " .. place },
   }
 end
@@ -1059,7 +1059,7 @@ local function needRow(need)
     subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
     place = capitalize(need.why),
     stats = need.stats or { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
-    goal = need.goal, route = need.route, journey = need.journey, details = details,
+    goal = need.goal, route = need.route, journey = need.journey, details = details, spells = need.spells,
   }
 end
 
@@ -1711,25 +1711,45 @@ local function major(r)
     or r.kind == "train" or r.kind == "profession"
 end
 
+-- A card is new when its title is. A trainer card's title changes with the
+-- number of spells and the nearest trainer's town, so it's new only for a
+-- spell no card has shown yet (or, without a spell list, at a new level).
+local function isNew(r, seen)
+  if r.kind ~= "train" then
+    local key = (r.id or "?") .. "|" .. (r.title or "")
+    local new = not seen[key]
+    seen[key] = true
+    return new
+  end
+  if not (r.spells and #r.spells > 0) then
+    local key = (r.id or "?") .. "|level " .. tostring(UnitLevel("player"))
+    local new = not seen[key]
+    seen[key] = true
+    return new
+  end
+  local new = false
+  for _, name in ipairs(r.spells) do
+    local key = "spell|" .. name
+    if not seen[key] then new, seen[key] = true, true end
+  end
+  return new
+end
+
 function ForYou.CheckNew(results)
   local first = ns.charDB.seenCards == nil
   ns.charDB.seenCards = ns.charDB.seenCards or {}
   local seen = ns.charDB.seenCards
   for _, r in ipairs(results or {}) do
-    if major(r) then
-      local key = (r.id or "?") .. "|" .. (r.title or "")
-      if not seen[key] then
-        seen[key] = true
-        if not first and ns.Fanfare then ns.Fanfare.NewJourney(r) end
-      end
-    end
+    if major(r) and isNew(r, seen) and not first and ns.Fanfare then ns.Fanfare.NewJourney(r) end
   end
 end
 
 -- Looked at in the background when things change: a level, a quest handed
--- in, a new zone (not in combat: it plans many routes).
+-- in, a new zone (not in combat: it plans many routes; not on a flight: the
+-- zones passed over aren't where you'll be, so it waits for the landing).
 local CHECK_DELAY = 4
 local checking = false
+local soon
 
 local function check()
   checking = false
@@ -1737,12 +1757,13 @@ local function check()
     checking = true
     return
   end
+  if ns.OnTaxi() then return ns.AfterFlight(soon) end
   ForYou.Invalidate()
   local results = ForYou.Results()
   ForYou.CheckNew(results)
 end
 
-local function soon()
+function soon()
   if checking then return end
   checking = true
   C_Timer.After(CHECK_DELAY, check)

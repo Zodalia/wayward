@@ -2272,6 +2272,38 @@ do
   check(ns.Fanfare.lastNew == dungeon, "a new dungeon card pops up as a new journey")
   ns.ForYou.CheckNew({ zone, dungeon })
   check(ns.Fanfare.lastNew == dungeon, "and only once")
+  -- Trainer cards: new only for a spell no card has shown.
+  local function trainCard(title, spells)
+    return { id = "needtrain", kind = "train", category = "Due now", title = title, spells = spells,
+      goal = b.node, route = zone.route }
+  end
+  local train = trainCard("Train 2 new spells in Stormwind", { "Fireball (Rank 3)", "Frost Nova" })
+  ns.ForYou.CheckNew({ zone, train })
+  check(ns.Fanfare.lastNew == train, "a trainer card with new spells pops up")
+  ns.ForYou.CheckNew({ zone, trainCard("Train 2 new spells in Goldshire", { "Frost Nova", "Fireball (Rank 3)" }) })
+  check(ns.Fanfare.lastNew == train, "not again for the same spells at another trainer")
+  ns.ForYou.CheckNew({ zone, trainCard("Train 1 new spell in Stormwind", { "Frost Nova" }) })
+  check(ns.Fanfare.lastNew == train, "nor for fewer of them")
+  local more = trainCard("Train 3 new spells in Stormwind", { "Frost Nova", "Fireball (Rank 3)", "Arcane Missiles" })
+  ns.ForYou.CheckNew({ zone, more })
+  check(ns.Fanfare.lastNew == more, "but again for a spell not shown before")
+  -- On a flight, the zones passed over set nothing off until the landing.
+  local realResults, looked = ns.ForYou.Results, 0
+  ns.ForYou.Results = function() looked = looked + 1 return {} end
+  runTimers()
+  looked = 0
+  UnitOnTaxi = function() return true end
+  fire("ZONE_CHANGED_NEW_AREA")
+  runTimers()
+  runTimers()
+  fire("ZONE_CHANGED_NEW_AREA")
+  runTimers()
+  check(looked == 0, "flying over zones: no suggestions planned, no toasts")
+  UnitOnTaxi = function() return false end
+  runTimers()
+  runTimers()
+  check(looked >= 1, "landing: looked at where you are")
+  ns.ForYou.Results = realResults
   player.x = 0.5
   ns.Panel.Activate(dungeon)
   check(ns.Nav.active and ns.Nav.active.title:find("Stockade", 1, true), "clicking it starts it")
@@ -3483,6 +3515,44 @@ do
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   check(not ns.Nav.UsingTomTom() and #waypoints > blizzard, "a TomTom that fails falls back to our own arrow")
   ns.Nav.Stop()
+
+  -- The game's map pin outlasts a reload: ours from last time comes down.
+  TomTom.AddWaypoint = function(_, mapID, x, y, opts) added[#added + 1] = { mapID = mapID, opts = opts } return { #added } end
+  ns.Nav.ResetTomTom()
+  local function reload(userPin)
+    -- A fresh UI: nothing on, the trip and the pin still saved.
+    ns.Nav.active, ns.Nav.ownsWaypoint, ns.Nav.tomtomWaypoint = nil, false, nil
+    C_Map.GetUserWaypoint = function() return userPin end
+    fire("PLAYER_ENTERING_WORLD", false, true)
+    runTimers()
+  end
+  ns.db.settings.tomtom = false
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  local pin = ns.charDB.pin
+  check(pin and pin.mapID and ns.Nav.ownsWaypoint, "where our map pin is gets saved")
+  ns.db.settings.tomtom = true
+  local before = #waypoints
+  reload({ uiMapID = pin.mapID, position = vec(pin.x, pin.y) })
+  check(ns.Nav.active and ns.Nav.tomtomWaypoint and #waypoints == before + 1 and waypoints[#waypoints] == "cleared"
+    and not ns.Nav.ownsWaypoint and ns.charDB.pin == nil, "resumed with TomTom on: our old map pin comes down")
+  ns.Nav.Stop()
+  ns.db.settings.tomtom = false
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  pin = ns.charDB.pin
+  ns.charDB.nav = nil
+  before = #waypoints
+  reload({ uiMapID = pin.mapID, position = vec(pin.x, pin.y) })
+  check(not ns.Nav.active and #waypoints == before + 1 and waypoints[#waypoints] == "cleared" and ns.charDB.pin == nil,
+    "no trip to resume: our old map pin comes down")
+  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
+  pin = ns.charDB.pin
+  ns.charDB.nav = nil
+  before = #waypoints
+  reload({ uiMapID = pin.mapID, position = vec(pin.x + 0.1, pin.y) })
+  check(#waypoints == before and ns.charDB.pin == nil, "a pin you placed yourself since stays")
+  ns.Nav.Stop()
+  C_Map.GetUserWaypoint = nil
+  ns.db.settings.tomtom = true
   TomTom = nil
 
   -- Minimap button and addon compartment.
