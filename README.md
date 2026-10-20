@@ -390,6 +390,7 @@ panel to add it to the trip you're on.
     area you haven't cleared. When every area is cleared (a quest with one
     camp, say), the stop waits for the first to respawn: the trip does other
     stops first when they fit, and the directions box says when it respawns.
+    The trip's time counts the wait (and it shrinks as the camp respawns).
     Cleared areas are saved with the trip.
   - Making progress on a later stop's objectives while you're in their area
     (another quest's camp on the way) makes that stop the next one.

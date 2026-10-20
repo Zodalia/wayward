@@ -2586,6 +2586,13 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spiders", stops = { spiderStop } }))
   ns.HUD.Update()
   check(ns.HUD.Lines()[4]:find("Respawns in ~3 min", 1, true), "the box says when it respawns: " .. ns.HUD.Lines()[4])
+  local walk = ns.Router.Plan(ns.Geo.PlayerNode(), spiderStop.node, ns.Network.Build()).seconds
+  check(walk < 200 and ns.Nav.active.journey.seconds == 200 and ns.Nav.RemainingSeconds(ns.Geo.PlayerNode()) == 200,
+    string.format("the trip's time waits for the respawn: %.0f s, not the %.0f s walk", ns.Nav.active.journey.seconds, walk))
+  clock = clock + 150
+  check(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode()) == 50, "and the wait shrinks as it respawns")
+  clock = clock + 100
+  check(math.abs(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode()) - walk) < 1, "respawned: just the walk")
 
   -- Nameplates: the murlocs in sight. Killing there, then none left you could
   -- kill (one tapped by someone else): the camp looks cleared, sooner than 30 s.

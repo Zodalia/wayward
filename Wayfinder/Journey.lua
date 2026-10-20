@@ -423,6 +423,7 @@ end
 -- Plans a journey from `start`. Returns
 --   { title, def, root, stops = ordered stops, skipped = unreachable stops,
 --     steps = route steps (the last step of each leg carries .stop), seconds }
+-- where seconds counts travel and any waits for a cleared camp to respawn.
 -- or nil when no stop is reachable. `root` is the original definition, kept
 -- across re-plans so the overview can show stops already done.
 function Journey.Plan(start, def, net)
@@ -485,7 +486,8 @@ function Journey.Plan(start, def, net)
         if i == #steps then step.stop = stop end
         journey.steps[#journey.steps + 1] = step
       end
-      journey.seconds = journey.seconds + route.seconds
+      -- Getting to a camp before it respawns means waiting there.
+      journey.seconds = math.max(journey.seconds + route.seconds, Journey.RespawnIn(stop))
       journey.stops[#journey.stops + 1] = stop
       from = stop.node
     else

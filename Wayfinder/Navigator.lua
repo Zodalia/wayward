@@ -346,7 +346,8 @@ local function onTaxi()
 end
 
 -- The current step is re-measured from `here`; later steps use the plan. In
--- a camp, what its objectives still need at your pace there counts too.
+-- a camp, what its objectives still need at your pace there counts too, and
+-- arriving at a cleared camp before it respawns means waiting there.
 function Nav.RemainingSeconds(here)
   local a = Nav.active
   if not a then return nil end
@@ -358,6 +359,7 @@ function Nav.RemainingSeconds(here)
     else
       total = total + step.seconds
     end
+    if step.stop then total = math.max(total, ns.Journey.RespawnIn(step.stop)) end
   end
   return total
 end
