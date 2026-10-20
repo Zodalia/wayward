@@ -35,7 +35,8 @@ local _, ns = ...
 local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
 ns.ForYou = ForYou
 
-local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip
+local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip (until QuestTimes has
+                                -- learned how long yours take: perQuest)
 local MAX_RESULTS = 9           -- cards the page shows (three pages)
 local MAX_NEEDS = 2             -- "Due now" and "Worth a visit" cards
 local REPAIR_SOON = 0.75        -- gear at or under this: repair if a vendor is close
@@ -61,6 +62,8 @@ local MAX_FINISH = 3            -- log quests per "Finish" trip (up to two stops
 local FINISH_TRIPS = 3          -- nearest groups of unfinished log quests offered
 local NOTABLE_SECONDS = 600     -- "Don't miss": travel to the quest's first stop, at most
 local NOTABLE_TRIES = 4         -- notable quests planned before giving up on the card
+local BUDGET_DUNGEON = 60       -- minutes: with less time than this, no dungeon
+local BUDGET_TRIES = 3          -- hand-in or finish trips planned to find one that fits
 
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
@@ -70,7 +73,9 @@ local NOTABLE = { r = 0.77, g = 0.55, b = 1 }
 local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5, profession = 6 }
 local SOFT_PRIORITY = 10
 
+ForYou.SECONDS_PER_QUEST = SECONDS_PER_QUEST
 local cache, summary
+local perQuest = SECONDS_PER_QUEST -- this refresh's time per quest: your average once known
 ForYou.runs = 0 -- refreshes computed, not served from the cache
 
 ---------------------------------------------------------------- helpers
@@ -224,7 +229,7 @@ local function questValue(q, ctx)
 end
 
 -- value: XP (or quests) for the option; rate: per minute, trip included. A
--- quest takes SECONDS_PER_QUEST unless it says otherwise (log quests: q.seconds).
+-- quest takes perQuest unless it says otherwise (log quests: q.seconds).
 local function score(option, ctx)
   option.value, option.estimated = 0, 0
   option.seconds = option.trip
@@ -232,7 +237,7 @@ local function score(option, ctx)
     local v, estimated = questValue(q, ctx)
     q.value = v
     option.value = option.value + v
-    option.seconds = option.seconds + (q.seconds or SECONDS_PER_QUEST)
+    option.seconds = option.seconds + (q.seconds or perQuest)
     if estimated then option.estimated = option.estimated + 1 end
   end
   option.rate = option.value / math.max(option.seconds / 60, 1)
@@ -571,7 +576,7 @@ end
 -- A log quest as an option's quest: full XP, only the time left counted.
 local function logQuest(e)
   return { id = e.id, name = e.name, level = e.level, inLog = true, handin = e.complete, left = e.left,
-    seconds = e.complete and HANDIN_SECONDS or SECONDS_PER_QUEST * e.left }
+    seconds = e.complete and HANDIN_SECONDS or perQuest * e.left }
 end
 
 -- Quests done inside a dungeon count toward its option instead. Dungeons.lua
@@ -753,7 +758,7 @@ local function dungeonOptions(ctx)
     for _, q in ipairs(inLog) do
       local e = logged[q.id]
       quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, inLog = true, left = e and e.left,
-        seconds = e and SECONDS_PER_QUEST * e.left }
+        seconds = e and perQuest * e.left }
     end
     local name = entry and entry.name or r.title
     local later = r.quests and r.quests.later or {}
@@ -998,7 +1003,14 @@ local function zoneOptions(ctx, start, net)
     local anchor = first.anchor.node
     local goal = ns.Geo.Node(anchor.mapID, anchor.x, anchor.y, string.format("%s (%s)", first.place, first.anchor.name or "?"))
     local route = goal and ns.Router.Plan(start, goal, net)
-    if route then
+    -- With a time budget: the trip to the first hub and one quest must fit.
+    local over = route and ctx.budget and route.seconds + perQuest > ctx.budget
+    if over and #ctx.overZones < MAX_ZONES then
+      ctx.overZones[#ctx.overZones + 1] = { kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = "Quest in " .. ns.MapName(z.mapID),
+        goal = goal, route = route, trip = route.seconds, seconds = route.seconds + perQuest,
+        now = z.now, later = z.later, value = z.value, lowest = z.lowest, highest = z.highest, hubs = hubs, first = first, leads = {} }
+    end
+    if route and not over then
       -- Where the chains lead: the places their next quests start, other than the first hub.
       local leads, seen = {}, { [first.place] = true }
       for _, q in ipairs(z.later) do
@@ -1021,7 +1033,7 @@ local function zoneOptions(ctx, start, net)
       out[#out + 1] = {
         kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = title,
         goal = goal, route = route, journey = journey, trip = journey and journey.seconds or route.seconds,
-        now = z.now, later = z.later, value = z.value,
+        seconds = route.seconds + perQuest, now = z.now, later = z.later, value = z.value,
         lowest = z.lowest, highest = z.highest, hubs = hubs, first = first, leads = leads,
       }
     end
@@ -1065,7 +1077,7 @@ local function questCounts(option)
     if q.handin then
       handins = handins + 1
     elseif q.inLog then
-      logged, left = logged + 1, left + (q.seconds or SECONDS_PER_QUEST)
+      logged, left = logged + 1, left + (q.seconds or perQuest)
     else
       fresh = fresh + 1
     end
@@ -1073,11 +1085,18 @@ local function questCounts(option)
   return fresh, logged, handins, left
 end
 
+-- "5 min", or "7 min (your average)" once QuestTimes knows.
+local function perQuestText()
+  local text = string.format("%d min", math.floor(perQuest / 60 + 0.5))
+  if perQuest ~= SECONDS_PER_QUEST then text = text .. " (your average)" end
+  return text
+end
+
 -- "trip ~4 min + 3 x 5 min per quest + ~4 min left on 2 in your log + 2 x 30 s per hand-in"
 local function timeText(option)
   local fresh, logged, handins, left = questCounts(option)
   local parts = { "trip " .. ns.FormatDuration(option.trip) }
-  if fresh > 0 then parts[#parts + 1] = string.format("%d x %d min per quest", fresh, SECONDS_PER_QUEST / 60) end
+  if fresh > 0 then parts[#parts + 1] = string.format("%d x %s per quest", fresh, perQuestText()) end
   if logged > 0 then
     parts[#parts + 1] = string.format("%s left on %d in your log", ns.FormatDuration(left), logged)
   end
@@ -1115,12 +1134,16 @@ local function optionRow(option, rank, total, ctx)
       timeText(option)),
     color = GOLD,
   } }
+  if option.fitting then
+    details[1].text = string.format("Least travel of %d that fit in %d min: ~%s in %s (%s).", option.fitting,
+      ctx.budget / 60, amount, ns.FormatDuration(option.seconds), timeText(option))
+  end
   if logged + handins > 0 then
     local how = {}
     if handins > 0 then how[#how + 1] = string.format("handing one in takes ~%d s", HANDIN_SECONDS) end
     if logged > 0 then
-      how[#how + 1] = string.format("unfinished ones take %d min times the share of objectives left",
-        SECONDS_PER_QUEST / 60)
+      how[#how + 1] = string.format("unfinished ones take %s times the share of objectives left",
+        perQuestText())
     end
     -- The same on most cards: in the breakdown and tooltip only.
     details[#details + 1] = { text = "Quests in your log count at full XP; " .. table.concat(how, ", ") .. ".",
@@ -1293,6 +1316,18 @@ local function summaryFor(ctx, needs)
   else
     parts[1] = string.format("Level %d: %s from here.", level, ranking)
   end
+  if ctx.budget then
+    local minutes = ctx.budget / 60
+    if ctx.nothingFits then
+      parts[1] = string.format("Nothing to quest fits in %d min: the quickest option, a bit over%s.", minutes,
+        needs > 0 and string.format(", after |cff7fd1ae%s due|r", plural(needs, "thing")) or "")
+    elseif needs > 0 then
+      parts[1] = string.format("Fits in %d min: |cff7fd1ae%s due|r first, then %s; hand-ins and finishes by least travel.",
+        minutes, plural(needs, "thing"), ranking)
+    else
+      parts[1] = string.format("Fits in %d min: %s; hand-ins and finishes by least travel.", minutes, ranking)
+    end
+  end
   if not ctx.quests then
     parts[#parts + 1] = "Install a Wayfinder data addon for quest hubs and XP; dungeons are ranked by level fit and travel time."
   elseif level >= MAX_LEVEL then
@@ -1337,9 +1372,20 @@ local function build()
   local net = ns.Network.Build()
   local level = UnitLevel("player")
   local db = xpTable()
+  perQuest = ns.QuestTimes.Seconds() or SECONDS_PER_QUEST
   local ctx = { level = level, db = db, xpMode = db ~= nil and level < MAX_LEVEL,
-    quests = ns.Quests.Available() and true or false, notes = {}, unplaced = 0 }
+    quests = ns.Quests.Available() and true or false, notes = {}, unplaced = 0, overZones = {} }
   ctx.log = try(readLog) or {}
+  -- A time budget (see "time budget" below): what doesn't fit is left out.
+  local budget = ForYou.Budget()
+  ctx.budget = budget and budget * 60
+  local function fits(seconds) return not ctx.budget or seconds <= ctx.budget end
+  local function keep(list, test)
+    local out = {}
+    for _, item in ipairs(list) do if test(item) then out[#out + 1] = item end end
+    return out
+  end
+  local function needSeconds(n) return n.journey and n.journey.seconds or seconds(n.route) end
 
   local needs = {}
   local function addNeed(n) if n then needs[#needs + 1] = n end end
@@ -1350,6 +1396,7 @@ local function build()
   for _, n in ipairs(timed("professions", professionNeeds, start, net) or {}) do addNeed(n) end
   local function priority(n) return (n.soft and SOFT_PRIORITY or 0) + PRIORITY[n.kind] end
   table.sort(needs, function(a, b) return priority(a) < priority(b) end)
+  if ctx.budget then needs = keep(needs, function(n) return fits(needSeconds(n)) end) end
   while #needs > MAX_NEEDS do table.remove(needs) end
 
   -- Every option, ranked by XP per minute (the rank shown on each card); then
@@ -1363,16 +1410,33 @@ local function build()
   -- With quest data, a dungeon without quests for you isn't worth the run in
   -- Forever (its mobs give little XP); without it there's nothing better to go on.
   if ctx.quests then plain = {} end
-  local all = {}
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
-    for _, option in ipairs(list) do
-      score(option, ctx)
-      all[#all + 1] = option
-    end
+    for _, option in ipairs(list) do score(option, ctx) end
   end
   local function byRate(a, b)
     if a.rate ~= b.rate then return a.rate > b.rate end
     return a.seconds < b.seconds
+  end
+  -- With a budget, what doesn't fit is kept aside: the quickest of it is
+  -- offered when nothing fits. Dungeons need BUDGET_DUNGEON minutes.
+  local over = {}
+  local questHubs = hubs -- the best quest can come from a hub too big for the budget
+  if ctx.budget then
+    local dungeonTime = budget >= BUDGET_DUNGEON
+    for _, list in ipairs({ handins, finishes, dungeonTime and dungeons or {} }) do
+      for _, option in ipairs(list) do over[#over + 1] = option end
+    end
+    local function optionFits(o) return fits(o.seconds) end
+    hubs, handins, finishes = keep(hubs, optionFits), keep(handins, optionFits), keep(finishes, optionFits)
+    dungeons = dungeonTime and keep(dungeons, optionFits) or {}
+    plain = dungeonTime and keep(plain, function(o) return fits(o.trip) end) or {}
+    if not dungeonTime then held = {} end
+    table.sort(over, byRate)
+    for i, option in ipairs(over) do option.overRank = i end
+  end
+  local all = {}
+  for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
+    for _, option in ipairs(list) do all[#all + 1] = option end
   end
   table.sort(all, byRate)
   for i, option in ipairs(all) do option.rank = i end
@@ -1383,20 +1447,49 @@ local function build()
 
   local picks = {}
   local function pick(option) if option then picks[#picks + 1] = option end end
-  local handin, finish, dungeon = best(handins), best(finishes), best(dungeons)
-  for _, option in ipairs({ handin, finish }) do
-    if option and #option.stops > 0 then timed("trips", questJourney, option, ctx, start, net) end
-    pick(option)
+  local function journeyFor(option)
+    if #option.stops > 0 then timed("trips", questJourney, option, ctx, start, net) end
   end
-  local quest = timed("best quest", bestQuestOption, hubs, ctx, start, net)
+  -- With a budget: the least travel first, the first whose planned trip still fits.
+  local function quickest(list)
+    table.sort(list, function(a, b)
+      if a.trip ~= b.trip then return a.trip < b.trip end
+      return a.seconds < b.seconds
+    end)
+    for i = 1, math.min(#list, BUDGET_TRIES) do
+      local option = list[i]
+      journeyFor(option)
+      if fits(option.seconds) then
+        option.fitting = #list
+        return option
+      end
+    end
+  end
+  local handin, finish
+  if ctx.budget then
+    handin, finish = quickest(handins), quickest(finishes)
+  else
+    handin, finish = best(handins), best(finishes)
+    if handin then journeyFor(handin) end
+    if finish then journeyFor(finish) end
+  end
+  pick(handin)
+  pick(finish)
+  local dungeon = best(dungeons)
+  local quest = timed("best quest", bestQuestOption, questHubs, ctx, start, net)
   if quest then
     quest.rank = 1
     for _, option in ipairs(all) do
       if option.rate > quest.rate then quest.rank = quest.rank + 1 end
     end
+    if not fits(quest.seconds) then
+      over[#over + 1] = quest
+      quest.overRank = quest.rank
+      quest = nil
+    end
   end
   pick(quest)
-  table.sort(picks, byRate)
+  table.sort(picks, ctx.budget and function(a, b) return a.seconds < b.seconds end or byRate)
   local notable = timed("don't miss", notableOption, hubs, ctx, start, net,
     quest and { [quest.quests[1].id] = true } or {})
 
@@ -1420,23 +1513,36 @@ local function build()
   end
 
   local results = {}
-  local function add(row) if row and #results < MAX_RESULTS then results[#results + 1] = row end end
+  -- With a budget each card shows its time (`badge`, UI/Cards.lua).
+  local function add(row, seconds)
+    if not row or #results >= MAX_RESULTS then return end
+    if ctx.budget and seconds then row.badge = ns.FormatDuration(seconds) end
+    results[#results + 1] = row
+  end
   -- What's due, then the quest not to miss, then the rest of the needs.
   for _, need in ipairs(needs) do
-    if not need.soft then add(needRow(need)) end
+    if not need.soft then add(needRow(need), needSeconds(need)) end
   end
-  if notable then add(notableRow(notable, ctx)) end
+  if notable and (not ctx.budget or fits(notable.seconds or notable.trip)) then
+    add(notableRow(notable, ctx), notable.seconds or notable.trip)
+  end
   for _, need in ipairs(needs) do
-    if need.soft then add(needRow(need)) end
+    if need.soft then add(needRow(need), needSeconds(need)) end
   end
-  for _, zone in ipairs(timed("zones", zoneOptions, ctx, start, net) or {}) do add(zoneRow(zone, ctx)) end
-  local dungeonRow
+  local zones = timed("zones", zoneOptions, ctx, start, net) or {}
+  for _, zone in ipairs(zones) do add(zoneRow(zone, ctx), zone.seconds) end
+  local dungeonRow, dungeonSeconds
   if dungeon then
     timed("dungeon trip", dungeonJourney, dungeon, ctx, start, net)
-    dungeonRow = optionRow(dungeon, dungeon.rank, #all, ctx)
+    if fits(dungeon.seconds) then
+      dungeonRow, dungeonSeconds = optionRow(dungeon, dungeon.rank, #all, ctx), dungeon.seconds
+    else
+      over[#over + 1] = dungeon
+      dungeon.overRank = dungeon.rank
+    end
   elseif plain[1] then
     -- Without quest data: the best one by level fit and travel time.
-    dungeonRow = plainRow(plain[1])
+    dungeonRow, dungeonSeconds = plainRow(plain[1]), plain[1].trip
   end
   if dungeonRow and #others > 0 then
     table.insert(dungeonRow.details, 2, { text = "Also for your level: " .. table.concat(others, ", ", 1, math.min(#others, 4)) .. "." })
@@ -1450,8 +1556,31 @@ local function build()
       ctx.notes[#ctx.notes + 1] = line
     end
   end
-  add(dungeonRow)
-  for _, option in ipairs(picks) do add(optionRow(option, option.rank, #all, ctx)) end
+  add(dungeonRow, dungeonSeconds)
+  for _, option in ipairs(picks) do add(optionRow(option, option.rank, #all, ctx), option.seconds) end
+
+  -- Nothing to quest fits the budget: the quickest option anyway, "a bit over".
+  if ctx.budget and #zones == 0 and not dungeonRow and #picks == 0 then
+    for _, z in ipairs(ctx.overZones) do over[#over + 1] = z end
+    local nearest
+    for _, option in ipairs(over) do
+      if not nearest or option.seconds < nearest.seconds then nearest = option end
+    end
+    if nearest then
+      local row
+      if nearest.kind == "zone" then
+        row = zoneRow(nearest, ctx)
+      else
+        if nearest.kind == "handin" or nearest.kind == "finish" then journeyFor(nearest) end
+        row = optionRow(nearest, nearest.overRank or 1, #over, ctx)
+      end
+      row.category = (row.category or "") .. "  ·  a bit over"
+      row.details[1].text = string.format("Nothing fits in %d min; this is the quickest. ", budget) .. row.details[1].text
+      row.over = true
+      ctx.nothingFits = true
+      add(row, nearest.seconds)
+    end
+  end
 
   local due = 0
   for _, need in ipairs(needs) do if not need.soft then due = due + 1 end end
@@ -1524,6 +1653,52 @@ function ForYou.ShoppingNeeds()
   if soon then out[#out + 1] = soon end
   return out
 end
+
+---------------------------------------------------------------- time budget
+
+-- "I have 20 minutes": ns.charDB.budgetMinutes (nil: no limit). With one,
+-- build() leaves out what its estimate says won't fit (trip plus quest time,
+-- as score() counts it), picks hand-ins and finishes by least travel, shows
+-- a zone only when the trip to its first hub and one quest fit, and no
+-- dungeon under BUDGET_DUNGEON minutes. Each card shows its time.
+function ForYou.Budget()
+  local minutes = ns.charDB and tonumber(ns.charDB.budgetMinutes)
+  return minutes and minutes > 0 and minutes or nil
+end
+
+function ForYou.SetBudget(minutes)
+  ns.charDB.budgetMinutes = minutes
+  ForYou.Invalidate()
+  if ns.Panel and ns.Panel.IsShown() then ns.Panel.Refresh() end
+end
+
+-- The buttons beside the summary line (UI/Panel.lua, page.controls).
+ForYou.controls = {
+  label = "Time:",
+  tooltip = "How long you have: For you only suggests what fits.",
+  choices = { { text = "15", value = 15 }, { text = "30", value = 30 }, { text = "60", value = 60 },
+    { text = "Any", value = false } },
+  get = function() return ForYou.Budget() or false end,
+  set = function(value) ForYou.SetBudget(value or nil) end,
+}
+
+ns.RegisterCommand("time", "/wf time <minutes> | off - For you suggests only what fits in that time", function(rest)
+  local arg = (rest or ""):lower()
+  local minutes = tonumber(arg:match("^(%d+)"))
+  if arg == "off" or arg == "none" or arg == "any" then
+    ForYou.SetBudget(nil)
+    ns.print("time budget off: For you suggests anything")
+  elseif minutes and minutes > 0 then
+    ForYou.SetBudget(minutes)
+    ns.print(string.format("For you suggests what fits in %d min (/wf time off to stop)", minutes))
+  elseif arg == "" then
+    local current = ForYou.Budget()
+    ns.print(current and string.format("time budget: %d min (/wf time off to stop)", current)
+      or "no time budget (/wf time 20: only what fits in 20 minutes)")
+  else
+    ns.print("/wf time <minutes> | off")
+  end
+end)
 
 ---------------------------------------------------------------- new journeys
 

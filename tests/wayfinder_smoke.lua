@@ -2742,6 +2742,197 @@ do
   ns.ForYou.Invalidate()
 end
 ---------------------------------------------------------------- for you: quest log (end)
+---------------------------------------------------------------- quest times (begin)
+do
+  io.write("quest times\n")
+  local savedTime, clock = time, 100000
+  time = function() return clock end
+  ns.charDB.questTimes = nil
+  local function minutes(n) clock = clock + n * 60 end
+  local function quest(id, took)
+    fire("QUEST_ACCEPTED", id)
+    minutes(took)
+    fire("QUEST_TURNED_IN", id)
+  end
+  fire("PLAYER_ENTERING_WORLD", true, false)
+  for i, took in ipairs({ 4, 6, 8, 10 }) do quest(700 + i, took) end
+  check(ns.QuestTimes.Seconds() == nil and ns.QuestTimes.Describe(300):find("4 of 5 quests timed", 1, true),
+    "under 5 quests timed: no average yet (" .. ns.QuestTimes.Describe(300) .. ")")
+  quest(705, 90)
+  check(ns.charDB.questTimes.samples[5] == 60, "a quest over an hour counts as 60 min")
+  check(math.abs(ns.QuestTimes.Seconds() - (4 + 6 + 8 + 10 + 60) / 5 * 60) < 1e-6,
+    "from 5 quests, the average: " .. tostring(ns.QuestTimes.Seconds()))
+
+  -- Quests done side by side share the time: each counts from the last hand-in.
+  ns.charDB.questTimes = nil
+  fire("QUEST_ACCEPTED", 711)
+  fire("QUEST_ACCEPTED", 712)
+  fire("QUEST_ACCEPTED", 713)
+  minutes(9)
+  fire("QUEST_TURNED_IN", 711)
+  minutes(6)
+  fire("QUEST_TURNED_IN", 712)
+  fire("QUEST_TURNED_IN", 713)
+  local samples = ns.charDB.questTimes.samples
+  check(#samples == 3 and samples[1] == 9 and samples[2] == 6 and samples[3] == 0,
+    "three quests at once: 9, 6 and 0 min, not 9, 15 and 15 (" .. table.concat(samples, ",") .. ")")
+
+  -- A logout in between: not counted; a /reload is.
+  fire("QUEST_ACCEPTED", 720)
+  fire("QUEST_ACCEPTED", 721)
+  minutes(5)
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  minutes(5)
+  fire("QUEST_TURNED_IN", 720)
+  check(#samples == 4 and samples[4] == 10, "a /reload keeps the quests being timed")
+  minutes(600)
+  fire("PLAYER_ENTERING_WORLD", true, false)
+  minutes(3)
+  fire("QUEST_TURNED_IN", 721)
+  check(#samples == 4, "a quest accepted before a logout isn't timed")
+  fire("QUEST_TURNED_IN", 799)
+  check(#samples == 4, "a quest accepted before Wayfinder saw it isn't timed")
+
+  -- Only the last 20 count.
+  for i = 1, 25 do quest(800 + i, i <= 5 and 50 or 7) end
+  check(#samples == 20 and math.abs(ns.QuestTimes.Seconds() - 7 * 60) < 1e-6, "a rolling average of the last 20")
+  local chat0 = #chat
+  SlashCmdList.WAYFINDER("debug")
+  local said
+  for i = chat0 + 1, #chat do if chat[i]:find("quest time: ~7.0 min, the average of your last 20", 1, true) then said = true end end
+  check(said, "/wf debug shows the average")
+
+  ns.charDB.questTimes = nil
+  time = savedTime
+end
+---------------------------------------------------------------- quest times (end)
+---------------------------------------------------------------- for you: time budget (begin)
+do
+  io.write("for you: time budget\n")
+  ns.Nav.Stop()
+  local function rows()
+    ns.ForYou.Invalidate()
+    return ns.ForYou.Results()
+  end
+  local function describe(list)
+    local out = {}
+    for _, r in ipairs(list) do
+      out[#out + 1] = string.format("%s [%s] %s", r.title, r.category or "?", r.badge or "-")
+    end
+    return table.concat(out, " | ")
+  end
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  local savedMoney = GetMoney
+  GetMoney = function() return 0 end
+  NPCS[6100] = { name = "Watcher Dodds", npcFlags = 2, friendlyToFaction = "A", spawns = { [44] = { { 70.0, 70.0 } } } }
+  QUESTS[50] = { name = "Watch Report", questLevel = 19, requiredLevel = 15, startedBy = { { 6100 } }, finishedBy = { { 6100 } } }
+  QUESTS[51] = { name = "Watch Supplies", questLevel = 18, requiredLevel = 15, startedBy = { { 6100 } }, finishedBy = { { 6100 } } }
+  QUESTS[52] = { name = "Solomon's Letter", questLevel = 19, requiredLevel = 15, startedBy = { { 6000 } }, finishedBy = { { 344 } } }
+  QUESTS[53] = { name = "Murloc Fins", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } }, finishedBy = { { 345 } },
+    objectives = { { { 9101 } } } }
+  refreshData()
+  local log, complete = { 50, 51, 52, 53 }, { [50] = true, [51] = true, [52] = true }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function(id) return complete[id] == true end
+  C_QuestLog.GetQuestObjectives = function() return {} end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+
+  local function find(list, prefix)
+    for _, r in ipairs(list) do
+      if r.title:sub(1, #prefix) == prefix then return r end
+    end
+  end
+  local function minutesOf(r)
+    if not (r and r.badge) then return nil end
+    if r.badge == "<1 min" then return 0 end
+    return tonumber(r.badge:match("^~(%d+) min$"))
+  end
+  local function allFit(list, budget)
+    for _, r in ipairs(list) do
+      local m = minutesOf(r)
+      if not m or m > budget then return false end
+    end
+    return #list > 0
+  end
+
+  ns.ForYou.SetBudget(nil)
+  local list = rows()
+  check(find(list, "Run The Deadmines") and find(list, "Hand in 2 quests to Watcher Dodds") and not list[1].badge
+    and not ns.ForYou.SummaryText():find("Fits in"),
+    "no budget: the dungeon, hand-ins by XP per minute, no times on the cards (" .. describe(list) .. ")")
+
+  SlashCmdList.WAYFINDER("time 20")
+  check(ns.charDB.budgetMinutes == 20, "/wf time 20 sets a 20 minute budget for this character")
+  list = rows()
+  check(ns.ForYou.SummaryText():find("^Fits in 20 min:"), "the summary says what it fits in: " .. ns.ForYou.SummaryText())
+  check(allFit(list, 20), "every card shows its time, all within 20 min (" .. describe(list) .. ")")
+  check(not find(list, "Run The Deadmines"), "no dungeon in 20 minutes")
+  local handin = find(list, "Hand in")
+  check(handin and handin.title == "Hand in 1 quest in Lakeshire" and handin.details[1].text:find("^Least travel of 2 that fit in 20 min"),
+    "with a budget, hand-ins by least travel, not XP per minute (" .. tostring(handin and handin.details[1].text) .. ")")
+
+  ns.ForYou.SetBudget(60)
+  list = rows()
+  local deadmines = find(list, "Run The Deadmines")
+  check(deadmines and minutesOf(deadmines) and allFit(list, 60), "with an hour, the dungeon fits: " .. describe(list))
+
+  -- From the Wetlands: the finish trip takes just over 10 minutes.
+  player.mapID, player.x, player.y = 1437, 0.5, 0.5
+  ns.ForYou.SetBudget(10)
+  list = rows()
+  check(not find(list, "Finish") and find(list, "Quest in Redridge") and allFit(list, 10),
+    "what doesn't fit in 10 min is left out (" .. describe(list) .. ")")
+  ns.ForYou.SetBudget(15)
+  list = rows()
+  check(find(list, "Finish") and allFit(list, 15), "in 15 min the finish trip fits (" .. describe(list) .. ")")
+
+  -- Nothing fits in 3 minutes: the quickest anyway, a bit over.
+  ns.ForYou.SetBudget(3)
+  list = rows()
+  check(#list == 1 and list[1].title == "Hand in 1 quest in Lakeshire" and list[1].over
+    and list[1].category == "Hand in  ·  a bit over" and list[1].badge == "~4 min",
+    "nothing fits: the single quickest option, labelled a bit over (" .. describe(list) .. ")")
+  check(ns.ForYou.SummaryText():find("^Nothing to quest fits in 3 min") and list[1].details[1].text:find("^Nothing fits in 3 min"),
+    "the page says nothing fits: " .. ns.ForYou.SummaryText())
+
+  -- Your own quest time, once learned, replaces the 5 minutes per quest.
+  ns.charDB.questTimes = { samples = { 10, 10, 10, 10, 10 }, accepted = {} }
+  ns.ForYou.SetBudget(nil)
+  list = rows()
+  local finish = find(list, "Finish")
+  check(finish and finish.details[1].text:find("~10 min left on 1 in your log", 1, true),
+    "the finish trip uses your 10 min average: " .. tostring(finish and finish.details[1].text))
+  ns.charDB.questTimes = nil
+
+  -- The buttons by the summary line, and each card's time.
+  local wasShown = ns.Panel.IsShown()
+  ns.Panel.Search("foryou")
+  local buttons = {}
+  for _, btn in ipairs(ns.Panel.ControlButtons()) do buttons[btn:GetText()] = btn end
+  check(buttons["15"] and buttons["30"] and buttons["60"] and buttons.Any, "For you has 15 / 30 / 60 / Any buttons")
+  buttons["30"].scripts.OnClick(buttons["30"])
+  check(ns.charDB.budgetMinutes == 30 and ns.ForYou.SummaryText():find("^Fits in 30 min:"), "30 sets a 30 minute budget")
+  local badge = ns.Cards.Badge(1)
+  check(badge and badge:find("min$") and badge == ns.Cards.Visible()[1].badge, "the cards show their time: " .. tostring(badge))
+  buttons.Any.scripts.OnClick(buttons.Any)
+  check(ns.charDB.budgetMinutes == nil and ns.Cards.Badge(1) == nil, "Any clears it, and the cards drop their times")
+  if not wasShown then ns.Panel.Toggle() end
+
+  SlashCmdList.WAYFINDER("time off")
+  check(ns.charDB.budgetMinutes == nil and ns.ForYou.Budget() == nil, "/wf time off clears the budget")
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+
+  ns.ForYou.SetBudget(nil)
+  GetMoney = savedMoney
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+  QUESTS[50], QUESTS[51], QUESTS[52], QUESTS[53], NPCS[6100] = nil, nil, nil, nil, nil
+  refreshData()
+  ns.ForYou.Invalidate()
+end
+---------------------------------------------------------------- for you: time budget (end)
 ---------------------------------------------------------------- look (begin)
 io.write("look\n")
 do

@@ -19,6 +19,9 @@ local _, ns = ...
 --   page.Results(query)        -- returns results, err, net
 --   page.categories            -- optional { {label, provider}, ... } shown as buttons,
 --   page.selected              --   and the selected one (see categoryPage below)
+--   page.controls              -- card pages: small buttons right of the summary line,
+--                              --   { label, tooltip, choices = { {text, value}, ... }, get(), set(value) }
+--                              --   (the one whose value get() returns is lit)
 -- A result:
 --   title, and either subtitle or zone (zone gets "· time · summary" appended),
 --   titleColor = {r, g, b} (optional; e.g. quest difficulty),
@@ -51,6 +54,7 @@ local TAB_ICONS = {
   items = "Interface\\Icons\\INV_Misc_Bag_08",
 }
 local MAX_CATEGORIES = 4
+local CONTROL_WIDTH, CONTROL_GAP = 36, 2
 
 local frame, side
 local mainPage, sidePage = nil, nil
@@ -465,6 +469,39 @@ local function create()
   f.summary:SetJustifyH("LEFT")
   f.summary:SetWordWrap(true)
 
+  -- The page's own buttons at the right end of the summary line (For you: how long you have).
+  f.controls = {}
+  local controls = mainPage and mainPage.controls
+  if controls then
+    local n = #controls.choices
+    for i, choice in ipairs(controls.choices) do
+      local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+      b:SetSize(CONTROL_WIDTH, 20)
+      b:SetPoint("TOPRIGHT", f, "TOPLEFT", width - 18 - (n - i) * (CONTROL_WIDTH + CONTROL_GAP), -31)
+      b:SetText(choice.text)
+      b.choice = choice
+      b:SetScript("OnClick", function()
+        controls.set(choice.value)
+        Panel.Refresh()
+      end)
+      if controls.tooltip then
+        b:SetScript("OnEnter", function(self)
+          GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+          GameTooltip:SetText(controls.tooltip, 1, 1, 1, 1, true)
+          GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+      end
+      ns.Skin.Button(b)
+      f.controls[i] = b
+    end
+    f.controlLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.controlLabel:SetPoint("RIGHT", f.controls[1], "LEFT", -6, 0)
+    f.controlLabel:SetText(controls.label or "")
+    ns.Skin.Text(f.controlLabel)
+    f.summary:SetWidth(width - 36 - n * (CONTROL_WIDTH + CONTROL_GAP) - 50)
+  end
+
   f.cards = ns.Cards.Create(f)
   f.cards:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -12)
   f:EnableMouseWheel(true)
@@ -560,6 +597,12 @@ local function refreshMain()
   local fresh = key ~= cardKey
   cardKey = key
   frame.summary:SetText(mainPage.SummaryText("") or "")
+  if mainPage.controls then
+    local current = mainPage.controls.get()
+    for _, b in ipairs(frame.controls) do
+      if b.choice.value == current then b:LockHighlight() else b:UnlockHighlight() end
+    end
+  end
   ns.Cards.Show(results, err or (#results == 0 and mainPage.EmptyText("")) or "", fresh)
   return net
 end
@@ -686,6 +729,11 @@ function Panel.Search(id, text)
     side.search:SetText(query)
   end
   Panel.Refresh()
+end
+
+-- The main window's control buttons (each with its `choice`), for tests.
+function Panel.ControlButtons()
+  return frame and frame.controls or {}
 end
 
 function Panel.IsShown()

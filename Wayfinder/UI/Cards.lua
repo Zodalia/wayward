@@ -11,7 +11,8 @@ local _, ns = ...
 --
 -- A page opts in with `layout = "cards"` (and `width`); results are the usual
 -- panel results, plus optional `icon` (file) / `iconCoords`, `kind`, and
--- `place` / `stats` / `category` (see the page contract in Panel.lua).
+-- `place` / `stats` / `category` (see the page contract in Panel.lua), and
+-- `badge` ("~12 min", top right; red when `over`).
 
 local Cards = {}
 ns.Cards = Cards
@@ -229,6 +230,10 @@ local function largeCard(parent)
   icon(card, 64, 94)
   card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -16)
 
+  card.badge = text(card, "GameFontNormalLarge", 16, TITLE_COLOR)
+  card.badge:SetPoint("TOPRIGHT", -24, -24)
+  card.badge:SetJustifyH("RIGHT")
+
   card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
   card.tag:SetPoint("TOP", card.icon, "BOTTOM", 0, -10)
   card.tag:SetWidth(LARGE_TEXT_W)
@@ -275,6 +280,10 @@ local function smallCard(parent)
   card.icon:SetPoint("TOPLEFT", -10, -2)
 
   -- Clear of the pane's worn top edge, and no smaller than the large card's.
+  card.badge = text(card, "GameFontNormal", 13, TITLE_COLOR)
+  card.badge:SetPoint("TOPRIGHT", -18, -13)
+  card.badge:SetJustifyH("RIGHT")
+
   card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
   card.tag:SetPoint("TOPLEFT", SMALL_LEFT, -15)
   card.tag:SetWidth(SMALL_TEXT_W)
@@ -375,6 +384,10 @@ local function fill(card, r, large)
   local title, level = (r.title or ""):match("^(.-)%s+·%s+level (%d+)$")
   card.title:SetText(title or r.title)
   card.tag:SetText(r.category and string.upper(r.category) or "")
+  card.badge:SetText(r.badge or "")
+  card.badge:SetShown(r.badge ~= nil)
+  local ink = r.over and TAG_COLOR or TITLE_COLOR
+  card.badge:SetTextColor(ink[1], ink[2], ink[3])
 
   -- Where, then the numbers; rows without them show their subtitle instead.
   local stats = r.stats
@@ -498,6 +511,12 @@ end
 function Cards.Tag(index)
   local card = view and ({ view.large, view.small[1], view.small[2] })[index]
   return card and card.tag:GetText()
+end
+
+-- A card's time as drawn (1 = large), or nil when it has none, for tests.
+function Cards.Badge(index)
+  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
+  return card and card.badge:IsShown() and card.badge:GetText() or nil
 end
 
 -- A card's numbers as drawn, "LABEL=value" (1 = large), for tests.
