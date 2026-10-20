@@ -2683,7 +2683,7 @@ do
   ns.HUD.Update()
   check(ns.Nav.InArea() and scouts.visit and scouts.visit.since == 5100, "back in the camp: a new visit")
   -- Move on in a camp: it's cleared now, whatever the time there.
-  check(ns.Nav.MoveOnKind() == "cleared" and ns.HUD.MoveOnTip():find("cleared", 1, true), "in a camp, move on clears it")
+  check(ns.Nav.MoveOnKind() == "cleared", "in a camp, move on clears it")
   before = #chat
   ns.Nav.MoveOn()
   check(ns.Journey.Cleared(scouts, 3) and not ns.Nav.InArea()
@@ -3661,26 +3661,34 @@ do
   check(table.concat(order, ",") == "Giver,B,A,Finisher", "your order survives a reload: " .. table.concat(order, ","))
   -- A new trip folds by itself from three finished stops.
   local function fold(title)
-    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = title, stops = {
-      stopAt(0.52, "F1"), stopAt(0.53, "F2"), stopAt(0.54, "F3"), stopAt(0.55, "F4") } }))
+    player.x = 0.5
+    ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = title, stops = {
+      stopAt(0.52, "F1"), stopAt(0.55, "F2"), stopAt(0.58, "F3"), stopAt(0.61, "F4"), stopAt(0.64, "F5") } }))
     local f = ns.Nav.active.journey.stops
-    return f[1], f[2], f[3]
+    return f[1], f[2], f[3], f[4]
   end
-  local f1, f2, f3 = fold("Fold")
-  ns.Nav.Drop(f1)
-  ns.Nav.Drop(f2)
-  check(shape() == "finished2-,dropped,dropped,now,next", "under three: shown, under a line for them: " .. shape())
+  local function visit(stop)
+    player.x, player.y = stop.node.x, stop.node.y
+    ns.HUD.Update()
+  end
+  local f1, f2, f3, f4 = fold("Fold")
+  visit(f1)
+  visit(f2)
+  check(shape() == "finished2-,done,done,now,next,next", "under three: shown, under a line for them: " .. shape())
   ns.Nav.Drop(f3)
+  check(shape() == "finished2-,done,done,now,next", "a skipped stop isn't listed at all: " .. shape())
+  visit(f4)
   check(shape() == "finished3+,now", "three finished: folded by themselves: " .. shape())
-  f1, f2, f3 = fold("Fold again")
-  ns.Nav.Drop(f1)
-  ns.Nav.Drop(f2)
+  f1, f2, f3, f4 = fold("Fold again")
+  visit(f1)
+  visit(f2)
   ns.JourneyOverview.ToggleFinished()
-  check(shape() == "finished2+,now,next", "click the line to fold them: " .. shape())
+  check(shape() == "finished2+,now,next,next", "click the line to fold them: " .. shape())
   ns.JourneyOverview.ToggleFinished()
-  check(shape() == "finished2-,dropped,dropped,now,next", "and again to show them")
-  ns.Nav.Drop(f3)
-  check(shape() == "finished3-,dropped,dropped,dropped,now", "your choice holds for this trip: " .. shape())
+  check(shape() == "finished2-,done,done,now,next,next", "and again to show them")
+  visit(f3)
+  check(shape() == "finished3-,done,done,done,now,next", "your choice holds for this trip: " .. shape())
+  player.x, player.y = 0.5, 0.5
   -- A trip too long to show at once scrolls.
   local many = {}
   for i = 1, 14 do many[i] = stopAt(0.5 + i * 0.01, "S" .. i) end
@@ -3724,9 +3732,12 @@ do
   local f = ns.HUD.Frame()
   check(f.moveOn:IsShown() and f.skip:IsShown() and f.next == nil and f.prev == nil,
     "a trip's box has move on and skip, no next or back")
+  local function tip(b) b.scripts.OnEnter(b) return GameTooltip:GetText() end
+  check(tip(f.moveOn) == "Move to the next step and do this later" and tip(f.skip) == "Skip this step"
+    and tip(f.list) == "See full journey", "the buttons' tooltips")
 
   -- Move on, not in a camp: this stop later, after the next one that doesn't need it.
-  check(ns.Nav.MoveOnKind() == "later" and ns.HUD.MoveOnTip():find("later", 1, true), "move on would do it later")
+  check(ns.Nav.MoveOnKind() == "later", "move on would do it later")
   local before = #chat
   ns.Nav.MoveOn()
   check(labels() == "Far,Giver,Finisher" and chat[before + 1] == "|cff7fd1aeWayfinder:|r later: Pick up Q, after Visit Far.",

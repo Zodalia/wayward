@@ -9,6 +9,7 @@ local HUD = {}
 ns.HUD = HUD
 
 local frame
+local unpack = unpack or table.unpack
 local UPDATE_INTERVAL = 0.1
 local WIDTH = 330
 local MIN_HEIGHT = 84
@@ -32,11 +33,10 @@ local MODE_ICONS = {
 local DISTANCE_ICON = "|TInterface\\Icons\\Ability_Tracking:13:13:0:0:64:64:5:59:5:59|t"
 local TIME_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:13:13:0:0:64:64:5:59:5:59|t"
 
--- `text` can be a function, for a tip that depends on the moment.
 local function tooltip(b, text)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText(type(text) == "function" and text() or text)
+    GameTooltip:SetText(text)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -64,15 +64,32 @@ local function squareButton(parent, arrow, iconFile, fallback, onClick, tip)
   return b
 end
 
--- What the move on button does right now (Nav.MoveOnKind).
-local MOVE_ON_TIPS = {
-  cleared = "Move on: this spot's cleared (on to another, or other stops while it respawns)",
-  done = "Move on: you've done this step",
-  later = "Move on: do the next stop first, this one later",
-}
-
-function HUD.MoveOnTip()
-  return MOVE_ON_TIPS[ns.Nav.MoveOnKind() or "later"]
+-- Two of the square button's arrows side by side: fast forward. Our own
+-- textures, so the template's press nudge (which re-anchors its icon) can't
+-- pull them together; they're nudged the same way here.
+local function fastForward(b)
+  local icon = b.icon
+  if not (icon and icon.GetTexCoord and icon:GetTexture()) then return end
+  local coords = { icon:GetTexCoord() }
+  local arrows = {}
+  for i, dx in ipairs({ -3, 3 }) do
+    local t = b:CreateTexture(nil, "ARTWORK")
+    t:SetTexture(icon:GetTexture())
+    t:SetTexCoord(unpack(coords))
+    t:SetSize(icon:GetSize())
+    t:SetPoint("CENTER", dx, 0)
+    arrows[i] = { t, dx }
+  end
+  icon:SetAlpha(0)
+  local function nudge(by)
+    for _, a in ipairs(arrows) do
+      a[1]:ClearAllPoints()
+      a[1]:SetPoint("CENTER", a[2] + by, -by)
+    end
+  end
+  b:HookScript("OnMouseDown", function(self) if self:IsEnabled() then nudge(-1) end end)
+  b:HookScript("OnMouseUp", function() nudge(0) end)
+  b.fastForward = arrows
 end
 
 local function create()
@@ -123,12 +140,14 @@ local function create()
     "Recalculate from here")
   f.recalc:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
-    "All stops of this trip")
+    "See full journey")
   f.list:SetPoint("RIGHT", f.recalc, "LEFT", -2, 0)
-  f.moveOn = squareButton(f, "RIGHT", nil, ">", function() ns.Nav.MoveOn() end, HUD.MoveOnTip)
+  f.moveOn = squareButton(f, "RIGHT", nil, ">>", function() ns.Nav.MoveOn() end,
+    "Move to the next step and do this later")
+  fastForward(f.moveOn)
   f.moveOn:SetPoint("RIGHT", f.list, "LEFT", -2, 0)
   f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
-    "Skip this stop: take it off the trip (asks first)")
+    "Skip this step")
   f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -293,7 +312,7 @@ function HUD.Update()
   elseif ns.Nav.Waiting() then
     -- A quest step only you can tell is done.
     local manual = step.stop and step.stop.action and step.stop.action.kind == "manual"
-    frame.info:SetText((manual and "|cff7fd1aeYou're here:|r do it, then move on (>)" or "|cff7fd1aeYou're here|r")
+    frame.info:SetText((manual and "|cff7fd1aeYou're here:|r do it, then move on (>>)" or "|cff7fd1aeYou're here|r")
       .. "     " .. remaining)
   elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%s %d yd     %s", DISTANCE_ICON, math.floor(distance), remaining))

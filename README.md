@@ -413,7 +413,7 @@ panel to add it to the trip you're on.
   - When a trip gains a quest's hand-in, the quests that follow it (picked
     up where you hand it in, often from the same NPC) are offered if adding
     them costs 3 minutes of travel or less.
-  - **Move on** (the directions box's > button) works on the stop you're
+  - **Move on** (the directions box's >> button) works on the stop you're
     heading for: in one of its camps, that camp counts as cleared and the
     trip goes on (another camp, or other stops while it respawns; the camp
     isn't "the area" again until you've walked out of it); at a quest step
@@ -439,7 +439,8 @@ panel to add it to the trip you're on.
     (so the other faction's quest of the same name never holds one up).
   - The current trip is saved per character and resumed after a login or
     reload, re-planned from where you are. The directions box's book button
-    opens an overview of every stop (done / now / next; finished stops fold
+    opens an overview of every stop (done / now / next; stops you skipped
+    aren't listed; finished stops fold
     into one line you can click open, by themselves from three of them or
     when they'd push open stops off the list; under the current stop, the
     steps that get you there, walk, fly, boat, with the one you're on

@@ -3,12 +3,13 @@ local _, ns = ...
 -- The whole journey at a glance: every stop with done / now / next, opened
 -- from the directions box (=) and when a journey with several stops starts.
 -- An open stop can be dropped (x); stops that need it are dropped with it.
+-- Stops you've skipped or dropped aren't listed.
 -- Drag an open stop up or down by its handle (or the row) to reorder the trip.
 -- Under an open stop, the steps that get you there (walk, fly, boat...), with
 -- the one you're on marked: open under the current stop, and any stop's +/-
 -- opens or folds them, so you can see where it's taking you (and hearth
 -- instead).
--- Finished stops (done, dropped, skipped) fold into one line you can open;
+-- Finished stops fold into one line you can open;
 -- they fold by themselves once there are AUTO_FOLD of them, or when showing
 -- them would push open stops off the list.
 
@@ -265,20 +266,21 @@ local function currentStop(a)
   return nil
 end
 
--- { {stop, state} } with state "done", "dropped", "skipped" (passed with the
--- directions box's next button), "now" or "next".
+-- { {stop, state} } with state "done", "now" or "next". Stops you skipped
+-- (or passed with the old next button) are left out.
 function Overview.Rows()
   local a = ns.Nav.active
   if not (a and a.journey) then return {} end
   local now = currentStop(a)
   local rows = {}
   for _, stop in ipairs(ns.Journey.AllStops(a.journey)) do
-    local state = stop.skipped and "dropped" or stop.passed and "skipped" or stop.done and "done"
-      or stop == now and "now" or "next"
-    rows[#rows + 1] = { stop = stop, state = state }
+    if not (stop.skipped or stop.passed) then
+      local state = stop.done and "done" or stop == now and "now" or "next"
+      rows[#rows + 1] = { stop = stop, state = state }
+    end
   end
-  -- Done and dropped stops first, in the order they happened to be listed.
-  local order = { done = 1, dropped = 1, skipped = 1, now = 2, next = 3 }
+  -- Done stops first, in the order they happened to be listed.
+  local order = { done = 1, now = 2, next = 3 }
   local keyed = {}
   for i, r in ipairs(rows) do keyed[i] = { r = r, i = i } end
   table.sort(keyed, function(x, y)
@@ -291,13 +293,11 @@ end
 
 local LOOK = {
   done = { "|cff7fd1aedone|r  ", 0.6 },
-  dropped = { "|cff808080dropped|r  ", 0.5 },
-  skipped = { "|cff808080skipped|r  ", 0.6 },
   now = { "|cffffd200now|r  ", 1 },
   next = { "      ", 1 },
 }
 
-local FINISHED = { done = true, dropped = true, skipped = true }
+local FINISHED = { done = true }
 
 -- The current route's steps that lead to `stop`: first, last (indexes), or nil.
 local function legOf(a, stop)
