@@ -445,13 +445,14 @@ end
 function Nav.PickupOffer(questIDs)
   local here = ns.Geo.PlayerNode()
   if not here then return nil end
-  local stops, names = {}, {}
+  local stops, names, ids = {}, {}, {}
   for _, id in ipairs(questIDs) do
     if not Nav.TripHasQuest(id) then
       local qs = ns.Journey.QuestStops(id, here)
       if #qs > 0 then
         local q = ns.Quests.Quest(id)
         names[#names + 1] = q and q.name or ("quest " .. id)
+        ids[#ids + 1] = id
         for _, st in ipairs(qs) do stops[#stops + 1] = st end
       end
     end
@@ -460,7 +461,7 @@ function Nav.PickupOffer(questIDs)
   local label = #names == 1 and names[1] or string.format("%d quests", #names)
   local alone = ns.Journey.Plan(here, { title = label, stops = stops })
   if not alone then return nil end
-  local offer = { label = label, names = names, stops = stops, alone = alone.seconds, journey = alone }
+  local offer = { label = label, names = names, ids = ids, stops = stops, alone = alone.seconds, journey = alone }
   local a = Nav.active
   if a then
     local base, open
@@ -482,6 +483,20 @@ function Nav.PickupOffer(questIDs)
     end
   end
   return offer
+end
+
+-- What the quests picked up lead to, when it's worth knowing (a dungeon
+-- quest or a long chain, Quests.ChainHighlight): "\n" and a line each, or "".
+local function chainNote(offer)
+  local lines = {}
+  for i, id in ipairs(offer.ids or {}) do
+    local text = ns.Quests.ChainHighlight(id)
+    if text then
+      text = text:gsub("\n", ". ")
+      lines[#lines + 1] = #offer.ids > 1 and (offer.names[i] .. ": " .. text .. ".") or (text .. ".")
+    end
+  end
+  return #lines > 0 and ("\n" .. table.concat(lines, "\n")) or ""
 end
 
 -- Shows a question, with its sound; if the game can't, says so in chat rather
@@ -524,13 +539,14 @@ local function askPickups()
     OnAccept = function(_, data) startJourney(data.journey) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
+  local note = chainNote(offer)
   if Nav.active and offer.extra then
     askPlayer("WAYFINDER_PICKUP_ADD", string.format(
-      "You picked up %s.\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?",
-      offer.label, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
+      "You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?",
+      offer.label, note, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
   else
-    askPlayer("WAYFINDER_PICKUP_NEW", string.format("You picked up %s.\n\nStart a trip for it (%s)?",
-      offer.label, ns.FormatDuration(offer.alone)), offer)
+    askPlayer("WAYFINDER_PICKUP_NEW", string.format("You picked up %s.%s\n\nStart a trip for it (%s)?",
+      offer.label, note, ns.FormatDuration(offer.alone)), offer)
   end
 end
 

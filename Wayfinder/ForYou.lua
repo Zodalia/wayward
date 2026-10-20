@@ -1085,6 +1085,14 @@ local function timeText(option)
   return table.concat(parts, " + ")
 end
 
+-- Under a quest line, in the tooltip only: what its chain leads to.
+local CHAIN = { r = 0.5, g = 0.82, b = 0.68 }
+
+local function chainLine(details, questID)
+  local text = ns.Quests.ChainText(questID)
+  if text then details[#details + 1] = { text = "    " .. text:gsub("\n", "\n    "), color = CHAIN, more = true } end
+end
+
 local function questLines(details, option, ctx)
   for _, q in ipairs(option.quests) do
     local value = ctx.xpMode and string.format("  -  %s XP", formatNumber(q.value)) or ""
@@ -1093,6 +1101,7 @@ local function questLines(details, option, ctx)
       text = string.format("[%d] %s%s%s", q.level or 0, q.name or ("Quest " .. q.id), value, who),
       color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true,
     }, q.id)
+    chainLine(details, q.id)
   end
 end
 
@@ -1259,6 +1268,7 @@ local function zoneRow(z, ctx)
       text = string.format("[%d] %s%s  (%s)", q.level or 0, q.name or ("Quest " .. q.id), value, q.giver or "?"),
       color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level), quest = true, more = i > 2,
     }, q.id)
+    chainLine(details, q.id)
   end
   local quests = tostring(#z.now)
   if #z.later > 0 then quests = string.format("%d + %d", #z.now, #z.later) end

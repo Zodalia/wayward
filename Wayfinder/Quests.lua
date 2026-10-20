@@ -746,6 +746,238 @@ function Quests.After(questID)
   return followers[questID] or {}
 end
 
+-- The whole chain ahead of a quest, from the data alone (not what you have
+-- done): every quest that follows it, step by step over `followers`, up to
+-- CHAIN_DEPTH steps. Quests that close each other (exclusiveTo) are one step
+-- with alternatives. Built once per quest, until the data or your level changes.
+--   { steps = { quest row, ... } (in order), alternatives = { [stepID] = { quest row, ... } },
+--     count, reachable (steps your race, class and level can ever do),
+--     levelSpan = {min, max} or nil, dungeons = { {name, areaID, questID}, ... },
+--     endsAt = {name, dungeon} or nil, items = Quests.RewardItems of the steps (when it exists) }
+-- levelSpan, dungeons, endsAt and items count only the steps you can do.
+local CHAIN_DEPTH = 12
+local CHAIN_MAX_STEPS = 30
+local LONG_CHAIN = 3 -- this many steps ahead make a quest worth pointing out
+local chainCache = {}
+
+local function canEverReach(q, p)
+  return canEverDo(q, p) and ((q.requiredMaxLevel or 0) == 0 or p.level <= q.requiredMaxLevel)
+end
+
+local function closes(a, b)
+  for _, id in ipairs(a.exclusiveTo or {}) do
+    if id == b.id then return true end
+  end
+  return false
+end
+
+-- The quests of one step, grouped: quests that close each other are one group.
+local function exclusiveGroups(quests)
+  local groups = {}
+  for _, q in ipairs(quests) do
+    local home
+    for _, g in ipairs(groups) do
+      for _, other in ipairs(g) do
+        if closes(q, other) or closes(other, q) then home = g break end
+      end
+      if home then break end
+    end
+    if home then table.insert(home, q) else groups[#groups + 1] = { q } end
+  end
+  return groups
+end
+
+local function areaName(areaID)
+  local name = C_Map and C_Map.GetAreaInfo and C_Map.GetAreaInfo(areaID)
+  return type(name) == "string" and name ~= "" and name or nil
+end
+
+-- A spawn of whoever takes the quest in (else gives it out).
+local function questEndNode(q)
+  for _, ends in ipairs({ q.finishedBy or {}, q.startedBy or {} }) do
+    for _, id in ipairs(ends[1] or {}) do
+      local npc = Data.Npc(id)
+      local node = npc and Data.Nodes(npc.positions, npc.name)[1]
+      if node then return node end
+    end
+  end
+  return nil
+end
+
+-- Where the chain finishes: a dungeon, the town or zone of the last hand-in,
+-- or the quest's own zone.
+local function chainEnd(q)
+  local area = q.zoneOrSort
+  local dungeon = type(area) == "number" and area > 0 and ns.Dungeons and ns.Dungeons.ForArea(area)
+  if dungeon then return { name = dungeon.name, dungeon = true } end
+  local node = questEndNode(q)
+  if node then
+    local ok, place = pcall(ns.Places.NameFor, node)
+    if ok and place then return { name = place } end
+    local zone = ns.Geo.ZoneAt(node.instance, node.wx, node.wy)
+    if zone then return { name = ns.MapName(zone) } end
+  end
+  local name = type(area) == "number" and area > 0 and areaName(area)
+  return name and { name = name } or nil
+end
+
+local function chainAhead(start, p)
+  local ahead = { steps = {}, alternatives = {}, count = 0, reachable = 0, dungeons = {} }
+  local seen, frontier = { [start.id] = true }, { start }
+  local lastReachable
+  for _ = 1, CHAIN_DEPTH do
+    local nextQuests = {}
+    for _, q in ipairs(frontier) do
+      for _, f in ipairs(followers[q.id] or {}) do
+        if not seen[f.id] then
+          seen[f.id] = true
+          nextQuests[#nextQuests + 1] = f
+        end
+      end
+    end
+    if #nextQuests == 0 or #ahead.steps >= CHAIN_MAX_STEPS then break end
+    table.sort(nextQuests, function(a, b) return a.id < b.id end)
+    for _, group in ipairs(exclusiveGroups(nextQuests)) do
+      -- The step is the first alternative you can do; the rest are listed with it.
+      local step = group[1]
+      for _, q in ipairs(group) do
+        if canEverReach(q, p) then step = q break end
+      end
+      ahead.steps[#ahead.steps + 1] = step
+      if #group > 1 then
+        local others = {}
+        for _, q in ipairs(group) do
+          if q ~= step then others[#others + 1] = q end
+        end
+        ahead.alternatives[step.id] = others
+      end
+      if canEverReach(step, p) then
+        ahead.reachable = ahead.reachable + 1
+        lastReachable = step
+      end
+    end
+    frontier = nextQuests
+  end
+  ahead.count = #ahead.steps
+
+  local dungeonSeen, items = {}, {}
+  for _, q in ipairs(ahead.steps) do
+    if canEverReach(q, p) then
+      local level = (q.questLevel or 0) > 0 and q.questLevel or q.requiredLevel or 0
+      if level > 0 then
+        ahead.levelSpan = ahead.levelSpan or { level, level }
+        ahead.levelSpan[1] = math.min(ahead.levelSpan[1], level)
+        ahead.levelSpan[2] = math.max(ahead.levelSpan[2], level)
+      end
+      local area = q.zoneOrSort
+      local dungeon = type(area) == "number" and area > 0 and ns.Dungeons and ns.Dungeons.ForArea(area)
+      if dungeon and not dungeonSeen[dungeon.name] then
+        dungeonSeen[dungeon.name] = true
+        ahead.dungeons[#ahead.dungeons + 1] = { name = dungeon.name, areaID = area, questID = q.id }
+      end
+      if Quests.RewardItems then
+        for _, item in ipairs(Quests.RewardItems(q.id) or {}) do items[#items + 1] = item end
+      end
+    end
+  end
+  if Quests.RewardItems then ahead.items = items end
+  ahead.endsAt = lastReachable and chainEnd(lastReachable) or nil
+  return ahead
+end
+
+function Quests.ChainAhead(questID)
+  if not Quests.Available() then return nil end
+  if not questIndex then buildQuestIndex() end
+  local q = questByID[questID]
+  if not q then return nil end
+  if not followers then buildFollowers() end
+  if not chainCache[questID] then chainCache[questID] = chainAhead(q, playerProfile()) end
+  return chainCache[questID]
+end
+
+local function itemName(item)
+  if type(item) == "table" then return item.name end
+  local record = type(item) == "number" and Data.Item(item)
+  return record and record.name or nil
+end
+
+local function namesList(names)
+  if #names <= 1 then return names[1] or "" end
+  return table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
+end
+
+-- One or two short lines on what a quest leads to, or nil when nothing you
+-- can do follows it:
+--   "Chain: 4 more quests (levels 18-24), ends in The Deadmines"
+--   "Leads to a Shadowfang Keep quest"
+function Quests.ChainText(questID)
+  local ahead = Quests.ChainAhead(questID)
+  if not (ahead and ahead.reachable > 0) then return nil end
+  -- "a Deadmines quest", not "a The Deadmines quest".
+  local dungeonNames = {}
+  for _, d in ipairs(ahead.dungeons) do dungeonNames[#dungeonNames + 1] = (d.name:gsub("^The ", "")) end
+  local lines = {}
+  if ahead.reachable == 1 and #dungeonNames == 1 then
+    lines[1] = "Leads to a " .. dungeonNames[1] .. " quest"
+  else
+    local span = ahead.levelSpan
+    local levels = span and (span[1] == span[2] and string.format(" (level %d)", span[1])
+      or string.format(" (levels %d-%d)", span[1], span[2])) or ""
+    local text = string.format("Chain: %d more quest%s%s", ahead.reachable, ahead.reachable == 1 and "" or "s", levels)
+    local endsInDungeon = ahead.endsAt and ahead.endsAt.dungeon
+    if ahead.endsAt then text = text .. ", ends in " .. ahead.endsAt.name end
+    lines[1] = text
+    if #dungeonNames > 0 and not (endsInDungeon and #dungeonNames == 1) then
+      lines[2] = #dungeonNames == 1 and ("Leads to a " .. dungeonNames[1] .. " quest")
+        or ("Leads to " .. namesList(dungeonNames) .. " quests")
+    end
+  end
+  local itemNames = {}
+  for _, item in ipairs(ahead.items or {}) do
+    local name = itemName(item)
+    if name and #itemNames < 3 then itemNames[#itemNames + 1] = name end
+  end
+  if #itemNames > 0 and #lines < 2 then lines[#lines + 1] = "Rewards on the way: " .. namesList(itemNames) end
+  return table.concat(lines, "\n")
+end
+
+-- The dungeon a quest's chain leads to (the first), or nil.
+function Quests.ChainDungeon(questID)
+  local ahead = Quests.ChainAhead(questID)
+  local d = ahead and ahead.dungeons[1]
+  return d and d.name or nil
+end
+
+-- ChainText, only when the chain is worth pointing out on its own (it leads
+-- to a dungeon quest, or LONG_CHAIN or more quests follow).
+function Quests.ChainHighlight(questID)
+  local ahead = Quests.ChainAhead(questID)
+  if not (ahead and (#ahead.dungeons > 0 or ahead.reachable >= LONG_CHAIN)) then return nil end
+  return Quests.ChainText(questID)
+end
+
+-- The chain ahead as lines, for /wf debug quest.
+function Quests.DescribeChain(questID)
+  local ahead = Quests.ChainAhead(questID)
+  if not ahead or ahead.count == 0 then return { "  chain ahead: nothing follows" } end
+  local p = playerProfile()
+  local out = { string.format("  chain ahead: %d step%s, %d you can do%s", ahead.count, ahead.count == 1 and "" or "s",
+    ahead.reachable, ahead.endsAt and (", ends in " .. ahead.endsAt.name) or "") }
+  for i, q in ipairs(ahead.steps) do
+    local others = {}
+    for _, alt in ipairs(ahead.alternatives[q.id] or {}) do others[#others + 1] = alt.name .. " (" .. alt.id .. ")" end
+    local area = q.zoneOrSort
+    local dungeon = type(area) == "number" and area > 0 and ns.Dungeons and ns.Dungeons.ForArea(area)
+    out[#out + 1] = string.format("    %d. [%d] %s (id %d)%s%s%s", i, (q.questLevel or 0) > 0 and q.questLevel
+      or q.requiredLevel or 0, q.name or "?", q.id, dungeon and ("  ·  " .. dungeon.name) or "",
+      canEverReach(q, p) and "" or "  ·  not for you",
+      #others > 0 and ("  ·  or " .. table.concat(others, ", ")) or "")
+  end
+  local text = Quests.ChainText(questID)
+  if text then out[#out + 1] = "    " .. text:gsub("\n", "  ·  ") end
+  return out
+end
+
 -- What the data says about a quest's place in its chain, for /wf debug quest.
 function Quests.Describe(questID)
   local q = Quests.Quest(questID)
@@ -875,4 +1107,8 @@ ns.Listen("SOURCES_CHANGED", function()
   questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
   giverNodes, objectiveCache, groupCache, zoneCache, takeable = {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
+  chainCache = {}
 end)
+-- Chains ahead count what your level can do, and name dungeons and places
+-- learned while playing.
+ns.Listen("DATA_CHANGED", function() chainCache = {} end)

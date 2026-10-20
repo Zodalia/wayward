@@ -186,8 +186,17 @@ local function create()
     row.hover:SetAllPoints()
     row.hover:SetColorTexture(1, 1, 1, 0.06)
     row.hover:Hide()
-    row:SetScript("OnEnter", function(self) if self.movable then self.hover:Show() end end)
-    row:SetScript("OnLeave", function(self) self.hover:Hide() end)
+    row:SetScript("OnEnter", function(self)
+      if self.movable then self.hover:Show() end
+      Overview.ShowStopTooltip(self)
+    end)
+    row:SetScript("OnLeave", function(self)
+      self.hover:Hide()
+      if self.tooltip then
+        self.tooltip = nil
+        GameTooltip:Hide()
+      end
+    end)
     f.rows[i] = row
   end
   f.marker = f:CreateTexture(nil, "OVERLAY")
@@ -228,6 +237,23 @@ local function create()
   ns.Skin.Box(f)
   f:Hide()
   return f
+end
+
+-- A quest stop's tooltip: what the quest's chain leads to (Quests.ChainText).
+-- Returns the text shown, or nil.
+function Overview.StopTooltipText(stop)
+  local questID = stop and stop.action and stop.action.questID
+  return questID and ns.Quests.ChainText(questID) or nil
+end
+
+function Overview.ShowStopTooltip(row)
+  local text = Overview.StopTooltipText(row.stop)
+  if not (text and GameTooltip) then return end
+  row.tooltip = true
+  GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+  GameTooltip:SetText(row.stop.text or "", 1, 1, 1, true)
+  for line in text:gmatch("[^\n]+") do GameTooltip:AddLine(line, 0.5, 0.82, 0.68, true) end
+  GameTooltip:Show()
 end
 
 -- The stop the current step leads to.

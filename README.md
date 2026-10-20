@@ -316,6 +316,18 @@ completed quests" visits every finisher in one trip, and can be added to the
 current trip too. Without quest data the log still lists, but without
 directions.
 
+**Where a chain leads:** every quest list (Quests tab log and search, For you
+cards, the journey overview's quest stops) has a tooltip line on what follows
+the quest: "Chain: 4 more quests (levels 18-24), ends in The Deadmines" or
+"Leads to a Shadowfang Keep quest". A quest whose chain reaches a dungeon
+quest says so on its row too, and picking up a quest that starts a long chain
+(3+ quests) or leads to a dungeon quest says so in the "start a trip?"
+question. The chain is walked forward from the data (next quest, quests that
+need it, inferred Forever links), up to 12 steps; quests that close each other
+count as one step, and only quests your race, class and level can do count.
+`ns.Quests.ChainAhead(id)` returns the steps and summary,
+`ns.Quests.ChainText(id)` the line; `/wf debug quest <id|name>` lists the steps.
+
 **Trips are flexible:** starting new directions while a trip is on asks
 whether to add them to the trip or replace it. Shift-click any row in the
 panel to add it to the trip you're on.
