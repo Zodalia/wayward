@@ -890,7 +890,7 @@ end
 local function notableOption(hubs, ctx, start, net, skip)
   if not ns.Quests.NotableTag then return nil end
   local candidates, seen = {}, {}
-  local function consider(id, name, level, inLog, near)
+  local function consider(id, name, level, inLog, near, complete)
     if seen[id] or skip[id] then return end
     seen[id] = true
     local row = ns.Quests.Quest(id)
@@ -898,7 +898,7 @@ local function notableOption(hubs, ctx, start, net, skip)
     local tag, reasons = notableTag(id)
     if not tag then return end
     candidates[#candidates + 1] = { id = id, name = name or row.name, level = level, inLog = inLog, tag = tag,
-      reasons = reasons, score = ns.Quests.NotableScore(id), near = near or math.huge }
+      reasons = reasons, score = ns.Quests.NotableScore(id), near = near or math.huge, complete = complete }
   end
   for _, hub in ipairs(hubs) do
     -- A hub farther than that can't have a quest whose giver is near enough.
@@ -908,7 +908,7 @@ local function notableOption(hubs, ctx, start, net, skip)
       end
     end
   end
-  for _, e in ipairs(ctx.log) do consider(e.id, e.name, e.level, true) end
+  for _, e in ipairs(ctx.log) do consider(e.id, e.name, e.level, true, nil, e.complete) end
   table.sort(candidates, function(a, b)
     if a.score ~= b.score then return a.score > b.score end
     return a.near < b.near
@@ -917,7 +917,7 @@ local function notableOption(hubs, ctx, start, net, skip)
     if i > NOTABLE_TRIES then break end
     local stops = ns.Journey.QuestStops(c.id, start)
     local name = c.name or ("quest " .. c.id)
-    local title = (c.inLog and "Finish " or "Do ") .. name
+    local title = (c.complete and "Hand in " or c.inLog and "Finish " or "Do ") .. name
     local journey = #stops > 0 and ns.Journey.Plan(start, { title = title, stops = stops }, net) or nil
     local travel = journey and firstLeg(journey)
     if travel and travel <= NOTABLE_SECONDS then

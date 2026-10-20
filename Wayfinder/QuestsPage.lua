@@ -43,11 +43,13 @@ local function label(status, extra)
 end
 
 -- A notable quest's tag for its row ("  ·  Class quest"), and its reasons as
--- tooltip lines (Notable.lua).
-local function notable(questID, details)
+-- tooltip lines (Notable.lua). Quests you did or can never take keep the
+-- reasons but get no tag.
+local function notable(questID, details, status)
   if not ns.Quests.NotableTag then return "" end
   local tag, reasons = ns.Quests.NotableTag(questID)
   for _, r in ipairs(reasons) do details[#details + 1] = { text = r.text, color = NOTABLE_COLOR } end
+  if status == "done" or status == "notForYou" then return "" end
   return tag and ("  ·  " .. NOTABLE .. tag .. "|r") or ""
 end
 
@@ -223,7 +225,7 @@ local function questRow(m, start, net)
     stops[1].text = "Start the chain: " .. stops[1].text:gsub("^%u", string.lower)
   end
   local journey = #stops > 0 and ns.Journey.Plan(start, { title = q.name, stops = stops }, net) or nil
-  local sub = rowStatus(m) .. notable(q.id, details)
+  local sub = rowStatus(m) .. notable(q.id, details, m.status)
   if journey then
     sub = sub .. "  ·  " .. ns.FormatDuration(journey.seconds)
   elseif stop then

@@ -3588,6 +3588,10 @@ do
     "Quests page: a notable row is tagged, its tooltip says why: " .. tostring(row and row.subtitle))
   results = ns.QuestsPage.Results("Lakeshire Logs")
   check(results[1] and not results[1].subtitle:find("  ·  |c", 1, true), "an ordinary quest has no tag")
+  UnitClass = function() return "Mage", "MAGE", 8 end
+  results = ns.QuestsPage.Results("Shadow Pact")
+  check(results[1] and not results[1].subtitle:find("Class quest", 1, true), "another class's quest isn't tagged")
+  UnitClass = savedClass
 
   -- For you: "Don't miss" the most notable quest close by, right after what's due.
   ns.ForYou.Invalidate()
@@ -3614,6 +3618,20 @@ do
   end
   check(tagged and why and why.more and why.text:find("Epic quest line", 1, true),
     "quest lines on other cards carry their tag; the reason is in the tooltip only")
+
+  -- In your log and ready: the card hands it in.
+  C_QuestLog.GetNumQuestLogEntries = function() return 1 end
+  C_QuestLog.GetInfo = function() return { questID = 504, isHeader = false } end
+  C_QuestLog.IsComplete = function(id) return id == 504 end
+  fire("QUEST_LOG_UPDATE")
+  ns.ForYou.Invalidate()
+  local ready
+  for _, r in ipairs(ns.ForYou.Results()) do if r.category == "Don't miss" then ready = r end end
+  check(ready and ready.title == "Hand in The Long Tale", "a notable quest ready to hand in: "
+    .. tostring(ready and ready.title))
+  C_QuestLog.GetNumQuestLogEntries = function() return 0 end
+  C_QuestLog.GetInfo = function() return nil end
+  fire("QUEST_LOG_UPDATE")
 
   -- Slow roads (every trip 100 times longer): nothing notable within ten minutes.
   local realPlan = ns.Router.Plan
