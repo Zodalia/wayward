@@ -20,6 +20,8 @@ local _, ns = ...
 --   Object(id)         object record
 --   Item(id)           item record
 --   ItemIDs()          { itemID, ... }
+--   QuestRewards()     { [questID] = { itemID, ... } }: the items each quest rewards
+--                      (optional: else built from ItemIDs and the items' questRewards)
 --   Dungeons()         { {areaID, name, alternativeAreaIds = {areaID, ...}, positions}, ... }
 --   QuestXP()          { [questID] = {questLevel, xp} }: full reward before the level penalty
 --   EraToForever(mapID, x, y)   an Era (vanilla) map point in Forever: x, y (0-1)
@@ -40,7 +42,15 @@ local _, ns = ...
 --   preQuestSingle (any one first), preQuestGroup (all first), exclusiveTo = { questID, ... }
 --   nextQuestInChain, parentQuest, breadcrumbForQuestId, availableUntilCompleted,
 --     availableStartingWith, disabledByQuest = questID (0 or nil: none)
---   requiredSkill = { skillID, value } (nil: none), zoneOrSort = areaID (> 0)
+--   requiredSkill = { skillID, value } (nil: none)
+--   zoneOrSort         signed: > 0 the AreaID it belongs to (for a dungeon quest,
+--                      the dungeon's); < 0 a QuestSort (QuestieDB's sortKeys:
+--                      class -61 Warlock ..., -344 Legendary, -1 Epic,
+--                      professions, holidays); 0 or nil: unknown
+--   questFlags         bit mask (optional): 32 epic, 64 raid, 4096 daily, ...
+--   specialFlags       bit mask (optional): 1 repeatable
+--   reputationReward = { {factionID, value}, ... } (optional)
+--   childQuests = { questID, ... } (optional)
 --   objectives = { { {npcID}, ... }, { {objectID}, ... }, { {itemID}, ... } }
 --   triggerEnd = { text, {position, ...} }   a place to explore
 --   requiredSourceItems = { itemID, ... }
@@ -49,7 +59,8 @@ local _, ns = ...
 --   anyone), rank, minLevel, maxLevel, flags = { trainer = true, ... }, positions
 -- Object record: id, name, positions
 -- Item record: id, name, itemLevel, requiredLevel, and where it comes from as ID
---   lists: npcDrops, objectDrops, itemDrops (containers), questRewards, vendors
+--   lists: npcDrops, objectDrops, itemDrops (containers), questRewards, vendors;
+--   class, subClass (optional): the item class IDs (2 weapon, 4 armour, ...)
 
 local Data = {}
 ns.Data = Data
@@ -156,6 +167,7 @@ function Data.QuestIDs() return union("QuestIDs") end
 function Data.Object(id) return first("Object", id) end
 function Data.Item(id) return first("Item", id) end
 function Data.ItemIDs() return union("ItemIDs") end
+function Data.QuestRewards() return first("QuestRewards") end
 function Data.NpcIDs(flag) return union("NpcIDs", flag) end
 function Data.QuestXP() return first("QuestXP") end
 function Data.TrainerSpells(npcID) return first("TrainerSpells", npcID) end

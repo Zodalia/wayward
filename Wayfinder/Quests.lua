@@ -486,7 +486,14 @@ function Quests.ZoneQuests(here)
   return zones
 end
 
--- Quests whose zoneOrSort is in `areaIDs` (a set; for a dungeon quest that is
+-- The AreaID a quest belongs to (zoneOrSort > 0), or nil: a negative
+-- zoneOrSort is a QuestSort (class, profession, holiday...), not a place.
+function Quests.QuestArea(q)
+  local area = q and tonumber(q.zoneOrSort)
+  return area and area > 0 and area or nil
+end
+
+-- Quests whose AreaID (Quests.QuestArea) is in `areaIDs` (a set; for a dungeon quest that is
 -- the dungeon's AreaID): { [areaID] = { available = {...}, inLog = {...},
 -- later = {...} } }. `later` are ones you can't take yet but will: too low a
 -- level for them (with requiredLevel), too hard for now, or after earlier
@@ -498,7 +505,7 @@ function Quests.QuestsForAreas(areaIDs)
   local done, inLog = playerQuestState()
   local out = {}
   for _, q in ipairs(questIndex) do
-    local area = q.zoneOrSort
+    local area = Quests.QuestArea(q)
     if area and areaIDs[area] then
       local group = out[area] or { available = {}, inLog = {}, later = {} }
       out[area] = group
@@ -728,6 +735,15 @@ function Quests.FollowUps(questID)
   end
   table.sort(out, function(a, b) return a.id < b.id end)
   return out
+end
+
+-- The quests that come after `questID` in its chain, whoever you are (quest
+-- rows; see FollowUps for the ones this character could take).
+function Quests.After(questID)
+  if not Quests.Available() then return {} end
+  if not questIndex then buildQuestIndex() end
+  if not followers then buildFollowers() end
+  return followers[questID] or {}
 end
 
 -- What the data says about a quest's place in its chain, for /wf debug quest.

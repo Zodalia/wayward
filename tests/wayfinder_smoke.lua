@@ -594,7 +594,7 @@ local function fixtureSource()
     if not (ItemDB and ItemDB.GetAll(id, { "name" })) then return nil end
     local item = { id = id }
     for _, k in ipairs({ "name", "itemLevel", "requiredLevel", "npcDrops", "objectDrops", "itemDrops",
-      "questRewards", "vendors" }) do
+      "questRewards", "vendors", "class", "subClass" }) do
       item[k] = ItemDB.Get(id, k)
     end
     return item
@@ -1868,8 +1868,10 @@ do
   check(chat[#chat]:find("isn't offered yet", 1, true), "and says so: " .. chat[#chat])
   local said = #chat
   SlashCmdList.WAYFINDER("debug quest 7")
-  check(#chat > said + 2 and chat[said + 2]:find("(id 7)", 1, true) and chat[#chat]:find("didn't offer it", 1, true),
-    "/wf debug quest shows the chain data and the giver's answer")
+  local debugText = table.concat(chat, "\n", said + 1)
+  check(#chat > said + 2 and chat[said + 2]:find("(id 7)", 1, true) and debugText:find("didn't offer it", 1, true)
+    and debugText:find("notable: nothing stands out", 1, true),
+    "/wf debug quest shows the chain data, the giver's answer and why it's notable")
   fire("QUEST_TURNED_IN", 999)
   check(ns.Quests.IsQuestAvailable(7), "handing in any quest makes it worth asking again")
   UnitName, C_GossipInfo = savedName, nil
@@ -3474,6 +3476,233 @@ do
   check(ns.Data.Status() == "Fixtures (baked)" and not ns.Data.Has("ClassSpells"), "unregistering takes a source away")
 end
 ---------------------------------------------------------------- data sources (end)
+---------------------------------------------------------------- notable quests (begin)
+do
+  io.write("notable quests\n")
+  ns.Nav.Stop()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  local savedClass, savedLevel, savedInstant, savedFaction = UnitClass, UnitLevel, C_Item.GetItemInfoInstant, GetFactionInfoByID
+  local keys = LibQuestieDB.Meta.QuestMeta.questKeys
+  keys.questFlags, keys.specialFlags, keys.reputationReward, keys.childQuests = 23, 24, 26, 14
+  keys.zoneOrSort = 17
+  C_QuestLog.GetNumQuestLogEntries = function() return 0 end
+  C_QuestLog.GetInfo = function() return nil end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+
+  -- Lakeshire quests (Magistrate Solomon, 344), each notable for one reason.
+  local function quest(id, name, extra)
+    local q = { name = name, questLevel = 19, requiredLevel = 15, zoneOrSort = 44, startedBy = { { 344 } },
+      finishedBy = { { 344 } } }
+    for k, v in pairs(extra or {}) do q[k] = v end
+    QUESTS[id] = q
+  end
+  quest(501, "Shadow Pact", { zoneOrSort = -61, requiredClasses = 256 })
+  quest(502, "Staff Delivery")
+  quest(503, "Heavy Lifting")
+  quest(504, "The Long Tale", { questFlags = 32 })
+  quest(505, "Into the Mines", { nextQuestInChain = 506 })
+  quest(506, "Deep in the Mines", { zoneOrSort = 1581 })
+  quest(507, "Home Errand", { reputationReward = { { 72, 250 }, { 529, 250 } } })
+  quest(508, "Faire Tickets", { zoneOrSort = -364 })
+  quest(509, "Smithing Supplies", { zoneOrSort = -121 })
+  quest(510, "Ring Run")
+  quest(90501, "Forever Frontier")
+  quest(90502, "Lakeshire Logs") -- the same name as quest 7: not new
+  ITEMS[9501] = { name = "Staff of the Blessed Seer", class = 2, subClass = 10, requiredLevel = 20, itemLevel = 25,
+    questRewards = { 502 } }
+  ITEMS[9502] = { name = "Heavy Plate Helm", class = 4, subClass = 4, requiredLevel = 40, itemLevel = 45,
+    questRewards = { 503 } }
+  ITEMS[9503] = { name = "Plain Robe", class = 4, subClass = 1, requiredLevel = 15, questRewards = { 503 } }
+  ITEMS[9504] = { name = "Band of Lakeshire", class = 4, subClass = 0, requiredLevel = 18, questRewards = { 510 } }
+  -- The client has the staff (green), the robe (white: doesn't count) and the
+  -- ring (blue) cached, and knows the ring is a ring; not the helm yet.
+  local QUALITY = { [9501] = 2, [9503] = 1, [9504] = 3 }
+  local asked = {}
+  GetItemInfo = function(id) if QUALITY[id] then return "Item " .. id, nil, QUALITY[id] end end
+  C_Item.RequestLoadItemDataByID = function(id) asked[#asked + 1] = id end
+  C_Item.GetItemInfoInstant = function(id)
+    if id == 9504 then return id, "Armor", "Miscellaneous", "INVTYPE_FINGER", 0, 4, 0 end
+    return savedInstant(id)
+  end
+  GetFactionInfoByID = function(id) if id == 529 then return "Argent Dawn" end end
+  refreshData()
+
+  local function kinds(id)
+    local out = {}
+    for _, r in ipairs(ns.Quests.Notable(id)) do out[#out + 1] = r.kind end
+    return table.concat(out, ",")
+  end
+  local function reason(id, kind)
+    for _, r in ipairs(ns.Quests.Notable(id)) do if r.kind == kind then return r.text end end
+    return ""
+  end
+
+  -- QuestSort: a negative zoneOrSort, by name.
+  local sort, detail = ns.Quests.QuestSort(501)
+  check(sort == "class" and detail == "WARLOCK", "QuestSort: -61 is a warlock class quest")
+  check(ns.Quests.QuestSort(509) == "profession:Blacksmithing" and select(2, ns.Quests.QuestSort(508)) == "Darkmoon Faire"
+    and ns.Quests.QuestSort(502) == nil and ns.Quests.QuestSort(1) == nil,
+    "QuestSort: professions and holidays named; an AreaID (or none) is no sort")
+  check(ns.Quests.QuestArea(ns.Quests.Quest(501)) == nil and ns.Quests.QuestArea(ns.Quests.Quest(506)) == 1581,
+    "a QuestSort is never taken for an area; a dungeon quest keeps its AreaID")
+
+  -- RewardItems: quest -> items, from the items' questRewards.
+  local rewards = ns.Quests.RewardItems(502)
+  check(#rewards == 1 and rewards[1].itemID == 9501 and rewards[1].name == "Staff of the Blessed Seer"
+    and rewards[1].class == 2 and rewards[1].subClass == 10 and rewards[1].requiredLevel == 20
+    and rewards[1].itemLevel == 25, "RewardItems: the staff, with its class, subclass and levels")
+  check(#ns.Quests.RewardItems(503) == 2 and #ns.Quests.RewardItems(1) == 1 and #ns.Quests.RewardItems(7) == 0,
+    "RewardItems: every item a quest rewards, none for a quest without")
+
+  -- Notable: each reason in plain words.
+  check(kinds(501) == "class" and reason(501, "class"):find("^Class quest %(Warlock%)")
+    and ns.Quests.NotableTag(501) == "Class quest", "a warlock class quest: " .. reason(501, "class"))
+  check(reason(502, "reward") == "Rewards Staff of the Blessed Seer (your class can use it, level 20)."
+    and ns.Quests.NotableTag(502) == "Reward for you", "a green staff a warlock can use: " .. reason(502, "reward"))
+  check(kinds(503) == "", "plate isn't for a warlock, and a white robe doesn't count: " .. kinds(503))
+  check(ns.Quests.NotableTag(510) == "Reward for you" and reason(510, "reward"):find(", a rare item", 1, true),
+    "a blue ring suits anyone (the client knows its slot)")
+  check(kinds(504) == "epic" and ns.Quests.NotableTag(504) == "Epic", "an epic quest (questFlags 32)")
+  check(reason(505, "dungeon") == "Leads to a quest in The Deadmines (Deep in the Mines).",
+    "a chain that leads into a dungeon: " .. reason(505, "dungeon"))
+  check(kinds(506) == "", "the dungeon quest itself isn't 'leads to' its own dungeon")
+  check(kinds(90501) == "forever" and reason(90501, "forever"):find("^Forever%-only quest")
+    and kinds(90502) == "", "a Forever-only quest; a Forever copy of an old quest isn't new")
+  check(reason(507, "reputation") == "Gives reputation with Argent Dawn." and ns.Quests.NotableTag(507) == nil,
+    "reputation outside your own cities is a reason, too weak for a tag alone")
+  check(kinds(508) == "holiday" and ns.Quests.NotableTag(508) == nil and reason(509, "profession") == "Blacksmithing quest.",
+    "holiday and profession quests are mentioned, not tagged")
+  check(kinds(7) == "" and ns.Quests.NotableScore(7) == 0, "an ordinary quest: nothing stands out")
+
+  -- Another class, another level: what it can use changes.
+  UnitClass = function() return "Warrior", "WARRIOR", 1 end
+  check(reason(503, "reward"):find("^Rewards Heavy Plate Helm") and kinds(502) == "reward" and kinds(501) == "",
+    "a warrior: the plate helm (worn from 40) and the staff count, a warlock quest doesn't: "
+      .. reason(503, "reward"))
+  check(ns.Quests.NotableTag(503) == nil and #asked == 1 and asked[1] == 9502,
+    "armour of a quality not known yet is mentioned, not tagged; the client is asked for it once")
+  UnitLevel = function() return 30 end
+  ITEMS[9505] = { name = "Ringmail Vest", class = 4, subClass = 3, requiredLevel = 41, questRewards = { 503 } }
+  refreshData()
+  check(not reason(503, "reward"):find("Ringmail", 1, true), "mail needing level 41: a warrior wears plate by then")
+  ITEMS[9505] = nil
+  UnitLevel = savedLevel
+  refreshData()
+  UnitClass = savedClass
+
+  -- A source with its own quest -> items index is used instead of a pass over every item.
+  local itemReads = 0
+  local realItem = fixtures.Item
+  fixtures.Item = function(id) itemReads = itemReads + 1 return realItem(id) end
+  fixtures.QuestRewards = function() return { [502] = { 9501 } } end
+  refreshData()
+  check(#ns.Quests.RewardItems(502) == 1 and itemReads == 1 and #ns.Quests.RewardItems(503) == 0,
+    "a source's QuestRewards index: only the reward items are read (" .. itemReads .. ")")
+  fixtures.Item, fixtures.QuestRewards = realItem, nil
+  refreshData()
+
+  -- /wf debug quest: sort, flags, rewards and reasons.
+  local said = #chat
+  SlashCmdList.WAYFINDER("debug quest 502")
+  local printed = table.concat(chat, "\n", said + 1)
+  check(printed:find("rewards: Staff of the Blessed Seer (9501; class 2/10, level 20", 1, true)
+    and printed:find("quality 2, yours", 1, true) and printed:find("notable: [reward 2] Rewards Staff", 1, true),
+    "/wf debug quest lists rewards and reasons")
+  said = #chat
+  SlashCmdList.WAYFINDER("debug quest the long tale")
+  printed = table.concat(chat, "\n", said + 1)
+  check(printed:find("flags: epic", 1, true) and printed:find("notable: [epic 4]", 1, true),
+    "/wf debug quest <name>: flags and reasons")
+
+  -- Quests page: the tag on the row, the reasons in its tooltip.
+  local results = ns.QuestsPage.Results("Shadow Pact")
+  local row = results[#results]
+  local tip = {}
+  for _, d in ipairs(row and row.details or {}) do tip[#tip + 1] = d.text end
+  check(row and row.subtitle:find("Class quest", 1, true) and table.concat(tip, "\n"):find("Class quest (Warlock)", 1, true),
+    "Quests page: a notable row is tagged, its tooltip says why: " .. tostring(row and row.subtitle))
+  results = ns.QuestsPage.Results("Lakeshire Logs")
+  check(results[1] and not results[1].subtitle:find("  ·  |c", 1, true), "an ordinary quest has no tag")
+  UnitClass = function() return "Mage", "MAGE", 8 end
+  results = ns.QuestsPage.Results("Shadow Pact")
+  check(results[1] and not results[1].subtitle:find("Class quest", 1, true), "another class's quest isn't tagged")
+  UnitClass = savedClass
+
+  -- For you: "Don't miss" the most notable quest close by, right after what's due.
+  ns.ForYou.Invalidate()
+  local list = ns.ForYou.Results()
+  local order, card, zone = {}, nil, nil
+  for _, r in ipairs(list) do
+    order[#order + 1] = r.category
+    if r.category == "Don't miss" then card = r end
+    if r.category == "Questing zone" then zone = zone or r end
+  end
+  local text = table.concat(order, ",")
+  check(card and card.title == "Do The Long Tale" and card.journey and card.icon,
+    "Don't miss: the epic quest, the most notable one close by (" .. text .. ")")
+  check(text:find("^Due now,Don't miss") or text:find("^Don't miss"), "right after what's due: " .. text)
+  local why = {}
+  for _, d in ipairs(card and card.details or {}) do why[#why + 1] = d.text end
+  check(card and card.details[1].text:find("^Don't miss: Epic quest line") and card.place:find("^Epic"),
+    "the card says why in plain words: " .. table.concat(why, " / "))
+  local tagged, why
+  for i, d in ipairs(zone and zone.details or {}) do
+    if d.quest and d.text:find("The Long Tale  (Magistrate Solomon)  ·  Epic", 1, true) then
+      tagged, why = true, zone.details[i + 1]
+    end
+  end
+  check(tagged and why and why.more and why.text:find("Epic quest line", 1, true),
+    "quest lines on other cards carry their tag; the reason is in the tooltip only")
+
+  -- In your log and ready: the card hands it in.
+  C_QuestLog.GetNumQuestLogEntries = function() return 1 end
+  C_QuestLog.GetInfo = function() return { questID = 504, isHeader = false } end
+  C_QuestLog.IsComplete = function(id) return id == 504 end
+  fire("QUEST_LOG_UPDATE")
+  ns.ForYou.Invalidate()
+  local ready
+  for _, r in ipairs(ns.ForYou.Results()) do if r.category == "Don't miss" then ready = r end end
+  check(ready and ready.title == "Hand in The Long Tale", "a notable quest ready to hand in: "
+    .. tostring(ready and ready.title))
+  C_QuestLog.GetNumQuestLogEntries = function() return 0 end
+  C_QuestLog.GetInfo = function() return nil end
+  fire("QUEST_LOG_UPDATE")
+
+  -- Slow roads (every trip 100 times longer): nothing notable within ten minutes.
+  local realPlan = ns.Router.Plan
+  ns.Router.Plan = function(...)
+    local r = realPlan(...)
+    if not r then return nil end
+    local slow = {}
+    for k, v in pairs(r) do slow[k] = v end
+    slow.seconds, slow.steps = r.seconds * 100, {}
+    for i, st in ipairs(r.steps) do
+      local c = {}
+      for k, v in pairs(st) do c[k] = v end
+      c.seconds = (st.seconds or 0) * 100
+      slow.steps[i] = c
+    end
+    return slow
+  end
+  ns.ForYou.Invalidate()
+  local far
+  for _, r in ipairs(ns.ForYou.Results()) do if r.category == "Don't miss" then far = r end end
+  ns.Router.Plan = realPlan
+  check(not far, "no Don't miss card when the notable quests are far away: " .. tostring(far and far.subtitle))
+
+  for id in pairs({ [501] = 1, [502] = 1, [503] = 1, [504] = 1, [505] = 1, [506] = 1, [507] = 1, [508] = 1, [509] = 1,
+    [510] = 1, [90501] = 1, [90502] = 1 }) do QUESTS[id] = nil end
+  for _, id in ipairs({ 9501, 9502, 9503, 9504 }) do ITEMS[id] = nil end
+  GetItemInfo, C_Item.GetItemInfoInstant, GetFactionInfoByID = nil, savedInstant, savedFaction
+  C_Item.RequestLoadItemDataByID = nil
+  UnitClass, UnitLevel = savedClass, savedLevel
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+  refreshData()
+  ns.ForYou.Invalidate()
+end
+---------------------------------------------------------------- notable quests (end)
 ---------------------------------------------------------------- perf (begin)
 do
   io.write("perf\n")
