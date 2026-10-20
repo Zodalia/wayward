@@ -9,9 +9,9 @@ Status: **MVP, "Class trainer" with directions.** Phase 0 used the WFProbe
 dev addon (described below) to find out what the Forever client provides and
 what we have to ship or learn as you play.
 
-## Wayfinder (the addon)
+## Wayward (the addon)
 
-`Wayfinder/` is the levelling helper. `/wf` opens the panel.
+`Wayward/` is the levelling helper. `/wayward` (or `/ww`) opens the panel.
 
 What works in this MVP:
 
@@ -20,7 +20,7 @@ What works in this MVP:
   4 spells at level 22"). Hover a row to preview the route, click for directions.
 - **Directions**: walking, flight paths you know, boats, zeppelins, the Deeprun
   Tram and the Rut'theran portal. Each step places the map waypoint and moves on
-  when you get there. The directions box has its own compass (`/wf compass` hides
+  when you get there. The directions box has its own compass (`/ww compass` hides
   it), because Blizzard's on-screen navigation is off by default in Forever;
   without an arrow its circle shows what's ahead (quest pickup or hand-in,
   flight). It also shows the trip, a bar of stops done, the step, which stop
@@ -36,17 +36,17 @@ What works in this MVP:
   arrival. The NPC the step is for (flight master, quest giver, the one you
   hand in to, trainer, vendor) is easy to find near there: a star over their
   nameplate (friendly NPC nameplates have to be on; the options can switch
-  the game's setting), a Wayfinder line in their tooltip, and a target button
+  the game's setting), a Wayward line in their tooltip, and a target button
   beside the directions box that targets them (`/target`, with a key binding
-  under Key Bindings > AddOns > Wayfinder). Raid markers would be simpler,
-  but addons may not set them. `/wf marker` or the options turn the star and
+  under Key Bindings > AddOns > Wayward). Raid markers would be simpler,
+  but addons may not set them. `/ww marker` or the options turn the star and
   the tooltip line off. Quests handed in to (or started from) an object, like
   Buzzbox 323, say "use" instead, with nothing to target.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
 
-- **Data sources (optional)**: Wayfinder bundles only hand-made data and what
+- **Data sources (optional)**: Wayward bundles only hand-made data and what
   it learns in game. A separate data addon can register a source with more
   (see [Data sources](#data-sources) below). With quest and NPC data, Class
   trainer gains every trainer for your class, and **Quest hubs** lists nearby
@@ -54,7 +54,7 @@ What works in this MVP:
   not done, not in your log, not grey), grouped by place ("Auberdine", named
   after the nearest flight path's town or an explored subzone) and ranked by
   travel time. Hover a hub for its quests. With class spell data, "new
-  spells" works before your first trainer visit. `/wf debug` shows the data
+  spells" works before your first trainer visit. `/ww debug` shows the data
   sources and first-scan times.
 
 - **Dungeons**: dungeons and raids that fit your level (3 under to 6 over; raids
@@ -65,7 +65,7 @@ What works in this MVP:
   once. Walking into a dungeon or raid records its entrance (where you were
   when the loading screen started; dungeon finder teleports don't count), and
   a recorded entrance beats every other source. Otherwise entrances come from a data source if one has them, otherwise from
-  `Wayfinder/Data/Dungeons.lua`. Those are approximate vanilla positions, and
+  `Wayward/Data/Dungeons.lua`. Those are approximate vanilla positions, and
   the Stockade, Stratholme and Naxxramas points are likely off in Forever
   without a data source. With quest data, a row also counts the dungeon's quests you
   can take or have in your log, and the tooltip lists them.
@@ -81,10 +81,10 @@ Data limits to know about:
   and quests needing a profession skill are left out.
 - Class trainers from a data source are recognised by their English subtitle
   ("Warlock Trainer").
-- Boat, zeppelin, tram and portal docks in `Wayfinder/Data/Transports.lua` are
+- Boat, zeppelin, tram and portal docks in `Wayward/Data/Transports.lua` are
   approximate, and Forever's new routes (e.g. Auberdine - Stormwind) are
-  missing. Record one yourself: `/wf dock` where you board, ride, `/wf dock`
-  where you get off. Routes use it immediately; `/wf dock list` copies the
+  missing. Record one yourself: `/ww dock` where you board, ride, `/ww dock`
+  where you get off. Routes use it immediately; `/ww dock list` copies the
   data line to add to `Data/Transports.lua` for everyone.
 - "New spells" needs one visit to a trainer for your class first, or a data
   source with class spells (then costs show only when the source has them).
@@ -106,7 +106,7 @@ vendors you visited are listed. Food, ammo and reagent tiers in
 ### Items
 
 **Items** tells you where an item comes from, with directions. Shift-click an
-item into its search box, type `/wf item <link>` in chat, or type part of the
+item into its search box, type `/ww item <link>` in chat, or type part of the
 name. Each source is a row: dungeon drops ("Drops from Edwin VanCleef in The
 Deadmines", routed to the entrance, with a **+N quests** button that picks up
 the dungeon's quests on the way), mobs and objects in the world (nearest spawn,
@@ -114,7 +114,7 @@ one row per zone), quests that reward it (can take now, in your log, needs
 earlier quests or a higher level) and the nearest vendor that sells it. Things
 you can do now come first, then shorter trips. Drops and quest rewards need
 item data from a data source; without it only vendors you visited that sold the item are
-known. Item tooltips get a "Wayfinder: /wf item for directions" line when an
+known. Item tooltips get a "Wayward: /ww item for directions" line when an
 item has known sources (never in combat).
 
 ### For you
@@ -142,11 +142,11 @@ Professions: each of your professions with its skill, the next rank and the
 nearest trainer for it, then the ones you could still learn),
 **Dungeons** and **Items** are icon tabs inside its right edge that open a
 list panel docked beside them (click the tab again, or the panel's close
-button, to close it). The search box filters any list. If the cards ever show no text, `/wf debug cards` reports what
+button, to close it). The search box filters any list. If the cards ever show no text, `/ww debug cards` reports what
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
 page is a list in the side panel.
 
-**For you** is the first tab (`/wf next` opens it): a short, curated list of
+**For you** is the first tab (`/ww next` opens it): a short, curated list of
 things to do next, one card per kind of thing, each labelled with its kind:
 
 - **Due now** (at most two, always first): spells you can train and afford
@@ -199,36 +199,36 @@ level. Without that table the ranking falls back to quests per hour weighted
 by level fit, and without quest data to dungeons by level fit and travel time;
 the summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
-The Quests page has every hub and your whole log. `/wf debug` shows how long a
+The Quests page has every hub and your whole log. `/ww debug` shows how long a
 refresh took.
 
-**Notable quests.** XP isn't everything: Wayfinder also asks "am I missing
+**Notable quests.** XP isn't everything: Wayward also asks "am I missing
 something cool here?". A quest is notable when it is your class's quest, part
 of an epic or legendary line, rewards a green weapon or a blue piece of
 armour your class would use (weapon skills, and only the heaviest armour you
 wear at the item's level; the quality only once the game has the item cached,
-which Wayfinder asks for but never waits on, so until then a reward is only
+which Wayward asks for but never waits on, so until then a reward is only
 mentioned), leads
 into a dungeon or an epic quest further down its chain, or is new in Forever
 (an ID from 90000 whose name no original quest has). Profession and holiday
 quests and reputation outside your own cities are mentioned but don't tag a
 quest on their own. Notable quests carry a short tag on the Quests tab and on
-For you's quest lines; the tooltip says why. `/wf debug quest <id|name>`
+For you's quest lines; the tooltip says why. `/ww debug quest <id|name>`
 prints a quest's sort, flags, reward items and reasons
 (`ns.Quests.Notable(id)`, `ns.Quests.QuestSort(id)`, `ns.Quests.RewardItems(id)`).
 
 **Only have 20 minutes?** The buttons at the right of the summary line (15,
-30, 60, Any), or `/wf time 20` and `/wf time off`, set how long you have,
+30, 60, Any), or `/ww time 20` and `/ww time off`, set how long you have,
 per character. For you then shows only what its estimate (trip plus quest
 time) says fits, with each card's time in its corner: hand-ins and finishes
 by least travel rather than XP per minute, a questing zone only when the trip
 to its first hub plus one quest fits, and no dungeon under an hour. When
 nothing fits it says so and offers the quickest option anyway, "a bit over".
-The estimates are rough, so Wayfinder learns yours: each quest you accept
+The estimates are rough, so Wayward learns yours: each quest you accept
 and hand in in one session is timed (from the later of accepting it and your
 last hand-in, so quests done side by side share the time; at most an hour),
 and once 5 are timed the average of your last 20 replaces the 5 minutes per
-quest. `/wf debug` shows it.
+quest. `/ww debug` shows it.
 
 **Fanfare.** When a trip is done, a frame near the top of the screen says
 what it came to: XP earned (across level-ups), time taken, distance travelled
@@ -240,20 +240,20 @@ not while the mouse is over them. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
 zones flown over wait for the landing); the first look after this update
 only learns what's there. A trainer card pops up only for a spell no toast
-has shown yet, whichever town's trainer is nearest. `/wf toasts` or the options turn the toasts
+has shown yet, whichever town's trainer is nearest. `/ww toasts` or the options turn the toasts
 off.
 
-**Sounds.** Wayfinder plays one of the game's own sounds when it asks about a
+**Sounds.** Wayward plays one of the game's own sounds when it asks about a
 quest you picked up (or one that continues a chain), when a stop is added to
 your trip, when a trip starts, when it's done, and for the toast. When a trip
 starts or grows and asks about a follow-up quest, you hear the question's
-sound alone. `/wf sounds` lists each moment's shortlist;
-`/wf sounds <moment> <n|next>` plays one to compare,
-`/wf sounds use <moment> <n|off|default>` keeps it, and
-`/wf sounds test <moment> [n]` shows the real banner, toast or question with
+sound alone. `/ww sounds` lists each moment's shortlist;
+`/ww sounds <moment> <n|next>` plays one to compare,
+`/ww sounds use <moment> <n|off|default>` keeps it, and
+`/ww sounds test <moment> [n]` shows the real banner, toast or question with
 sample text. Instead of a number, `id <kit>` is any sound kit ID, on the list
-or not (`/wf sounds step id 12345`); Wayfinder says so when the game doesn't
-play it. `/wf sounds export` opens your choices as one line to copy
+or not (`/ww sounds step id 12345`); Wayward says so when the game doesn't
+play it. `/ww sounds export` opens your choices as one line to copy
 (`popup=7355 step=836 …`). Moments: `popup`, `step`, `start`,
 `complete`, `toast`.
 
@@ -265,13 +265,13 @@ play it. `/wf sounds export` opens your choices as one line to copy
   when you're on another continent than the current step expects, or when
   you've walked well away from the current target. Never during a flight,
   and at most every 10 seconds. The R button still re-plans on demand.
-- **TomTom**: when it's installed, Wayfinder asks once whether to use it;
+- **TomTom**: when it's installed, Wayward asks once whether to use it;
   then each step goes on TomTom's arrow and map pins, titled with what to do
-  there (`/wf tomtom` or the options switch it, or retry after TomTom failed).
-  The game keeps its own map pin across a logout or reload; Wayfinder takes
+  there (`/ww tomtom` or the options switch it, or retry after TomTom failed).
+  The game keeps its own map pin across a logout or reload; Wayward takes
   its pin from last time down when TomTom shows the way or no trip resumes
   (a pin you placed yourself since stays).
-- **Options** (Options > AddOns > Wayfinder, or `/wf options`): the compass in
+- **Options** (Options > AddOns > Wayward, or `/ww options`): the compass in
   the directions box, TomTom's arrow and the minimap button. The compass and
   TomTom are separate: use either, both, or neither for text directions
   only; with the compass off the directions box is narrower.
@@ -284,25 +284,25 @@ play it. `/wf sounds export` opens your choices as one line to copy
 - **Journey stops** show their zone in the overview and in previews.
 - **Class trainers** in the same room are one row ("3 warlock trainers in
   Stormwind City").
-- **Minimap button**: left-click opens Wayfinder, right-click opens the journey
+- **Minimap button**: left-click opens Wayward, right-click opens the journey
   overview during a trip. It uses LibDBIcon when another addon provides it
   (so button managers can handle it), otherwise a plain button you can drag
-  around the minimap. `/wf minimap` hides it. Wayfinder is also in the addon
+  around the minimap. `/ww minimap` hides it. Wayward is also in the addon
   compartment menu.
 
 ### Look
 
-Wayfinder's windows use Blizzard's standard templates (window, tabs, search
+Wayward's windows use Blizzard's standard templates (window, tabs, search
 box, tooltip-style boxes), so they follow UI addons that restyle those, and
 fall back to a plain look if a template is missing. Long result lists scroll
 with the mouse wheel or the arrows under the list.
 
 With [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) installed,
-Wayfinder also registers with its public skinning API (`EllesmereUI.RegisterSkin`)
+Wayward also registers with its public skinning API (`EllesmereUI.RegisterSkin`)
 and takes on your theme, accent colour and font. This needs EllesmereUI's
 "Blizz UI Enhanced" module (`EllesmereUIBlizzardSkin`) turned on, with skins
 for other addons allowed. ElvUI's Skins module is used when present
-(unverified). `/wf skin` turns the skin off; windows already restyled keep it
+(unverified). `/ww skin` turns the skin off; windows already restyled keep it
 until `/reload`.
 
 Moving things: drag the directions box or the journey overview anywhere. In
@@ -310,17 +310,22 @@ the game's Edit Mode, the directions, the journey overview, the "Journey
 complete!" banner and the "New journey available" toast each show a box you
 can drag, even while they're hidden; right-click one to put it back where it
 started. With EllesmereUI, the same four are in its unlock mode (group
-"Wayfinder", through `EllesmereUI:RegisterUnlockElements`). The toast's box is
+"Wayward", through `EllesmereUI:RegisterUnlockElements`). The toast's box is
 left out while toasts are off. Not yet tried in game.
 
-Install the same way as WFProbe below, with the `Wayfinder` folder.
+Install by symlinking (or copying) the `Wayward` folder into the Forever
+client's AddOns folder, as for WFProbe below:
 
-Development: `lua tests/wayfinder_smoke.lua` runs routing, step advance,
+```bash
+ln -s "$PWD/Wayward" "/Applications/World of Warcraft/<forever folder>/Interface/AddOns/Wayward"
+```
+
+Development: `lua tests/wayward_smoke.lua` runs routing, step advance,
 harvesting and the panel against a fake two-continent world.
 
 ### Quests
 
-The **Quests** tab (or `/wf quest <name>`) searches quests in the quest data by name,
+The **Quests** tab (or `/ww quest <name>`) searches quests in the quest data by name,
 or takes a shift-clicked quest link. Each quest shows its level and whether you
 can take it: available (grey and red quests say so), in your log, done, needs
 earlier quests (naming the first one you can take, or the one in your log to
@@ -354,13 +359,13 @@ question. The chain is walked forward from the data (next quest, quests that
 need it, inferred Forever links), up to 12 steps; quests that close each other
 count as one step, and only quests your race, class and level can do count.
 `ns.Quests.ChainAhead(id)` returns the steps and summary,
-`ns.Quests.ChainText(id)` the line; `/wf debug quest <id|name>` lists the steps.
+`ns.Quests.ChainText(id)` the line; `/ww debug quest <id|name>` lists the steps.
 
 **Trips are flexible:** starting new directions while a trip is on asks
 whether to add them to the trip or replace it. Shift-click any row in the
 panel to add it to the trip you're on.
 
-### Building on Wayfinder: pages and journeys
+### Building on Wayward: pages and journeys
 
 - **Pages** are the panel's tabs. A file that loads before `UI/Panel.lua`
   calls `ns.RegisterPage(page)`. The page contract (id, label, order,
@@ -444,7 +449,7 @@ panel to add it to the trip you're on.
     when it isn't. When you talk to a quest giver, the game lists what they
     offer you: a trip's pickup there that isn't on the list is dropped (with
     its hand-in), and that quest counts as locked everywhere until you hand
-    something in or level up. `/wf debug quest <name or ID>` prints what
+    something in or level up. `/ww debug quest <name or ID>` prints what
     the quest data says about a quest's chain.
   - Forever's own quests (IDs from 90000) often have no chain data at all,
     like the second Return the Statuette (98189) after the original 286.
@@ -470,7 +475,7 @@ panel to add it to the trip you're on.
     handle to reorder the trip. A reordered trip keeps your order (`Journey.Move`);
     stops added later go where they add the least travel, and a stop can't
     move before one it needs (a hand-in before its pickup).
-- **Commands**: `ns.RegisterCommand(name, help, run)` adds `/wf <name>`; `run`
+- **Commands**: `ns.RegisterCommand(name, help, run)` adds `/ww <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
 - **Quest helpers** on `ns.Quests`: `Quest(id)`, `AllQuests()`,
   `PlayerQuestState()`, `IsQuestAvailable(id)` (the Quest hubs rules) and
@@ -480,15 +485,15 @@ panel to add it to the trip you're on.
 
 ### Data sources
 
-Wayfinder ships no third-party data. Everything it knows comes from the game
+Wayward ships no third-party data. Everything it knows comes from the game
 client, from what it records while you play (`Harvest.lua`), and from the
-hand-made files in `Wayfinder/Data/`. Other addons can add data by
-registering a **source**; `Wayfinder/Sources.lua` documents the interface in
+hand-made files in `Wayward/Data/`. Other addons can add data by
+registering a **source**; `Wayward/Sources.lua` documents the interface in
 full. In short:
 
 ```lua
--- In a companion addon whose TOC has "## Dependencies: Wayfinder":
-Wayfinder.RegisterSource({
+-- In a companion addon whose TOC has "## Dependencies: Wayward":
+Wayward.RegisterSource({
   id = "mydata", label = "My data", priority = 30,
   ClassSpells = function(class) return { { spellID = 686, level = 1, cost = 10 } } end,
   Npc = function(id) ... end, NpcIDs = function(flag) ... end,
@@ -510,12 +515,12 @@ Wayfinder.RegisterSource({
   `class`/`subClass`, feed the notable-quest reasons; without them those
   reasons are left out (item classes then come from the client). An optional
   `QuestRewards()` hands over the quest -> reward items index; without it
-  Wayfinder reads every item's `questRewards` once.
+  Wayward reads every item's `questRewards` once.
 - When sources overlap, the higher `priority` wins: per record for quests,
   items and objects, field by field for NPCs and class spells. What you
   learned in game beats any source.
-- A source that errors is reported once and skipped; Wayfinder keeps going.
-  `Wayfinder.UnregisterSource(id)` takes a source away again.
+- A source that errors is reported once and skipped; Wayward keeps going.
+  `Wayward.UnregisterSource(id)` takes a source away again.
 
 ## WFProbe (dev tool)
 
@@ -581,18 +586,18 @@ lua tests/smoke.lua
 ```
 
 ```bash
-lua tests/wayfinder_smoke.lua
+lua tests/wayward_smoke.lua
 ```
 
-Run the addons against stubbed WoW APIs (the second one is Wayfinder, with a
+Run the addons against stubbed WoW APIs (the second one is Wayward, with a
 fixture data source).
 
-**Finding slow spots in game:** `/wf perf on` times what the window does
+**Finding slow spots in game:** `/ww perf on` times what the window does
 (it stays on across reloads, so first-open costs are caught too). Every tab
 switch, refresh, search or internal message becomes a trace: a tree of the
-Wayfinder and data-source functions it called, with time, call counts and
-memory allocated. `/wf perf` prints the last trace, `/wf perf copy` opens the
-whole report to copy, `/wf perf reset` clears it and `/wf perf off` puts
+Wayward and data-source functions it called, with time, call counts and
+memory allocated. `/ww perf` prints the last trace, `/ww perf copy` opens the
+whole report to copy, `/ww perf reset` clears it and `/ww perf off` puts
 everything back. The timers add a little overhead of their own, and Blizzard's
 APIs are never wrapped. This checks our own code paths only,
 not real Forever behaviour.
