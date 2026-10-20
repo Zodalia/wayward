@@ -655,6 +655,82 @@ function ns.RefreshQuestLines(silent)
   ns.RefreshExportIfShown()
 end
 
+---------------------------------------------------------------- nameplates
+
+-- What an addon can read about the units on nameplates (for telling a quest's
+-- mobs apart and whether they're alive or taken), in or out of combat: run
+-- /wfprobe plates near some mobs, once out of combat and once fighting.
+-- Keeps the last few snapshots.
+local MAX_PLATE_SNAPSHOTS, MAX_PLATES = 6, 8
+
+local function fact(fn, ...)
+  if type(fn) ~= "function" then return "missing" end
+  local ok, v = pcall(fn, ...)
+  if not ok then return "error: " .. tostring(v) end
+  if ns.isSecret(v) then return "secret" end
+  return v == nil and "nil" or tostring(v)
+end
+
+local function unitFacts(unit)
+  local guid = UnitGUID and UnitGUID(unit)
+  local out = {
+    unit = unit,
+    guid = guid == nil and "nil" or ns.isSecret(guid) and "secret" or tostring(guid),
+    name = fact(UnitName, unit),
+    isDead = fact(UnitIsDead, unit),
+    tapDenied = fact(UnitIsTapDenied, unit),
+    canAttack = fact(UnitCanAttack, "player", unit),
+    reaction = fact(UnitReaction, unit, "player"),
+    inCombat = fact(UnitAffectingCombat, unit),
+    health = fact(UnitHealth, unit),
+    classification = fact(UnitClassification, unit),
+    position = fact(UnitPosition, unit),
+  }
+  if type(guid) == "string" and not ns.isSecret(guid) then
+    local kind, _, _, _, _, id = strsplit("-", guid)
+    out.npcID, out.guidType = tonumber(id), kind
+  end
+  return out
+end
+
+function ns.ProbePlates()
+  local snap = {
+    at = date("%Y-%m-%d %H:%M:%S"), inCombat = InCombatLockdown(),
+    showEnemies = fact(GetCVar, "nameplateShowEnemies"), maxDistance = fact(GetCVar, "nameplateMaxDistance"),
+    playerDeadOrGhost = fact(UnitIsDeadOrGhost, "player"), playerGhost = fact(UnitIsGhost, "player"),
+    plates = {},
+  }
+  local plates = C_NamePlate and C_NamePlate.GetNamePlates and C_NamePlate.GetNamePlates() or {}
+  snap.plateCount = #plates
+  for i, plate in ipairs(plates) do
+    if i > MAX_PLATES then break end
+    local unit = plate.namePlateUnitToken
+    snap.plates[#snap.plates + 1] = unit and unitFacts(unit) or { unit = "no token" }
+  end
+  if UnitExists and UnitExists("target") then snap.target = unitFacts("target") end
+  -- Objective counts: the fields the time-left estimate reads first.
+  local quests = 0
+  for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+    local info = C_QuestLog.GetInfo(i)
+    if info and not info.isHeader and quests < 3 then
+      quests = quests + 1
+      snap["quest" .. quests] = try("C_QuestLog.GetQuestObjectives", info.questID)
+    end
+  end
+  local data = ns.charData()
+  data.probes = data.probes or {}
+  data.probes.units = data.probes.units or {}
+  local list = data.probes.units.plates and data.probes.units.plates.value or {}
+  table.insert(list, 1, snap)
+  while #list > MAX_PLATE_SNAPSHOTS do table.remove(list) end
+  data.probes.units.plates = { status = "ok", value = list }
+  local first = snap.plates[1]
+  ns.print(string.format("%d nameplates (%s combat); first: guid %s, dead %s, tapped %s. /wfprobe show for all.",
+    snap.plateCount, snap.inCombat and "in" or "out of", first and (first.guid:match("^Creature") and "readable" or first.guid) or "-",
+    first and first.isDead or "-", first and first.tapDenied or "-"))
+  ns.RefreshExportIfShown()
+end
+
 function ns.TestWaypoint(clear)
   if clear then
     ns.print("clear waypoint: " .. try("C_Map.ClearUserWaypoint").status)

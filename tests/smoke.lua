@@ -133,6 +133,16 @@ fire("QUEST_ACCEPTED", 33)
 SlashCmdList.WFPROBE("waypoint")
 runTimers()
 SlashCmdList.WFPROBE("nav")
+-- Nameplates: one readable, one with a secret GUID and death state.
+C_NamePlate = { GetNamePlates = function()
+  return { { namePlateUnitToken = "nameplate1" }, { namePlateUnitToken = "nameplate2" } }
+end }
+local plainGUID = UnitGUID
+UnitGUID = function(u) if u == "nameplate2" then return SECRET end return plainGUID(u) end
+UnitIsDead = function(u) if u == "nameplate2" then return SECRET end return false end
+InCombatLockdown = function() return true end
+SlashCmdList.WFPROBE("plates")
+InCombatLockdown = function() return false end
 SlashCmdList.WFPROBE("show")
 
 for _, line in ipairs(out) do io.write("[chat] ", line, "\n") end
@@ -154,4 +164,7 @@ assert(text:find("playerFacingIsSecret = false"), "facing check missing")
 assert(text:find('foreverQuestHelpers = "1"'), "discovered cvar missing")
 assert(not text:find("gxMaxFPS"), "unrelated cvar included")
 assert(text:find('questPOI = "0"'), "known cvar missing")
+assert(text:find('guid = "secret"') and text:find('isDead = "secret"') and text:find("npcID = 6741"),
+  "nameplate facts missing")
+assert(text:find("inCombat = true"), "plate snapshot doesn't say it was in combat")
 io.write("SMOKE OK\n")
