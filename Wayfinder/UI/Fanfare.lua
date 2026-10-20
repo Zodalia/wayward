@@ -8,17 +8,13 @@ local _, ns = ...
 --     you click to start it (or add it to your trip: the usual question).
 -- Both fade after a while (not while the mouse is over them); a click on the
 -- first, or the toast's x, closes it. /wf toasts or the options turn the
--- new-journey toasts off.
+-- new-journey toasts off. Their sounds: Sounds.lua (/wf sounds).
 
 local Fanfare = {}
 ns.Fanfare = Fanfare
 
 local TRIP_SECONDS, TOAST_SECONDS, FADE = 12, 8, 1
 local GOLD = { 1, 0.82, 0 }
-
-local function sound()
-  if PlaySound and SOUNDKIT then pcall(PlaySound, SOUNDKIT.IG_QUEST_LIST_COMPLETE or SOUNDKIT.READY_CHECK) end
-end
 
 -- Fades `f` after `seconds` on screen, unless the mouse is over it.
 local function fadeAfter(f, seconds)
@@ -83,8 +79,8 @@ local function number(n)
   return (s:gsub("^,", ""))
 end
 
--- stats: { title, xp, seconds, distance (yards), quests }
-function Fanfare.TripDone(stats)
+-- `sound`: a sound kit instead of the chosen one (for /wf sounds test).
+local function showTrip(stats, sound)
   trip = trip or createTrip()
   trip.heading:SetText("Journey complete!")
   trip.title:SetText(stats.title or "")
@@ -94,7 +90,12 @@ function Fanfare.TripDone(stats)
   trip.quests:SetText(tostring(stats.quests or 0))
   trip:Show()
   fadeAfter(trip, TRIP_SECONDS)
-  sound()
+  ns.Sounds.Play("complete", sound)
+end
+
+-- stats: { title, xp, seconds, distance (yards), quests }
+function Fanfare.TripDone(stats)
+  showTrip(stats)
   Fanfare.lastTrip = stats
 end
 
@@ -138,13 +139,14 @@ local function createToast()
   f:SetScript("OnMouseUp", function(self)
     local r = self.result
     self:Hide()
-    if r then ns.Panel.Activate(r) end
+    if r and not r.preview then ns.Panel.Activate(r) end
     if self.onDone then self.onDone() end
   end)
   f:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
     GameTooltip:SetText(self.result and self.result.title or "")
-    GameTooltip:AddLine(ns.Nav.active and "Click to add it to your trip, or start it instead" or "Click to start it", 0.5, 0.8, 0.7)
+    GameTooltip:AddLine(self.result and self.result.preview and "A sound test: clicking it starts nothing"
+      or ns.Nav.active and "Click to add it to your trip, or start it instead" or "Click to start it", 0.5, 0.8, 0.7)
     GameTooltip:Show()
   end)
   f:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -178,7 +180,7 @@ local function showNext()
   toast.onDone = showNext
   toast:Show()
   fadeAfter(toast, TOAST_SECONDS)
-  sound()
+  ns.Sounds.Play("toast", r.previewSound)
 end
 
 -- Shows "New journey available" for `r` (queued behind one on screen).
@@ -187,6 +189,22 @@ function Fanfare.NewJourney(r)
   queue[#queue + 1] = r
   Fanfare.lastNew = r
   if not (toast and toast:IsShown()) then showNext() end
+end
+
+-- /wf sounds test: the banner or the toast ("trip" or "toast") with sample
+-- text, playing `sound` (a sound kit) or the chosen one. The sample toast is
+-- shown straight away (one on screen comes back after it) and starts nothing.
+function Fanfare.Preview(kind, sound)
+  if kind == "trip" then
+    return showTrip({ title = "Sample journey", xp = 1250, seconds = 754, distance = 2310, quests = 3 }, sound)
+  end
+  local r = { preview = true, previewSound = sound, title = "Sample journey", category = "Questing zone",
+    place = "Westfall", icon = "Interface\\Icons\\INV_Misc_Map_01" }
+  if toast and toast:IsShown() and toast.result and not toast.result.preview then
+    table.insert(queue, 1, toast.result)
+  end
+  table.insert(queue, 1, r)
+  showNext()
 end
 
 ns.RegisterCommand("toasts", "/wf toasts - the 'new journey available' toasts on or off", function()

@@ -11,6 +11,7 @@
 ## AddonCompartmentFuncOnLeave: Wayfinder_OnAddonCompartmentLeave
 
 Core.lua
+Sounds.lua
 Geo.lua
 Sources.lua
 Data\Dungeons.lua

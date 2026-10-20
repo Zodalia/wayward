@@ -120,9 +120,11 @@ local function startRoute(title, goal, route)
   ns.print("directions to " .. title .. ": " .. ns.FormatDuration(route.seconds))
   flightTip()
   showStep()
+  -- Unless it ended at once (you were there): the fanfare has its own sound.
+  if Nav.active then ns.Sounds.Play("start") end
 end
 
-local offerFollowUps -- below: offers a trip's follow-up quests
+local offerFollowUps -- below: offers a trip's follow-up quests (true when it asked)
 
 -- What a trip has come to so far, for the fanfare at its end: XP earned,
 -- yards travelled, quests handed in, and when it started.
@@ -147,7 +149,9 @@ local function startJourney(journey, quiet)
   end
   showStep()
   if not quiet and #journey.stops > 1 then ns.Fire("JOURNEY_STARTED") end
-  if not quiet then offerFollowUps(journey.stops) end
+  -- One sound: the follow-up question's when it asks one, none when the trip
+  -- ended at once (the fanfare has its own).
+  if not quiet and not offerFollowUps(journey.stops) and Nav.active then ns.Sounds.Play("start") end
 end
 
 -- Starting something new while a trip is on asks: add it to the trip, or
@@ -480,10 +484,16 @@ function Nav.PickupOffer(questIDs)
   return offer
 end
 
--- Shows a question; if the game can't, says so in chat rather than nothing.
+-- Shows a question, with its sound; if the game can't, says so in chat rather
+-- than nothing. True when it was shown.
 local function askPlayer(which, text, data)
   local ok, err = pcall(StaticPopup_Show, which, text, nil, data)
-  if not ok then ns.print("couldn't show a question (" .. tostring(err) .. "): " .. text:gsub("\n\n", " ")) end
+  if not ok then
+    ns.print("couldn't show a question (" .. tostring(err) .. "): " .. text:gsub("\n\n", " "))
+    return false
+  end
+  ns.Sounds.Play("popup")
+  return true
 end
 
 local function askPickups()
@@ -715,7 +725,8 @@ function Nav.AddToTrip(stops, label)
   ns.print(string.format("added %s to your trip: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
   ns.Fire("JOURNEY_STARTED")
-  offerFollowUps(stops)
+  -- One sound: the follow-up question's, when it asks one.
+  if not offerFollowUps(stops) then ns.Sounds.Play("step") end
   return true
 end
 
@@ -788,7 +799,7 @@ function offerFollowUps(stops)
     OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
-  askPlayer("WAYFINDER_FOLLOWUP", string.format("%s continues with %s, about %s more on the way.\n\nAdd it to your trip too?",
+  return askPlayer("WAYFINDER_FOLLOWUP", string.format("%s continues with %s, about %s more on the way.\n\nAdd it to your trip too?",
     table.concat(firsts, ", "), label, ns.FormatDuration(offer.extra)), { stops = offer.stops, label = label })
 end
 

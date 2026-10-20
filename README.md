@@ -208,6 +208,16 @@ a quest handed in or a new zone (not in combat); the first look after this
 update only learns what's there. `/wf toasts` or the options turn the toasts
 off.
 
+**Sounds.** Wayfinder plays one of the game's own sounds when it asks about a
+quest you picked up (or one that continues a chain), when a stop is added to
+your trip, when a trip starts, when it's done, and for the toast. When a trip
+starts or grows and asks about a follow-up quest, you hear the question's
+sound alone. `/wf sounds` lists each moment's shortlist;
+`/wf sounds <moment> <n|next>` plays one to compare,
+`/wf sounds use <moment> <n|off|default>` keeps it, and
+`/wf sounds test <moment> [n]` shows the real banner, toast or question with
+sample text. Moments: `popup`, `step`, `start`, `complete`, `toast`.
+
 ### Getting around
 
 - **Directions** add a step whenever you walk into another zone ("Walk to
