@@ -17,6 +17,7 @@ local MIN_LENGTH = 2
 local MAX_DUNGEON_ROWS = 2
 
 local GREEN, YELLOW, GREY, RED = "|cff7fd1ae", "|cffffd200", "|cff9d9d9d", "|cffff7f3f"
+local NOTABLE, NOTABLE_COLOR = "|cffc58cff", { r = 0.77, g = 0.55, b = 1 }
 
 -- Label, colour and sort rank per status (Quests.lua, Quests.QuestStatus).
 local STATUS = {
@@ -39,6 +40,15 @@ end
 local function label(status, extra)
   local s = STATUS[status]
   return s[2] .. s[1] .. "|r" .. (extra and ("  ·  " .. extra) or "")
+end
+
+-- A notable quest's tag for its row ("  ·  Class quest"), and its reasons as
+-- tooltip lines (Notable.lua).
+local function notable(questID, details)
+  if not ns.Quests.NotableTag then return "" end
+  local tag, reasons = ns.Quests.NotableTag(questID)
+  for _, r in ipairs(reasons) do details[#details + 1] = { text = r.text, color = NOTABLE_COLOR } end
+  return tag and ("  ·  " .. NOTABLE .. tag .. "|r") or ""
 end
 
 local function questTitle(q)
@@ -213,7 +223,7 @@ local function questRow(m, start, net)
     stops[1].text = "Start the chain: " .. stops[1].text:gsub("^%u", string.lower)
   end
   local journey = #stops > 0 and ns.Journey.Plan(start, { title = q.name, stops = stops }, net) or nil
-  local sub = rowStatus(m)
+  local sub = rowStatus(m) .. notable(q.id, details)
   if journey then
     sub = sub .. "  ·  " .. ns.FormatDuration(journey.seconds)
   elseif stop then
@@ -331,9 +341,10 @@ local function logRow(entry, start, net)
       details[#details + 1] = { text = o.text, color = o.finished and { r = 0.6, g = 0.6, b = 0.6 } or nil }
     end
   end
+  local tag = ns.Quests.Available() and notable(entry.id, details) or ""
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
     titleColor = ns.DifficultyColor(entry.level),
-    subtitle = table.concat(parts, "  ·  "), journey = journey, details = details,
+    subtitle = table.concat(parts, "  ·  ") .. tag, journey = journey, details = details,
     actions = ns.Quests.Available() and { tripAction(entry.id, entry.title) } or nil }
 end
 

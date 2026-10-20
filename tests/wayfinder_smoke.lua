@@ -3560,6 +3560,16 @@ do
   check(printed:find("flags: epic", 1, true) and printed:find("notable: [epic 4]", 1, true),
     "/wf debug quest <name>: flags and reasons")
 
+  -- Quests page: the tag on the row, the reasons in its tooltip.
+  local results = ns.QuestsPage.Results("Shadow Pact")
+  local row = results[#results]
+  local tip = {}
+  for _, d in ipairs(row and row.details or {}) do tip[#tip + 1] = d.text end
+  check(row and row.subtitle:find("Class quest", 1, true) and table.concat(tip, "\n"):find("Class quest (Warlock)", 1, true),
+    "Quests page: a notable row is tagged, its tooltip says why: " .. tostring(row and row.subtitle))
+  results = ns.QuestsPage.Results("Lakeshire Logs")
+  check(results[1] and not results[1].subtitle:find("  ·  |c", 1, true), "an ordinary quest has no tag")
+
   for id in pairs({ [501] = 1, [502] = 1, [503] = 1, [504] = 1, [505] = 1, [506] = 1, [507] = 1, [508] = 1, [509] = 1,
     [510] = 1, [90501] = 1, [90502] = 1 }) do QUESTS[id] = nil end
   for _, id in ipairs({ 9501, 9502, 9503, 9504 }) do ITEMS[id] = nil end
