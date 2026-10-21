@@ -252,7 +252,7 @@ function Overview.ShowStopTooltip(row)
   if not (text and GameTooltip) then return end
   row.tooltip = true
   GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-  GameTooltip:SetText(row.stop.text or "", 1, 1, 1, true)
+  GameTooltip:SetText(row.stop.text or "", 1, 1, 1, 1, true)
   for line in text:gmatch("[^\n]+") do GameTooltip:AddLine(line, 0.5, 0.82, 0.68, true) end
   GameTooltip:Show()
 end

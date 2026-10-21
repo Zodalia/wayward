@@ -56,6 +56,11 @@ local function newObj()
         elseif k == "SetText" then
           -- Like the game: text on a font string with no font is an error.
           if rawget(self, "fontString") and not rawget(self, "hasFont") then error("Font not set", 2) end
+          -- Like the game: a tooltip's colour and alpha must be numbers (SetText(text, r, g, b, alpha, wrap)).
+          for i = 2, math.min(select("#", ...), 5) do
+            local v = select(i, ...)
+            if v ~= nil and type(v) ~= "number" then error("bad argument #" .. i .. " to 'SetText'", 2) end
+          end
           rawset(self, "text", (...))
         elseif k == "SetFontObject" or k == "SetFont" then
           if (...) ~= nil then rawset(self, "hasFont", true) end
@@ -2384,6 +2389,9 @@ do
   check(ns.JourneyOverview.StopTooltipText({ action = { kind = "pickup", questID = 501 } })
     == ns.Quests.ChainText(501) and ns.JourneyOverview.StopTooltipText({ text = "Fly" }) == nil,
     "a quest stop in the overview has the chain in its tooltip")
+  local tipRow = { stop = { text = "Pick up Westfall Rumours", action = { kind = "pickup", questID = 501 } } }
+  local tipOk, tipErr = pcall(ns.JourneyOverview.ShowStopTooltip, tipRow)
+  check(tipOk and tipRow.tooltip, "hovering the stop shows that tooltip" .. (tipErr and (": " .. tostring(tipErr)) or ""))
 
   ns.Nav.Stop()
   local shown
