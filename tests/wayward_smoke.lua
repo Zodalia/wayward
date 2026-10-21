@@ -2191,17 +2191,42 @@ do
   local played = {}
   PlaySound = function(id) played[#played + 1] = id end
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
-  check(shown and shown.which == "WAYWARD_FOLLOWUP" and shown.text:find("Chain part 1 continues with Chain part 2", 1, true)
-    and shown.data,
-    "handing in a quest offers its follow-up when it's on the way")
+  local offer = ns.ChainPicker.current
+  check(shown == nil and ns.ChainPicker.IsShown() and offer and offer.heading == "Chain part 1 continues with:"
+    and #offer.quests == 1 and offer.quests[1].quest.id == 13 and offer.quests[1].checked,
+    "handing in a quest offers its follow-up, ticked, when it's on the way")
   check(#played == 1 and played[1] == ns.Sounds.Kit("popup"),
     "one sound: the question's, not the trip's start sound too: " .. table.concat(played, ","))
   PlaySound = nil
-  StaticPopupDialogs.WAYWARD_FOLLOWUP.OnAccept(nil, shown.data)
+  local e = offer.quests[1]
+  check(e.seconds == e.travel + offer.perQuest and ns.ChainPicker.TotalText(offer) ==
+    "Total: " .. ns.FormatDuration(e.seconds) .. " for 1 quest",
+    "each quest has its time (travel + doing it) and the total is at the bottom: " .. ns.ChainPicker.TotalText(offer))
+  ns.ChainPicker.Toggle(1)
+  check(not e.checked and ns.ChainPicker.TotalText(offer) == "Nothing ticked", "unticking it leaves nothing")
+  ns.ChainPicker.Toggle(1)
+  ns.ChainPicker.Confirm()
+  check(not ns.ChainPicker.IsShown(), "Confirm closes it")
   local kinds = {}
   for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind .. st.action.questID end
-  check(table.concat(kinds, ",") == "turnin14,pickup13", "Add puts it after the hand-in: " .. table.concat(kinds, ","))
+  check(table.concat(kinds, ",") == "turnin14,pickup13", "Confirm puts it after the hand-in: " .. table.concat(kinds, ","))
   ns.Nav.Stop()
+
+  -- A chain: ticking a later quest ticks the ones it needs; unticking one unticks those after it.
+  local chain = { quests = {
+    { quest = { id = 1 }, depth = 1, travel = 0, seconds = 300, stops = {}, checked = true },
+    { quest = { id = 2 }, parent = 1, depth = 2, travel = 60, seconds = 360, stops = {}, checked = true },
+    { quest = { id = 3 }, parent = 2, depth = 3, travel = 600, seconds = 900, stops = {}, checked = false },
+  } }
+  ns.Nav.ToggleFollowUp(chain, 1)
+  check(not chain.quests[1].checked and not chain.quests[2].checked and not chain.quests[3].checked,
+    "unticking a quest unticks the rest of its chain")
+  ns.Nav.ToggleFollowUp(chain, 3)
+  check(chain.quests[1].checked and chain.quests[2].checked and chain.quests[3].checked
+    and ns.Nav.FollowUpChoice(chain).seconds == 1560, "ticking a later quest ticks the ones before it, and adds up")
+  ns.ChainPicker.Show(offer)
+  ns.ChainPicker.Cancel()
+  check(not ns.ChainPicker.IsShown() and not ns.Nav.active, "Cancel adds nothing")
   ns.JourneyOverview.Toggle()
   StaticPopupDialogs, StaticPopup_Show = nil, nil
 

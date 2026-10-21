@@ -768,9 +768,24 @@ end
 -- Follow-up quests. When a trip gains a quest's hand-in, the quests that
 -- follow it (Quests.FollowUps) are offered when adding them costs little
 -- travel (FOLLOW_UP_SLACK more seconds): you pick them up where you hand the
--- first in, often from the same NPC.
+-- first in, often from the same NPC. The rest of the chain after them is
+-- listed too (CHAIN_OFFER_DEPTH steps, CHAIN_OFFER_MAX quests), ticked when
+-- it is on the way as well, for you to tick or untick (UI/ChainPicker.lua).
 local FOLLOW_UP_SLACK = 180
+local CHAIN_OFFER_DEPTH = 4
+local CHAIN_OFFER_MAX = 8
 
+-- Seconds to do one quest on top of the travel: your average once known.
+local function questSeconds()
+  return ns.QuestTimes.Seconds() or (ns.ForYou and ns.ForYou.SECONDS_PER_QUEST) or 300
+end
+
+-- The offer: { quests = { entry, ... }, stops, extra }, entries in chain order
+-- (a quest right after the one it follows):
+--   { quest (row), after (questID it follows), parent (entry index, nil for a
+--     first follow-up), depth, travel (seconds it adds), seconds (travel and
+--     doing it), stops, checked }
+-- `stops` and `extra` are the ticked ones' stops and travel.
 function Nav.FollowUpOffer(stops)
   local a = Nav.active
   local here = ns.Geo.PlayerNode()
@@ -782,60 +797,117 @@ function Nav.FollowUpOffer(stops)
   end
   local base = ns.Journey.Replan(a.journey, here)
   if not base then return nil end
-  local offer = { quests = {}, stops = {}, extra = 0 }
-  for _, stop in ipairs(stops) do
-    local action = stop.action
-    if action and action.kind == "turnin" and not stop.done then
-      for _, q in ipairs(ns.Quests.FollowUps(action.questID)) do
-        if not inTrip[q.id] then
-          inTrip[q.id] = true
-          local qs = ns.Journey.QuestStops(q.id, here)
-          if #qs > 0 and qs[1].action and qs[1].action.kind == "pickup" then
-            qs[1].after = { stop }
-            -- The trip with it, against the trip without: the travel it adds.
-            local open = {}
-            for _, s in ipairs(root.stops) do
-              if not s.done and not s.skipped then open[#open + 1] = s end
-            end
-            for _, s in ipairs(offer.stops) do open[#open + 1] = s end
-            for _, s in ipairs(qs) do open[#open + 1] = s end
-            local finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
-            local with = ns.Journey.Plan(here, { stops = open, finish = finish })
-            local extra = with and with.seconds - base.seconds - offer.extra
-            if extra and extra <= FOLLOW_UP_SLACK then
-              offer.extra = offer.extra + math.max(0, extra)
-              offer.quests[#offer.quests + 1] = { quest = q, after = action.questID }
+  local open = {}
+  for _, s in ipairs(root.stops) do
+    if not s.done and not s.skipped then open[#open + 1] = s end
+  end
+  local finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
+  local perQuest = questSeconds()
+  local offer = { quests = {}, stops = {}, extra = 0, perQuest = perQuest }
+  local travel = 0 -- what every quest listed so far adds to the trip
+
+  local function consider(turnin, afterID, parent, depth)
+    for _, q in ipairs(ns.Quests.FollowUps(afterID)) do
+      if #offer.quests >= CHAIN_OFFER_MAX then return end
+      if not inTrip[q.id] then
+        inTrip[q.id] = true
+        local qs = ns.Journey.QuestStops(q.id, here)
+        if #qs > 0 and qs[1].action and qs[1].action.kind == "pickup" then
+          qs[1].after = { turnin }
+          -- The trip with it (and the ones listed before), against the trip without.
+          local with = { unpack(open) }
+          for _, s in ipairs(qs) do with[#with + 1] = s end
+          local planned = ns.Journey.Plan(here, { stops = with, finish = finish })
+          local extra = planned and planned.seconds - base.seconds - travel
+          -- A first follow-up only when it's on the way; the chain after it is listed anyway.
+          if extra and (parent or extra <= FOLLOW_UP_SLACK) then
+            extra = math.max(0, extra)
+            travel = travel + extra
+            open = with
+            local entry = { quest = q, after = afterID, parent = parent, depth = depth, travel = extra,
+              seconds = extra + perQuest, stops = qs,
+              checked = extra <= FOLLOW_UP_SLACK and (not parent or offer.quests[parent].checked) }
+            offer.quests[#offer.quests + 1] = entry
+            if entry.checked then
+              offer.extra = offer.extra + extra
               for _, s in ipairs(qs) do offer.stops[#offer.stops + 1] = s end
+            end
+            local last = qs[#qs]
+            if depth < CHAIN_OFFER_DEPTH and last.action and last.action.kind == "turnin" then
+              consider(last, q.id, #offer.quests, depth + 1)
             end
           end
         end
       end
     end
   end
+
+  for _, stop in ipairs(stops) do
+    local action = stop.action
+    if action and action.kind == "turnin" and not stop.done then consider(stop, action.questID, nil, 1) end
+  end
   if #offer.quests == 0 then return nil end
   return offer
+end
+
+-- Ticks or unticks a quest of the offer: a quest needs the one before it in
+-- the chain, so ticking one ticks those before it, and unticking one unticks
+-- those after it.
+function Nav.ToggleFollowUp(offer, index)
+  local entry = offer.quests[index]
+  if not entry then return end
+  entry.checked = not entry.checked
+  if entry.checked then
+    local p = entry.parent
+    while p do
+      offer.quests[p].checked = true
+      p = offer.quests[p].parent
+    end
+  else
+    for i = index + 1, #offer.quests do
+      local e = offer.quests[i]
+      if e.parent and not offer.quests[e.parent].checked then e.checked = false end
+    end
+  end
+end
+
+-- The ticked quests: { stops, names, count, seconds (travel and doing them) }.
+function Nav.FollowUpChoice(offer)
+  local choice = { stops = {}, names = {}, count = 0, seconds = 0 }
+  for _, e in ipairs(offer.quests) do
+    if e.checked then
+      choice.count = choice.count + 1
+      choice.seconds = choice.seconds + e.seconds
+      choice.names[#choice.names + 1] = e.quest.name or ("quest " .. e.quest.id)
+      for _, s in ipairs(e.stops) do choice.stops[#choice.stops + 1] = s end
+    end
+  end
+  return choice
+end
+
+-- Adds the ticked quests of the offer to the trip.
+function Nav.AcceptFollowUps(offer)
+  local choice = Nav.FollowUpChoice(offer)
+  if choice.count == 0 then return false end
+  return Nav.AddToTrip(choice.stops, table.concat(choice.names, ", "))
 end
 
 function offerFollowUps(stops)
   local offer = Nav.FollowUpOffer(stops)
   if not offer then return end
-  local names, firsts = {}, {}
-  for _, f in ipairs(offer.quests) do
-    names[#names + 1] = f.quest.name or ("quest " .. f.quest.id)
-    local q = ns.Quests.Quest(f.after)
-    firsts[#firsts + 1] = q and q.name or ("quest " .. f.after)
+  local firsts, seen = {}, {}
+  for _, e in ipairs(offer.quests) do
+    if not e.parent and not seen[e.after] then
+      seen[e.after] = true
+      local q = ns.Quests.Quest(e.after)
+      firsts[#firsts + 1] = q and q.name or ("quest " .. e.after)
+    end
   end
-  local label = table.concat(names, ", ")
+  offer.heading = table.concat(firsts, ", ") .. " continues with:"
   Nav.pendingFollowUps = offer
-  if not (StaticPopupDialogs and StaticPopup_Show) then return end
-  StaticPopupDialogs.WAYWARD_FOLLOWUP = StaticPopupDialogs.WAYWARD_FOLLOWUP or {
-    text = "%s",
-    button1 = "Add", button2 = "No thanks",
-    OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
-    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-  }
-  return askPlayer("WAYWARD_FOLLOWUP", string.format("%s continues with %s, about %s more on the way.\n\nAdd it to your trip too?",
-    table.concat(firsts, ", "), label, ns.FormatDuration(offer.extra)), { stops = offer.stops, label = label })
+  if not (ns.ChainPicker and ns.ChainPicker.Show(offer)) then return end
+  ns.Sounds.Play("popup")
+  return true
 end
 
 -- True when the current trip still has an open stop for this quest.
