@@ -1809,6 +1809,12 @@ ns.On("PLAYER_REGEN_ENABLED", function()
   end
 end)
 
+-- An abandoned quest leaves the cards (and journeys built on it) straight away.
+ns.Listen("QUEST_ABANDONED", function()
+  ForYou.Invalidate()
+  if ns.Panel and ns.Panel.RefreshSoon then ns.Panel.RefreshSoon() end
+end)
+
 -- Registered before the panel's own listeners, so its refresh sees fresh data.
 ns.Listen("DATA_CHANGED", ForYou.Invalidate)
 ns.Listen("FLIGHTS_CHANGED", ForYou.Invalidate)

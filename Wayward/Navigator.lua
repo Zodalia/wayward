@@ -1166,6 +1166,47 @@ end
 
 ns.On("QUEST_LOG_UPDATE", doingLater)
 
+-- Abandoning a quest (Quests.lua): it isn't asked about if just picked up,
+-- an open follow-up question about its chain closes, and its open stops
+-- leave the trip with the stops that need them (a follow-up picked up where
+-- you'd have handed it in). A trip with nothing left ends.
+function Nav.QuestAbandoned(questID)
+  for i = #picked, 1, -1 do
+    if picked[i] == questID then table.remove(picked, i) end
+  end
+  local offer = ns.ChainPicker and ns.ChainPicker.current
+  if offer then
+    for _, e in ipairs(offer.quests) do
+      if e.after == questID then
+        ns.ChainPicker.Cancel()
+        break
+      end
+    end
+  end
+  local a = Nav.active
+  if not (a and a.journey) then return end
+  local root = a.journey.root or a.journey.def
+  local dropped = false
+  for _, stop in ipairs(root.stops or {}) do
+    if stop.action and stop.action.questID == questID and not stop.done and not stop.skipped then
+      stop.skipped, dropped = true, true
+      for _, other in ipairs(dependents(a.journey, stop)) do other.skipped = true end
+    end
+  end
+  if not dropped then return end
+  local here = ns.Geo.PlayerNode()
+  local planned = here and ns.Journey.Replan(a.journey, here)
+  if not planned then
+    ns.print(string.format("you abandoned %s: nothing left on the trip, so it's cancelled.", questName(questID)))
+    return Nav.Stop()
+  end
+  ns.print(string.format("you abandoned %s: dropped from your trip.", questName(questID)))
+  a.title = planned.title or a.title
+  adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
+end
+
+ns.Listen("QUEST_ABANDONED", Nav.QuestAbandoned)
+
 ---------------------------------------------------------------- move on, skip
 
 -- The stop the current leg of a trip leads to (the step may be a flight on the way).

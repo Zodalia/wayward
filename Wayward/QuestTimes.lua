@@ -69,6 +69,11 @@ ns.On("QUEST_ACCEPTED", function(questID)
   if ns.charDB and questID then state().accepted[questID] = time() end
 end)
 
+-- An abandoned quest's time isn't counted.
+ns.Listen("QUEST_ABANDONED", function(questID)
+  if ns.charDB then state().accepted[questID] = nil end
+end)
+
 ns.On("QUEST_TURNED_IN", function(questID)
   if not (ns.charDB and questID) then return end
   local s, now = state(), time()

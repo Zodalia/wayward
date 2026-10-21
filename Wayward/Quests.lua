@@ -178,6 +178,27 @@ for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED" })
     questVersion = questVersion + 1
   end)
 end
+-- Abandoning a quest: QUEST_REMOVED fires for a hand-in too, so a moment
+-- later, a quest that wasn't handed in and isn't back in your log was dropped:
+-- QUEST_ABANDONED(questID) for the trip, For you and quest times.
+local ABANDON_CHECK = 0.5
+local handedIn = {}
+
+ns.On("QUEST_TURNED_IN", function(questID) if questID then handedIn[questID] = true end end)
+ns.On("QUEST_REMOVED", function(questID)
+  if not questID then return end
+  ns.After(ABANDON_CHECK, function()
+    if handedIn[questID] then
+      handedIn[questID] = nil
+      return
+    end
+    questState = nil
+    local done, inLog = playerQuestState()
+    if done[questID] or inLog[questID] then return end
+    ns.Fire("QUEST_ABANDONED", questID)
+  end)
+end)
+
 -- QUEST_LOG_UPDATE fires on every kill and loot: the log is read again (once
 -- per QUEST_STATE_SECONDS at most), but what you can take hasn't changed, so
 -- the lists built per version stay.

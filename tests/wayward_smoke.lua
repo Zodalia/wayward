@@ -2227,6 +2227,41 @@ do
   ns.ChainPicker.Show(offer)
   ns.ChainPicker.Cancel()
   check(not ns.ChainPicker.IsShown() and not ns.Nav.active, "Cancel adds nothing")
+
+  -- Abandoning a quest: its stops (and the follow-up after them) leave the trip; nothing left ends it.
+  local other = { node = ns.Geo.Node(1433, 0.6, 0.5, "Elsewhere"), text = "Visit Elsewhere" }
+  local stops = ns.Journey.QuestStops(14, here)
+  stops[#stops + 1] = other
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Two things", stops = stops }))
+  ns.ChainPicker.Confirm()
+  check(ns.Nav.TripHasQuest(13), "the follow-up is on the trip")
+  log = { 44 }
+  fire("QUEST_REMOVED", 14)
+  runTimers()
+  local left = {}
+  for _, st in ipairs(ns.Nav.active and ns.Nav.active.journey.stops or {}) do left[#left + 1] = st.text end
+  check(ns.Nav.active and not ns.Nav.TripHasQuest(14) and not ns.Nav.TripHasQuest(13) and #left == 1
+    and left[1] == "Visit Elsewhere", "an abandoned quest and its follow-up leave the trip: " .. table.concat(left, ","))
+  ns.Nav.Stop()
+  log = { 44, 14 }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  ns.ChainPicker.Cancel()
+  local abandoned = false
+  ns.Listen("QUEST_ABANDONED", function() abandoned = true end)
+  fire("QUEST_TURNED_IN", 14)
+  fire("QUEST_REMOVED", 14)
+  log = { 44 }
+  runTimers()
+  check(not abandoned, "a hand-in isn't taken for abandoning")
+  ns.Nav.Stop()
+  log = { 44, 14 }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  ns.ChainPicker.Cancel()
+  log = { 44 }
+  fire("QUEST_REMOVED", 14)
+  runTimers()
+  check(ns.Nav.active == nil, "abandoning the trip's only quest cancels the trip")
+  log = { 44, 14 }
   ns.JourneyOverview.Toggle()
   StaticPopupDialogs, StaticPopup_Show = nil, nil
 

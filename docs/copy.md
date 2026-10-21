@@ -228,58 +228,58 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 ## Quests.lua
 
 - 24: Quest
-- 242: You have done this quest.
-- 243: In your quest log.
-- 246: Not offered yet: needs earlier quests.
-- 248: Not for your race.
-- 251: Not for your class.
-- 254: Requires level 
-- 256: Only up to level 
-- 259: Closed by 
-- 259: , which you did.
-- 263: You have moved on to 
-- 266: Leads to 
-- 266: , which you already have.
-- 269: Closed by 
-- 269: , which you did.
-- 272: Not while 
-- 272:  is in your log.
-- 275: Part of 
-- 275: , which you did.
-- 283: Needs earlier quests.
-- 285: Needs a profession.
-- 352: Needs earlier quests. Start the chain: 
-- 354: Needs earlier quests. Finish 
-- 354:  first (in your log).
-- 356: Needs earlier quests you can't take yet.
-- 362: Grey for you: little XP.
-- 363: Level %d: hard for you.
-- 364: You can take this quest.
-- 662: Quest 
-- 694: Collect 
-- 925: Leads to a 
-- 928:  (level %d)
-- 929:  (levels %d-%d)
-- 930: Chain: %d more quest%s%s
-- 932: , ends in 
-- 935: Leads to a 
-- 936: Leads to 
-- 944: Rewards on the way: 
-- 966:   chain ahead: nothing follows
-- 968:   chain ahead: %d step%s, %d you can do%s
-- 969: , ends in 
-- 975:     %d. [%d] %s (id %d)%s%s%s
-- 977:   ·  not for you
-- 978:   ·  or 
-- 988: : not in the quest data
-- 999: [%d] %s (id %d): level %s, requires %s
-- 1001:   after (preQuestSingle): %s  ·  after all (preQuestGroup): %s
-- 1002:   chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s
-- 1004:   inferred: comes after %s
-- 1005:   status: %s (%s)%s
-- 1006:   ·  its giver didn't offer it
-- 1018: Quest 
-- 1146: Not in the quest data.
+- 263: You have done this quest.
+- 264: In your quest log.
+- 267: Not offered yet: needs earlier quests.
+- 269: Not for your race.
+- 272: Not for your class.
+- 275: Requires level 
+- 277: Only up to level 
+- 280: Closed by 
+- 280: , which you did.
+- 284: You have moved on to 
+- 287: Leads to 
+- 287: , which you already have.
+- 290: Closed by 
+- 290: , which you did.
+- 293: Not while 
+- 293:  is in your log.
+- 296: Part of 
+- 296: , which you did.
+- 304: Needs earlier quests.
+- 306: Needs a profession.
+- 373: Needs earlier quests. Start the chain: 
+- 375: Needs earlier quests. Finish 
+- 375:  first (in your log).
+- 377: Needs earlier quests you can't take yet.
+- 383: Grey for you: little XP.
+- 384: Level %d: hard for you.
+- 385: You can take this quest.
+- 683: Quest 
+- 715: Collect 
+- 946: Leads to a 
+- 949:  (level %d)
+- 950:  (levels %d-%d)
+- 951: Chain: %d more quest%s%s
+- 953: , ends in 
+- 956: Leads to a 
+- 957: Leads to 
+- 965: Rewards on the way: 
+- 987:   chain ahead: nothing follows
+- 989:   chain ahead: %d step%s, %d you can do%s
+- 990: , ends in 
+- 996:     %d. [%d] %s (id %d)%s%s%s
+- 998:   ·  not for you
+- 999:   ·  or 
+- 1009: : not in the quest data
+- 1020: [%d] %s (id %d): level %s, requires %s
+- 1022:   after (preQuestSingle): %s  ·  after all (preQuestGroup): %s
+- 1023:   chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s
+- 1025:   inferred: comes after %s
+- 1026:   status: %s (%s)%s
+- 1027:   ·  its giver didn't offer it
+- 1039: Quest 
+- 1167: Not in the quest data.
 
 ## Notable.lua
 
@@ -641,17 +641,19 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 1108: that spot's cleared: other stops first while it respawns (%s).
 - 1111: that spot's cleared: back when it respawns (%s).
 - 1157: you're doing %s here: it's next on the trip now.
-- 1210: nothing else on the trip to do first; skip it to take it off.
-- 1215: later: %s, after %s.
-- 1215: that stop
-- 1215: the next stop
-- 1230: Skip
-- 1230: Cancel
-- 1234: Skip \"%s\"?\n\nIt's taken off the trip%s.
-- 1234: this stop
-- 1235: , with \"%s\", which needs it
-- 1235: a stop
-- 1236: , with the %d stops that need it
+- 1200: you abandoned %s: nothing left on the trip, so it's cancelled.
+- 1203: you abandoned %s: dropped from your trip.
+- 1251: nothing else on the trip to do first; skip it to take it off.
+- 1256: later: %s, after %s.
+- 1256: that stop
+- 1256: the next stop
+- 1271: Skip
+- 1271: Cancel
+- 1275: Skip \"%s\"?\n\nIt's taken off the trip%s.
+- 1275: this stop
+- 1276: , with \"%s\", which needs it
+- 1276: a stop
+- 1277: , with the %d stops that need it
 
 ## OnTheWay.lua
 
@@ -1069,7 +1071,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 1724: Raid
 - 1739: \|level 
 - 1746: spell\|
-- 1819: /ww next - what to do next (opens the For you page)
+- 1825: /ww next - what to do next (opens the For you page)
 
 ## UI/Skin.lua
 
