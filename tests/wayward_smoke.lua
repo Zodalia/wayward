@@ -1,7 +1,11 @@
 -- Runs Wayward against stubbed WoW APIs and a fake two-continent world.
 -- Checks our own logic (routing, step advance, harvesting, panel), not real
 -- Forever behaviour. Usage (from repo root): lua tests/wayward_smoke.lua
+-- WAYWARD_GAME=era runs it as the Classic Era client: no C_QuestLog.GetInfo
+-- and friends (the old GetQuestLogTitle family instead) and no map pins.
 local dir = arg[1] or "Wayward"
+local ERA = os.getenv("WAYWARD_GAME") == "era"
+local TEST_SOURCE = debug.getinfo(1, "S").source
 local timers, chat, waypoints, events = {}, {}, {}, {}
 local failures = 0
 
@@ -12,6 +16,21 @@ local function check(cond, msg)
     failures = failures + 1
     io.write("  FAIL ", msg, "\n")
   end
+end
+
+-- A check of something only Forever does (its own quests, its moved maps,
+-- its dungeons' low XP); Classic Era checks `era` instead, when given.
+local function foreverCheck(cond, msg, era, eraMsg)
+  if not ERA then return check(cond, msg) end
+  if era ~= nil then return check(era, "Classic Era: " .. (eraMsg or msg)) end
+  io.write("  skip ", msg, " (Forever only)\n")
+end
+
+-- A check about the game's map pin; Classic Era has none, so there it checks
+-- that none was ever put up.
+local function pinCheck(cond, msg)
+  if ERA then return check(#waypoints == 0, "Classic Era, no map pin: " .. msg) end
+  check(cond, msg)
 end
 
 ---------------------------------------------------------------- frames
@@ -176,6 +195,13 @@ GetTrainerServiceCost = function(i) return SERVICES[i].cost end
 IsTradeskillTrainer = function() return false end
 C_Trainer = { GetTrainerType = function() return 0 end }
 
+if ERA then
+  WOW_PROJECT_CLASSIC, WOW_PROJECT_ID = 2, 2
+  -- Classic Era has no map pins.
+  C_Map.CanSetUserWaypointOnMap, C_Map.SetUserWaypoint, C_Map.ClearUserWaypoint = nil, nil, nil
+  UiMapPoint, C_SuperTrack, C_Trainer = nil, nil, nil
+end
+
 ---------------------------------------------------------------- load
 
 local ns = {}
@@ -251,6 +277,12 @@ check(ns.db.npcs[999] and ns.db.npcs[999].kinds.classTrainer and ns.db.npcs[999]
 
 io.write("routing\n")
 ns.db.npcs[999] = nil -- route to the seeded Stormwind trainer only
+if ERA then
+  -- Seed NPCs are Forever positions: Classic Era leaves them out, and you
+  -- learn the trainer by talking to it instead.
+  check(ns.Trainers.Results()[1] == nil, "Classic Era: no seeded trainer (Forever positions)")
+  ns.db.npcs[461] = CopyTable(ns.data.seedNPCs[461])
+end
 local results = ns.Trainers.Results()
 local r = results[1]
 check(r and r.title == "Demisette Cloyce" and r.route, "Redridge: seeded trainer found with a route")
@@ -275,8 +307,13 @@ local far = ns.Trainers.Results()[1]
 local kinds = {}
 for _, s in ipairs(far and far.route and far.route.steps or {}) do kinds[#kinds + 1] = s.kind or s.mode end
 local plan = table.concat(kinds, ",")
-check(plan == "walk,boat,walk", "Darkshore: Forever's direct boat to Stormwind (" .. plan .. ")")
-check(far and ns.Router.Summary(far.route) == "boat to Stormwind Harbor", "summary mentions the boat")
+if ERA then
+  check(not plan:find("boat,walk$") or not ns.Router.Summary(far.route):find("Stormwind Harbor"),
+    "Classic Era: no boat to Stormwind Harbor (" .. plan .. ")")
+else
+  check(plan == "walk,boat,walk", "Darkshore: Forever's direct boat to Stormwind (" .. plan .. ")")
+  check(far and ns.Router.Summary(far.route) == "boat to Stormwind Harbor", "summary mentions the boat")
+end
 
 -- The router against a plain search over the whole graph (the old planner):
 -- the same trip times for random trips between these maps.
@@ -348,7 +385,7 @@ io.write("navigation\n")
 player.mapID, player.x, player.y = 1433, 0.5, 0.5
 r = ns.Trainers.Results()[1]
 ns.Nav.Start(r.title, r.goal, r.route)
-check(#waypoints == 1 and waypoints[1].mapID == 1433, "waypoint placed on the zone map of the flight master")
+pinCheck(#waypoints == 1 and waypoints[1].mapID == 1433, "waypoint placed on the zone map of the flight master")
 check(ns.Nav.active.index == 1, "starts at step 1")
 -- Arrive at the flight master.
 local fp = r.route.steps[1].to
@@ -420,7 +457,8 @@ ns.HUD.Update()
 UnitExists, UnitIsPlayer, SetRaidTarget, C_NamePlate = nil, nil, nil, nil
 fire("GOSSIP_SHOW")
 UnitName = savedUnitName
-check(ns.Nav.active == nil and waypoints[#waypoints] == "cleared", "talking to them ends it and clears our waypoint")
+check(ns.Nav.active == nil, "talking to them ends it")
+pinCheck(waypoints[#waypoints] == "cleared", "and clears our waypoint")
 check(ns.Fanfare.lastTrip and ns.Fanfare.lastTrip.title == r.title,
   "plain directions get the fanfare too: " .. tostring(ns.Fanfare.lastTrip and ns.Fanfare.lastTrip.title))
 
@@ -574,6 +612,44 @@ C_QuestLog = {
   GetNumQuestLogEntries = function() return 1 end,
   GetInfo = function() return { questID = 10, isHeader = false } end,
 }
+
+-- Classic Era: the tests below keep setting (and saving and restoring)
+-- Forever's C_QuestLog functions; those go into a hidden table that the
+-- client's old global functions read from. To the addon C_QuestLog answers
+-- nil for them, as on Era; to the tests here, the hidden ones.
+if ERA then
+  local MODERN = { GetAllCompletedQuestIDs = true, GetNumQuestLogEntries = true, GetInfo = true, IsComplete = true,
+    GetLogIndexForQuestID = true, GetTitleForQuestID = true }
+  local hidden = {}
+  for k in pairs(MODERN) do hidden[k] = rawget(C_QuestLog, k); C_QuestLog[k] = nil end
+  setmetatable(C_QuestLog, {
+    __index = function(_, k)
+      if MODERN[k] and debug.getinfo(2, "S").source == TEST_SOURCE then return hidden[k] end
+      return nil
+    end,
+    __newindex = function(t, k, v) if MODERN[k] then hidden[k] = v else rawset(t, k, v) end end,
+  })
+  GetNumQuestLogEntries = function() return hidden.GetNumQuestLogEntries and hidden.GetNumQuestLogEntries() or 0 end
+  GetQuestLogTitle = function(i)
+    local info = hidden.GetInfo and hidden.GetInfo(i)
+    if not info then return nil end
+    return info.title or ("Quest " .. tostring(info.questID)), info.level or 0, nil, info.isHeader, false,
+      nil, 0, info.questID or 0, nil, nil, nil, nil, nil, nil, nil, info.isHidden
+  end
+  IsQuestComplete = function(id) return hidden.IsComplete and hidden.IsComplete(id) or false end
+  GetQuestLogIndexByID = function(id)
+    for i = 1, GetNumQuestLogEntries() do
+      local info = hidden.GetInfo(i)
+      if info and info.questID == id then return i end
+    end
+    return 0
+  end
+  GetQuestsCompleted = function()
+    local out = {}
+    for _, id in ipairs(hidden.GetAllCompletedQuestIDs and hidden.GetAllCompletedQuestIDs() or {}) do out[id] = true end
+    return out
+  end
+end
 
 -- The fixtures above are kept in QuestieDB's shape (rows with spawns per
 -- AreaID in map percent, race and class bit masks). fixtureSource turns them
@@ -1004,7 +1080,8 @@ check(questText:find("Defias Ledger") and questText:find("Red Silk Bandanas") an
 check(find(dungeons, "Hall of Testing") and not all:find("Hellfire"),
   "QuestieDB-only dungeon shows when the client lists it; later expansions don't")
 stockade = find(dungeons, "The Stockade")
-check(stockade and math.abs(stockade.goal.x - 0.6) < 1e-6, "our Era Stormwind point converted with EraToForever")
+foreverCheck(stockade and math.abs(stockade.goal.x - 0.6) < 1e-6, "our Era Stormwind point converted with EraToForever",
+  stockade and math.abs(stockade.goal.x - 0.6) > 1e-6, "our Era Stormwind point used as is")
 ns.Panel.SelectPage("dungeons")
 check(ns.Panel.IsShown(), "panel shows dungeons with QuestieDB")
 
@@ -1552,8 +1629,10 @@ do
   for _, d in ipairs(deadmines and deadmines.details or {}) do
     if d.text:find("^Also for your level") then also = d.text end
   end
-  check(not (also and also:find("Hall of Testing", 1, true)) and not find(list, "Run Hall of Testing"),
-    "with QuestieDB, a dungeon without quests for you isn't suggested (its mobs give little XP)")
+  foreverCheck(not (also and also:find("Hall of Testing", 1, true)) and not find(list, "Run Hall of Testing"),
+    "with QuestieDB, a dungeon without quests for you isn't suggested (its mobs give little XP)",
+    (also and also:find("Hall of Testing", 1, true)) or find(list, "Run Hall of Testing"),
+    "a dungeon without quests for you is still suggested (its mobs give full XP)")
   -- The zone: what you can take now, what chains unlock, where to start.
   check(redridge and redridge.place == "Levels 17-19  ·  start at Lakeshire" and redridge.route
     and redridge.details[1].text:find("4 quests you can take now, 1 more as their chains unlock", 1, true),
@@ -1630,7 +1709,7 @@ do
   end
   refreshData()
   list = rows()
-  check(not find(list, "Run The Deadmines") and ns.ForYou.SummaryText():find("The Deadmines at level 22 (", 1, true),
+  foreverCheck(not find(list, "Run The Deadmines") and ns.ForYou.SummaryText():find("The Deadmines at level 22 (", 1, true),
     "a dungeon most of whose quests open later waits, and the page says when: " .. ns.ForYou.SummaryText())
   for _, id in ipairs({ 30, 31, 32 }) do QUESTS[id] = nil end
   refreshData()
@@ -2034,6 +2113,11 @@ do
   questKeys.finishedBy = 3
   refreshData()
   local function after(id) return ns.Quests.Quest(id).inferredAfter end
+  if ERA then
+    -- Classic Era's high IDs (Season of Discovery's) aren't Forever's additions.
+    check(after(98189) == nil and after(98190) == nil and after(98191) == nil and ns.Quests.IsQuestAvailable(98189),
+      "Classic Era: no chains inferred for high quest IDs")
+  else
   check(after(98189) == 286 and after(98191) == 98190, "a Forever quest named like an earlier one comes after it")
   check(after(98190) == 98189, "a Forever quest given by whoever takes the previous one comes after it")
   check(after(286) == nil and after(285) == nil, "Era quests keep their own data")
@@ -2047,6 +2131,7 @@ do
   check(ns.Quests.IsQuestAvailable(98189) and not ns.Quests.IsQuestAvailable(98190),
     "after the original: the next part opens, the one after it doesn't yet")
   C_QuestLog.GetAllCompletedQuestIDs = savedDone
+  end
   for _, id in ipairs({ 285, 286, 98189, 98190, 98191, 98300, 98301 }) do QUESTS[id] = nil end
   refreshData()
 end
@@ -2106,7 +2191,7 @@ do
   check(ns.Quests.ChainAhead(502).endsAt.name == "The Deadmines" and ns.Quests.ChainDungeon(502) == "The Deadmines",
     "the dungeon is named from a step further back")
   local nonDungeon = ns.Quests.ChainAhead(98400)
-  check(nonDungeon.endsAt and nonDungeon.endsAt.name and not nonDungeon.endsAt.dungeon,
+  foreverCheck(nonDungeon.endsAt and nonDungeon.endsAt.name and not nonDungeon.endsAt.dungeon,
     "a chain outside a dungeon ends at the last hand-in's place: " .. tostring(nonDungeon.endsAt and nonDungeon.endsAt.name))
 
   local fork = ns.Quests.ChainAhead(510)
@@ -2116,8 +2201,9 @@ do
     "the fork counts once: " .. tostring(ns.Quests.ChainText(510)))
   check(ids(ns.Quests.ChainAhead(520).steps) == "521" and ids(ns.Quests.ChainAhead(521).steps) == "520",
     "a cycle in the data ends the walk")
-  check(ids(nonDungeon.steps) == "98401" and ns.Quests.ChainText(98400):find("^Chain: 1 more quest %(level 21%)"),
-    "an inferred Forever link counts: " .. tostring(ns.Quests.ChainText(98400)))
+  foreverCheck(ids(nonDungeon.steps) == "98401" and ns.Quests.ChainText(98400):find("^Chain: 1 more quest %(level 21%)"),
+    "an inferred Forever link counts: " .. tostring(ns.Quests.ChainText(98400)),
+    ids(nonDungeon.steps) == "", "no inferred link for a high quest ID")
   check(ns.Quests.ChainHighlight(501) and ns.Quests.ChainHighlight(503) and not ns.Quests.ChainHighlight(98400),
     "worth pointing out: a dungeon quest or a long chain, not one more quest")
   check(ns.Quests.ChainAhead(501) == ahead, "kept until the data changes")
@@ -2716,8 +2802,9 @@ do
   player.x, player.y = 0.45, 0.95
   ns.HUD.Update()
   local to = ns.Nav.CurrentStep().to
-  check(not ns.Nav.InArea() and ns.Nav.ownsWaypoint and math.abs(to.x - 0.8) < 1e-6 and math.abs(to.y - 0.8) < 1e-6,
+  check(not ns.Nav.InArea() and math.abs(to.x - 0.8) < 1e-6 and math.abs(to.y - 0.8) < 1e-6,
     string.format("well out: the way points at the nearest spawn from here (%.2f, %.2f)", to.x, to.y))
+  pinCheck(ns.Nav.ownsWaypoint, "with the waypoint back up")
 
   -- Foragers done: only the Scouts' spawns count now.
   objectives[1] = { text = "Murloc Forager slain: 8/8", finished = true }
@@ -3740,19 +3827,21 @@ do
   SlashCmdList.WAYWARD("tomtom")
   check(not ns.Nav.UsingTomTom(), "/ww tomtom turns it off")
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
-  check(ns.Nav.ownsWaypoint, "TomTom off: the game's map pin shows the way")
+  pinCheck(ns.Nav.ownsWaypoint, "TomTom off: the game's map pin shows the way")
   SlashCmdList.WAYWARD("tomtom")
   check(ns.Nav.UsingTomTom() and #added == 3, "turning it on during a trip moves the waypoint to TomTom")
-  check(not ns.Nav.ownsWaypoint and waypoints[#waypoints] == "cleared", "and takes down the map pin we put up")
+  pinCheck(not ns.Nav.ownsWaypoint and waypoints[#waypoints] == "cleared", "and takes down the map pin we put up")
   ns.Nav.Stop()
   TomTom.AddWaypoint = function() error("old TomTom") end
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
-  check(not ns.Nav.UsingTomTom() and #waypoints > blizzard, "a TomTom that fails falls back to our own arrow")
+  check(not ns.Nav.UsingTomTom() and ns.Nav.active, "a TomTom that fails falls back to our own arrow")
+  pinCheck(#waypoints > blizzard, "and the game's map pin")
   ns.Nav.Stop()
 
   -- The game's map pin outlasts a reload: ours from last time comes down.
   TomTom.AddWaypoint = function(_, mapID, x, y, opts) added[#added + 1] = { mapID = mapID, opts = opts } return { #added } end
   ns.Nav.ResetTomTom()
+  if not ERA then
   local function reload(userPin)
     -- A fresh UI: nothing on, the trip and the pin still saved.
     ns.Nav.active, ns.Nav.ownsWaypoint, ns.Nav.tomtomWaypoint = nil, false, nil
@@ -3786,6 +3875,7 @@ do
   check(#waypoints == before and ns.charDB.pin == nil, "a pin you placed yourself since stays")
   ns.Nav.Stop()
   C_Map.GetUserWaypoint = nil
+  end
   ns.db.settings.tomtom = true
   TomTom = nil
 
@@ -4524,8 +4614,9 @@ do
   check(reason(505, "dungeon") == "Leads to a quest in The Deadmines (Deep in the Mines).",
     "a chain that leads into a dungeon: " .. reason(505, "dungeon"))
   check(kinds(506) == "", "the dungeon quest itself isn't 'leads to' its own dungeon")
-  check(kinds(90501) == "forever" and reason(90501, "forever"):find("^Forever%-only quest")
-    and kinds(90502) == "", "a Forever-only quest; a Forever copy of an old quest isn't new")
+  foreverCheck(kinds(90501) == "forever" and reason(90501, "forever"):find("^Forever%-only quest")
+    and kinds(90502) == "", "a Forever-only quest; a Forever copy of an old quest isn't new",
+    kinds(90501) == "" and kinds(90502) == "", "no 'New in Forever' for a high quest ID")
   check(reason(507, "reputation") == "Gives reputation with Argent Dawn." and ns.Quests.NotableTag(507) == nil,
     "reputation outside your own cities is a reason, too weak for a tag alone")
   check(kinds(508) == "holiday" and ns.Quests.NotableTag(508) == nil and reason(509, "profession") == "Blacksmithing quest.",
@@ -4612,13 +4703,17 @@ do
   check(ok and ns.Panel.ItemTooltip() and ns.Panel.ItemTooltip():IsShown(), "the reward shows in its own tooltip beside it"
     .. (err and (": " .. tostring(err)) or ""))
   GameTooltip:Hide()
+  -- (On Classic Era no Forever chain is inferred, so one more quest is open
+  -- and The Long Tale falls off the zone card's list: the dungeon one shows it.)
+  local line, reason = "The Long Tale  (Magistrate Solomon)  ·  Epic", "Epic quest line"
+  if ERA then line, reason = "Into the Mines  (Magistrate Solomon)  ·  Leads to a dungeon", "Leads to a quest in" end
   local tagged, why
   for i, d in ipairs(zone and zone.details or {}) do
-    if d.quest and d.text:find("The Long Tale  (Magistrate Solomon)  ·  Epic", 1, true) then
+    if d.quest and d.text:find(line, 1, true) then
       tagged, why = true, zone.details[i + 1]
     end
   end
-  check(tagged and why and why.more and why.text:find("Epic quest line", 1, true),
+  check(tagged and why and why.more and why.text:find(reason, 1, true),
     "quest lines on other cards carry their tag; the reason is in the tooltip only")
 
   -- In your log and ready: the card hands it in.
@@ -4947,6 +5042,35 @@ do
   check(ns.db.settings.hudPos == nil and ns.db.settings.panelPos == nil, "/ww reset forgets every saved position")
 end
 ---------------------------------------------------------------- release polish (end)
+---------------------------------------------------------------- game and season (begin)
+do
+  io.write("game and season\n")
+  check(ns.Game() == (ERA and "era" or "forever") and ns.IsForever() == not ERA, "the client is told apart: " .. ns.Game())
+  check(ns.Season() == nil and not ns.IsHardcore() and ns.TooHardLevels() == 5
+    and ns.GameName() == (ERA and "Classic Era" or "WoW Forever"), "no season: " .. ns.GameName())
+  C_Seasons = { GetActiveSeason = function() return 2 end }
+  check(ns.Season() == "sod" and ns.TooHardLevels() == 5
+    and ns.GameName() == (ERA and "Season of Discovery" or "WoW Forever"), "Season of Discovery: " .. ns.GameName())
+  local p = { level = UnitLevel("player") }
+  QUESTS[9701] = { name = "Ogre Trouble", questLevel = p.level + 4, requiredLevel = p.level, startedBy = { { 344 } } }
+  refreshData()
+  local _, reason = ns.Quests.QuestStatus(9701)
+  check(reason == "You can take this quest.", "four levels up (orange) is fine off Hardcore: " .. tostring(reason))
+  C_Seasons = { GetActiveSeason = function() return 3 end }
+  check(ns.IsHardcore() and ns.TooHardLevels() == 3, "Hardcore realm season")
+  C_Seasons, C_GameRules = nil, { IsHardcoreActive = function() return true end }
+  check(ns.IsHardcore() and ns.GameName() == (ERA and "Hardcore" or "WoW Forever"), "Hardcore rules: " .. ns.GameName())
+  ns.Fire("DATA_CHANGED")
+  _, reason = ns.Quests.QuestStatus(9701)
+  check(reason == string.format("Level %d: hard for you.", p.level + 4), "on Hardcore, orange is too hard: " .. tostring(reason))
+  local before = #chat
+  SlashCmdList.WAYWARD("debug")
+  check(chat[before + 1] and chat[before + 1]:find("(" .. ns.GameName() .. ")", 1, true), "/ww debug names the game: " .. tostring(chat[before + 1]))
+  C_GameRules = nil
+  QUESTS[9701] = nil
+  refreshData()
+end
+---------------------------------------------------------------- game and season (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

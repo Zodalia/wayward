@@ -65,7 +65,9 @@ function Network.Build()
   net.knownFlights = #net.flights
 
   local transports = {}
-  for _, t in ipairs(ns.data.transports) do transports[#transports + 1] = t end
+  for _, t in ipairs(ns.data.transports) do
+    if not t.forever or ns.IsForever() then transports[#transports + 1] = t end
+  end
   for _, t in ipairs(ns.db.transports) do transports[#transports + 1] = t end -- /ww dock
 
   for _, t in ipairs(transports) do

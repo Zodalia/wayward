@@ -13,7 +13,7 @@ local _, ns = ...
 local Dungeons = { id = "dungeons", label = "Dungeons" }
 ns.Dungeons = Dungeons
 
-local MAX_LEVEL = 60          -- Forever's level cap; higher entries are later expansions
+local MAX_LEVEL = 60          -- the level cap (Forever and Classic Era); higher entries are later expansions
 local LFG_SCAN = 10000        -- dungeon finder IDs to read (vanilla 1..131, Forever's new ones from 3271)
 local TYPE_WORLD, TYPE_BATTLEGROUND = 4, 5
 local UNDER, OVER = 3, 6      -- a dungeon fits from 3 levels under its level to 6 over

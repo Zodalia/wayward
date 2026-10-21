@@ -58,6 +58,120 @@ function ns.After(delay, fn)
   end)
 end
 
+---------------------------------------------------------------- game
+
+-- One addon for two clients (one TOC, both Interface numbers):
+--   "forever"  WoW Forever (Mainline 12.x API, its own new quests and zones,
+--              some maps moved since vanilla);
+--   "era"      Classic Era 1.15, whose realms also run Season of Discovery
+--              and Hardcore (ns.Season).
+-- Anything that isn't the Classic Era client counts as Forever.
+function ns.Game()
+  local era = WOW_PROJECT_CLASSIC ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CLASSIC
+  return era and "era" or "forever"
+end
+
+function ns.IsForever()
+  return ns.Game() == "forever"
+end
+
+-- Classic Era realm seasons (C_Seasons; Enum.SeasonID: 1 Mastery, 2 Discovery,
+-- 3 Hardcore, 11 Fresh, 12 Fresh Hardcore): "sod", "hardcore" or nil. Looked
+-- up on each call: the realm's season isn't known before you're in the world.
+local SEASONS = { [2] = "sod", [3] = "hardcore", [12] = "hardcore" }
+
+function ns.Season()
+  local id = C_Seasons and C_Seasons.GetActiveSeason and C_Seasons.GetActiveSeason()
+  if C_GameRules and C_GameRules.IsHardcoreActive and C_GameRules.IsHardcoreActive() then return "hardcore" end
+  return id and SEASONS[id] or nil
+end
+
+function ns.IsHardcore()
+  return ns.Season() == "hardcore"
+end
+
+-- "WoW Forever", "Classic Era", "Season of Discovery" or "Hardcore".
+function ns.GameName()
+  if ns.IsForever() then return "WoW Forever" end
+  local season = ns.Season()
+  return season == "sod" and "Season of Discovery" or season == "hardcore" and "Hardcore" or "Classic Era"
+end
+
+-- A quest this many levels above you is too hard: red (5) in the game's
+-- colours, and orange too (3) on Hardcore, where a death ends the character.
+function ns.TooHardLevels()
+  return ns.IsHardcore() and 3 or 5
+end
+
+---------------------------------------------------------------- quest log
+
+-- The quest log the way Forever's client asks for it (C_QuestLog), with
+-- Classic Era's older functions underneath where the client has only those.
+-- Looked up on each call (tests swap them in late).
+local QuestLog = {}
+ns.QuestLog = QuestLog
+
+function QuestLog.NumEntries()
+  local fn = C_QuestLog and C_QuestLog.GetNumQuestLogEntries or GetNumQuestLogEntries
+  return fn and fn() or 0
+end
+
+-- { questID, title, level, isHeader, isHidden } (as C_QuestLog.GetInfo), or nil.
+function QuestLog.Info(index)
+  if C_QuestLog and C_QuestLog.GetInfo then return C_QuestLog.GetInfo(index) end
+  if not GetQuestLogTitle then return nil end
+  -- title, level, questTag, isHeader, isCollapsed, isComplete, frequency,
+  -- questID, ... (16th) isHidden
+  local title, level, _, isHeader, _, _, _, questID, _, _, _, _, _, _, _, isHidden = GetQuestLogTitle(index)
+  if not title then return nil end
+  return { title = title, level = level, isHeader = isHeader and true or false, isHidden = isHidden and true or false,
+    questID = not isHeader and questID ~= 0 and questID or nil }
+end
+
+-- The log's quests in order: for index, info in QuestLog.Entries() do ...
+function QuestLog.Entries()
+  local i, n = 0, QuestLog.NumEntries()
+  return function()
+    while i < n do
+      i = i + 1
+      local info = QuestLog.Info(i)
+      if info then return i, info end
+    end
+  end
+end
+
+-- Objectives done (ready to hand in).
+function QuestLog.IsComplete(questID)
+  if C_QuestLog and C_QuestLog.IsComplete then return C_QuestLog.IsComplete(questID) and true or false end
+  if IsQuestComplete then return IsQuestComplete(questID) and true or false end
+  return false
+end
+
+-- The quest's index in your log, or nil when it isn't there.
+function QuestLog.LogIndex(questID)
+  local fn = C_QuestLog and C_QuestLog.GetLogIndexForQuestID or GetQuestLogIndexByID
+  local index = fn and fn(questID)
+  return index and index > 0 and index or nil
+end
+
+function QuestLog.Title(questID)
+  if C_QuestLog and C_QuestLog.GetTitleForQuestID then return C_QuestLog.GetTitleForQuestID(questID) end
+  if C_QuestLog and C_QuestLog.GetQuestInfo then return C_QuestLog.GetQuestInfo(questID) end
+  return nil
+end
+
+-- { questID, ... } of every quest this character handed in.
+function QuestLog.CompletedIDs()
+  if C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs then return C_QuestLog.GetAllCompletedQuestIDs() or {} end
+  local out = {}
+  for id, done in pairs(GetQuestsCompleted and GetQuestsCompleted() or {}) do
+    if done then out[#out + 1] = id end
+  end
+  return out
+end
+
+---------------------------------------------------------------- client
+
 -- Client functions that moved between API versions, looked up on each call
 -- (tests swap them in late).
 function ns.ItemCount(itemID)
@@ -282,7 +396,7 @@ SlashCmdList.WAYWARD = function(msg)
   elseif cmd == "dock" then
     ns.Docks.Command(rest)
   elseif cmd == "debug" then
-    ns.print("version " .. ns.VERSION)
+    ns.print("version " .. ns.VERSION .. " (" .. ns.GameName() .. ")")
     if rest == "cards" then
       for _, line in ipairs(ns.Cards.Diagnose()) do ns.print(line) end
       return

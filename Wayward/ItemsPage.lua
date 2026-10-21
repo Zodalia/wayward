@@ -20,7 +20,6 @@ local CANDIDATES = 4    -- nearest places (straight line) per row that get a ful
 local ZONE_ROWS = 3     -- world-drop rows per kind (mobs, objects)
 local DUNGEON_REACH = 3 -- a dungeon up to this many levels above you counts as "now"
 local MOB_REACH = 4     -- mobs up to this many levels above you count as "now"
-local RED_LEVELS = 5    -- a quest this many levels above you is too hard (as in Quests.lua)
 
 -- Ranking tiers: every row of a tier comes before the next tier, then by trip time.
 local NOW, LATER, INFO = 0, 1, 2
@@ -524,11 +523,11 @@ end
 local function profile(level)
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
-  return { level = level, raceID = raceID, class = class }
+  return { level = level, raceID = raceID, class = class, tooHard = ns.TooHardLevels() }
 end
 
 -- Where you stand with a reward quest: "available", "low" (grey, you can
--- still take it), "inLog", "done", "level" (you are too low), "hard" (red),
+-- still take it), "inLog", "done", "level" (you are too low), "hard" (red; ns.TooHardLevels),
 -- "chain" (needs earlier quests), or nil (never for you, or not any more).
 local function questStatus(q, p, done, inLog)
   if done[q.id] then return "done" end
@@ -547,7 +546,7 @@ local function questStatus(q, p, done, inLog)
     return "chain"
   end
   local l = questLevel(q, p.level)
-  if l - p.level >= RED_LEVELS then return "hard" end
+  if l - p.level >= (p.tooHard or ns.TooHardLevels()) then return "hard" end
   if isGrey(l, p.level) then return "low" end
   -- What is left in the hub rules is mostly chains: a predecessor recorded
   -- only on the earlier quest, a breadcrumb or a parent quest.

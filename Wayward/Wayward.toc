@@ -1,6 +1,6 @@
-## Interface: 16001
+## Interface: 11508, 11509, 16001
 ## Title: Wayward
-## Notes: Levelling helper: what to do next for your character, with step-by-step directions by foot, flight path, boat and zeppelin.
+## Notes: Levelling helper for WoW Forever and Classic Era (Season of Discovery, Hardcore): what to do next for your character, with step-by-step directions by foot, flight path, boat and zeppelin.
 ## X-Website: https://github.com/Zodalia/wow-forever-addon
 ## Author: Zodalia
 ## Version: 0.4.0

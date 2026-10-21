@@ -57,7 +57,7 @@ end
 -- down, not left pointing at an old step (TomTom showing the way instead,
 -- or no trip to resume).
 local function clearPin()
-  if Nav.ownsWaypoint then
+  if Nav.ownsWaypoint and C_Map.ClearUserWaypoint then
     C_Map.ClearUserWaypoint()
     Nav.ownsWaypoint = false
   end
@@ -88,6 +88,8 @@ local function setWaypoint(node, title)
     clearPin()
     return
   end
+  -- Classic Era has no map pins: the directions box and its compass show the way.
+  if not (C_Map.SetUserWaypoint and UiMapPoint) then return end
   if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then return end
   C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
   if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
@@ -670,10 +672,10 @@ end)
 -- Objectives have no event of their own: check the journey's quests when the log changes.
 ns.On("QUEST_LOG_UPDATE", function()
   local a = Nav.active
-  if not (a and a.journey and C_QuestLog.IsComplete) then return end
+  if not (a and a.journey) then return end
   for _, step in ipairs(a.route.steps) do
     local stop = ns.Journey.PendingAction(step)
-    if stop and stop.action.kind == "complete" and C_QuestLog.IsComplete(stop.action.questID) then
+    if stop and stop.action.kind == "complete" and ns.QuestLog.IsComplete(stop.action.questID) then
       questAction("complete", stop.action.questID)
       break
     end

@@ -2,6 +2,7 @@ local _, ns = ...
 
 -- Boats, zeppelins, the tram and portals. The client exposes none of these
 -- (C_Map.GetMapLinksForMap is empty in Forever), so they are hand-made.
+-- Era map IDs, used on Classic Era too; `forever = true` marks one only Forever has.
 --
 -- Coordinates are APPROXIMATE (vanilla knowledge, not yet checked in Forever).
 -- To fix one: stand where you board, run /ww where, update x/y and set
@@ -17,8 +18,8 @@ ns.data.transports = {
   { kind = "boat", faction = "Alliance", time = 150, verified = false,
     a = { mapID = 1439, x = 0.330, y = 0.400, label = "Auberdine" },
     b = { mapID = 1438, x = 0.550, y = 0.970, label = "Rut'theran Village" } },
-  -- New in Forever. Recorded with /ww dock in the beta, 2026-10-17.
-  { kind = "boat", faction = "Alliance", time = 130, verified = true,
+  -- New in Forever (forever: not on Classic Era). Recorded with /ww dock in the beta, 2026-10-17.
+  { kind = "boat", faction = "Alliance", time = 130, verified = true, forever = true,
     a = { mapID = 1439, x = 0.307, y = 0.410, label = "Auberdine (Mist's Edge)" },
     b = { mapID = 1453, x = 0.226, y = 0.560, label = "Stormwind Harbor" } },
   { kind = "portal", faction = "Alliance", time = 15, verified = false,

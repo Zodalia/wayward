@@ -49,7 +49,7 @@ local MAX_ZONES = 3             -- "Questing zone" cards
 local ZONE_HUBS = 3             -- hubs named on a zone card after the first
 local ZONE_QUEST_LINES = 5      -- quests listed on a zone card
 local CACHE_SECONDS = 5         -- a refresh is reused this long (cleared early on data or zone changes)
-local MAX_LEVEL = 60            -- Forever's level cap: quests give no XP there
+local MAX_LEVEL = 60            -- the level cap (Forever and Classic Era): quests give no XP there
 local LOW_AMMO = 200            -- arrows or bullets left
 local LOW_FOOD = 5              -- food and drink items left in your bags
 local FOOD_FROM_LEVEL = 6       -- below this, eating and drinking between fights rarely matters
@@ -564,13 +564,11 @@ end
 -- Quests in your log: { id, row (quest data), name, level, complete, left }.
 local function readLog()
   local out = {}
-  if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return out end
-  for i = 1, C_QuestLog.GetNumQuestLogEntries() or 0 do
-    local info = C_QuestLog.GetInfo(i)
-    local id = info and not info.isHeader and not info.isHidden and info.questID
+  for _, info in ns.QuestLog.Entries() do
+    local id = not info.isHeader and not info.isHidden and info.questID
     if id then
       local row = ns.Quests.Quest(id)
-      local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) and true or false
+      local complete = ns.QuestLog.IsComplete(id)
       out[#out + 1] = { id = id, row = row, name = row and row.name or info.title,
         level = ns.Quests.QuestLevel(id) or info.level, complete = complete,
         left = complete and 0 or shareLeft(id) }
@@ -1423,7 +1421,8 @@ local function build()
   dungeons, plain, held = dungeons or {}, plain or {}, held or {}
   -- With quest data, a dungeon without quests for you isn't worth the run in
   -- Forever (its mobs give little XP); without it there's nothing better to go on.
-  if ctx.quests then plain = {} end
+  -- Classic Era's dungeon mobs give their full XP, so there they stay.
+  if ctx.quests and ns.IsForever() then plain = {} end
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
     for _, option in ipairs(list) do score(option, ctx) end
   end

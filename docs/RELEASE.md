@@ -51,7 +51,8 @@ the project page early to hold the name.
 ## Checklist
 
 - [x] `LICENSE` file in the repository and `## X-License` in the TOC.
-- [ ] `lua tests/wayward_smoke.lua` and `lua tests/smoke.lua` pass.
+- [ ] `lua tests/wayward_smoke.lua`, `WAYWARD_GAME=era lua tests/wayward_smoke.lua`
+      and `lua tests/smoke.lua` pass.
 - [ ] `tools/package.sh`; install the zip (not the symlink) on a clean
       AddOns folder and log in: the welcome shows, `/ww` opens, no Lua errors
       with script errors on (`/console scriptErrors 1`).
@@ -60,8 +61,11 @@ the project page early to hold the name.
       companion too: its sources replace the built-in ones.
 - [ ] Walk one trip end to end in the beta (flight, boat, quest pickup and
       hand-in), and one with TomTom installed.
+- [ ] The same on Classic Era (one realm each: Era, Season of Discovery,
+      Hardcore): no Lua errors, `/ww debug` names the right game, the quest
+      log and hand-ins show, directions work without a map pin.
 - [ ] Screenshots: the For you cards, the directions box, the quick menu.
-- [ ] CurseForge project: game version Forever, category Quests & Leveling,
+- [ ] CurseForge project: game versions Forever and Classic Era (1.15.9), category Quests & Leveling,
       description from the README's first three sections, QuestieDB named
       as the optional dependency.
 - [ ] Tag `v0.4.0` on the branch that ships; merge to `main` (empty today).
@@ -105,6 +109,9 @@ twice per row.
 
 - English client for data-source trainers, vendors and weapon masters.
 - Shipped docks and entrances are approximate until recorded in Forever.
+- Classic Era, Season of Discovery and Hardcore: not yet tried in game; no
+  map pin there (the directions box and TomTom show the way); no runes or
+  other Season of Discovery features of Wayward's own.
 - Without QuestieDB: trainers, vendors and flight masters you have
   visited plus every class's spell list; no quest search, hubs or item
   sources.
