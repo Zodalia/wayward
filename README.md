@@ -1,6 +1,7 @@
 # Wayward
 
-A levelling helper for World of Warcraft: Forever that works like a map app,
+A levelling helper for World of Warcraft: Forever and WoW Classic Era
+(including Season of Discovery and Hardcore realms) that works like a map app,
 not a guide. It suggests what to do next for your character (quests to hand
 in or pick up, where to quest, a dungeon, spells to train, repairs) and gives
 step-by-step directions there: on foot, by flight path, boat, zeppelin, tram
@@ -12,18 +13,21 @@ what is worth doing near you and gets you there.
 ## Install
 
 1. Put the `Wayward` folder in `World of Warcraft/_forever_/Interface/AddOns/`
-   (from a release zip, `tools/package.sh`, or a symlink to this checkout).
+   (Forever) or `World of Warcraft/_classic_era_/Interface/AddOns/` (Classic
+   Era, Season of Discovery, Hardcore), from a release zip, `tools/package.sh`,
+   or a symlink to this checkout. The same folder works in both.
 2. Log in. A short welcome explains the basics; `/ww` or the minimap button
    opens the window, and right-clicking the button opens the options.
 3. Open a flight map once on each continent and visit your class trainer.
    Wayward learns flight paths, trainers and vendors as you meet them.
 
 Optional: install [QuestieDB](https://github.com/Questie/QuestieDB) (the
-Questie team's free database, Forever flavour) and Wayward reads it for
+Questie team's free database, for Forever and Classic Era alike) and Wayward reads it for
 quests, items and every trainer; nothing to configure. TomTom's arrow is
 supported.
 
-**Requirements and limits.** The Forever client (Interface 16001). English
+**Requirements and limits.** The Forever client (Interface 16001) or the
+Classic Era client (1.15.9, Interface 11509; 11508 for its test realm). English
 (enUS/enGB) client: directions work on any locale, but trainers and vendors
 from data sources are recognised by their English subtitles ("Warlock
 Trainer", "Food & Drink"), weapon masters and professions by English names,
@@ -31,6 +35,35 @@ dungeons by their English names, and the nameplate star and target button
 look for the data's English NPC names. Boat and zeppelin docks and dungeon
 entrances shipped with the addon are approximate until you record them
 (`/ww dock`, or walk into the dungeon).
+
+### Classic Era, Season of Discovery and Hardcore
+
+One TOC lists both clients' Interface numbers, and Wayward tells them apart
+when it loads (`ns.Game()`: `WOW_PROJECT_ID`; on Era `ns.Season()` reads the
+realm's season, `C_Seasons`, and `C_GameRules.IsHardcoreActive`). `/ww debug`
+names the game it thinks it's in. What differs on Classic Era:
+
+- The quest log is read through `ns.QuestLog` (Core.lua): Forever's
+  `C_QuestLog.GetInfo` family where the client has it, Era's
+  `GetQuestLogTitle`, `IsQuestComplete`, `GetQuestLogIndexByID` and
+  `GetQuestsCompleted` where it doesn't.
+- No map pin: Era has no user waypoints, so the directions box and its
+  compass (or TomTom's arrow) show the way.
+- Forever-only data stays out: the Auberdine - Stormwind Harbor boat, the
+  seeded trainer (measured on Forever's moved Stormwind map), the conversion
+  of Era coordinates to Forever's, "New in Forever" tags and the chains
+  inferred for Forever's own quests (Season of Discovery's quest IDs are high
+  too, and aren't Forever's).
+- Dungeon mobs give their full XP on Era, so For you still suggests a
+  dungeon you have no quests for.
+- Hardcore: quests three levels above you (orange) count as too hard, not
+  only red ones at five, wherever Wayward hides or flags hard quests.
+- Season of Discovery: whatever the installed QuestieDB knows about the
+  season (its quests, its NPCs) comes through it; Wayward has no runes or
+  other season features of its own.
+
+Not yet tried in game on Classic Era: the tests run every check as both
+clients (`WAYWARD_GAME=era`), against stubs.
 
 ## Options
 
@@ -308,7 +341,7 @@ play it. `/ww sounds export` opens your choices as one line to copy
   (yes turns Wayward's compass off; the options can turn it back on); then
   each step goes on TomTom's arrow and map pins, titled with what to do
   there (`/ww tomtom` or the options switch it, or retry after TomTom failed).
-  The game keeps its own map pin across a logout or reload; Wayward takes
+  The game keeps its own map pin (Forever only: Classic Era has none) across a logout or reload; Wayward takes
   its pin from last time down when TomTom shows the way or no trip resumes
   (a pin you placed yourself since stays).
 - **Options** (see [Options](#options) above): the compass and TomTom are
@@ -646,8 +679,14 @@ lua tests/smoke.lua
 lua tests/wayward_smoke.lua
 ```
 
+```bash
+WAYWARD_GAME=era lua tests/wayward_smoke.lua
+```
+
 Run the addons against stubbed WoW APIs (the second one is Wayward, with a
-fixture data source).
+fixture data source; the third is Wayward again as the Classic Era client:
+Era's older quest-log functions, no map pins, Forever-only checks swapped for
+Era ones).
 
 **Finding slow spots in game:** `/ww perf on` times what the window does
 (it stays on across reloads, so first-open costs are caught too). Every tab
