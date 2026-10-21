@@ -10,6 +10,7 @@ ignore:
   - tests
   - tools
   - docs
+  - art
   - README.md
   - .pkgmeta
   - .gitignore

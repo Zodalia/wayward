@@ -8,7 +8,7 @@ local _, ns = ...
 local MinimapButton = {}
 ns.MinimapButton = MinimapButton
 
-local ICON = "Interface\\Icons\\INV_Misc_Map_01"
+local ICON = "Interface\\AddOns\\Wayward\\Media\\Icon"
 local DEFAULT_ANGLE = 225
 local atan2 = math.atan2 or math.atan
 
