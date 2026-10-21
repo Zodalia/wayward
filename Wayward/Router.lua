@@ -111,6 +111,7 @@ end
 
 -- Returns { steps = { {mode, from, to, seconds, kind} ... }, seconds } or nil.
 function Router.Plan(start, goal, net)
+  ns.WarmStep()
   local paths = prepare(net)
   local nodes = paths.nodes
   local best = walkCost(start, goal) or math.huge

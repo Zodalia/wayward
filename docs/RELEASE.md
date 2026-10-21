@@ -51,7 +51,8 @@ the project page early to hold the name.
 ## Checklist
 
 - [x] `LICENSE` file in the repository and `## X-License` in the TOC.
-- [ ] `lua tests/wayward_smoke.lua`, `WAYWARD_GAME=era lua tests/wayward_smoke.lua`
+- [ ] `lua tests/wayward_smoke.lua`, `WAYWARD_GAME=era lua tests/wayward_smoke.lua`,
+      `python3 -I tools/lua51.py tests/wayward_smoke.lua` (Lua 5.1, as in the game)
       and `lua tests/smoke.lua` pass.
 - [ ] `tools/package.sh`; install the zip (not the symlink) on a clean
       AddOns folder and log in: the welcome shows, `/ww` opens, no Lua errors

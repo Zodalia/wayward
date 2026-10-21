@@ -91,7 +91,7 @@ geterrorhandler = function() return function(err) error(err, 0) end end
 CopyTable = function(t) local c = {} for k, v in pairs(t) do c[k] = type(v) == "table" and CopyTable(v) or v end return c end
 tinsert = table.insert
 time, date = os.time, os.date
-strsplit = function(sep, s) local r = {} for p in (s .. sep):gmatch("(.-)%" .. sep) do r[#r + 1] = p end return table.unpack(r) end
+strsplit = function(sep, s) local r = {} for p in (s .. sep):gmatch("(.-)%" .. sep) do r[#r + 1] = p end return (unpack or table.unpack)(r) end
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 SlashCmdList = {}
 
@@ -1892,6 +1892,38 @@ do
   ns.ForYou.Invalidate()
   list = ns.ForYou.Results()
   check(#list > 0 and ns.Quests.Quest(1) ~= nil, "then For you has its cards (" .. #list .. ")")
+
+  -- For you itself is built a slice per frame too, pausing inside its
+  -- providers (under Lua 5.1, a pause inside a plain pcall would be an error).
+  local titles = {}
+  for _, r in ipairs(list) do titles[#titles + 1] = r.title end
+  local runs = ns.ForYou.runs
+  debugprofilestop = function() t = t + 5 return t end
+  ns.Fire("SOURCES_CHANGED") -- cold caches, as after a login
+  ns.Quests.Warm()
+  frame = ns.WarmFrame()
+  while ns.Warming() do frame.scripts.OnUpdate(frame, 0.016) end
+  ns.Panel.Toggle()
+  local refreshed = 0
+  local realRefresh = ns.Panel.Refresh
+  ns.Panel.Refresh = function(...) refreshed = refreshed + 1 return realRefresh(...) end
+  ns.ForYou.Invalidate()
+  local shown = ns.ForYou.Results()
+  check(ns.Warming() and ns.ForYou.runs == runs and #shown == #list,
+    "while it's built, For you shows the last cards (" .. #shown .. ")")
+  ticks = 0
+  while ns.Warming() and ticks < 100000 do
+    frame.scripts.OnUpdate(frame, 0.016)
+    ticks = ticks + 1
+  end
+  debugprofilestop = realClock
+  local again = {}
+  for _, r in ipairs(ns.ForYou.Results()) do again[#again + 1] = r.title end
+  check(ticks > 10 and ns.ForYou.runs > runs and table.concat(again, "|") == table.concat(titles, "|"),
+    string.format("built over %d frames, the same cards: %s", ticks, table.concat(again, " | ")))
+  check(refreshed > 0, "and the panel refreshes itself when it's done")
+  ns.Panel.Refresh = realRefresh
+  ns.Panel.Toggle()
 end
 ---------------------------------------------------------------- warm-up (end)
 ---------------------------------------------------------------- professions (begin)
@@ -2679,9 +2711,9 @@ do
   UnitXP, UnitXPMax = nil, nil
 
   -- A few seconds later: For you's top trip as "Up next" (not the one just done).
-  local savedResults = ns.ForYou.Results
+  local savedWhenReady = ns.ForYou.WhenReady
   local top = { title = "Quest in Elwynn Forest", route = { steps = {}, seconds = 60 } }
-  ns.ForYou.Results = function() return { { title = "Errands", journey = {} }, { title = "No route" }, top } end
+  ns.ForYou.WhenReady = function(fn) fn({ { title = "Errands", journey = {} }, { title = "No route" }, top }) end
   ns.Fanfare.lastUpNext = nil
   runTimers()
   check(ns.Fanfare.lastUpNext == nil and ns.Fanfare.TripFrame():IsShown(),
@@ -2699,7 +2731,7 @@ do
   ns.ForYou.SuggestNext("Errands")
   check(ns.Fanfare.lastUpNext == nil, "and not when turned off in the options")
   ns.SetSetting("suggestNext", true)
-  ns.ForYou.Results = savedResults
+  ns.ForYou.WhenReady = savedWhenReady
 
   -- The banner picks 2 to 4 stats, the biggest achievements first.
   local function shown(stats)

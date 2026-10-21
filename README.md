@@ -692,10 +692,16 @@ lua tests/wayward_smoke.lua
 WAYWARD_GAME=era lua tests/wayward_smoke.lua
 ```
 
+```bash
+python3 -I tools/lua51.py tests/wayward_smoke.lua
+```
+
 Run the addons against stubbed WoW APIs (the second one is Wayward, with a
 fixture data source; the third is Wayward again as the Classic Era client:
 Era's older quest-log functions, no map pins, Forever-only checks swapped for
-Era ones).
+Era ones; the fourth is Wayward on Lua 5.1, the game's version, which needs
+`pip install lupa`: only 5.1 refuses to pause a background job inside a
+`pcall`, as the game does).
 
 **Finding slow spots in game:** `/ww perf on` times what the window does
 (it stays on across reloads, so first-open costs are caught too). Every tab

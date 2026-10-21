@@ -44,62 +44,93 @@ end
 
 function ns.Fire(message, ...)
   for _, fn in ipairs(listeners[message] or {}) do
-    local ok, err = pcall(fn, ...)
+    local ok, err = ns.Protect(fn, ...)
     if not ok then geterrorhandler()(err) end
   end
 end
 
----------------------------------------------------------------- warm-up
+---------------------------------------------------------------- background jobs
 
--- Indexes over all the quest or item data take longer than Classic Era lets
--- one script run (the game stops it, "script ran too long", and a window being
--- drawn is left blank), so they're built a slice per frame. ns.Warm(fn) queues
--- a build and runs its first slice at once; inside it, ns.WarmStep() hands the
--- rest of the frame back once the slice is used. A build run directly, not by
--- ns.Warm, never stops. Lua can't pause inside a pcall: WarmStep only in
--- Wayward's own loops, never inside a data source's function.
--- DATA_CHANGED once the queue is empty.
+-- Work over all the quest or item data, and For you's first build after a
+-- login, take longer than Classic Era lets one script run (the game stops it,
+-- "script ran too long", and a window being drawn is left blank). So they run
+-- as background jobs, a slice per frame: ns.Warm(fn, done) queues fn and runs
+-- its first slice at once; inside it, ns.WarmStep() hands the rest of the
+-- frame back once the slice is used; done(ok, ...) gets what fn returned.
+-- Code run directly, not by ns.Warm, never stops at a WarmStep.
+-- Lua 5.1 can't pause inside a pcall: in code a job runs, a Lua function is
+-- guarded with ns.Protect instead (data sources' own functions never pause,
+-- so Sources.lua keeps pcall).
 local WARM_SLICE_MS = 8
 local warmQueue, warmCo, warmFrame, sliceStart = {}, nil, nil, 0
+local warmThreads = setmetatable({}, { __mode = "k" }) -- a job's coroutine and ns.Protect's inside it
+local unpack = unpack or table.unpack
 
 local function clock() return debugprofilestop and debugprofilestop() or 0 end
+local function pack(...) return { n = select("#", ...), ... } end
+
+local function inJob()
+  local co = coroutine.running()
+  return co ~= nil and warmThreads[co] == true
+end
 
 function ns.WarmStep()
-  if warmCo and coroutine.running() == warmCo and clock() - sliceStart > WARM_SLICE_MS then
+  if inJob() and clock() - sliceStart > WARM_SLICE_MS then coroutine.yield() end
+end
+
+-- pcall that a job can pause inside: there, fn runs in a coroutine of its
+-- own (which catches errors as pcall does) and passes its pauses on.
+function ns.Protect(fn, ...)
+  if not inJob() then return pcall(fn, ...) end
+  local inner = coroutine.create(fn)
+  warmThreads[inner] = true
+  local results = pack(coroutine.resume(inner, ...))
+  while results[1] and coroutine.status(inner) ~= "dead" do
     coroutine.yield()
+    results = pack(coroutine.resume(inner))
   end
+  return unpack(results, 1, results.n)
 end
 
 -- The frame that runs the slices (for tests).
 function ns.WarmFrame() return warmFrame end
 
--- True while a build is queued or running.
+-- True while a job is queued or running.
 function ns.Warming()
   return warmCo ~= nil or #warmQueue > 0
 end
 
+local current -- the queue entry running: { fn, done }
+
 local function warmTick()
   if not warmCo then
-    local fn = table.remove(warmQueue, 1)
-    if not fn then return end
-    warmCo = coroutine.create(fn)
+    current = table.remove(warmQueue, 1)
+    if not current then
+      warmFrame:SetScript("OnUpdate", nil)
+      return
+    end
+    warmCo = coroutine.create(current[1])
+    warmThreads[warmCo] = true
   end
   sliceStart = clock()
-  local ok, err = coroutine.resume(warmCo)
-  if ok and coroutine.status(warmCo) ~= "dead" then return end
+  local results = pack(coroutine.resume(warmCo))
+  if results[1] and coroutine.status(warmCo) ~= "dead" then return end
   warmCo = nil
-  if not ok then geterrorhandler()(err) end
-  if #warmQueue == 0 then
-    warmFrame:SetScript("OnUpdate", nil)
-    ns.Fire("DATA_CHANGED")
+  if not results[1] then geterrorhandler()(results[2]) end
+  if #warmQueue == 0 then warmFrame:SetScript("OnUpdate", nil) end
+  local done = current[2]
+  current = nil
+  if done then
+    local ok, err = pcall(done, unpack(results, 1, results.n))
+    if not ok then geterrorhandler()(err) end
   end
 end
 
-function ns.Warm(fn)
-  warmQueue[#warmQueue + 1] = fn
+function ns.Warm(fn, done)
+  warmQueue[#warmQueue + 1] = { fn, done }
   warmFrame = warmFrame or CreateFrame("Frame")
   warmFrame:SetScript("OnUpdate", warmTick)
-  -- The first slice now, unless one is under way (or this is inside it).
+  -- The first slice now, unless a job is under way (or this is inside one).
   if not warmCo then warmTick() end
 end
 

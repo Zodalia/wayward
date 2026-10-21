@@ -73,6 +73,7 @@ local STARTING_ZONES = {}
 for _, mapID in pairs(RACE_HOME) do STARTING_ZONES[mapID] = true end
 
 local WAITING = "Getting the quest data ready..."
+local WORKING = "Working out what's next..."
 
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
@@ -108,7 +109,7 @@ end
 
 -- A provider error leaves its part out of the page instead of blanking it.
 local function try(fn, ...)
-  local ok, a, b, c = pcall(fn, ...)
+  local ok, a, b, c = ns.Protect(fn, ...)
   if ok then return a, b, c end
   geterrorhandler()(a)
   return nil
@@ -116,7 +117,7 @@ end
 
 -- Runs a provider, reporting an error instead of breaking the page.
 local function run(provider)
-  local ok, results, _, net = pcall(provider)
+  local ok, results, _, net = ns.Protect(provider)
   if not ok then
     geterrorhandler()(results)
     return {}
@@ -1000,6 +1001,7 @@ local function zoneOptions(ctx, start, net)
 
   local out = {}
   for _, z in ipairs(zones) do
+    ns.WarmStep()
     if #out >= MAX_ZONES then break end
     -- Givers of the quests you can take now, clustered into hubs, named by place.
     local givers, byKey = {}, {}
@@ -1398,6 +1400,7 @@ end
 -- How long each part of the last refresh took, for /ww debug.
 local parts
 local function timed(name, fn, ...)
+  ns.WarmStep()
   local started = debugprofilestop and debugprofilestop()
   local a, b, c = try(fn, ...)
   if started then parts[#parts + 1] = string.format("%s %.0f", name, debugprofilestop() - started) end
@@ -1665,6 +1668,48 @@ local function iconFor(r)
   return ICONS[r.kind] or "Interface\\Icons\\INV_Misc_Map_01"
 end
 
+-- For you is built as a background job (ns.Warm): on Classic Era a build
+-- after a login can run past the client's limit in one go. Meanwhile the page
+-- shows the last cards (WORKING before the first) and is refreshed when the
+-- job is done; ForYou.WhenReady hands the fresh results to code that waits
+-- for them. A quick build (or one without a clock, in tests) is done at once.
+local job      -- the build under way: { tries, started, stale (invalidated meanwhile) }
+local last     -- the last results built: { results, err, net }
+local waiters = {}
+local asking = false -- inside ForYou.Results: the caller takes the results itself
+local startJob
+
+local function finished(ok, results, err, net)
+  local j = job
+  job = nil
+  if not ok then results, err = {}, "Couldn't work this out (the error has the details)." end
+  for _, r in ipairs(results or {}) do r.icon, r.iconCoords = iconFor(r) end
+  ForYou.runs = ForYou.runs + 1
+  if j.started then
+    ns.debugTimings = ns.debugTimings or {}
+    ns.debugTimings.forYou = debugprofilestop() - j.started
+    ForYou.lastParts = parts and table.concat(parts, ", ") or nil
+  end
+  last = { results = results, err = err, net = net }
+  -- Invalidated while it was built: once more (not forever).
+  if j.stale and j.tries < 2 then return startJob(j.tries + 1) end
+  local now = GetTime and GetTime()
+  cache = now and { at = now, results = results, err = err, net = net } or nil
+  pcall(ForYou.CheckNew, results)
+  local list = waiters
+  waiters = {}
+  for _, fn in ipairs(list) do
+    local fine, problem = pcall(fn, results, err, net)
+    if not fine then geterrorhandler()(problem) end
+  end
+  if not asking and ns.Panel and ns.Panel.Refresh then ns.Panel.Refresh() end
+end
+
+function startJob(tries)
+  job = { tries = tries or 1, started = debugprofilestop and debugprofilestop() }
+  ns.Warm(build, finished)
+end
+
 function ForYou.Results()
   local now = GetTime and GetTime()
   if cache and now and now - cache.at < CACHE_SECONDS then return cache.results, cache.err, cache.net end
@@ -1673,22 +1718,29 @@ function ForYou.Results()
     summary = WAITING
     return {}, WAITING
   end
-  local started = debugprofilestop and debugprofilestop()
-  local results, err, net = build()
-  for _, r in ipairs(results or {}) do r.icon, r.iconCoords = iconFor(r) end
-  ForYou.runs = ForYou.runs + 1
-  if started then
-    ns.debugTimings = ns.debugTimings or {}
-    ns.debugTimings.forYou = debugprofilestop() - started
-    ForYou.lastParts = parts and table.concat(parts, ", ") or nil
+  if not job then
+    asking = true
+    local ok, err = pcall(startJob)
+    asking = false
+    if not ok then geterrorhandler()(err) end
   end
-  cache = now and { at = now, results = results, err = err, net = net } or nil
-  pcall(ForYou.CheckNew, results)
-  return results, err, net
+  if last then return last.results, last.err, last.net end
+  summary = WORKING
+  return {}, WORKING
+end
+
+-- fn(results, err, net) once For you's results are fresh: now, or when the
+-- build under way is done.
+function ForYou.WhenReady(fn)
+  local now = GetTime and GetTime()
+  if cache and now and now - cache.at < CACHE_SECONDS then return fn(cache.results, cache.err, cache.net) end
+  waiters[#waiters + 1] = fn
+  ForYou.Results()
 end
 
 function ForYou.Invalidate()
   cache = nil
+  if job then job.stale = true end
 end
 
 -- Vendors you need to visit now (repairs, ammo, food, a repairer close by):
@@ -1799,13 +1851,19 @@ function ForYou.SuggestNext(doneTitle)
   if ns.Nav.active or ns.OnTaxi() or (InCombatLockdown and InCombatLockdown()) then return nil end
   if not ns.Fanfare then return nil end
   ForYou.Invalidate()
-  for _, r in ipairs(ForYou.Results() or {}) do
-    if (r.journey or r.route) and r.title ~= doneTitle then
-      ns.Fanfare.UpNext(r)
-      return r
+  local suggested
+  ForYou.WhenReady(function(results)
+    -- Built in the background: you may have set off meanwhile.
+    if suggested or ns.Nav.active or ns.OnTaxi() then return end
+    for _, r in ipairs(results or {}) do
+      if (r.journey or r.route) and r.title ~= doneTitle then
+        ns.Fanfare.UpNext(r)
+        suggested = r
+        return
+      end
     end
-  end
-  return nil
+  end)
+  return suggested
 end
 
 -- Looked at in the background when things change: a level, a quest handed
@@ -1822,9 +1880,9 @@ local function check()
     return
   end
   if ns.OnTaxi() then return ns.AfterFlight(soon) end
+  -- A fresh build looks for new cards itself (CheckNew).
   ForYou.Invalidate()
-  local results = ForYou.Results()
-  ForYou.CheckNew(results)
+  ForYou.WhenReady(function() end)
 end
 
 function soon()
@@ -1850,7 +1908,11 @@ ns.Listen("QUEST_ABANDONED", function()
 end)
 
 -- Registered before the panel's own listeners, so its refresh sees fresh data.
-ns.Listen("DATA_CHANGED", ForYou.Invalidate)
+ns.Listen("DATA_CHANGED", function()
+  ForYou.Invalidate()
+  -- Someone waits for results that waited for the quest data: build them.
+  if #waiters > 0 then ForYou.Results() end
+end)
 ns.Listen("FLIGHTS_CHANGED", ForYou.Invalidate)
 ns.On("ZONE_CHANGED_NEW_AREA", ForYou.Invalidate)
 

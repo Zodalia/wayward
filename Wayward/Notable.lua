@@ -403,7 +403,7 @@ function Quests.Notable(questID)
   local key = tostring(p.class) .. ":" .. p.level
   if key ~= cacheKey then notableCache, cacheKey = {}, key end
   if not notableCache[questID] then
-    local ok, reasons = pcall(reasonsFor, q, p)
+    local ok, reasons = ns.Protect(reasonsFor, q, p)
     if not ok then geterrorhandler()(reasons) end
     notableCache[questID] = ok and reasons or {}
   end

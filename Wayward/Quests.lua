@@ -448,6 +448,7 @@ local function takeableQuests(p)
   local done, inLog = playerQuestState()
   local quests = {}
   for _, q in ipairs(questIndex) do
+    ns.WarmStep()
     if eligible(q, p, done, inLog) then quests[#quests + 1] = q end
   end
   takeable = { key = key, quests = quests }
@@ -509,6 +510,7 @@ function Quests.ZoneQuests(here)
       chain = chain }
   end
   for _, q in ipairs(questIndex) do
+    ns.WarmStep()
     if (fitsLevel(q, p)) then
       local status = blocker(q, p, done, inLog)
       if status == nil then
@@ -542,6 +544,7 @@ function Quests.QuestsForAreas(areaIDs)
   local done, inLog = playerQuestState()
   local out = {}
   for _, q in ipairs(questIndex) do
+    ns.WarmStep()
     local area = Quests.QuestArea(q)
     if area and areaIDs[area] then
       local group = out[area] or { available = {}, inLog = {}, later = {} }
@@ -698,7 +701,7 @@ function Quests.ObjectiveNode(questID, here)
   if not q then return nil end
   local nodes = objectiveCache[questID]
   if not nodes then
-    local ok, built = pcall(objectiveNodes, q, label)
+    local ok, built = ns.Protect(objectiveNodes, q, label)
     nodes = ok and built or {}
     objectiveCache[questID] = nodes
   end
@@ -743,17 +746,19 @@ end
 local followers -- [questID] = { quest rows that come after it }
 
 local function buildFollowers()
-  followers = {}
+  local built = {}
   local function add(before, q)
-    followers[before] = followers[before] or {}
-    table.insert(followers[before], q)
+    built[before] = built[before] or {}
+    table.insert(built[before], q)
   end
   for _, q in pairs(questByID) do
+    ns.WarmStep()
     if (q.nextQuestInChain or 0) ~= 0 and questByID[q.nextQuestInChain] then add(q.id, questByID[q.nextQuestInChain]) end
     for _, id in ipairs(q.preQuestSingle or {}) do add(id, q) end
     for _, id in ipairs(q.preQuestGroup or {}) do add(id, q) end
     if q.inferredAfter then add(q.inferredAfter, q) end
   end
+  followers = followers or built
 end
 
 function Quests.FollowUps(questID)
@@ -859,6 +864,7 @@ local function chainEnd(q)
 end
 
 local function chainAhead(start, p)
+  ns.WarmStep()
   local ahead = { steps = {}, alternatives = {}, count = 0, reachable = 0, dungeons = {} }
   local seen, frontier = { [start.id] = true }, { start }
   local lastReachable
@@ -1048,7 +1054,7 @@ function Quests.ObjectiveGroups(questID)
   if groupCache[questID] then return groupCache[questID] end
   local q = Quests.Quest(questID)
   if not q then return {} end
-  local ok, groups = pcall(objectiveGroups, q, q.name or ("Quest " .. questID))
+  local ok, groups = ns.Protect(objectiveGroups, q, q.name or ("Quest " .. questID))
   groupCache[questID] = ok and groups or {}
   return groupCache[questID]
 end
@@ -1156,7 +1162,7 @@ end
 
 function Quests.ObjectiveAreas(questID)
   if areaCache[questID] then return areaCache[questID] end
-  local ok, areas = pcall(buildAreas, questID)
+  local ok, areas = ns.Protect(buildAreas, questID)
   areaCache[questID] = ok and areas or {}
   return areaCache[questID]
 end
@@ -1257,8 +1263,9 @@ ns.Listen("SOURCES_CHANGED", function()
 end)
 -- The quest index (and the reward items, Notable.lua) built a slice per frame
 -- (ns.Warm) after a login and when the sources change, so no page builds it
--- all at once. True while that's still going: pages wait for it.
-local warmQueued = {}
+-- all at once. True while that's still going: pages wait for it (and get
+-- DATA_CHANGED when it's done).
+local warmQueued, warmPending = {}, 0
 local warmers = { quests = function() if not questIndex then buildQuestIndex() end end }
 
 function Quests.AddWarmer(name, fn)
@@ -1270,11 +1277,15 @@ function Quests.Warm()
     for name, fn in pairs(warmers) do
       if warmQueued[name] ~= generation then
         warmQueued[name] = generation
-        ns.Warm(fn)
+        warmPending = warmPending + 1
+        ns.Warm(fn, function()
+          warmPending = warmPending - 1
+          if warmPending == 0 then ns.Fire("DATA_CHANGED") end
+        end)
       end
     end
   end
-  return ns.Warming()
+  return warmPending > 0
 end
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)

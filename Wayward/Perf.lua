@@ -97,7 +97,7 @@ local function wrap(tbl, key, label)
   if type(fn) ~= "function" or wrapped[fn] or SKIP[label] then return end
   local w = function(...)
     local node, started = enter(describe(label, ...))
-    return finish(node, started, pcall(fn, ...))
+    return finish(node, started, ns.Protect(fn, ...))
   end
   wrapped[w] = true
   originals[#originals + 1] = { tbl, key, fn }
