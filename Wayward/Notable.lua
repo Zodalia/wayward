@@ -403,6 +403,15 @@ function Quests.NotableTag(questID)
   return nil, reasons
 end
 
+-- The reward that makes the quest stand out (a "reward" reason's item), or nil:
+-- shown beside a result's tooltip (Panel.ShowTooltip).
+function Quests.NotableItem(questID)
+  for _, r in ipairs(Quests.Notable(questID)) do
+    if r.itemID then return r.itemID end
+  end
+  return nil
+end
+
 -- All reasons' weights added up: how much a quest stands out (0: not at all).
 function Quests.NotableScore(questID)
   local score = 0

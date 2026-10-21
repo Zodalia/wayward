@@ -54,8 +54,15 @@ function QuestHubs.Results()
   for i, hub in ipairs(named) do
     total = total + hub.count
     local lowest, highest, details, quests = math.huge, 0, {}, {}
+    -- The reward of the hub's quest that stands out most, beside the tooltip.
+    local item, itemScore
     for _, giver in ipairs(hub.givers) do
       for _, q in ipairs(giver.quests) do
+        local reward = ns.Quests.NotableItem and ns.Quests.NotableItem(q.id)
+        if reward then
+          local score = ns.Quests.NotableScore(q.id)
+          if not itemScore or score > itemScore then item, itemScore = reward, score end
+        end
         quests[#quests + 1] = { id = q.id, name = q.name, level = q.level, giver = giver.name }
         lowest, highest = math.min(lowest, q.level), math.max(highest, q.level)
         details[#details + 1] = {
@@ -83,6 +90,7 @@ function QuestHubs.Results()
       goal = goal,
       route = goal and ns.Router.Plan(start, goal, net),
       details = details,
+      item = item,
       -- For other pages (For you): the quests and place behind this row.
       quests = quests,
       place = hub.place,
