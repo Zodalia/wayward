@@ -2733,6 +2733,38 @@ do
   C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
   ns.Nav.Stop()
   ns.JourneyOverview.Toggle()
+
+  -- A pickup whose hand-in adds under a minute brings it along; one handed in
+  -- far away doesn't (that's asked about once you pick it up).
+  QUESTS[1].finishedBy, QUESTS[7].finishedBy = { { 344 } }, { { 6000 } }
+  refreshData()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = {
+    { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" } } }))
+  local solomon
+  for _, sug in ipairs(ns.OnTheWay.Get()) do
+    for _, st in ipairs(sug.stops) do
+      if st.action and st.action.questID == 1 then solomon = sug end
+    end
+  end
+  local function tripKinds(questID)
+    local kinds = {}
+    for _, st in ipairs(ns.Nav.active and ns.Nav.active.journey.root.stops or {}) do
+      if st.action and st.action.questID == questID then kinds[#kinds + 1] = st.action.kind end
+    end
+    return table.concat(kinds, ",")
+  end
+  chat = {}
+  check(solomon and ns.OnTheWay.Add(solomon), "Solomon's quests are on the way and added")
+  check(tripKinds(1) == "pickup,turnin", "handed in where it's picked up: the hand-in comes along: " .. tripKinds(1))
+  check(tripKinds(7) == "pickup", "handed in in Stormwind: just the pickup: " .. tripKinds(7))
+  local said = false
+  for _, line in ipairs(chat) do
+    if line:find("handing in Redridge Goulash adds under a minute", 1, true) then said = true end
+  end
+  check(said, "and says so in chat")
+  ns.Nav.Stop()
+  QUESTS[1].finishedBy, QUESTS[7].finishedBy = nil, nil
+  refreshData()
 end
 ---------------------------------------------------------------- on the way (end)
 ---------------------------------------------------------------- fanfare (begin)

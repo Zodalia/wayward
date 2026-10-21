@@ -550,7 +550,9 @@ panel to add it to the trip you're on.
     it's taking you and hearth instead; under the stops, "On the way": up
     to four things near the route that add 3 minutes of travel or less,
     quest givers with quests for you, quests in your log ready to hand in
-    and vendors you need, each with an Add button; and a map of the rest of
+    and vendors you need, each with an Add button (a quest whose objectives
+    and hand-in add under a minute more comes whole, not asked about once you
+    pick it up); and a map of the rest of
     the trip; the mouse wheel scrolls the list when it doesn't all fit); a
     stop can be dropped
     there, together with the stops that need it, or dragged up or down by its
