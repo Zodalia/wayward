@@ -780,6 +780,9 @@ end
 -- first in, often from the same NPC. The rest of the chain after them is
 -- listed too (CHAIN_OFFER_DEPTH steps, CHAIN_OFFER_MAX quests), ticked when
 -- it is on the way as well, for you to tick or untick (UI/ChainPicker.lua).
+-- Adding one quest (from your log, a search, a pickup) lists its follow-ups
+-- out of the way too, unticked: you chose that quest, so its chain is wanted;
+-- a trip of several only asks about the ones on the way.
 local FOLLOW_UP_SLACK = 180
 local CHAIN_OFFER_DEPTH = 4
 local CHAIN_OFFER_MAX = 8
@@ -795,12 +798,15 @@ end
 --     first follow-up), depth, travel (seconds it adds), seconds (travel and
 --     doing it), stops, checked }
 -- `stops` and `extra` are the ticked ones' stops and travel.
-function Nav.FollowUpOffer(stops)
+-- `anyDistance`: first follow-ups out of the way are listed too (unticked).
+-- `skip`: quest IDs not to list (ones you were just asked about).
+function Nav.FollowUpOffer(stops, anyDistance, skip)
   local a = Nav.active
   local here = ns.Geo.PlayerNode()
   if not (a and a.journey and here) then return nil end
   local root = a.journey.root or a.journey.def
   local inTrip = {}
+  for id in pairs(skip or {}) do inTrip[id] = true end
   for _, stop in ipairs(root.stops or {}) do
     if stop.action and stop.action.questID then inTrip[stop.action.questID] = true end
   end
@@ -828,8 +834,8 @@ function Nav.FollowUpOffer(stops)
           for _, s in ipairs(qs) do with[#with + 1] = s end
           local planned = ns.Journey.Plan(here, { stops = with, finish = finish })
           local extra = planned and planned.seconds - base.seconds - travel
-          -- A first follow-up only when it's on the way; the chain after it is listed anyway.
-          if extra and (parent or extra <= FOLLOW_UP_SLACK) then
+          -- A first follow-up only when it's on the way (or anyDistance); the chain after it is listed anyway.
+          if extra and (parent or anyDistance or extra <= FOLLOW_UP_SLACK) then
             extra = math.max(0, extra)
             travel = travel + extra
             open = with
@@ -894,15 +900,28 @@ function Nav.FollowUpChoice(offer)
   return choice
 end
 
--- Adds the ticked quests of the offer to the trip.
+-- Adds the ticked quests of the offer to the trip. The ones left unticked
+-- aren't asked about again straight away; the chain past the offer can be.
+local answered
+
 function Nav.AcceptFollowUps(offer)
   local choice = Nav.FollowUpChoice(offer)
   if choice.count == 0 then return false end
-  return Nav.AddToTrip(choice.stops, table.concat(choice.names, ", "))
+  answered = {}
+  for _, e in ipairs(offer.quests) do answered[e.quest.id] = true end
+  local added = Nav.AddToTrip(choice.stops, table.concat(choice.names, ", "))
+  answered = nil
+  return added
 end
 
 function offerFollowUps(stops)
-  local offer = Nav.FollowUpOffer(stops)
+  local handIns = {}
+  for _, stop in ipairs(stops) do
+    local action = stop.action
+    if action and action.kind == "turnin" and not stop.done then handIns[action.questID] = true end
+  end
+  local single = next(handIns) ~= nil and next(handIns, next(handIns)) == nil
+  local offer = Nav.FollowUpOffer(stops, single and not answered, answered)
   if not offer then return end
   local firsts, seen = {}, {}
   for _, e in ipairs(offer.quests) do

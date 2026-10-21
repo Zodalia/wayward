@@ -53,6 +53,12 @@ local function notable(questID, details, status)
   return tag and ("  ·  " .. NOTABLE .. tag .. "|r") or ""
 end
 
+-- The reward item shown beside a quest row's tooltip (Quests.NotableItem), or nil.
+local function rewardItem(questID, status)
+  if not ns.Quests.NotableItem or status == "done" or status == "notForYou" then return nil end
+  return ns.Quests.NotableItem(questID)
+end
+
 local function questTitle(q)
   return string.format("[%d] %s", ns.Quests.QuestLevel(q.id) or 0, q.name or ("Quest " .. q.id))
 end
@@ -252,7 +258,7 @@ local function questRow(m, start, net)
   if leads then sub = sub .. "  ·  " .. leads end
   local actions = (m.status == "available" or m.status == "inLog") and { tripAction(q.id, q.name) } or nil
   return { id = "quest" .. q.id, title = questTitle(q), titleColor = ns.DifficultyColor(ns.Quests.QuestLevel(q.id)),
-    subtitle = sub, journey = journey, details = details, actions = actions }
+    subtitle = sub, journey = journey, details = details, actions = actions, item = rewardItem(q.id, m.status) }
 end
 
 ---------------------------------------------------------------- quest log
@@ -364,7 +370,8 @@ local function logRow(entry, start, net)
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
     titleColor = ns.DifficultyColor(entry.level),
     subtitle = table.concat(parts, "  ·  ") .. tag, journey = journey, details = details,
-    actions = ns.Quests.Available() and { tripAction(entry.id, entry.title) } or nil }
+    actions = ns.Quests.Available() and { tripAction(entry.id, entry.title) } or nil,
+    item = ns.Quests.Available() and rewardItem(entry.id) or nil }
 end
 
 -- Empty search: trip rows for picked and completed quests, then the log.

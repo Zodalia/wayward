@@ -105,6 +105,9 @@ local ZONES = {
   [1433] = { cont = 1415, x0 = 0.48, y0 = 0.66, w = 0.08, h = 0.08, name = "Redridge Mountains" },
   [1437] = { cont = 1415, x0 = 0.38, y0 = 0.42, w = 0.10, h = 0.10, name = "Wetlands" },
   [1439] = { cont = 1414, x0 = 0.40, y0 = 0.15, w = 0.10, h = 0.20, name = "Darkshore" },
+  -- Starting zones: no NPCs of their own (For you's starting-zone test fills them).
+  [1429] = { cont = 1415, x0 = 0.40, y0 = 0.76, w = 0.08, h = 0.08, name = "Elwynn Forest" },
+  [1426] = { cont = 1415, x0 = 0.28, y0 = 0.55, w = 0.08, h = 0.08, name = "Dun Morogh" },
 }
 
 local function vec(x, y) return { x = x, y = y, GetXY = function(s) return s.x, s.y end } end
@@ -1819,6 +1822,47 @@ do
   runs = ns.ForYou.runs
   SlashCmdList.WAYWARD("next")
   check(ns.Panel.IsShown() and ns.ForYou.runs > runs, "/ww next opens the panel on For you")
+
+  -- Low levels: your starting zone first, not another starting zone.
+  local realZoneQuests, realLevel = ns.Quests.ZoneQuests, UnitLevel
+  local counts = { [1429] = 4, [1426] = 7, [1433] = 5 }
+  ns.Quests.ZoneQuests = function()
+    local zones, id = {}, 90000
+    for mapID, n in pairs(counts) do
+      local z = { mapID = mapID, quests = {} }
+      for i = 1, n do
+        id = id + 1
+        z.quests[i] = { id = id, name = "Low quest " .. id, level = 5, node = ns.Geo.Node(mapID, 0.5, 0.5),
+          giver = "Giver " .. mapID, chain = false }
+      end
+      zones[mapID] = z
+    end
+    return zones
+  end
+  local function zoneTitles()
+    local out = {}
+    for _, r in ipairs(rows()) do
+      if r.category == "Questing zone" then out[#out + 1] = r.title:gsub("^Quest in ", "") end
+    end
+    return table.concat(out, ",")
+  end
+  UnitLevel = function() return 5 end
+  player.mapID, player.x, player.y = 1429, 0.5, 0.5
+  check(zoneTitles() == "Elwynn Forest,Redridge Mountains",
+    "level 5 in Elwynn: Elwynn first, no other starting zone: " .. zoneTitles())
+  player.mapID = 1453
+  check(zoneTitles() == "Elwynn Forest,Redridge Mountains",
+    "level 5 in Stormwind: your race's starting zone first: " .. zoneTitles())
+  counts[1429] = 2
+  player.mapID = 1429
+  check(zoneTitles() == "Dun Morogh,Redridge Mountains",
+    "with too few quests left at home, another starting zone is fine: " .. zoneTitles())
+  counts[1429] = 4
+  UnitLevel = function() return 10 end
+  check(zoneTitles() == "Dun Morogh,Redridge Mountains,Elwynn Forest",
+    "from level 10, zones by XP again: " .. zoneTitles())
+  ns.Quests.ZoneQuests, UnitLevel = realZoneQuests, realLevel
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
   LibQuestieDB.Support.Get = zoneSupport
 end
 
@@ -2350,6 +2394,32 @@ do
   ns.ChainPicker.Show(offer)
   ns.ChainPicker.Cancel()
   check(not ns.ChainPicker.IsShown() and not ns.Nav.active, "Cancel adds nothing")
+
+  -- A follow-up out of the way (10 min more): listed, unticked, for one quest you chose; not for a bigger trip.
+  local realPlan = ns.Journey.Plan
+  ns.Journey.Plan = function(start, def, net)
+    local planned = realPlan(start, def, net)
+    for _, st in ipairs(planned and def.stops or {}) do
+      if st.action and st.action.kind == "pickup" and st.action.questID == 13 then
+        planned.seconds = planned.seconds + 600
+        break
+      end
+    end
+    return planned
+  end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  offer = ns.ChainPicker.current
+  check(ns.ChainPicker.IsShown() and offer and #offer.quests == 1 and offer.quests[1].quest.id == 13
+    and not offer.quests[1].checked and offer.quests[1].travel > 180,
+    "one quest's follow-up out of the way is still offered, unticked")
+  ns.ChainPicker.Cancel()
+  ns.Nav.Stop()
+  local both = ns.Journey.QuestStops(14, here)
+  for _, st in ipairs(ns.Journey.QuestStops(44, here)) do both[#both + 1] = st end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand ins", stops = both }))
+  check(not ns.ChainPicker.IsShown(), "a trip of several hand-ins only asks about follow-ups on the way")
+  ns.Nav.Stop()
+  ns.Journey.Plan = realPlan
 
   -- Abandoning a quest: its stops (and the follow-up after them) leave the trip; nothing left ends it.
   local other = { node = ns.Geo.Node(1433, 0.6, 0.5, "Elsewhere"), text = "Visit Elsewhere" }
@@ -4703,6 +4773,30 @@ do
   check(ok and ns.Panel.ItemTooltip() and ns.Panel.ItemTooltip():IsShown(), "the reward shows in its own tooltip beside it"
     .. (err and (": " .. tostring(err)) or ""))
   GameTooltip:Hide()
+  check(ns.Quests.NotableItem(502) == 9501 and ns.Quests.NotableItem(501) == nil, "a quest's notable reward item")
+  local found
+  for _, r in ipairs(ns.QuestsPage.Results("Staff Delivery")) do
+    if r.id == "quest502" then found = r end
+  end
+  check(found and found.item == 9501, "Quests page: a search row shows the reward beside its tooltip")
+  local savedItemLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  C_QuestLog.GetNumQuestLogEntries = function() return 1 end
+  C_QuestLog.GetInfo = function() return { questID = 502, isHeader = false, title = QUESTS[502].name } end
+  C_QuestLog.IsComplete = function() return false end
+  found = nil
+  for _, r in ipairs(ns.QuestsPage.Results("")) do
+    if r.id == "log502" then found = r end
+  end
+  check(found and found.item == 9501, "Quests page: a quest log row too")
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete =
+    savedItemLog[1], savedItemLog[2], savedItemLog[3]
+  found = nil
+  for _, r in ipairs(ns.QuestHubs.Results()) do
+    for _, q in ipairs(r.quests or {}) do
+      if q.id == 502 then found = r end
+    end
+  end
+  check(found and found.item == 9501, "Quest hubs: a hub row shows its quests' notable reward")
   -- (On Classic Era no Forever chain is inferred, so one more quest is open
   -- and The Long Tale falls off the zone card's list: the dungeon one shows it.)
   local line, reason = "The Long Tale  (Magistrate Solomon)  ·  Epic", "Epic quest line"
