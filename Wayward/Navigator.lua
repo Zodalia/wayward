@@ -571,7 +571,8 @@ local function askPickups()
   end
 end
 
-ns.On("QUEST_ACCEPTED", function(questID)
+ns.On("QUEST_ACCEPTED", function(...)
+  local questID = ns.QuestLog.AcceptedID(...)
   count("picked")
   questAction("pickup", questID)
   syncStops()
