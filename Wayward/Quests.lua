@@ -84,27 +84,36 @@ local function inferChains()
 end
 
 -- Rows are copies of the source's records, so inferred links stay ours.
+-- Built into locals and kept at the end: built by Quests.Warm a slice at a
+-- time, a half-built index is never seen, and one built directly meanwhile
+-- (or for other sources) wins.
+local generation = 0
+
 local function buildQuestIndex()
-  questIndex, predecessors, questByID = {}, {}, {}
+  local built = generation
+  local index, before, byID = {}, {}, {}
   local started = now()
   for _, id in ipairs(Data.QuestIDs()) do
+    ns.WarmStep()
     local record = Data.Quest(id)
     if type(record) == "table" then
       local q = {}
       for k, v in pairs(record) do q[k] = v end
       q.id = id
-      questByID[id] = q
+      byID[id] = q
       local nextID = q.nextQuestInChain or 0
       if nextID ~= 0 then
-        predecessors[nextID] = predecessors[nextID] or {}
-        table.insert(predecessors[nextID], q)
+        before[nextID] = before[nextID] or {}
+        table.insert(before[nextID], q)
       end
       local starters = q.startedBy or {}
       if (starters[1] and #starters[1] > 0) or (starters[2] and #starters[2] > 0) then
-        questIndex[#questIndex + 1] = q
+        index[#index + 1] = q
       end
     end
   end
+  if questIndex or built ~= generation then return end
+  questIndex, predecessors, questByID = index, before, byID
   inferChains()
   ns.debugTimings = ns.debugTimings or {}
   ns.debugTimings.quests = now() - started
@@ -1240,11 +1249,39 @@ end
 
 -- Indexes are rebuilt when a source registers (a companion loading later).
 ns.Listen("SOURCES_CHANGED", function()
+  generation = generation + 1
   questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
   giverNodes, objectiveCache, groupCache, areaCache, mobCache, zoneCache, takeable = {}, {}, {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
   chainCache = {}
 end)
+-- The quest index (and the reward items, Notable.lua) built a slice per frame
+-- (ns.Warm) after a login and when the sources change, so no page builds it
+-- all at once. True while that's still going: pages wait for it.
+local warmQueued = {}
+local warmers = { quests = function() if not questIndex then buildQuestIndex() end end }
+
+function Quests.AddWarmer(name, fn)
+  warmers[name] = fn
+end
+
+function Quests.Warm()
+  if Quests.Available() then
+    for name, fn in pairs(warmers) do
+      if warmQueued[name] ~= generation then
+        warmQueued[name] = generation
+        ns.Warm(fn)
+      end
+    end
+  end
+  return ns.Warming()
+end
+
+ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
+  if isLogin or isReload then ns.After(2, Quests.Warm) end
+end)
+ns.Listen("SOURCES_CHANGED", function() ns.After(1, Quests.Warm) end)
+
 -- Chains ahead count what your level can do, and name dungeons and places
 -- learned while playing.
 ns.Listen("DATA_CHANGED", function() chainCache = {} end)

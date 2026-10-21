@@ -687,7 +687,13 @@ local function refreshSide()
   side.summary:SetPoint("TOPLEFT", 18, top)
 
   local q = page.searchable and query or ""
-  local results, err, net = page.Results(q)
+  local results, err, net
+  -- Quest data still being indexed (Quests.Warm): wait for it.
+  if ns.Quests.Warm() then
+    err = "Getting the quest data ready..."
+  else
+    results, err, net = page.Results(q)
+  end
   results = results or {}
   -- A new page, category or search starts at the top; a data refresh keeps your place.
   local key = page.id .. "|" .. (page.selected or 1) .. "|" .. q

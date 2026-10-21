@@ -179,6 +179,7 @@ function Data.Object(id) return first("Object", id) end
 function Data.Item(id) return first("Item", id) end
 function Data.ItemIDs() return union("ItemIDs") end
 function Data.QuestRewards() return first("QuestRewards") end
+function Data.ItemQuestRewards(id) return first("ItemQuestRewards", id) end
 function Data.NpcIDs(flag) return union("NpcIDs", flag) end
 function Data.QuestXP() return first("QuestXP") end
 function Data.TrainerSpells(npcID) return first("TrainerSpells", npcID) end

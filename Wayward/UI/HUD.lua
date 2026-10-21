@@ -17,6 +17,8 @@ local PADDING = 10
 local CIRCLE = 42
 local TEXT_LEFT = PADDING + CIRCLE + 10
 local HOME = { "TOP", "TOP", 0, -140 }
+local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the trip gains stops
+local FLASH_PULSES = 3
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -143,6 +145,13 @@ local function create()
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
     "See full journey")
   f.list:SetPoint("RIGHT", f.recalc, "LEFT", -2, 0)
+  -- A glow over the book button, pulsed when the trip gains stops (HUD.FlashJourney).
+  f.listGlow = f.list:CreateTexture(nil, "OVERLAY")
+  f.listGlow:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+  f.listGlow:SetBlendMode("ADD")
+  f.listGlow:SetPoint("TOPLEFT", -2, 2)
+  f.listGlow:SetPoint("BOTTOMRIGHT", 2, -2)
+  f.listGlow:SetAlpha(0)
   f.moveOn = squareButton(f, "RIGHT", nil, ">>", function() ns.Nav.MoveOn() end,
     "Move to the next step and do this later")
   fastForward(f.moveOn)
@@ -186,6 +195,15 @@ local function create()
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
+    if f.flashLeft then
+      f.flashLeft = f.flashLeft - dt
+      if f.flashLeft > 0 then
+        f.listGlow:SetAlpha(math.abs(math.sin(f.flashLeft / FLASH_PERIOD * math.pi)))
+      else
+        f.flashLeft = nil
+        f.listGlow:SetAlpha(0)
+      end
+    end
     elapsed = elapsed + dt
     if elapsed >= UPDATE_INTERVAL then
       elapsed = 0
@@ -377,8 +395,20 @@ function HUD.Lines()
   return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText() }
 end
 
+-- Pulses the book button a few times: the trip has changed, its overview is a click away.
+function HUD.FlashJourney()
+  if frame then frame.flashLeft = FLASH_PERIOD * FLASH_PULSES end
+end
+
+-- Whether the book button is pulsing (for tests).
+function HUD.Flashing() return frame ~= nil and frame.flashLeft ~= nil end
+
 ns.Listen("SETTINGS_CHANGED", function(key)
   if key == "showArrow" and frame then HUD.Update() end
+end)
+
+ns.Listen("JOURNEY_EXTENDED", function()
+  if not ns.JourneyOverview.IsShown() then HUD.FlashJourney() end
 end)
 
 ns.Listen("NAV_CHANGED", function()

@@ -1870,6 +1870,30 @@ do
 end
 
 ---------------------------------------------------------------- for you (end)
+---------------------------------------------------------------- warm-up (begin)
+do
+  io.write("warm-up\n")
+  -- Every clock read 5 ms on: a slice is a couple of reads, as if the data were huge.
+  local realClock, t = debugprofilestop, 0
+  debugprofilestop = function() t = t + 5 return t end
+  ns.Fire("SOURCES_CHANGED")
+  ns.ForYou.Invalidate()
+  local list, err = ns.ForYou.Results()
+  check(#list == 0 and err == "Getting the quest data ready..." and ns.Warming(),
+    "after the sources change, For you waits while the quest data is indexed: " .. tostring(err))
+  check(ns.ForYou.SummaryText() == "Getting the quest data ready...", "and says so")
+  local frame, ticks = ns.WarmFrame(), 0
+  while ns.Warming() and ticks < 10000 do
+    frame.scripts.OnUpdate(frame, 0.016)
+    ticks = ticks + 1
+  end
+  check(not ns.Warming() and ticks > 3, "the index is built a slice per frame (" .. ticks .. " frames)")
+  debugprofilestop = realClock
+  ns.ForYou.Invalidate()
+  list = ns.ForYou.Results()
+  check(#list > 0 and ns.Quests.Quest(1) ~= nil, "then For you has its cards (" .. #list .. ")")
+end
+---------------------------------------------------------------- warm-up (end)
 ---------------------------------------------------------------- professions (begin)
 do
   io.write("professions\n")
@@ -2016,6 +2040,46 @@ do
   check(ns.Nav.active and #ns.Nav.active.journey.stops == 1 and ns.Nav.active.journey.stops[1].action.kind == "turnin",
     "after a relog the trip resumes from where it was")
   check(#ns.JourneyOverview.Rows() == 3, "the overview still shows the stops already done")
+
+  -- A reload before the game can place you: the trip waits for it, it isn't lost.
+  local savedNav, realMap = ns.charDB.nav, player.mapID
+  ns.Nav.active, player.mapID = nil, nil
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.Nav.active == nil and ns.charDB.nav == savedNav, "no position yet after a reload: the saved trip is kept")
+  player.mapID = realMap
+  runTimers()
+  check(ns.Nav.active and ns.Nav.active.journey.stops[1].action.kind == "turnin", "a moment later it resumes")
+  -- Never placed: kept, and said so once the tries run out.
+  savedNav = ns.charDB.nav
+  ns.Nav.active, player.mapID = nil, nil
+  local before = #chat
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  for _ = 1, 12 do runTimers() end
+  check(ns.charDB.nav == savedNav and table.concat(chat, "\n", before + 1):find("/ww resume", 1, true),
+    "still nowhere after the tries: kept, and /ww resume is offered")
+  player.mapID = realMap
+  SlashCmdList.WAYWARD("resume")
+  check(ns.Nav.active ~= nil, "/ww resume picks it up")
+  -- An error resuming keeps it for the next login, a few times.
+  savedNav = ns.charDB.nav
+  local realLoad = ns.Journey.Load
+  ns.Journey.Load = function() error("old save") end
+  ns.Nav.active = nil
+  local errorHandler = geterrorhandler
+  geterrorhandler = function() return function() end end
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.charDB.nav == savedNav and savedNav.failed == 1, "an error resuming keeps the trip for next time")
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.charDB.nav == nil, "after three logins with errors it's dropped")
+  geterrorhandler, ns.Journey.Load = errorHandler, realLoad
+  ns.charDB.nav = savedNav
+  savedNav.failed = nil
+  ns.Nav.Resume()
   fire("QUEST_TURNED_IN", 40)
   check(ns.Nav.active == nil and ns.charDB.nav == nil, "handing it in ends the trip and clears the save")
 
@@ -4024,7 +4088,16 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
   ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
   check(labels() == "Shore camp,Bank", "an added stop goes where it fits best, here first: " .. labels())
-  check(ns.Nav.active.title == "Your trip" and ns.JourneyOverview.IsShown(), "the trip is renamed and the overview shows it")
+  check(ns.Nav.active.title == "Your trip", "the trip is renamed: " .. ns.Nav.active.title)
+  check(not ns.JourneyOverview.IsShown() and ns.HUD.Flashing(),
+    "adding to a trip doesn't open the overview; the book button flashes instead")
+  local hud = ns.HUD.Frame()
+  for _ = 1, 30 do hud.scripts.OnUpdate(hud, 0.1) end
+  check(not ns.HUD.Flashing(), "and stops after a few pulses")
+  ns.JourneyOverview.Show()
+  ns.Nav.AddToTrip({ stopAt(1439, 0.6, 0.5, "Dock") }, "Dock")
+  check(ns.JourneyOverview.IsShown() and not ns.HUD.Flashing() and #ns.JourneyOverview.Rows() == 3,
+    "with the overview open it shows the new stop, no flash")
   ns.Nav.Stop()
 
   -- Starting something while a trip is on asks: add, replace or cancel.

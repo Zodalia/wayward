@@ -160,6 +160,8 @@ function Q.New(spec)
   end
 
   function source.ItemIDs() return reader.ids("item") end
+  -- One item's quests, for building the index below a slice at a time.
+  function source.ItemQuestRewards(id) return reader.get("item", id, "questRewards") end
 
   -- [questID] = { itemID, ... }, one pass over the items' questRewards on the
   -- first ask (cheaper than Wayward reading every item record).

@@ -150,3 +150,4 @@ function OnTheWay.Add(s)
 end
 
 ns.Listen("JOURNEY_STARTED", function() cache = nil end)
+ns.Listen("JOURNEY_EXTENDED", function() cache = nil end)
