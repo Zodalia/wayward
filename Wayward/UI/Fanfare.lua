@@ -6,7 +6,9 @@ local _, ns = ...
 --     in when there's little else);
 --   * when For you has a new major suggestion (a questing zone, a dungeon,
 --     new spells, a profession's next rank): "New journey available", which
---     you click to start it (or add it to your trip: the usual question).
+--     you click to start it (or add it to your trip: the usual question);
+--     a few seconds after a journey is done, the same toast says "Up next"
+--     with For you's top card.
 -- Both fade after a while (not while the mouse is over them); a click on the
 -- first, or the toast's x, closes it. /ww toasts or the options turn the
 -- new-journey toasts off. Their sounds: Sounds.lua (/ww sounds).
@@ -225,10 +227,12 @@ local function plain(text)
 end
 
 local function showNext()
-  local r = table.remove(queue, 1)
-  if not r then return end
+  local item = table.remove(queue, 1)
+  if not item then return end
+  local r = item.result
   toast = toast or createToast()
   toast.result = r
+  toast.heading:SetText(item.heading or "New journey available")
   toast.title:SetText(plain(r.title))
   toast.sub:SetText(plain(r.category and (r.category .. "  ·  " .. (r.place or r.subtitle or "")) or r.subtitle))
   if r.iconCoords then
@@ -250,8 +254,17 @@ end
 -- Shows "New journey available" for `r` (queued behind one on screen).
 function Fanfare.NewJourney(r)
   if ns.db.settings.toasts == false then return end
-  queue[#queue + 1] = r
+  queue[#queue + 1] = { result = r }
   Fanfare.lastNew = r
+  if not (toast and toast:IsShown()) then showNext() end
+end
+
+-- Shows "Up next" for `r` (For you's top card after a journey), ahead of any
+-- "New journey available" still waiting.
+function Fanfare.UpNext(r)
+  if ns.db.settings.suggestNext == false then return end
+  table.insert(queue, 1, { result = r, heading = "Up next" })
+  Fanfare.lastUpNext = r
   if not (toast and toast:IsShown()) then showNext() end
 end
 
@@ -266,9 +279,9 @@ function Fanfare.Preview(kind, sound)
   local r = { preview = true, previewSound = sound, title = "Sample journey", category = "Questing zone",
     place = "Westfall", icon = "Interface\\Icons\\INV_Misc_Map_01" }
   if toast and toast:IsShown() and toast.result and not toast.result.preview then
-    table.insert(queue, 1, toast.result)
+    table.insert(queue, 1, { result = toast.result, heading = toast.heading:GetText() })
   end
-  table.insert(queue, 1, r)
+  table.insert(queue, 1, { result = r })
   showNext()
 end
 

@@ -605,55 +605,53 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 199: Replace
 - 211: Talk to 
 - 213: Go to 
-- 308: you have arrived: 
-- 315: couldn't show the trip's fanfare: 
-- 346: no route from here.
-- 385: faster route with your flight paths: 
-- 473: %d quests
-- 519: couldn't show a question (
-- 543: Add to trip
-- 543: Not now
-- 543: New trip
-- 550: Start trip
+- 310: you have arrived: 
+- 317: couldn't show the trip's fanfare: 
+- 353: no route from here.
+- 392: faster route with your flight paths: 
+- 480: %d quests
+- 526: couldn't show a question (
+- 550: Add to trip
 - 550: Not now
-- 557: You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?
-- 560: You picked up %s.%s\n\nStart a trip for it (%s)?
-- 601: %s isn't offered yet (it needs earlier quests): dropped from the trip.
-- 602: that quest
-- 706: no stops left.
-- 718: can't move that stop there: it comes after another stop.
-- 731: Your trip
-- 740: no route to 
-- 740:  from here.
-- 748:  is already in your trip.
-- 755: no route for the trip from here.
-- 760: added %s to your trip: %d stops, %s
-- 833: Add
-- 833: No thanks
-- 837: %s continues with %s, about %s more on the way.\n\nAdd it to your trip too?
-- 873: resuming journey: 
-- 873:  (/ww stop to end it)
-- 885: resuming directions to 
-- 885:  (/ww stop to end them)
-- 947: re-routed from here (
-- 957: you moved a long way
-- 960: you're on another continent
-- 964: you went another way
-- 1027: that spot's cleared: on to another for %s.
-- 1029: that spot's cleared: other stops first while it respawns (%s).
-- 1032: that spot's cleared: back when it respawns (%s).
-- 1078: you're doing %s here: it's next on the trip now.
-- 1131: nothing else on the trip to do first; skip it to take it off.
-- 1136: later: %s, after %s.
-- 1136: that stop
-- 1136: the next stop
-- 1151: Skip
-- 1151: Cancel
-- 1155: Skip \"%s\"?\n\nIt's taken off the trip%s.
-- 1155: this stop
-- 1156: , with \"%s\", which needs it
-- 1156: a stop
-- 1157: , with the %d stops that need it
+- 550: New trip
+- 557: Start trip
+- 557: Not now
+- 564: You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?
+- 567: You picked up %s.%s\n\nStart a trip for it (%s)?
+- 608: %s isn't offered yet (it needs earlier quests): dropped from the trip.
+- 609: that quest
+- 713: no stops left.
+- 725: can't move that stop there: it comes after another stop.
+- 738: Your trip
+- 747: no route to 
+- 747:  from here.
+- 755:  is already in your trip.
+- 762: no route for the trip from here.
+- 767: added %s to your trip: %d stops, %s
+- 913:  continues with:
+- 952: resuming journey: 
+- 952:  (/ww stop to end it)
+- 964: resuming directions to 
+- 964:  (/ww stop to end them)
+- 1026: re-routed from here (
+- 1036: you moved a long way
+- 1039: you're on another continent
+- 1043: you went another way
+- 1106: that spot's cleared: on to another for %s.
+- 1108: that spot's cleared: other stops first while it respawns (%s).
+- 1111: that spot's cleared: back when it respawns (%s).
+- 1157: you're doing %s here: it's next on the trip now.
+- 1210: nothing else on the trip to do first; skip it to take it off.
+- 1215: later: %s, after %s.
+- 1215: that stop
+- 1215: the next stop
+- 1230: Skip
+- 1230: Cancel
+- 1234: Skip \"%s\"?\n\nIt's taken off the trip%s.
+- 1234: this stop
+- 1235: , with \"%s\", which needs it
+- 1235: a stop
+- 1236: , with the %d stops that need it
 
 ## OnTheWay.lua
 
@@ -1071,7 +1069,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 1724: Raid
 - 1739: \|level 
 - 1746: spell\|
-- 1803: /ww next - what to do next (opens the For you page)
+- 1819: /ww next - what to do next (opens the For you page)
 
 ## UI/Skin.lua
 
@@ -1168,30 +1166,50 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Fanfare.lua
 
-- 71: Levels
-- 72: Quests done
-- 73: Ranks trained
-- 74: Flight paths
-- 75: Money
-- 76: Quests taken
-- 77: XP earned
-- 78: Distance
-- 79: Time
-- 135: Journey complete!
-- 187: New journey available
-- 212: A sound test: clicking it starts nothing
-- 213: Click to add it to your trip, or start it instead
-- 213: Click to start it
-- 263: Sample journey
-- 266: Sample journey
-- 266: Questing zone
-- 267: Westfall
-- 276: TripDone
-- 276: Journey complete
-- 278: NewJourney
-- 278: New journey toast
-- 282: /ww toasts - the 'new journey available' toasts on or off
-- 284: new journey toasts 
+- 73: Levels
+- 74: Quests done
+- 75: Ranks trained
+- 76: Flight paths
+- 77: Money
+- 78: Quests taken
+- 79: XP earned
+- 80: Distance
+- 81: Time
+- 137: Journey complete!
+- 189: New journey available
+- 214: A sound test: clicking it starts nothing
+- 215: Click to add it to your trip, or start it instead
+- 215: Click to start it
+- 235: New journey available
+- 266: Up next
+- 276: Sample journey
+- 279: Sample journey
+- 279: Questing zone
+- 280: Westfall
+- 289: TripDone
+- 289: Journey complete
+- 291: NewJourney
+- 291: New journey toast
+- 295: /ww toasts - the 'new journey available' toasts on or off
+- 297: new journey toasts 
+
+## UI/ChainPicker.lua
+
+- 18: CheckButton
+- 33: Quest 
+- 37: Needs 
+- 37:  first.
+- 59: Follow-up quests
+- 79: Confirm
+- 86: Cancel
+- 101:  to do it
+- 102:  (your average)
+- 103: On the way; 
+- 104: %s more travel + %s
+- 110: Nothing ticked
+- 111: Total: %s for %d quest%s
+- 139: The chain continues with:
+- 147: Quest 
 
 ## UI/Cards.lua
 
@@ -1284,27 +1302,29 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 52: The list of every stop opens by itself when a trip starts. Off: open it from the directions box's book button, or shift-right-click the minimap button on a trip.
 - 55: New journey toasts
 - 56: A short message when For you has something new for you: a questing zone, a dungeon, spells to train, a profession's next rank. Click it to start the journey.
-- 60: Minimap
-- 61: Minimap button
-- 62: The Wayward button on the minimap. Right-click it for these options; /ww minimap brings it back.
-- 92: windows and boxes put back where they started
-- 130: Windows and help
-- 131: Windows and boxes
-- 131: Reset positions
-- 132: Put the Wayward window, the directions box, the journey overview and the banners back where they started.
-- 133: Welcome
-- 133: Show again
-- 135: The short introduction shown on the first login: what Wayward does and how it learns.
-- 136: Slash commands
-- 136: List in chat
-- 137: Every /ww command, printed to the chat window.
-- 148: options: /ww compass, /ww tomtom, /ww toasts, /ww marker and /ww minimap turn those on or off.
-- 160: Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow instead of 
-- 161: Wayward's compass? You can change this, or use both, in the options (/ww options).
-- 162: Use TomTom
-- 162: No thanks
-- 184: /ww options - open Wayward's options
-- 185: /ww reset - put every window and box back where it started
+- 59: Suggest a journey after one is done
+- 60: A few seconds after a journey ends, For you's top suggestion as an \"Up next\" toast. Click it to start the journey.
+- 64: Minimap
+- 65: Minimap button
+- 66: The Wayward button on the minimap. Right-click it for these options; /ww minimap brings it back.
+- 96: windows and boxes put back where they started
+- 134: Windows and help
+- 135: Windows and boxes
+- 135: Reset positions
+- 136: Put the Wayward window, the directions box, the journey overview and the banners back where they started.
+- 137: Welcome
+- 137: Show again
+- 139: The short introduction shown on the first login: what Wayward does and how it learns.
+- 140: Slash commands
+- 140: List in chat
+- 141: Every /ww command, printed to the chat window.
+- 152: options: /ww compass, /ww tomtom, /ww toasts, /ww marker and /ww minimap turn those on or off.
+- 164: Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow instead of 
+- 165: Wayward's compass? You can change this, or use both, in the options (/ww options).
+- 166: Use TomTom
+- 166: No thanks
+- 188: /ww options - open Wayward's options
+- 189: /ww reset - put every window and box back where it started
 
 ## UI/Welcome.lua
 

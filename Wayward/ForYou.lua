@@ -1758,6 +1758,22 @@ function ForYou.CheckNew(results)
   end
 end
 
+-- After a journey (Navigator.lua): For you's top card that is a trip, not
+-- the one just done, as "Up next". Nothing when you've set off on something
+-- else already, are fighting or flying, or For you has nothing to go to.
+function ForYou.SuggestNext(doneTitle)
+  if ns.Nav.active or ns.OnTaxi() or (InCombatLockdown and InCombatLockdown()) then return nil end
+  if not ns.Fanfare then return nil end
+  ForYou.Invalidate()
+  for _, r in ipairs(ForYou.Results() or {}) do
+    if (r.journey or r.route) and r.title ~= doneTitle then
+      ns.Fanfare.UpNext(r)
+      return r
+    end
+  end
+  return nil
+end
+
 -- Looked at in the background when things change: a level, a quest handed
 -- in, a new zone (not in combat: it plans many routes; not on a flight: the
 -- zones passed over aren't where you'll be, so it waits for the landing).

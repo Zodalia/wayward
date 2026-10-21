@@ -303,6 +303,8 @@ function Nav.Interaction()
   return nil
 end
 
+local UP_NEXT_DELAY = 4 -- seconds after a journey's fanfare before "Up next"
+
 local function arrive()
   local a = Nav.active
   ns.print("you have arrived: " .. a.title)
@@ -313,6 +315,11 @@ local function arrive()
       distance = stats.distance, quests = stats.quests, picked = stats.picked, levels = stats.levels,
       money = stats.money, flights = stats.flights, ranks = stats.ranks })
     if not ok then ns.print("couldn't show the trip's fanfare: " .. tostring(err)) end
+  end
+  -- A journey done: what next, once the fanfare has had a moment.
+  if a.journey and ns.ForYou then
+    local title = a.title
+    ns.After(UP_NEXT_DELAY, function() ns.ForYou.SuggestNext(title) end)
   end
   Nav.Stop()
 end

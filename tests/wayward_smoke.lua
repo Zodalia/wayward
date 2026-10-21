@@ -2383,6 +2383,25 @@ do
   check(table.concat(keys, ",") == "xp,quests", "the banner shows what the trip achieved (almost half a level first): " .. table.concat(keys, ","))
   UnitXP, UnitXPMax = nil, nil
 
+  -- A few seconds later: For you's top trip as "Up next" (not the one just done).
+  local savedResults = ns.ForYou.Results
+  local top = { title = "Quest in Elwynn Forest", route = { steps = {}, seconds = 60 } }
+  ns.ForYou.Results = function() return { { title = "Errands", journey = {} }, { title = "No route" }, top } end
+  ns.Fanfare.lastUpNext = nil
+  runTimers()
+  check(ns.Fanfare.lastUpNext == top, "after a journey, the next one is suggested")
+  ns.Fanfare.lastUpNext = nil
+  ns.Nav.Start("Elsewhere", ns.Geo.Node(1433, 0.9, 0.5, "Elsewhere"), { steps = {}, seconds = 1 })
+  ns.ForYou.SuggestNext("Errands")
+  check(ns.Nav.active and ns.Fanfare.lastUpNext == nil, "but not once you're on your way somewhere")
+  ns.Nav.Stop()
+  ns.Fanfare.lastUpNext = nil
+  ns.SetSetting("suggestNext", false)
+  ns.ForYou.SuggestNext("Errands")
+  check(ns.Fanfare.lastUpNext == nil, "and not when turned off in the options")
+  ns.SetSetting("suggestNext", true)
+  ns.ForYou.Results = savedResults
+
   -- The banner picks 2 to 4 stats, the biggest achievements first.
   local function shown(stats)
     local out = {}
