@@ -769,7 +769,7 @@ function Nav.AddToTrip(stops, label)
   adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
   ns.print(string.format("added %s to your trip: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
-  ns.Fire("JOURNEY_STARTED")
+  ns.Fire("JOURNEY_EXTENDED")
   -- One sound: the follow-up question's, when it asks one.
   if not offerFollowUps(stops) then ns.Sounds.Play("step") end
   return true

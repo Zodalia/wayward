@@ -564,4 +564,7 @@ ns.Listen("JOURNEY_STARTED", function()
     Overview.Refresh()
   end
 end)
+-- Stops added to the trip: shown if it's open, without opening it (the
+-- directions box's book button flashes instead).
+ns.Listen("JOURNEY_EXTENDED", Overview.Refresh)
 ns.Listen("NAV_CHANGED", Overview.Refresh)

@@ -1112,31 +1112,31 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/HUD.lua
 
-- 138: Stop directions
-- 141: Recalculate from here
-- 144: See full journey
-- 147: Move to the next step and do this later
-- 151: Skip this step
-- 160: StatusBar
-- 277: %s  \|cff9d9d9d%d of %d done\|r
-- 284: Step %d of %d to get there
-- 284: Step %d of %d
-- 298: \|cffffd100Camp looks cleared\|r  ·  
-- 301: \|cff7fd1aeIn the area\|r  ·  
-- 302:  left here
-- 307: \|cff9d9d9dRespawns in 
-- 308: \|cff9d9d9dNext spot\|r  ·  
-- 311: Pick %s on the flight map     %s
-- 311: your destination
-- 313: Use your Hearthstone     %s
-- 315: \|cff7fd1aeYou're here:\|r use %s     %s
-- 319: \|cff7fd1aeYou're here:\|r talk to %s%s     %s
-- 320:  and train it
-- 324: \|cff7fd1aeYou're here:\|r do it, then move on (>>)
-- 324: \|cff7fd1aeYou're here\|r
-- 327: %s %d yd     %s
-- 367: Directions
-- 367: Directions
+- 140: Stop directions
+- 143: Recalculate from here
+- 146: See full journey
+- 156: Move to the next step and do this later
+- 160: Skip this step
+- 169: StatusBar
+- 295: %s  \|cff9d9d9d%d of %d done\|r
+- 302: Step %d of %d to get there
+- 302: Step %d of %d
+- 316: \|cffffd100Camp looks cleared\|r  ·  
+- 319: \|cff7fd1aeIn the area\|r  ·  
+- 320:  left here
+- 325: \|cff9d9d9dRespawns in 
+- 326: \|cff9d9d9dNext spot\|r  ·  
+- 329: Pick %s on the flight map     %s
+- 329: your destination
+- 331: Use your Hearthstone     %s
+- 333: \|cff7fd1aeYou're here:\|r use %s     %s
+- 337: \|cff7fd1aeYou're here:\|r talk to %s%s     %s
+- 338:  and train it
+- 342: \|cff7fd1aeYou're here:\|r do it, then move on (>>)
+- 342: \|cff7fd1aeYou're here\|r
+- 345: %s %d yd     %s
+- 385: Directions
+- 385: Directions
 
 ## UI/TargetButton.lua
 

@@ -4024,7 +4024,16 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
   ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
   check(labels() == "Shore camp,Bank", "an added stop goes where it fits best, here first: " .. labels())
-  check(ns.Nav.active.title == "Your trip" and ns.JourneyOverview.IsShown(), "the trip is renamed and the overview shows it")
+  check(ns.Nav.active.title == "Your trip", "the trip is renamed: " .. ns.Nav.active.title)
+  check(not ns.JourneyOverview.IsShown() and ns.HUD.Flashing(),
+    "adding to a trip doesn't open the overview; the book button flashes instead")
+  local hud = ns.HUD.Frame()
+  for _ = 1, 30 do hud.scripts.OnUpdate(hud, 0.1) end
+  check(not ns.HUD.Flashing(), "and stops after a few pulses")
+  ns.JourneyOverview.Show()
+  ns.Nav.AddToTrip({ stopAt(1439, 0.6, 0.5, "Dock") }, "Dock")
+  check(ns.JourneyOverview.IsShown() and not ns.HUD.Flashing() and #ns.JourneyOverview.Rows() == 3,
+    "with the overview open it shows the new stop, no flash")
   ns.Nav.Stop()
 
   -- Starting something while a trip is on asks: add, replace or cancel.
