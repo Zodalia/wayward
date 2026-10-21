@@ -13,35 +13,35 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 97: Season of Discovery
 - 97: Hardcore
 - 97: Classic Era
-- 309: %dg %ds
-- 310: %ds %dc
-- 316: <1 min
-- 319: ~%d h %d min
-- 358: /ww - open or close the Wayward panel
-- 359: /ww help - this list
-- 360: /ww stop - stop the current directions
-- 361: /ww compass - the compass in the directions box on or off (text directions stay)
-- 362: /ww tomtom - TomTom's arrow on or off for Wayward's directions (when TomTom is installed)
-- 363: /ww where - print your map ID and coordinates (to report data fixes)
-- 364: /ww dock [boat\|zeppelin\|portal] - record a transport: once where you board, once where you get off
-- 365: /ww dock list - copy recorded transports
-- 366: /ww debug - version, data sources and scan times (/ww debug cards: the For you cards; /ww debug quest <id\|name>: a quest's chain data and why it's notable)
-- 369: /wayward
-- 370: /ww
-- 371: /wf
-- 383: TomTom arrow 
-- 383: on (when TomTom is installed)
-- 392: mapID=%d (%s) x=%.4f y=%.4f
-- 394: no map position here
-- 408: no quest called 
-- 416: data sources: 
-- 416: none (install 
-- 416:  for quests, items and more NPCs)
-- 422: learned NPCs: %d, known flight paths: %d
-- 424: %s scan: %.0f ms
-- 426: forYou parts (ms): 
-- 428: events this client doesn't have: 
-- 430: no command called 
+- 315: %dg %ds
+- 316: %ds %dc
+- 322: <1 min
+- 325: ~%d h %d min
+- 364: /ww - open or close the Wayward panel
+- 365: /ww help - this list
+- 366: /ww stop - stop the current directions
+- 367: /ww compass - the compass in the directions box on or off (text directions stay)
+- 368: /ww tomtom - TomTom's arrow on or off for Wayward's directions (when TomTom is installed)
+- 369: /ww where - print your map ID and coordinates (to report data fixes)
+- 370: /ww dock [boat\|zeppelin\|portal] - record a transport: once where you board, once where you get off
+- 371: /ww dock list - copy recorded transports
+- 372: /ww debug - version, data sources and scan times (/ww debug cards: the For you cards; /ww debug quest <id\|name>: a quest's chain data and why it's notable)
+- 375: /wayward
+- 376: /ww
+- 377: /wf
+- 389: TomTom arrow 
+- 389: on (when TomTom is installed)
+- 398: mapID=%d (%s) x=%.4f y=%.4f
+- 400: no map position here
+- 414: no quest called 
+- 422: data sources: 
+- 422: none (install 
+- 422:  for quests, items and more NPCs)
+- 428: learned NPCs: %d, known flight paths: %d
+- 430: %s scan: %.0f ms
+- 432: forYou parts (ms): 
+- 434: events this client doesn't have: 
+- 436: no command called 
 
 ## Sounds.lua
 
@@ -622,42 +622,42 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 559: Not now
 - 566: You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?
 - 569: You picked up %s.%s\n\nStart a trip for it (%s)?
-- 610: %s isn't offered yet (it needs earlier quests): dropped from the trip.
-- 611: that quest
-- 715: no stops left.
-- 727: can't move that stop there: it comes after another stop.
-- 740: Your trip
-- 749: no route to 
-- 749:  from here.
-- 757:  is already in your trip.
-- 764: no route for the trip from here.
-- 769: added %s to your trip: %d stops, %s
-- 934:  continues with:
-- 973: resuming journey: 
-- 973:  (/ww stop to end it)
-- 985: resuming directions to 
-- 985:  (/ww stop to end them)
-- 1047: re-routed from here (
-- 1057: you moved a long way
-- 1060: you're on another continent
-- 1064: you went another way
-- 1127: that spot's cleared: on to another for %s.
-- 1129: that spot's cleared: other stops first while it respawns (%s).
-- 1132: that spot's cleared: back when it respawns (%s).
-- 1178: you're doing %s here: it's next on the trip now.
-- 1221: you abandoned %s: nothing left on the trip, so it's cancelled.
-- 1224: you abandoned %s: dropped from your trip.
-- 1272: nothing else on the trip to do first; skip it to take it off.
-- 1277: later: %s, after %s.
-- 1277: that stop
-- 1277: the next stop
-- 1292: Skip
-- 1292: Cancel
-- 1296: Skip \"%s\"?\n\nIt's taken off the trip%s.
-- 1296: this stop
-- 1297: , with \"%s\", which needs it
-- 1297: a stop
-- 1298: , with the %d stops that need it
+- 611: %s isn't offered yet (it needs earlier quests): dropped from the trip.
+- 612: that quest
+- 716: no stops left.
+- 728: can't move that stop there: it comes after another stop.
+- 741: Your trip
+- 750: no route to 
+- 750:  from here.
+- 758:  is already in your trip.
+- 765: no route for the trip from here.
+- 770: added %s to your trip: %d stops, %s
+- 935:  continues with:
+- 974: resuming journey: 
+- 974:  (/ww stop to end it)
+- 986: resuming directions to 
+- 986:  (/ww stop to end them)
+- 1048: re-routed from here (
+- 1058: you moved a long way
+- 1061: you're on another continent
+- 1065: you went another way
+- 1128: that spot's cleared: on to another for %s.
+- 1130: that spot's cleared: other stops first while it respawns (%s).
+- 1133: that spot's cleared: back when it respawns (%s).
+- 1179: you're doing %s here: it's next on the trip now.
+- 1222: you abandoned %s: nothing left on the trip, so it's cancelled.
+- 1225: you abandoned %s: dropped from your trip.
+- 1273: nothing else on the trip to do first; skip it to take it off.
+- 1278: later: %s, after %s.
+- 1278: that stop
+- 1278: the next stop
+- 1293: Skip
+- 1293: Cancel
+- 1297: Skip \"%s\"?\n\nIt's taken off the trip%s.
+- 1297: this stop
+- 1298: , with \"%s\", which needs it
+- 1298: a stop
+- 1299: , with the %d stops that need it
 
 ## OnTheWay.lua
 

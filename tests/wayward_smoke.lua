@@ -214,6 +214,9 @@ for line in io.lines(dir .. "/Wayward.toc") do
 end
 
 local function fire(event, ...)
+  -- Classic Era's QUEST_ACCEPTED has the quest log index first.
+  if ERA and event == "QUEST_ACCEPTED" then return fire("QUEST_ACCEPTED_ERA", 1, ...) end
+  if event == "QUEST_ACCEPTED_ERA" then event = "QUEST_ACCEPTED" end
   for _, f in ipairs(events[event] or {}) do f.scripts.OnEvent(f, event, ...) end
 end
 local function runTimers() local t = timers; timers = {}; for _, fn in ipairs(t) do fn() end end

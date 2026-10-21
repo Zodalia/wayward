@@ -65,7 +65,8 @@ ns.On("PLAYER_ENTERING_WORLD", function(isLogin)
   s.accepted, s.last = {}, nil
 end)
 
-ns.On("QUEST_ACCEPTED", function(questID)
+ns.On("QUEST_ACCEPTED", function(...)
+  local questID = ns.QuestLog.AcceptedID(...)
   if ns.charDB and questID then state().accepted[questID] = time() end
 end)
 

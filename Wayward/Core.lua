@@ -111,6 +111,12 @@ end
 local QuestLog = {}
 ns.QuestLog = QuestLog
 
+-- QUEST_ACCEPTED's quest ID: Classic Era sends (questLogIndex, questID),
+-- Forever only (questID).
+function QuestLog.AcceptedID(first, second)
+  return second or first
+end
+
 function QuestLog.NumEntries()
   local fn = C_QuestLog and C_QuestLog.GetNumQuestLogEntries or GetNumQuestLogEntries
   return fn and fn() or 0
