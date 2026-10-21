@@ -1178,22 +1178,22 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 80: Distance
 - 81: Time
 - 137: Journey complete!
-- 189: New journey available
-- 214: A sound test: clicking it starts nothing
-- 215: Click to add it to your trip, or start it instead
-- 215: Click to start it
-- 235: New journey available
-- 266: Up next
-- 276: Sample journey
-- 279: Sample journey
-- 279: Questing zone
-- 280: Westfall
-- 289: TripDone
-- 289: Journey complete
-- 291: NewJourney
-- 291: New journey toast
-- 295: /ww toasts - the 'new journey available' toasts on or off
-- 297: new journey toasts 
+- 192: New journey available
+- 217: A sound test: clicking it starts nothing
+- 218: Click to add it to your trip, or start it instead
+- 218: Click to start it
+- 238: New journey available
+- 280: Up next
+- 290: Sample journey
+- 293: Sample journey
+- 293: Questing zone
+- 294: Westfall
+- 303: TripDone
+- 303: Journey complete
+- 305: NewJourney
+- 305: New journey toast
+- 309: /ww toasts - the 'new journey available' toasts on or off
+- 311: new journey toasts 
 
 ## UI/ChainPicker.lua
 
@@ -1230,6 +1230,30 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 549: small 1
 - 549: small 2
 - 553: %s: shown=%s visible=%s result=%s title=%q font=%s size=%s colour=%.2f,%.2f,%.2f,%.2f width=%s
+
+## UI/Profile.lua
+
+- 24: Flight paths
+- 27: Open any flight master's map in %s, so routes can fly.
+- 28: Open any flight master's map, so routes can fly.
+- 35: Class trainer
+- 36: Talk to your class trainer once, so Wayward knows the spells you can learn.
+- 38: Hearthstone
+- 39: Set your Hearthstone at an inn (or use it once), so trips can use it.
+- 41: Quest data
+- 42: Install 
+- 42:  for quests, items and every trainer.
+- 43: Quest
+- 80: Your Wayward profile: %d%%
+- 81: The more Wayward knows, the better its suggestions and routes.
+- 84: :0\|t 
+- 112: StatusBar
+- 159: Next: 
+- 161: Profile complete!
+- 168: /ww profile - what Wayward knows about you so far, and what's left
+- 170: profile: %d%%
+- 172:   done: 
+- 172:   to do: 
 
 ## UI/Panel.lua
 
@@ -1271,8 +1295,8 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 471: Options
 - 475: Wayward's settings. Also: right-click the minimap button, or /ww options.
 - 492: CheckButton
-- 628: %d-%d of %d
-- 665: Search
+- 630: %d-%d of %d
+- 668: Search
 
 ## UI/MinimapButton.lua
 

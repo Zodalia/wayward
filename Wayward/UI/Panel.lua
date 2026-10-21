@@ -555,6 +555,8 @@ local function create()
 
   f.cards = ns.Cards.Create(f)
   f.cards:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -12)
+  -- Under the large card, beside the page arrows: how complete your profile is.
+  f.profile = ns.Profile.CreateStrip(f, f.cards.large, width - 36)
   f:EnableMouseWheel(true)
   f:SetScript("OnMouseWheel", function(_, delta) ns.Cards.Step(delta) end)
 
@@ -655,6 +657,7 @@ local function refreshMain()
     end
   end
   ns.Cards.Show(results, err or (#results == 0 and mainPage.EmptyText("")) or "", fresh)
+  ns.Profile.Update()
   return net
 end
 

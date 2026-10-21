@@ -57,6 +57,7 @@ UI\Fanfare.lua
 UI\ChainPicker.lua
 UI\RouteMap.lua
 UI\Cards.lua
+UI\Profile.lua
 UI\Panel.lua
 UI\MinimapButton.lua
 UI\Options.lua

@@ -447,6 +447,37 @@ io.write("panel\n")
 ns.Panel.Toggle()
 check(ns.Panel.IsShown(), "first /ww opens the panel")
 
+do
+  io.write("profile\n")
+  local P, strip = ns.Profile, ns.Profile.Strip()
+  local saved = { ns.Hearth.Node, ns.Data.Has, ns.charDB.classSpells, ns.charDB.knownTaxi, ns.Harvest.FlightsKnownOn }
+  ns.charDB.profileComplete = nil
+  ns.Hearth.Node = function() return nil end
+  ns.Data.Has = function() return false end
+  ns.charDB.classSpells = { updated = 0, level = 1, services = {} }
+  ns.charDB.knownTaxi = { [5] = true }
+  ns.Harvest.FlightsKnownOn = function() return true end
+  P.Update()
+  local state = P.State()
+  check(state.percent == 50 and state.next.key == "hearth" and strip:IsShown() and strip.percent:GetText() == "50%"
+    and not strip.tick:IsShown() and strip.nextText:GetText() == "Next: Hearthstone",
+    "the profile shows how far along you are and what's next: " .. tostring(strip.percent:GetText()))
+  ns.Hearth.Node = function() return {} end
+  ns.Data.Has = function() return true end
+  P.Update()
+  check(strip:IsShown() and strip.tick:IsShown() and strip.percent:GetText() == "100%" and ns.charDB.profileComplete,
+    "at 100% it gets a tick, for the rest of the session")
+  P.session = "a later session"
+  P.Update()
+  check(not strip:IsShown(), "and is gone from the next session on")
+  ns.Hearth.Node = function() return nil end
+  P.Update()
+  check(not strip:IsShown(), "even if something is missing again")
+  ns.Hearth.Node, ns.Data.Has, ns.charDB.classSpells, ns.charDB.knownTaxi, ns.Harvest.FlightsKnownOn = saved[1],
+    saved[2], saved[3], saved[4], saved[5]
+  ns.charDB.profileComplete = nil
+end
+
 io.write("without data sources\n")
 local noHubs, noHubsErr = ns.QuestHubs.Results()
 check(#noHubs == 0 and noHubsErr and noHubsErr:find("No quest data"), "quest hubs explain that quest data is needed")
