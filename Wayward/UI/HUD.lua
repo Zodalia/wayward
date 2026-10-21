@@ -28,6 +28,7 @@ local STOP_ICONS = {
 }
 local MODE_ICONS = {
   fly = "Interface\\Icons\\Ability_Hunter_EagleEye",
+  hearth = "Interface\\Icons\\INV_Misc_Rune_01",
   transport = "Interface\\Icons\\INV_Misc_Map_01",
   walk = "Interface\\Icons\\Ability_Rogue_Sprint",
 }
@@ -308,6 +309,8 @@ function HUD.Update()
     frame.info:SetText(lead .. objective .. "     " .. remaining)
   elseif ns.Nav.Interaction() == "fly" then
     frame.info:SetText(string.format("Pick %s on the flight map     %s", step.to.label or "your destination", remaining))
+  elseif ns.Nav.Interaction() == "hearth" then
+    frame.info:SetText(string.format("Use your Hearthstone     %s", remaining))
   elseif ns.Nav.Interaction() == "use" then
     frame.info:SetText(string.format("|cff7fd1aeYou're here:|r use %s     %s", (ns.Nav.TargetObject()), remaining))
   elseif ns.Nav.Interaction() == "talk" and not (step.stop and step.stop.action and step.stop.action.kind == "manual") then

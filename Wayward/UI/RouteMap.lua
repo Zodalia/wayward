@@ -15,7 +15,8 @@ local AZEROTH = 947
 local WIDTH = 280
 local ZOOM_MARGIN = 1.5  -- the shown area is this much bigger than the route
 local MIN_VIEW = 0.12    -- the closest zoom: this share of the map's width
-local LINE_COLOR = { walk = { 1, 1, 1, 0.9 }, fly = { 0.45, 0.8, 1, 1 }, transport = { 0.25, 0.5, 1, 1 } }
+local LINE_COLOR = { walk = { 1, 1, 1, 0.9 }, fly = { 0.45, 0.8, 1, 1 }, transport = { 0.25, 0.5, 1, 1 },
+  hearth = { 0.75, 0.5, 1, 0.6 } }
 local MARK_COLOR = { start = { 0.3, 1, 0.3 }, stop = { 1, 0.82, 0 }, goal = { 1, 0.3, 0.2 } }
 
 local frame -- the tooltip's map

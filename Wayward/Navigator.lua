@@ -10,7 +10,7 @@ local unpack = unpack or table.unpack
 ns.Nav = Nav
 
 -- Yards from a step's destination that count as "reached".
-local RADIUS = { walk = 20, fly = 120, transport = 150 }
+local RADIUS = { walk = 20, fly = 120, transport = 150, hearth = 150 }
 local GOAL_RADIUS = 10
 
 -- With TomTom installed and its arrow turned on (asked once, see
@@ -290,13 +290,14 @@ function Nav.TargetObject()
   return stop.giver or stop.npc or stop.node.label, stop.node
 end
 
--- What you do where you are now ("talk", "use", "fly", or nil), for the directions box.
+-- What you do where you are now ("talk", "use", "fly", "hearth", or nil), for the directions box.
 function Nav.Interaction()
   local a = Nav.active
   if not a then return nil end
   if flightTalk(a.route.steps, a.index) then return a.waiting and "talk" or nil end
   local step = a.route.steps[a.index]
   if step and step.mode == "fly" and not onTaxi() then return "fly" end
+  if step and step.mode == "hearth" then return "hearth" end
   if a.waiting and Nav.TargetObject() then return "use" end
   if a.waiting and Nav.TargetNPC() then return "talk" end
   return nil

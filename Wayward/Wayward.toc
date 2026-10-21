@@ -27,6 +27,7 @@ Sources\QuestieLive.lua
 Sources\Spells.lua
 Harvest.lua
 Network.lua
+Hearth.lua
 Router.lua
 Places.lua
 Quests.lua

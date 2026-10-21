@@ -441,6 +441,64 @@ local function manualOrder(start, stops, net)
   return order
 end
 
+---------------------------------------------------------------- hearthstone
+
+-- Your Hearthstone (Hearth.lua) can stand in for a leg: hearth, then travel
+-- on from the inn. It has an hour's cooldown, so a journey uses it once, on
+-- the leg where it saves the most, any cooldown left by then counted as a
+-- wait. That leg's route becomes the hearth and the rest. Returns
+--   { stop, label, saves }                    used before `stop`, or
+--   { stop, label, saves, readyIn, cooldown = true }  it would save `saves`
+--     if it were ready, but it's `readyIn` seconds away, or
+--   nil (no Hearthstone, or it doesn't help).
+-- Stop order is found without it.
+local HEARTH_MIN_SAVING = 60
+
+local function viaHearth(net, node, goal)
+  -- Kept on the network (rebuilt when what it's made of changes), per inn and goal.
+  local cache = net.fromHearth
+  if not cache or cache.key ~= node.wx .. ":" .. node.wy then
+    cache = { key = node.wx .. ":" .. node.wy, routes = setmetatable({}, { __mode = "k" }) }
+    net.fromHearth = cache
+  end
+  if cache.routes[goal] == nil then cache.routes[goal] = ns.Router.Plan(node, goal, net) or false end
+  return cache.routes[goal] or nil
+end
+
+local function hearthLeg(legs, net)
+  local hearth = ns.Hearth and ns.Hearth.Get()
+  if not hearth then return nil end
+  local cast = ns.Hearth.CAST
+  local best, blocked
+  for _, leg in ipairs(legs) do
+    if leg.route.seconds >= cast + HEARTH_MIN_SAVING then
+      local via = viaHearth(net, hearth.node, leg.stop.node)
+      local saves = via and leg.route.seconds - (cast + via.seconds) or 0
+      local wait = math.max(0, hearth.readyIn - leg.at)
+      if saves - wait >= HEARTH_MIN_SAVING then
+        if not best or saves - wait > best.saves then best = { leg = leg, via = via, saves = saves - wait, wait = wait } end
+      elseif saves >= HEARTH_MIN_SAVING and (not blocked or saves > blocked.saves) then
+        blocked = { stop = leg.stop, label = hearth.node.label, saves = saves, readyIn = wait, cooldown = true }
+      end
+    end
+  end
+  if not best then return blocked end
+  local leg = best.leg
+  local steps = { { mode = "hearth", from = leg.from, to = hearth.node, seconds = cast + best.wait } }
+  -- Copies: the cached route is shared, and the plan marks its last step.
+  for _, step in ipairs(best.via.steps) do
+    local copy = {}
+    for k, v in pairs(step) do copy[k] = v end
+    steps[#steps + 1] = copy
+  end
+  if #best.via.steps == 0 then
+    -- The inn is the stop: a step to carry its action.
+    steps[#steps + 1] = { mode = "walk", from = hearth.node, to = leg.stop.node, seconds = 0 }
+  end
+  leg.route = { steps = steps, seconds = cast + best.wait + best.via.seconds }
+  return { stop = leg.stop, label = hearth.node.label, saves = best.saves }
+end
+
 ---------------------------------------------------------------- planning
 
 -- Plans a journey from `start`. Returns
@@ -496,26 +554,33 @@ function Journey.Plan(start, def, net)
 
   local journey = { title = def.title, def = def, root = root, stops = {}, skipped = {}, steps = {},
     seconds = 0 }
-  local from = start
+  local legs, from, clock = {}, start, 0
   for _, stop in ipairs(ordered) do
     local route = stop.node and ns.Router.Plan(from, stop.node, net)
     if route then
-      local steps = route.steps
-      if #steps == 0 then
-        -- Already standing at the stop: keep a step so its action still shows.
-        steps = { { mode = "walk", from = from, to = stop.node, seconds = 0 } }
-      end
-      for i, step in ipairs(steps) do
-        if i == #steps then step.stop = stop end
-        journey.steps[#journey.steps + 1] = step
-      end
-      -- Getting to a camp before it respawns means waiting there.
-      journey.seconds = math.max(journey.seconds + route.seconds, Journey.RespawnIn(stop))
-      journey.stops[#journey.stops + 1] = stop
+      legs[#legs + 1] = { from = from, stop = stop, route = route, at = clock }
+      clock = math.max(clock + route.seconds, Journey.RespawnIn(stop))
       from = stop.node
     else
       journey.skipped[#journey.skipped + 1] = stop
     end
+  end
+  journey.hearth = hearthLeg(legs, net)
+
+  for _, leg in ipairs(legs) do
+    local stop, route = leg.stop, leg.route
+    local steps = route.steps
+    if #steps == 0 then
+      -- Already standing at the stop: keep a step so its action still shows.
+      steps = { { mode = "walk", from = leg.from, to = stop.node, seconds = 0 } }
+    end
+    for i, step in ipairs(steps) do
+      if i == #steps then step.stop = stop end
+      journey.steps[#journey.steps + 1] = step
+    end
+    -- Getting to a camp before it respawns means waiting there.
+    journey.seconds = math.max(journey.seconds + route.seconds, Journey.RespawnIn(stop))
+    journey.stops[#journey.stops + 1] = stop
   end
   if #journey.stops == 0 then return nil end
   return journey

@@ -218,6 +218,7 @@ function Router.Describe(route, index, travelOnly)
   -- A journey stop says what to do there ("Pick up ... from ...").
   if step.stop and step.stop.text and not travelOnly then return step.stop.text end
   if step.mode == "fly" then return "Fly to " .. step.to.label end
+  if step.mode == "hearth" then return "Hearth to " .. step.to.label end
   if step.mode == "transport" then
     return string.format(TRANSPORT_VERB[step.kind] or "Travel to %s", step.to.label)
   end
@@ -241,6 +242,8 @@ function Router.Summary(route)
       parts[#parts + 1] = "fly to " .. (step.to.label:match("^([^,]+)") or step.to.label)
     elseif step.mode == "transport" then
       parts[#parts + 1] = step.kind .. " to " .. step.to.label
+    elseif step.mode == "hearth" then
+      parts[#parts + 1] = "hearth to " .. step.to.label
     end
   end
   return #parts > 0 and table.concat(parts, ", ") or "on foot"
