@@ -86,21 +86,37 @@ local function itemInstant(itemID)
   return classID, subClassID, equipLoc
 end
 
--- quest -> items: a source's own index when it has one (cheap), else every
--- item record's questRewards (a pass over all items, once).
-local function buildRewards()
+-- quest -> items: a source's own index when it has one (cheap, but in one
+-- go), else every item record's questRewards (a pass over all items, once).
+-- `sliced` (Quests.Warm): item by item, so it can stop between frames.
+local rewardGeneration = 0
+
+local function addRewards(index, itemID, quests)
+  for _, questID in ipairs(type(quests) == "table" and quests or {}) do
+    index[questID] = index[questID] or {}
+    table.insert(index[questID], itemID)
+  end
+end
+
+local function buildRewards(sliced)
   local started = debugprofilestop and debugprofilestop() or 0
-  rewardIndex = Data.QuestRewards()
-  if not rewardIndex then
-    rewardIndex = {}
+  local built = rewardGeneration
+  local index = not (sliced and Data.Has("ItemQuestRewards")) and Data.QuestRewards() or nil
+  if not index then
+    index = {}
+    local perItem = Data.Has("ItemQuestRewards")
     for _, itemID in ipairs(Data.ItemIDs()) do
-      local item = Data.Item(itemID)
-      for _, questID in ipairs(item and type(item.questRewards) == "table" and item.questRewards or {}) do
-        rewardIndex[questID] = rewardIndex[questID] or {}
-        table.insert(rewardIndex[questID], itemID)
+      ns.WarmStep()
+      if perItem then
+        addRewards(index, itemID, Data.ItemQuestRewards(itemID))
+      else
+        local item = Data.Item(itemID)
+        addRewards(index, itemID, item and item.questRewards)
       end
     end
   end
+  if rewardIndex or built ~= rewardGeneration then return end
+  rewardIndex = index
   ns.debugTimings = ns.debugTimings or {}
   ns.debugTimings.questRewards = (debugprofilestop and debugprofilestop() or 0) - started
 end
@@ -458,5 +474,9 @@ end
 -- Item info arrives for every item the client loads: only one we asked about matters.
 ns.On("GET_ITEM_INFO_RECEIVED", function(itemID) if requested[itemID] then notableCache = {} end end)
 ns.Listen("SOURCES_CHANGED", function()
+  rewardGeneration = rewardGeneration + 1
   rewardIndex, rewardCache, oldNames, notableCache = nil, {}, nil, {}
+end)
+Quests.AddWarmer("rewards", function()
+  if not rewardIndex and (Data.Has("ItemIDs") or Data.Has("QuestRewards")) then buildRewards(true) end
 end)

@@ -49,6 +49,60 @@ function ns.Fire(message, ...)
   end
 end
 
+---------------------------------------------------------------- warm-up
+
+-- Indexes over all the quest or item data take longer than Classic Era lets
+-- one script run (the game stops it, "script ran too long", and a window being
+-- drawn is left blank), so they're built a slice per frame. ns.Warm(fn) queues
+-- a build and runs its first slice at once; inside it, ns.WarmStep() hands the
+-- rest of the frame back once the slice is used. A build run directly, not by
+-- ns.Warm, never stops. Lua can't pause inside a pcall: WarmStep only in
+-- Wayward's own loops, never inside a data source's function.
+-- DATA_CHANGED once the queue is empty.
+local WARM_SLICE_MS = 8
+local warmQueue, warmCo, warmFrame, sliceStart = {}, nil, nil, 0
+
+local function clock() return debugprofilestop and debugprofilestop() or 0 end
+
+function ns.WarmStep()
+  if warmCo and coroutine.running() == warmCo and clock() - sliceStart > WARM_SLICE_MS then
+    coroutine.yield()
+  end
+end
+
+-- The frame that runs the slices (for tests).
+function ns.WarmFrame() return warmFrame end
+
+-- True while a build is queued or running.
+function ns.Warming()
+  return warmCo ~= nil or #warmQueue > 0
+end
+
+local function warmTick()
+  if not warmCo then
+    local fn = table.remove(warmQueue, 1)
+    if not fn then return end
+    warmCo = coroutine.create(fn)
+  end
+  sliceStart = clock()
+  local ok, err = coroutine.resume(warmCo)
+  if ok and coroutine.status(warmCo) ~= "dead" then return end
+  warmCo = nil
+  if not ok then geterrorhandler()(err) end
+  if #warmQueue == 0 then
+    warmFrame:SetScript("OnUpdate", nil)
+    ns.Fire("DATA_CHANGED")
+  end
+end
+
+function ns.Warm(fn)
+  warmQueue[#warmQueue + 1] = fn
+  warmFrame = warmFrame or CreateFrame("Frame")
+  warmFrame:SetScript("OnUpdate", warmTick)
+  -- The first slice now, unless one is under way (or this is inside it).
+  if not warmCo then warmTick() end
+end
+
 -- C_Timer.After, with the callback's error reported instead of lost (a
 -- timer callback isn't inside any pcall'd handler).
 function ns.After(delay, fn)

@@ -72,6 +72,8 @@ local RACE_HOME = { [1] = 1429, [2] = 1411, [3] = 1426, [4] = 1438, [5] = 1420, 
 local STARTING_ZONES = {}
 for _, mapID in pairs(RACE_HOME) do STARTING_ZONES[mapID] = true end
 
+local WAITING = "Getting the quest data ready..."
+
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
 local NOTABLE = { r = 0.77, g = 0.55, b = 1 }
@@ -1666,6 +1668,11 @@ end
 function ForYou.Results()
   local now = GetTime and GetTime()
   if cache and now and now - cache.at < CACHE_SECONDS then return cache.results, cache.err, cache.net end
+  -- Quest data still being indexed: wait (DATA_CHANGED when it's ready).
+  if ns.Quests.Warm() then
+    summary = WAITING
+    return {}, WAITING
+  end
   local started = debugprofilestop and debugprofilestop()
   local results, err, net = build()
   for _, r in ipairs(results or {}) do r.icon, r.iconCoords = iconFor(r) end

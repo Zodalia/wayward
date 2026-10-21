@@ -1870,6 +1870,30 @@ do
 end
 
 ---------------------------------------------------------------- for you (end)
+---------------------------------------------------------------- warm-up (begin)
+do
+  io.write("warm-up\n")
+  -- Every clock read 5 ms on: a slice is a couple of reads, as if the data were huge.
+  local realClock, t = debugprofilestop, 0
+  debugprofilestop = function() t = t + 5 return t end
+  ns.Fire("SOURCES_CHANGED")
+  ns.ForYou.Invalidate()
+  local list, err = ns.ForYou.Results()
+  check(#list == 0 and err == "Getting the quest data ready..." and ns.Warming(),
+    "after the sources change, For you waits while the quest data is indexed: " .. tostring(err))
+  check(ns.ForYou.SummaryText() == "Getting the quest data ready...", "and says so")
+  local frame, ticks = ns.WarmFrame(), 0
+  while ns.Warming() and ticks < 10000 do
+    frame.scripts.OnUpdate(frame, 0.016)
+    ticks = ticks + 1
+  end
+  check(not ns.Warming() and ticks > 3, "the index is built a slice per frame (" .. ticks .. " frames)")
+  debugprofilestop = realClock
+  ns.ForYou.Invalidate()
+  list = ns.ForYou.Results()
+  check(#list > 0 and ns.Quests.Quest(1) ~= nil, "then For you has its cards (" .. #list .. ")")
+end
+---------------------------------------------------------------- warm-up (end)
 ---------------------------------------------------------------- professions (begin)
 do
   io.write("professions\n")
