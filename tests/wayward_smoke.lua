@@ -2424,7 +2424,11 @@ do
   ns.ForYou.Results = function() return { { title = "Errands", journey = {} }, { title = "No route" }, top } end
   ns.Fanfare.lastUpNext = nil
   runTimers()
-  check(ns.Fanfare.lastUpNext == top, "after a journey, the next one is suggested")
+  check(ns.Fanfare.lastUpNext == nil and ns.Fanfare.TripFrame():IsShown(),
+    "after a journey, the next one waits while the banner is up")
+  ns.Fanfare.TripFrame():Hide()
+  runTimers()
+  check(ns.Fanfare.lastUpNext == top, "and is suggested once it's gone")
   ns.Fanfare.lastUpNext = nil
   ns.Nav.Start("Elsewhere", ns.Geo.Node(1433, 0.9, 0.5, "Elsewhere"), { steps = {}, seconds = 1 })
   ns.ForYou.SuggestNext("Errands")

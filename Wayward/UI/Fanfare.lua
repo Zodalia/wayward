@@ -158,6 +158,9 @@ local function showTrip(stats, sound)
   ns.Sounds.Play("complete", sound)
 end
 
+-- The banner frame, or nil before the first (for tests).
+function Fanfare.TripFrame() return trip end
+
 -- stats: { title, xp, seconds, distance (yards), quests (handed in), picked,
 -- levels, money (copper), flights, ranks }
 function Fanfare.TripDone(stats)
@@ -260,9 +263,20 @@ function Fanfare.NewJourney(r)
 end
 
 -- Shows "Up next" for `r` (For you's top card after a journey), ahead of any
--- "New journey available" still waiting.
+-- "New journey available" still waiting. Never over the "Journey complete!"
+-- banner: it waits until the banner is gone, and a moment more.
+local UP_NEXT_GAP = 1
+
 function Fanfare.UpNext(r)
   if ns.db.settings.suggestNext == false then return end
+  if trip and trip:IsShown() then
+    Fanfare.waitingUpNext = r
+    return ns.After(UP_NEXT_GAP, function()
+      -- Not if you've set off on something else meanwhile.
+      if Fanfare.waitingUpNext == r and not ns.Nav.active then Fanfare.UpNext(r) end
+    end)
+  end
+  Fanfare.waitingUpNext = nil
   table.insert(queue, 1, { result = r, heading = "Up next" })
   Fanfare.lastUpNext = r
   if not (toast and toast:IsShown()) then showNext() end
