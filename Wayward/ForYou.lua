@@ -30,6 +30,7 @@ local _, ns = ...
 -- 3 quests in Lakeshire") or ride along with the quest hub where you hand them
 -- in; unfinished ones close together are one whole-quest trip ("Finish 2
 -- quests near Lakeshire"); a dungeon's quests in your log count toward it.
+-- A card whose trip has a quest your trip on now already has isn't shown.
 
 -- Shown as Adventure Guide style cards (UI/Cards.lua) on a wider panel.
 local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
@@ -1558,10 +1559,11 @@ local function build()
       h.opensAt and ("at level " .. h.opensAt) or "after earlier quests", #h.later, #h.later == 1 and "" or "s")
   end
 
+  -- Every card is kept: the page shows MAX_RESULTS of those not on your trip (visible, below).
   local results = {}
   -- With a budget each card shows its time (`badge`, UI/Cards.lua).
   local function add(row, seconds)
-    if not row or #results >= MAX_RESULTS then return end
+    if not row then return end
     if ctx.budget and seconds then row.badge = ns.FormatDuration(seconds) end
     results[#results + 1] = row
   end
@@ -1668,6 +1670,45 @@ local function iconFor(r)
   return ICONS[r.kind] or "Interface\\Icons\\INV_Misc_Map_01"
 end
 
+-- The quests the trip on now still has stops for: { [questID] = true }.
+local function tripQuests()
+  local a = ns.Nav and ns.Nav.active
+  local root = a and a.journey and (a.journey.root or a.journey.def)
+  local ids = {}
+  for _, stop in ipairs(root and root.stops or {}) do
+    if stop.action and stop.action.questID and not stop.done and not stop.skipped then ids[stop.action.questID] = true end
+  end
+  return ids
+end
+
+-- The cards shown: at most MAX_RESULTS, none with a quest your trip already
+-- has (it's being done). Checked on every look, so the cards follow the trip
+-- without a rebuild.
+local function visible(results)
+  local trip = tripQuests()
+  local out = {}
+  for _, r in ipairs(results or {}) do
+    if #out >= MAX_RESULTS then break end
+    local overlap = false
+    for _, stop in ipairs(r.journey and r.journey.stops or {}) do
+      if stop.action and trip[stop.action.questID] then
+        overlap = true
+        break
+      end
+    end
+    if not overlap then out[#out + 1] = r end
+  end
+  return out
+end
+
+-- Which quests are on the trip, to refresh the cards when that changes.
+local function tripKey()
+  local ids = {}
+  for id in pairs(tripQuests()) do ids[#ids + 1] = id end
+  table.sort(ids)
+  return table.concat(ids, ",")
+end
+
 -- For you is built as a background job (ns.Warm): on Classic Era a build
 -- after a login can run past the client's limit in one go. Meanwhile the page
 -- shows the last cards (WORKING before the first) and is refreshed when the
@@ -1695,11 +1736,12 @@ local function finished(ok, results, err, net)
   if j.stale and j.tries < 2 then return startJob(j.tries + 1) end
   local now = GetTime and GetTime()
   cache = now and { at = now, results = results, err = err, net = net } or nil
-  pcall(ForYou.CheckNew, results)
+  local shown = visible(results)
+  pcall(ForYou.CheckNew, shown)
   local list = waiters
   waiters = {}
   for _, fn in ipairs(list) do
-    local fine, problem = pcall(fn, results, err, net)
+    local fine, problem = pcall(fn, shown, err, net)
     if not fine then geterrorhandler()(problem) end
   end
   if not asking and ns.Panel and ns.Panel.Refresh then ns.Panel.Refresh() end
@@ -1712,7 +1754,7 @@ end
 
 function ForYou.Results()
   local now = GetTime and GetTime()
-  if cache and now and now - cache.at < CACHE_SECONDS then return cache.results, cache.err, cache.net end
+  if cache and now and now - cache.at < CACHE_SECONDS then return visible(cache.results), cache.err, cache.net end
   -- Quest data still being indexed: wait (DATA_CHANGED when it's ready).
   if ns.Quests.Warm() then
     summary = WAITING
@@ -1724,7 +1766,7 @@ function ForYou.Results()
     asking = false
     if not ok then geterrorhandler()(err) end
   end
-  if last then return last.results, last.err, last.net end
+  if last then return visible(last.results), last.err, last.net end
   summary = WORKING
   return {}, WORKING
 end
@@ -1733,7 +1775,7 @@ end
 -- build under way is done.
 function ForYou.WhenReady(fn)
   local now = GetTime and GetTime()
-  if cache and now and now - cache.at < CACHE_SECONDS then return fn(cache.results, cache.err, cache.net) end
+  if cache and now and now - cache.at < CACHE_SECONDS then return fn(visible(cache.results), cache.err, cache.net) end
   waiters[#waiters + 1] = fn
   ForYou.Results()
 end
@@ -1914,6 +1956,15 @@ ns.Listen("DATA_CHANGED", function()
   if #waiters > 0 then ForYou.Results() end
 end)
 ns.Listen("FLIGHTS_CHANGED", ForYou.Invalidate)
+
+-- A trip started, grown, done or ended: the cards it hid (or now doesn't) change.
+local shownTrip = ""
+ns.Listen("NAV_CHANGED", function()
+  local key = tripKey()
+  if key == shownTrip then return end
+  shownTrip = key
+  if ns.Panel and ns.Panel.RefreshSoon then ns.Panel.RefreshSoon() end
+end)
 ns.On("ZONE_CHANGED_NEW_AREA", ForYou.Invalidate)
 
 ns.RegisterPage(ForYou)

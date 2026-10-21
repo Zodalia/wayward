@@ -269,7 +269,8 @@ level. Without that table the ranking falls back to quests per hour weighted
 by level fit, and without quest data to dungeons by level fit and travel time;
 the summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
-The Quests page has every hub and your whole log. `/ww debug` shows how long a
+A card with a quest your trip on now already has isn't shown until the trip
+is done. The Quests page has every hub and your whole log. `/ww debug` shows how long a
 refresh took.
 
 **Notable quests.** XP isn't everything: Wayward also asks "am I missing

@@ -1872,6 +1872,27 @@ do
   ns.Quests.ZoneQuests, UnitLevel = realZoneQuests, realLevel
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   LibQuestieDB.Support.Get = zoneSupport
+
+  -- A card with a quest your trip already has isn't shown; it's back once the trip ends.
+  local cards, picked = rows(), nil
+  for _, r in ipairs(cards) do
+    for _, st in ipairs(r.journey and r.journey.stops or {}) do
+      if not picked and st.action and st.action.questID then picked = { card = r, id = st.action.questID } end
+    end
+  end
+  check(picked ~= nil, "a card with a quest on its trip: " .. titles(cards))
+  if picked then
+    local function showing()
+      for _, r in ipairs(ns.ForYou.Results()) do if r.id == picked.card.id then return true end end
+      return false
+    end
+    local here = ns.Geo.PlayerNode()
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Just that quest", stops = ns.Journey.QuestStops(picked.id, here) }), true)
+    check(ns.Nav.TripHasQuest(picked.id) and not showing(),
+      "with that quest on your trip, " .. picked.card.title .. " isn't shown: " .. titles(ns.ForYou.Results()))
+    ns.Nav.Stop()
+    check(showing(), "and it's back once the trip ends")
+  end
 end
 
 ---------------------------------------------------------------- for you (end)
