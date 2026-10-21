@@ -18,8 +18,8 @@ function Welcome.Lines()
   return {
     "Wayward suggests what to do next for this character and gives step-by-step directions: "
       .. "on foot, by flight path, boat, zeppelin and tram.",
-    "Open it with /ww or the minimap button. Right-click the button for quick settings; "
-      .. "Options > AddOns > Wayward has them all.",
+    "Open it with /ww or the minimap button. Right-click the button for the options "
+      .. "(also in Options > AddOns > Wayward).",
     "It learns as you play: open a flight map once on each continent, visit your class trainer, "
       .. "and talk to vendors and flight masters as you meet them.",
     status and ("Data: " .. status .. ", plus the places you visit.")

@@ -14,14 +14,14 @@ local atan2 = math.atan2 or math.atan
 
 local button, usingLibIcon
 
--- Left: the panel. Right: the quick menu (journey overview, stop, settings,
--- options); shift-right-click goes straight to the journey overview on a trip.
-local function onClick(anchor, mouseButton)
+-- Left: the panel. Right: the options; shift-right-click goes straight to
+-- the journey overview on a trip.
+local function onClick(_, mouseButton)
   if mouseButton == "RightButton" then
     if IsShiftKeyDown and IsShiftKeyDown() and ns.Nav.active and ns.Nav.active.journey then
       ns.JourneyOverview.Toggle()
     else
-      ns.Options.ShowMenu(anchor)
+      ns.Options.Open()
     end
   else
     ns.Panel.Toggle()
@@ -31,7 +31,7 @@ end
 local function tooltip(tt)
   tt:AddLine("Wayward")
   tt:AddLine("Left-click: open the panel", 1, 1, 1)
-  tt:AddLine("Right-click: options and quick settings", 1, 1, 1)
+  tt:AddLine("Right-click: options", 1, 1, 1)
   if ns.Nav.active and ns.Nav.active.journey then tt:AddLine("Shift-right-click: journey overview", 1, 1, 1) end
   if not usingLibIcon then tt:AddLine("Drag to move", 0.6, 0.6, 0.6) end
 end

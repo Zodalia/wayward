@@ -3529,7 +3529,8 @@ do
   StaticPopupDialogs.WAYWARD_TOMTOM.OnCancel(nil, nil, "clicked")
   check(ns.db.settings.tomtom == false and not ns.Options.AskTomTom(), "No thanks: off, and not asked again")
   StaticPopupDialogs.WAYWARD_TOMTOM.OnAccept()
-  check(ns.db.settings.tomtom == true, "Use TomTom: on")
+  check(ns.db.settings.tomtom == true and ns.db.settings.showArrow == false, "Use TomTom: on, and the compass off")
+  ns.SetSetting("showArrow", true)
   StaticPopupDialogs, StaticPopup_Show = nil, nil
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   check(ns.Nav.UsingTomTom() and #added == 1 and added[1].opts.crazy and #waypoints == blizzard,
@@ -3618,6 +3619,10 @@ do
   local wasShown = ns.Panel.IsShown()
   Wayward_OnAddonCompartmentClick(nil, "LeftButton")
   check(ns.Panel.IsShown() ~= wasShown, "the addon compartment entry opens the panel")
+  local chatBefore = #chat
+  Wayward_OnAddonCompartmentClick(nil, "RightButton")
+  check(#chat > chatBefore and chat[#chat]:find("options:", 1, true) and ns.Panel.IsShown() ~= wasShown,
+    "right-click opens the options (a chat line without the Settings API)")
   refreshData()
 end
 ---------------------------------------------------------------- trip polish (end)
@@ -4701,31 +4706,24 @@ do
   SlashCmdList.WAYWARD("welcome")
   check(ns.Welcome.IsShown(), "/ww welcome shows it again")
   if ns.Panel.IsShown() then ns.Panel.Toggle() end
-  -- The quick menu: open, settings, options; the trip entries only on a trip.
-  local texts = {}
-  for _, e in ipairs(ns.Options.MenuEntries()) do texts[#texts + 1] = e.title or e.text or "-" end
-  local menu = table.concat(texts, "|")
-  check(menu:find("^Wayward|Open Wayward|%-|") and menu:find("Compass", 1, true) and menu:find("Minimap button", 1, true)
-    and menu:find("Options...", 1, true) and not menu:find("Stop directions", 1, true),
-    "the quick menu has open, the quick settings and options: " .. menu)
-  local trainer = ns.Trainers.Results()[1]
-  ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
-  texts = {}
-  for _, e in ipairs(ns.Options.MenuEntries()) do texts[#texts + 1] = e.title or e.text or "-" end
-  check(table.concat(texts, "|"):find("Stop directions", 1, true), "with directions on, the menu can stop them")
-  ns.Nav.Stop()
-  for _, e in ipairs(ns.Options.MenuEntries()) do
-    if e.text == "Compass in the directions box" then
-      local before = e.get()
-      e.set(not before)
-      check(e.get() ~= before and ns.db.settings.showArrow == (not before), "a menu checkbox changes the setting")
-      e.set(before)
+  -- The options, in sections; the compass and TomTom's arrow under navigation aid.
+  local sections = {}
+  for _, c in ipairs(ns.Options.Choices()) do
+    if sections[#sections] ~= c.section then sections[#sections + 1] = c.section end
+    if c.name == "Compass in the directions box" or c.name == "TomTom's arrow" then
+      check(c.section == "Navigation aid", c.name .. " is under navigation aid")
     end
   end
-  -- Without MenuUtil the menu falls back to the options (a chat line here).
-  local chatBefore = #chat
-  ns.Options.ShowMenu(CreateFrame("Frame"))
-  check(#chat > chatBefore, "without a menu API, the options open instead")
+  check(#sections == 4 and sections[1] == "Navigation aid", "the options come in sections: " .. table.concat(sections, ", "))
+  for _, c in ipairs(ns.Options.Choices()) do
+    if c.name == "Compass in the directions box" then
+      local before = c.get()
+      c.set(not before)
+      check(c.get() ~= before and ns.db.settings.showArrow == (not before), "a checkbox changes the setting")
+      c.set(before)
+    end
+  end
+  local chatBefore
   -- Help is sorted, and an unknown command says so.
   chatBefore = #chat
   SlashCmdList.WAYWARD("nonsense")

@@ -14,7 +14,7 @@ what is worth doing near you and gets you there.
 1. Put the `Wayward` folder in `World of Warcraft/_forever_/Interface/AddOns/`
    (from a release zip, `tools/package.sh`, or a symlink to this checkout).
 2. Log in. A short welcome explains the basics; `/ww` or the minimap button
-   opens the window, and right-clicking the button opens the quick menu.
+   opens the window, and right-clicking the button opens the options.
 3. Open a flight map once on each continent and visit your class trainer.
    Wayward learns flight paths, trainers and vendors as you meet them.
 
@@ -34,14 +34,15 @@ entrances shipped with the addon are approximate until you record them
 
 ## Options
 
-Options > AddOns > Wayward has every setting: the compass in the directions
-box, TomTom's arrow, the star over the NPC you are heading for (and the
-game's friendly nameplates it needs), the question when you pick up a quest,
-whether the journey overview opens by itself when a trip starts, the
-new-journey toasts and the minimap button, plus buttons to reset window
-positions, show the welcome again and list the slash commands. The same
-checkboxes are on the quick menu: right-click the minimap button or the
-addon compartment entry, or click Options in the window's title bar.
+Options > AddOns > Wayward has every setting, in sections: **Navigation
+aid** (the compass in the directions box, TomTom's arrow), **NPCs** (the
+star over the NPC you are heading for, and the game's friendly nameplates it
+needs), **Trips and quests** (the question when you pick up a quest, whether
+the journey overview opens by itself when a trip starts, the new-journey
+toasts), **Minimap** (the button), and **Windows and help** (reset window
+positions, show the welcome again, list the slash commands). Right-click the
+minimap button or the addon compartment entry, or click Options in the
+window's title bar, to open them.
 `/ww options` opens the panel, `/ww help` lists the commands, `/ww welcome`
 shows the introduction again, `/ww reset` puts every window back.
 
@@ -299,8 +300,9 @@ play it. `/ww sounds export` opens your choices as one line to copy
   when you're on another continent than the current step expects, or when
   you've walked well away from the current target. Never during a flight,
   and at most every 10 seconds. The R button still re-plans on demand.
-- **TomTom**: when it's installed, Wayward asks once whether to use it;
-  then each step goes on TomTom's arrow and map pins, titled with what to do
+- **TomTom**: when it's installed, Wayward asks once whether to use it
+  (yes turns Wayward's compass off; the options can turn it back on); then
+  each step goes on TomTom's arrow and map pins, titled with what to do
   there (`/ww tomtom` or the options switch it, or retry after TomTom failed).
   The game keeps its own map pin across a logout or reload; Wayward takes
   its pin from last time down when TomTom shows the way or no trip resumes
@@ -317,8 +319,8 @@ play it. `/ww sounds export` opens your choices as one line to copy
 - **Journey stops** show their zone in the overview and in previews.
 - **Class trainers** in the same room are one row ("3 warlock trainers in
   Stormwind City").
-- **Minimap button**: left-click opens Wayward, right-click opens the journey
-  overview during a trip. It uses LibDBIcon when another addon provides it
+- **Minimap button**: left-click opens Wayward, right-click opens the
+  options, shift-right-click the journey overview during a trip. It uses LibDBIcon when another addon provides it
   (so button managers can handle it), otherwise a plain button you can drag
   around the minimap. `/ww minimap` hides it. Wayward is also in the addon
   compartment menu.
