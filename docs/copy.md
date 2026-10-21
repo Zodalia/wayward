@@ -633,31 +633,35 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 765: no route for the trip from here.
 - 770: added %s to your trip: %d stops, %s
 - 935:  continues with:
-- 974: resuming journey: 
-- 974:  (/ww stop to end it)
-- 986: resuming directions to 
-- 986:  (/ww stop to end them)
-- 1048: re-routed from here (
-- 1058: you moved a long way
-- 1061: you're on another continent
-- 1065: you went another way
-- 1128: that spot's cleared: on to another for %s.
-- 1130: that spot's cleared: other stops first while it respawns (%s).
-- 1133: that spot's cleared: back when it respawns (%s).
-- 1179: you're doing %s here: it's next on the trip now.
-- 1222: you abandoned %s: nothing left on the trip, so it's cancelled.
-- 1225: you abandoned %s: dropped from your trip.
-- 1273: nothing else on the trip to do first; skip it to take it off.
-- 1278: later: %s, after %s.
-- 1278: that stop
-- 1278: the next stop
-- 1293: Skip
-- 1293: Cancel
-- 1297: Skip \"%s\"?\n\nIt's taken off the trip%s.
-- 1297: this stop
-- 1298: , with \"%s\", which needs it
-- 1298: a stop
-- 1299: , with the %d stops that need it
+- 980: resuming journey: 
+- 980:  (/ww stop to end it)
+- 993: resuming directions to 
+- 993:  (/ww stop to end them)
+- 1048: couldn't re-plan your trip from here yet; it's kept: /ww resume tries again.
+- 1060: /ww resume - pick up the saved trip again
+- 1061: a trip is already on.
+- 1062: no saved trip.
+- 1084: re-routed from here (
+- 1094: you moved a long way
+- 1097: you're on another continent
+- 1101: you went another way
+- 1164: that spot's cleared: on to another for %s.
+- 1166: that spot's cleared: other stops first while it respawns (%s).
+- 1169: that spot's cleared: back when it respawns (%s).
+- 1215: you're doing %s here: it's next on the trip now.
+- 1258: you abandoned %s: nothing left on the trip, so it's cancelled.
+- 1261: you abandoned %s: dropped from your trip.
+- 1309: nothing else on the trip to do first; skip it to take it off.
+- 1314: later: %s, after %s.
+- 1314: that stop
+- 1314: the next stop
+- 1329: Skip
+- 1329: Cancel
+- 1333: Skip \"%s\"?\n\nIt's taken off the trip%s.
+- 1333: this stop
+- 1334: , with \"%s\", which needs it
+- 1334: a stop
+- 1335: , with the %d stops that need it
 
 ## OnTheWay.lua
 

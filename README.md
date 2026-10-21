@@ -536,7 +536,9 @@ panel to add it to the trip you're on.
     one. An inferred link only counts while you could do that earlier quest
     (so the other faction's quest of the same name never holds one up).
   - The current trip is saved per character and resumed after a login or
-    reload, re-planned from where you are. The directions box's book button
+    reload, re-planned from where you are (tried again for half a minute
+    while the game isn't ready to place you; a trip it still can't re-plan
+    stays saved, and `/ww resume` tries again). The directions box's book button
     (it flashes a few times when stops are added to the trip, rather than
     the overview popping open) opens an overview of every stop (done / now / next; stops you skipped
     aren't listed; finished stops fold

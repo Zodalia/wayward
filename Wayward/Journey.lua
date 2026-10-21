@@ -842,3 +842,11 @@ function Journey.Resume(def, start, net)
   if #remaining == 0 and not finish then return nil end
   return Journey.Plan(start, { title = def.title, stops = remaining, finish = finish, root = def }, net)
 end
+
+-- Whether a loaded definition still has a stop to do (placed on the map or not).
+function Journey.HasOpenStops(def)
+  for _, stop in ipairs(def.stops or {}) do
+    if open(stop) then return true end
+  end
+  return open(def.finish) and true or false
+end

@@ -2016,6 +2016,46 @@ do
   check(ns.Nav.active and #ns.Nav.active.journey.stops == 1 and ns.Nav.active.journey.stops[1].action.kind == "turnin",
     "after a relog the trip resumes from where it was")
   check(#ns.JourneyOverview.Rows() == 3, "the overview still shows the stops already done")
+
+  -- A reload before the game can place you: the trip waits for it, it isn't lost.
+  local savedNav, realMap = ns.charDB.nav, player.mapID
+  ns.Nav.active, player.mapID = nil, nil
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.Nav.active == nil and ns.charDB.nav == savedNav, "no position yet after a reload: the saved trip is kept")
+  player.mapID = realMap
+  runTimers()
+  check(ns.Nav.active and ns.Nav.active.journey.stops[1].action.kind == "turnin", "a moment later it resumes")
+  -- Never placed: kept, and said so once the tries run out.
+  savedNav = ns.charDB.nav
+  ns.Nav.active, player.mapID = nil, nil
+  local before = #chat
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  for _ = 1, 12 do runTimers() end
+  check(ns.charDB.nav == savedNav and table.concat(chat, "\n", before + 1):find("/ww resume", 1, true),
+    "still nowhere after the tries: kept, and /ww resume is offered")
+  player.mapID = realMap
+  SlashCmdList.WAYWARD("resume")
+  check(ns.Nav.active ~= nil, "/ww resume picks it up")
+  -- An error resuming keeps it for the next login, a few times.
+  savedNav = ns.charDB.nav
+  local realLoad = ns.Journey.Load
+  ns.Journey.Load = function() error("old save") end
+  ns.Nav.active = nil
+  local errorHandler = geterrorhandler
+  geterrorhandler = function() return function() end end
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.charDB.nav == savedNav and savedNav.failed == 1, "an error resuming keeps the trip for next time")
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.charDB.nav == nil, "after three logins with errors it's dropped")
+  geterrorhandler, ns.Journey.Load = errorHandler, realLoad
+  ns.charDB.nav = savedNav
+  savedNav.failed = nil
+  ns.Nav.Resume()
   fire("QUEST_TURNED_IN", 40)
   check(ns.Nav.active == nil and ns.charDB.nav == nil, "handing it in ends the trip and clears the save")
 

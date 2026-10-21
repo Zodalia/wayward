@@ -964,18 +964,25 @@ function Nav.RemoveQuest(questID)
 end
 
 -- Picks up a saved trip after logging in, re-planned from where you are.
+-- True when that's settled: resumed, or nothing of it left to do. False to
+-- try again in a moment: just after a login or reload the game may not have
+-- your position, its maps or your quest log ready, and a trip dropped then
+-- would be lost.
 function Nav.Resume()
   local saved = ns.charDB.nav
+  if not saved or Nav.active then return true end
   local here = ns.Geo.PlayerNode()
-  if not (saved and here) or Nav.active then return end
+  if not here then return false end
   if saved.journey then
-    local journey = ns.Journey.Resume(ns.Journey.Load(saved.journey), here)
+    local def = ns.Journey.Load(saved.journey)
+    local journey = ns.Journey.Resume(def, here)
     if journey then
       ns.print("resuming journey: " .. journey.title .. " (/ww stop to end it)")
       Nav.StartJourney(journey, true)
       if Nav.active and saved.stats then Nav.active.stats = saved.stats end
-      return
+      return true
     end
+    if ns.Journey.HasOpenStops(def) then return false end
   elseif saved.goal then
     local goal = ns.Geo.Node(saved.goal.mapID, saved.goal.x, saved.goal.y, saved.goal.label)
     local route = goal and ns.Router.Plan(here, goal, ns.Network.Build())
@@ -984,10 +991,13 @@ function Nav.Resume()
       Nav.active = { title = saved.title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1,
         stats = saved.stats or newStats() }
       ns.print("resuming directions to " .. saved.title .. " (/ww stop to end them)")
-      return showStep()
+      showStep()
+      return true
     end
+    return false
   end
   ns.charDB.nav = nil
+  return true
 end
 
 -- XP earned on a trip, across level-ups.
@@ -1012,19 +1022,45 @@ ns.On("PLAYER_MONEY", function()
 end)
 ns.On("PLAYER_LOGIN", function() lastMoney = GetMoney() end)
 
+-- After a login or reload: the saved trip back, tried every RESUME_EVERY
+-- seconds RESUME_TRIES times while the game isn't ready for it. A trip that
+-- can't be re-planned stays saved (/ww resume, or the next login); one that
+-- fails with an error RESUME_FAILURES logins running (saved by an older
+-- version, say) is dropped rather than fail every login.
+local RESUME_EVERY, RESUME_TRIES, RESUME_FAILURES = 3, 10, 3
+
+local function tryResume(triesLeft)
+  local ok, settled = pcall(Nav.Resume)
+  if not ok then
+    local saved = ns.charDB.nav
+    if saved then
+      saved.failed = (saved.failed or 0) + 1
+      if saved.failed >= RESUME_FAILURES then ns.charDB.nav = nil end
+    end
+    Nav.active = nil
+    clearPin()
+    geterrorhandler()(settled)
+  elseif settled then
+    if not Nav.active then clearPin() end
+  elseif triesLeft > 1 then
+    ns.After(RESUME_EVERY, function() tryResume(triesLeft - 1) end)
+  else
+    ns.print("couldn't re-plan your trip from here yet; it's kept: /ww resume tries again.")
+  end
+end
+
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   if not (isLogin or isReload) then return end
   ns.After(1, function()
     adoptPin()
-    local ok, err = pcall(Nav.Resume)
-    if not ok then
-      -- A trip saved by an older version: drop it rather than fail every login.
-      ns.charDB.nav = nil
-      Nav.active = nil
-      geterrorhandler()(err)
-    end
-    if not Nav.active then clearPin() end
+    tryResume(RESUME_TRIES)
   end)
+end)
+
+ns.RegisterCommand("resume", "/ww resume - pick up the saved trip again", function()
+  if Nav.active then return ns.print("a trip is already on.") end
+  if not ns.charDB.nav then return ns.print("no saved trip.") end
+  tryResume(1)
 end)
 
 -- True while standing at a journey stop that waits for a quest action.
