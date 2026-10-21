@@ -249,7 +249,9 @@ things to do next, one card per kind of thing, each labelled with its kind:
   your log), all fitting your level, with their XP. Its trip goes to the hub
   with the most quests for you and picks all of them up, giver by giver; the
   card names the next hubs and where the chains lead on to. A zone needs 4 quests you can take now; zones are
-  ranked by XP.
+  ranked by XP. Below level 10 your starting zone comes first (the one
+  you're in, else your race's) and no other starting zone is suggested
+  while yours still has quests for you.
 - **Dungeon** (or **Raid**): the best one, with its quests picked up on the
   way to the entrance, and the others for your level named on the card.
   Mobs in Forever's dungeons give little XP, so the quests make the run: a

@@ -105,6 +105,9 @@ local ZONES = {
   [1433] = { cont = 1415, x0 = 0.48, y0 = 0.66, w = 0.08, h = 0.08, name = "Redridge Mountains" },
   [1437] = { cont = 1415, x0 = 0.38, y0 = 0.42, w = 0.10, h = 0.10, name = "Wetlands" },
   [1439] = { cont = 1414, x0 = 0.40, y0 = 0.15, w = 0.10, h = 0.20, name = "Darkshore" },
+  -- Starting zones: no NPCs of their own (For you's starting-zone test fills them).
+  [1429] = { cont = 1415, x0 = 0.40, y0 = 0.76, w = 0.08, h = 0.08, name = "Elwynn Forest" },
+  [1426] = { cont = 1415, x0 = 0.28, y0 = 0.55, w = 0.08, h = 0.08, name = "Dun Morogh" },
 }
 
 local function vec(x, y) return { x = x, y = y, GetXY = function(s) return s.x, s.y end } end
@@ -1819,6 +1822,47 @@ do
   runs = ns.ForYou.runs
   SlashCmdList.WAYWARD("next")
   check(ns.Panel.IsShown() and ns.ForYou.runs > runs, "/ww next opens the panel on For you")
+
+  -- Low levels: your starting zone first, not another starting zone.
+  local realZoneQuests, realLevel = ns.Quests.ZoneQuests, UnitLevel
+  local counts = { [1429] = 4, [1426] = 7, [1433] = 5 }
+  ns.Quests.ZoneQuests = function()
+    local zones, id = {}, 90000
+    for mapID, n in pairs(counts) do
+      local z = { mapID = mapID, quests = {} }
+      for i = 1, n do
+        id = id + 1
+        z.quests[i] = { id = id, name = "Low quest " .. id, level = 5, node = ns.Geo.Node(mapID, 0.5, 0.5),
+          giver = "Giver " .. mapID, chain = false }
+      end
+      zones[mapID] = z
+    end
+    return zones
+  end
+  local function zoneTitles()
+    local out = {}
+    for _, r in ipairs(rows()) do
+      if r.category == "Questing zone" then out[#out + 1] = r.title:gsub("^Quest in ", "") end
+    end
+    return table.concat(out, ",")
+  end
+  UnitLevel = function() return 5 end
+  player.mapID, player.x, player.y = 1429, 0.5, 0.5
+  check(zoneTitles() == "Elwynn Forest,Redridge Mountains",
+    "level 5 in Elwynn: Elwynn first, no other starting zone: " .. zoneTitles())
+  player.mapID = 1453
+  check(zoneTitles() == "Elwynn Forest,Redridge Mountains",
+    "level 5 in Stormwind: your race's starting zone first: " .. zoneTitles())
+  counts[1429] = 2
+  player.mapID = 1429
+  check(zoneTitles() == "Dun Morogh,Redridge Mountains",
+    "with too few quests left at home, another starting zone is fine: " .. zoneTitles())
+  counts[1429] = 4
+  UnitLevel = function() return 10 end
+  check(zoneTitles() == "Dun Morogh,Redridge Mountains,Elwynn Forest",
+    "from level 10, zones by XP again: " .. zoneTitles())
+  ns.Quests.ZoneQuests, UnitLevel = realZoneQuests, realLevel
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
   LibQuestieDB.Support.Get = zoneSupport
 end
 

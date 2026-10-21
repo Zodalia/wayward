@@ -46,6 +46,7 @@ local ZONE_MIN_QUESTS = 4       -- quests you can take now for a zone to get a c
 local DUNGEON_QUEST_SHARE = 0.6 -- of a dungeon's quests, the share you need to be able to take now
                                 -- (mobs in Forever's dungeons give little XP: the quests make the run)
 local MAX_ZONES = 3             -- "Questing zone" cards
+local HOME_LEVEL = 10           -- below this, your starting zone's card comes first and no other starting zone gets one
 local ZONE_HUBS = 3             -- hubs named on a zone card after the first
 local ZONE_QUEST_LINES = 5      -- quests listed on a zone card
 local CACHE_SECONDS = 5         -- a refresh is reused this long (cleared early on data or zone changes)
@@ -64,6 +65,12 @@ local NOTABLE_SECONDS = 600     -- "Don't miss": travel to the quest's first sto
 local NOTABLE_TRIES = 4         -- notable quests planned before giving up on the card
 local BUDGET_DUNGEON = 60       -- minutes: with less time than this, no dungeon
 local BUDGET_TRIES = 3          -- hand-in or finish trips planned to find one that fits
+
+-- The starting zones (uiMapIDs) and each race's own: Elwynn Forest, Durotar,
+-- Dun Morogh, Teldrassil, Tirisfal Glades, Mulgore.
+local RACE_HOME = { [1] = 1429, [2] = 1411, [3] = 1426, [4] = 1438, [5] = 1420, [6] = 1412, [7] = 1426, [8] = 1411 }
+local STARTING_ZONES = {}
+for _, mapID in pairs(RACE_HOME) do STARTING_ZONES[mapID] = true end
 
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
@@ -941,12 +948,23 @@ local function notableOption(hubs, ctx, start, net, skip)
   return nil
 end
 
+-- Below HOME_LEVEL, the starting zone to stay in: the one you're in, else
+-- your race's (from a capital, say).
+local function homeZone(ctx, start)
+  if ctx.level >= HOME_LEVEL then return nil end
+  local here = ns.Geo.ZoneAt(start.instance, start.wx, start.wy)
+  if here and STARTING_ZONES[here] then return here end
+  local _, _, raceID = UnitRace("player")
+  return RACE_HOME[raceID]
+end
+
 -- Where to quest at your level, anywhere: per zone (Quests.ZoneQuests), the
 -- quests you can take now and those their chains unlock, worth their XP; the
 -- hub to start at is the one with the most quests for you now, and the card's
 -- trip picks up all of them there. Zones need
 -- ZONE_MIN_QUESTS quests you can take now; the best MAX_ZONES by XP (quest
--- count without XP data) get a route to their first hub.
+-- count without XP data) get a route to their first hub. Below HOME_LEVEL
+-- your starting zone (homeZone) comes first.
 local function zoneOptions(ctx, start, net)
   local zones = {}
   for mapID, z in pairs(ns.Quests.ZoneQuests(start)) do
@@ -963,10 +981,20 @@ local function zoneOptions(ctx, start, net)
       zones[#zones + 1] = { mapID = mapID, now = now, later = later, value = value, lowest = lowest, highest = highest }
     end
   end
+  local home = homeZone(ctx, start)
   table.sort(zones, function(a, b)
+    if (a.mapID == home) ~= (b.mapID == home) then return a.mapID == home end
     if a.value ~= b.value then return a.value > b.value end
     return #a.now > #b.now
   end)
+  -- While your starting zone has quests for you, not the other starting zones.
+  if home and zones[1] and zones[1].mapID == home then
+    local kept = { zones[1] }
+    for i = 2, #zones do
+      if not STARTING_ZONES[zones[i].mapID] then kept[#kept + 1] = zones[i] end
+    end
+    zones = kept
+  end
 
   local out = {}
   for _, z in ipairs(zones) do

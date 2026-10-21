@@ -232,58 +232,58 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 ## Quests.lua
 
 - 23: Quest
-- 264: You have done this quest.
-- 265: In your quest log.
-- 268: Not offered yet: needs earlier quests.
-- 270: Not for your race.
-- 273: Not for your class.
-- 276: Requires level 
-- 278: Only up to level 
-- 281: Closed by 
-- 281: , which you did.
-- 285: You have moved on to 
-- 288: Leads to 
-- 288: , which you already have.
-- 291: Closed by 
-- 291: , which you did.
-- 294: Not while 
-- 294:  is in your log.
-- 297: Part of 
-- 297: , which you did.
-- 305: Needs earlier quests.
-- 307: Needs a profession.
-- 375: Needs earlier quests. Start the chain: 
-- 377: Needs earlier quests. Finish 
-- 377:  first (in your log).
-- 379: Needs earlier quests you can't take yet.
-- 385: Grey for you: little XP.
-- 386: Level %d: hard for you.
-- 387: You can take this quest.
-- 685: Quest 
-- 717: Collect 
-- 948: Leads to a 
-- 951:  (level %d)
-- 952:  (levels %d-%d)
-- 953: Chain: %d more quest%s%s
-- 955: , ends in 
-- 958: Leads to a 
-- 959: Leads to 
-- 967: Rewards on the way: 
-- 989:   chain ahead: nothing follows
-- 991:   chain ahead: %d step%s, %d you can do%s
-- 992: , ends in 
-- 998:     %d. [%d] %s (id %d)%s%s%s
-- 1000:   ·  not for you
-- 1001:   ·  or 
-- 1011: : not in the quest data
-- 1022: [%d] %s (id %d): level %s, requires %s
-- 1024:   after (preQuestSingle): %s  ·  after all (preQuestGroup): %s
-- 1025:   chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s
-- 1027:   inferred: comes after %s
-- 1028:   status: %s (%s)%s
-- 1029:   ·  its giver didn't offer it
-- 1041: Quest 
-- 1169: Not in the quest data.
+- 265: You have done this quest.
+- 266: In your quest log.
+- 269: Not offered yet: needs earlier quests.
+- 271: Not for your race.
+- 274: Not for your class.
+- 277: Requires level 
+- 279: Only up to level 
+- 282: Closed by 
+- 282: , which you did.
+- 286: You have moved on to 
+- 289: Leads to 
+- 289: , which you already have.
+- 292: Closed by 
+- 292: , which you did.
+- 295: Not while 
+- 295:  is in your log.
+- 298: Part of 
+- 298: , which you did.
+- 306: Needs earlier quests.
+- 308: Needs a profession.
+- 376: Needs earlier quests. Start the chain: 
+- 378: Needs earlier quests. Finish 
+- 378:  first (in your log).
+- 380: Needs earlier quests you can't take yet.
+- 386: Grey for you: little XP.
+- 387: Level %d: hard for you.
+- 388: You can take this quest.
+- 686: Quest 
+- 718: Collect 
+- 949: Leads to a 
+- 952:  (level %d)
+- 953:  (levels %d-%d)
+- 954: Chain: %d more quest%s%s
+- 956: , ends in 
+- 959: Leads to a 
+- 960: Leads to 
+- 968: Rewards on the way: 
+- 990:   chain ahead: nothing follows
+- 992:   chain ahead: %d step%s, %d you can do%s
+- 993: , ends in 
+- 999:     %d. [%d] %s (id %d)%s%s%s
+- 1001:   ·  not for you
+- 1002:   ·  or 
+- 1012: : not in the quest data
+- 1023: [%d] %s (id %d): level %s, requires %s
+- 1025:   after (preQuestSingle): %s  ·  after all (preQuestGroup): %s
+- 1026:   chain: comes after %s, leads to %s  ·  parent %s  ·  breadcrumb for %s  ·  exclusive with %s
+- 1028:   inferred: comes after %s
+- 1029:   status: %s (%s)%s
+- 1030:   ·  its giver didn't offer it
+- 1042: Quest 
+- 1170: Not in the quest data.
 
 ## Notable.lua
 
@@ -365,14 +365,14 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 352: : for your profession
 - 354: Holiday quest (%s): only while the event is on.
 - 365: Gives reputation with 
-- 415: party accept
-- 432: %s (%d; class %s/%s, level %s, ilvl %s, quality %s%s)
-- 434: not cached
-- 434: , yours
-- 437:   sort: %s  ·  zoneOrSort %s  ·  flags: %s
-- 439:   rewards: 
-- 442:   notable: nothing stands out
-- 444:   notable: [%s %d] %s
+- 424: party accept
+- 441: %s (%d; class %s/%s, level %s, ilvl %s, quality %s%s)
+- 443: not cached
+- 443: , yours
+- 446:   sort: %s  ·  zoneOrSort %s  ·  flags: %s
+- 448:   rewards: 
+- 451:   notable: nothing stands out
+- 453:   notable: [%s %d] %s
 
 ## Trainers.lua
 
@@ -498,12 +498,12 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 22: Quest givers you can take quests from, nearest first.
 - 26: No quests for your level found nearby. Try another zone, or check the quests you already have.
 - 32: Can't read your position here.
-- 62: Quest 
-- 68: Near 
-- 72: levels %d-%d
-- 79: %s  ·  %d quest%s
-- 81: %s  ·  %s  ·  %d quest giver%s
-- 96: \|cff7fd1ae%d quest%s\|r for you at the %d nearest places with quests.
+- 69: Quest 
+- 75: Near 
+- 79: levels %d-%d
+- 86: %s  ·  %d quest%s
+- 88: %s  ·  %s  ·  %d quest giver%s
+- 104: \|cff7fd1ae%d quest%s\|r for you at the %d nearest places with quests.
 
 ## QuestsPage.lua
 
@@ -519,67 +519,67 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 31: Not in the quest data
 - 37: No quest data. Install 
 - 37:  to search quests.
-- 57: Quest 
-- 70: Pick up %s from %s
-- 76: Enter 
-- 84: no quest giver for 
-- 84:  can be reached from here.
-- 124: %s: pick up %d quest%s
-- 125: %sDungeon quest run\|r  ·  %s  ·  ends at the entrance
-- 144: In trip
-- 146: Add
-- 150: no known places for 
-- 150: that quest
-- 166: Pick up %s from %s
-- 170: starts from an item
-- 170: no known quest giver
-- 174: Hand in %s to %s
-- 177: no known place to hand it in
-- 184: Start the chain: pick up %s from %s
-- 190: Finish %s first: hand it in to %s
-- 194: no known place for 
-- 204: start: 
-- 204: finish: 
-- 208: Not for you
-- 223: leads to 
-- 236: Start the chain: 
-- 243:   ·  no route found from here
-- 248: Requires level 
-- 263: Ready to hand in\|r
-- 281: Quest 
-- 305: Quest 
-- 320:  (no known places)
-- 325: %sOne trip\|r  ·  %s  ·  %s
-- 327:   ·  %s%d without known places\|r
-- 329: No known places for 
-- 329: this quest
-- 329: these quests
-- 339: In progress\|r
-- 342: directions need quest data\|r
-- 348: hand-in place unknown
-- 350: no route found from here
-- 350: no known places for it
-- 383: Hand in 
-- 383: completed quest
-- 383: Hand in quests
-- 387: Add
-- 388: the hand-ins
-- 399: Your quest log: %s. No quest data. Install 
-- 399:  for directions and to search quests.
-- 402: Your quest log: %s. Click one for a trip, or Add it to the trip you're on. 
-- 403: Type to search all quests.
-- 429: Find a quest: whether you can take it, and where to go.
-- 438: Your quest log is empty.
-- 438:  Type a quest name to search.
-- 440: Type a quest name (at least 
-- 440:  letters).
-- 441: No quest called \"%s\" in the quest data.
-- 451: Can't read your position here.
-- 459: That quest isn't in the quest data.
-- 460: Quest 
-- 482: First %d of %d quests matching \"%s\". Type more to narrow it down.
-- 485: %d quest%s matching \"%s\". Click one to go there.
-- 492: /ww quest <name> - find a quest: can you take it, and where to go
+- 63: Quest 
+- 76: Pick up %s from %s
+- 82: Enter 
+- 90: no quest giver for 
+- 90:  can be reached from here.
+- 130: %s: pick up %d quest%s
+- 131: %sDungeon quest run\|r  ·  %s  ·  ends at the entrance
+- 150: In trip
+- 152: Add
+- 156: no known places for 
+- 156: that quest
+- 172: Pick up %s from %s
+- 176: starts from an item
+- 176: no known quest giver
+- 180: Hand in %s to %s
+- 183: no known place to hand it in
+- 190: Start the chain: pick up %s from %s
+- 196: Finish %s first: hand it in to %s
+- 200: no known place for 
+- 210: start: 
+- 210: finish: 
+- 214: Not for you
+- 229: leads to 
+- 242: Start the chain: 
+- 249:   ·  no route found from here
+- 254: Requires level 
+- 269: Ready to hand in\|r
+- 287: Quest 
+- 311: Quest 
+- 326:  (no known places)
+- 331: %sOne trip\|r  ·  %s  ·  %s
+- 333:   ·  %s%d without known places\|r
+- 335: No known places for 
+- 335: this quest
+- 335: these quests
+- 345: In progress\|r
+- 348: directions need quest data\|r
+- 354: hand-in place unknown
+- 356: no route found from here
+- 356: no known places for it
+- 390: Hand in 
+- 390: completed quest
+- 390: Hand in quests
+- 394: Add
+- 395: the hand-ins
+- 406: Your quest log: %s. No quest data. Install 
+- 406:  for directions and to search quests.
+- 409: Your quest log: %s. Click one for a trip, or Add it to the trip you're on. 
+- 410: Type to search all quests.
+- 436: Find a quest: whether you can take it, and where to go.
+- 445: Your quest log is empty.
+- 445:  Type a quest name to search.
+- 447: Type a quest name (at least 
+- 447:  letters).
+- 448: No quest called \"%s\" in the quest data.
+- 458: Can't read your position here.
+- 466: That quest isn't in the quest data.
+- 467: Quest 
+- 489: First %d of %d quests matching \"%s\". Type more to narrow it down.
+- 492: %d quest%s matching \"%s\". Click one to go there.
+- 499: /ww quest <name> - find a quest: can you take it, and where to go
 
 ## Journey.lua
 
@@ -632,32 +632,32 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 757:  is already in your trip.
 - 764: no route for the trip from here.
 - 769: added %s to your trip: %d stops, %s
-- 915:  continues with:
-- 954: resuming journey: 
-- 954:  (/ww stop to end it)
-- 966: resuming directions to 
-- 966:  (/ww stop to end them)
-- 1028: re-routed from here (
-- 1038: you moved a long way
-- 1041: you're on another continent
-- 1045: you went another way
-- 1108: that spot's cleared: on to another for %s.
-- 1110: that spot's cleared: other stops first while it respawns (%s).
-- 1113: that spot's cleared: back when it respawns (%s).
-- 1159: you're doing %s here: it's next on the trip now.
-- 1202: you abandoned %s: nothing left on the trip, so it's cancelled.
-- 1205: you abandoned %s: dropped from your trip.
-- 1253: nothing else on the trip to do first; skip it to take it off.
-- 1258: later: %s, after %s.
-- 1258: that stop
-- 1258: the next stop
-- 1273: Skip
-- 1273: Cancel
-- 1277: Skip \"%s\"?\n\nIt's taken off the trip%s.
-- 1277: this stop
-- 1278: , with \"%s\", which needs it
-- 1278: a stop
-- 1279: , with the %d stops that need it
+- 934:  continues with:
+- 973: resuming journey: 
+- 973:  (/ww stop to end it)
+- 985: resuming directions to 
+- 985:  (/ww stop to end them)
+- 1047: re-routed from here (
+- 1057: you moved a long way
+- 1060: you're on another continent
+- 1064: you went another way
+- 1127: that spot's cleared: on to another for %s.
+- 1129: that spot's cleared: other stops first while it respawns (%s).
+- 1132: that spot's cleared: back when it respawns (%s).
+- 1178: you're doing %s here: it's next on the trip now.
+- 1221: you abandoned %s: nothing left on the trip, so it's cancelled.
+- 1224: you abandoned %s: dropped from your trip.
+- 1272: nothing else on the trip to do first; skip it to take it off.
+- 1277: later: %s, after %s.
+- 1277: that stop
+- 1277: the next stop
+- 1292: Skip
+- 1292: Cancel
+- 1296: Skip \"%s\"?\n\nIt's taken off the trip%s.
+- 1296: this stop
+- 1297: , with \"%s\", which needs it
+- 1297: a stop
+- 1298: , with the %d stops that need it
 
 ## OnTheWay.lua
 
@@ -861,221 +861,221 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 ## ForYou.lua
 
 - 35: For you
-- 247: ~%s XP/min
-- 248: ~%.1f quests/h
-- 253: XP/min
-- 254: Quests/h
-- 254: ~%.1f
-- 267: you're level %d, %d levels since your last visit
-- 268: you're level %d and haven't visited a trainer yet
-- 270: Visit your trainer in %s
-- 272: new spells likely at level %d
-- 273: Worth a visit: %s; classes get new spells at even levels.
-- 274: Trainer: 
-- 285: new spell
-- 288: %s to train once you have %s.
-- 303: Trainer: 
-- 305: Not counted: %s you left at the trainer.
-- 309: Train only
-- 310: Spells
-- 310: Cost
-- 311: Travel
-- 312: Train %s in %s
-- 314: %s for %s
-- 315: Needs come first: you can train %s.
-- 316: Needs come first: you can train and afford %s (%s).
-- 318: Train your new spells at 
-- 318: train in 
-- 347: AmmoSlot
-- 354: buy ammo
-- 354: buy food & drink
-- 358: some gear is broken
-- 359: gear at %d%%
-- 361: no ammo left
-- 361: no food left
-- 362: %d %s left
-- 362: food & drink
-- 413: Repair only
-- 413: Shop only
-- 414: %s at %s
-- 417: Needs come first: 
-- 419: %s at %s
-- 420: %s at %s
-- 442: Trainer: %s, %s.
-- 444: Not every trainer teaches 
-- 444: ; if this one doesn't, the Professions tab lists others.
-- 447: Train %s %s in %s
-- 449: Train %s %s at %s
-- 456: %s %d/%d%s
-- 456: , at your cap
-- 457: Skill
-- 457: Next
-- 458: Travel
-- 459: Needs come first: %s is at its cap; %s lets it go up to %d.
-- 460: Worth a visit: you can train %s %s (up to %d skill).
-- 482: Repair at 
-- 484: gear at %d%%, a repairer close by
-- 485: Worth a visit: your gear is at %d%% and a repairer is %s away.
-- 528: Flight only
-- 529: Learn the %s flight path
-- 531: not discovered yet
-- 532: Needs come first: a flight path you haven't discovered is close by, and later trips get faster.
-- 534: Talk to %s to learn %s
-- 535: , the flight master,
-- 535: the flight master
-- 536: learn the %s flight path
-- 640: Hand in %s to %s
-- 640: the quest giver
-- 646: the quest giver
-- 649: hand in %s %s
-- 701: finish %s %s
-- 718: pick up %s %s
-- 725: Pick up quests here: 
-- 771: Run 
-- 806: Pick up %s from %s
-- 813: Enter 
-- 841: pick up 
-- 853: , then 
-- 874: Do 
-- 877: Do 
-- 929: Hand in 
-- 929: Finish 
-- 929: Do 
-- 1013: Quest in 
-- 1028: Quest in 
-- 1033: Pick up %s from %s
-- 1033: the quest giver
-- 1062: Worth a visit
-- 1062: Due now
-- 1065: Where
-- 1065: Travel
-- 1071:   (ready to hand in)
-- 1073:   (in your log, ~%d%% done)
-- 1074:   (in your log)
-- 1094: %d min
-- 1095:  (your average)
-- 1103: %d x %s per quest
-- 1105: %s left on %d in your log
-- 1107: %d x %d s per hand-in
-- 1121:   -  %s XP
-- 1124: Quest 
-- 1136: #%d of %d by %s: ~%s in %s (%s).
-- 1137: XP per minute
-- 1137: quests per hour
-- 1142: Least travel of %d that fit in %d min: ~%s in %s (%s).
-- 1147: handing one in takes ~%d s
-- 1149: unfinished ones take %s times the share of objectives left
-- 1153: Quests in your log count at full XP; 
-- 1157: XP estimated for %s the data has no XP for.
-- 1161: No quest XP data: quests count by level fit.
-- 1165: Raid: needs a raid group.
-- 1165: Dungeon: bring a group.
-- 1172:  (%d in your log)
-- 1177:  in your log
-- 1179: %s + %d to hand in
-- 1187: Level
-- 1188: Travel
-- 1190: Raid
-- 1190: Group
-- 1192: Ready
-- 1194: In your log
-- 1197: Level
-- 1199: Quests
-- 1199: %d + %d ready
-- 1203: Quest hub
-- 1203: Hand in
-- 1203: Finish
-- 1203: Best quest
-- 1204: Raid
-- 1204: Dungeon
-- 1218:   ·  %s on the way
-- 1231: No quests for it: ranked by level fit and travel time.
-- 1232: Ranked by level fit and travel time. Install 
-- 1232:  for its quests and XP.
-- 1236: Level
-- 1237: Travel
-- 1240: Raid
-- 1240: Dungeon
-- 1241: %s  ·  %s  ·  fits your level
-- 1243: %s  ·  %s  ·  fits your level
-- 1243: Raid
-- 1243: Group
-- 1253: It's in your log, %s away
-- 1254: Its quest giver is %s away
-- 1255: , the whole trip %s
-- 1256: Don't miss: %s %s.
-- 1258: Quest 
-- 1258:   (in your log)
-- 1259:   -  %s XP
-- 1267: Level
-- 1267: Travel
-- 1268: Trip
-- 1270: Don't miss
-- 1278: Level 
-- 1278: Levels %d-%d
-- 1280: Questing zone: %s you can take now%s%s.
-- 1281: , %d more as their chains unlock
-- 1282: , ~%s XP in all
-- 1285: Start at %s: the trip picks up its %s.
-- 1291: Then: 
-- 1293: Chains lead on to 
-- 1301:   -  %s XP
-- 1303: Quest 
-- 1309: %d + %d
-- 1311: Questing zone
-- 1312: %s  ·  %s  ·  %s  ·  start at %s
-- 1313: %s  ·  start at %s
-- 1314: Quests
-- 1314: Hubs
-- 1315: Trip
-- 1315: Travel
-- 1324: the best of each kind, by XP per minute
-- 1324: the best of each kind, by quests per hour
-- 1327: Level %d: \|cff7fd1ae%s due\|r first, then %s.
-- 1329: Level %d: %s from here.
-- 1334: Nothing to quest fits in %d min: the quickest option, a bit over%s.
-- 1335: , after \|cff7fd1ae%s due\|r
-- 1337: Fits in %d min: \|cff7fd1ae%s due\|r first, then %s; hand-ins and finishes by least travel.
-- 1340: Fits in %d min: %s; hand-ins and finishes by least travel.
-- 1344: Install 
-- 1344:  for quest hubs and XP; dungeons are ranked by level fit and travel time.
-- 1346: At the level cap quests give no XP, so options are ranked by quests per hour.
-- 1348: No quest XP in the data: ranked by quests per hour, weighted by level fit.
-- 1356: %d ready to hand in
-- 1357: %d to finish (timed by objectives left)
-- 1358: Quest log counted at full XP: %s.
-- 1360: %s in your log can't be placed on the map%s.
-- 1361:  without quest data
-- 1373: %s %.0f
-- 1382: Can't read your position here.
-- 1492: best quest
-- 1506: don't miss
-- 1524: %s %s (%d more quest%s)
-- 1525: at level 
-- 1525: after earlier quests
-- 1549: dungeon trip
-- 1561: Also for your level: 
-- 1564: Dungeons later, once you can take most of their quests: 
-- 1590:   ·  a bit over
-- 1591: Nothing fits in %d min; this is the quickest. 
-- 1605: What to do next, for this character, from where you stand.
-- 1609: Nothing to suggest from here yet. Visit a trainer for your class, open a flight map, or install 
-- 1610:  for quest hubs and XP estimates.
-- 1690: Time:
-- 1691: How long you have: For you only suggests what fits.
-- 1693: Any
-- 1698: /ww time <minutes> \| off - For you suggests only what fits in that time
-- 1703: time budget off: For you suggests anything
-- 1706: For you suggests what fits in %d min (/ww time off to stop)
-- 1709: time budget: %d min (/ww time off to stop)
-- 1710: no time budget (/ww time 20: only what fits in 20 minutes)
-- 1712: /ww time <minutes> \| off
-- 1723: Questing zone
-- 1723: Dungeon
-- 1723: Raid
-- 1738: \|level 
-- 1745: spell\|
-- 1824: /ww next - what to do next (opens the For you page)
+- 254: ~%s XP/min
+- 255: ~%.1f quests/h
+- 260: XP/min
+- 261: Quests/h
+- 261: ~%.1f
+- 274: you're level %d, %d levels since your last visit
+- 275: you're level %d and haven't visited a trainer yet
+- 277: Visit your trainer in %s
+- 279: new spells likely at level %d
+- 280: Worth a visit: %s; classes get new spells at even levels.
+- 281: Trainer: 
+- 292: new spell
+- 295: %s to train once you have %s.
+- 310: Trainer: 
+- 312: Not counted: %s you left at the trainer.
+- 316: Train only
+- 317: Spells
+- 317: Cost
+- 318: Travel
+- 319: Train %s in %s
+- 321: %s for %s
+- 322: Needs come first: you can train %s.
+- 323: Needs come first: you can train and afford %s (%s).
+- 325: Train your new spells at 
+- 325: train in 
+- 354: AmmoSlot
+- 361: buy ammo
+- 361: buy food & drink
+- 365: some gear is broken
+- 366: gear at %d%%
+- 368: no ammo left
+- 368: no food left
+- 369: %d %s left
+- 369: food & drink
+- 420: Repair only
+- 420: Shop only
+- 421: %s at %s
+- 424: Needs come first: 
+- 426: %s at %s
+- 427: %s at %s
+- 449: Trainer: %s, %s.
+- 451: Not every trainer teaches 
+- 451: ; if this one doesn't, the Professions tab lists others.
+- 454: Train %s %s in %s
+- 456: Train %s %s at %s
+- 463: %s %d/%d%s
+- 463: , at your cap
+- 464: Skill
+- 464: Next
+- 465: Travel
+- 466: Needs come first: %s is at its cap; %s lets it go up to %d.
+- 467: Worth a visit: you can train %s %s (up to %d skill).
+- 489: Repair at 
+- 491: gear at %d%%, a repairer close by
+- 492: Worth a visit: your gear is at %d%% and a repairer is %s away.
+- 535: Flight only
+- 536: Learn the %s flight path
+- 538: not discovered yet
+- 539: Needs come first: a flight path you haven't discovered is close by, and later trips get faster.
+- 541: Talk to %s to learn %s
+- 542: , the flight master,
+- 542: the flight master
+- 543: learn the %s flight path
+- 647: Hand in %s to %s
+- 647: the quest giver
+- 653: the quest giver
+- 656: hand in %s %s
+- 708: finish %s %s
+- 725: pick up %s %s
+- 732: Pick up quests here: 
+- 778: Run 
+- 813: Pick up %s from %s
+- 820: Enter 
+- 848: pick up 
+- 860: , then 
+- 881: Do 
+- 884: Do 
+- 936: Hand in 
+- 936: Finish 
+- 936: Do 
+- 1041: Quest in 
+- 1056: Quest in 
+- 1061: Pick up %s from %s
+- 1061: the quest giver
+- 1090: Worth a visit
+- 1090: Due now
+- 1093: Where
+- 1093: Travel
+- 1099:   (ready to hand in)
+- 1101:   (in your log, ~%d%% done)
+- 1102:   (in your log)
+- 1122: %d min
+- 1123:  (your average)
+- 1131: %d x %s per quest
+- 1133: %s left on %d in your log
+- 1135: %d x %d s per hand-in
+- 1149:   -  %s XP
+- 1152: Quest 
+- 1164: #%d of %d by %s: ~%s in %s (%s).
+- 1165: XP per minute
+- 1165: quests per hour
+- 1170: Least travel of %d that fit in %d min: ~%s in %s (%s).
+- 1175: handing one in takes ~%d s
+- 1177: unfinished ones take %s times the share of objectives left
+- 1181: Quests in your log count at full XP; 
+- 1185: XP estimated for %s the data has no XP for.
+- 1189: No quest XP data: quests count by level fit.
+- 1193: Raid: needs a raid group.
+- 1193: Dungeon: bring a group.
+- 1200:  (%d in your log)
+- 1205:  in your log
+- 1207: %s + %d to hand in
+- 1215: Level
+- 1216: Travel
+- 1218: Raid
+- 1218: Group
+- 1220: Ready
+- 1222: In your log
+- 1225: Level
+- 1227: Quests
+- 1227: %d + %d ready
+- 1231: Quest hub
+- 1231: Hand in
+- 1231: Finish
+- 1231: Best quest
+- 1232: Raid
+- 1232: Dungeon
+- 1246:   ·  %s on the way
+- 1259: No quests for it: ranked by level fit and travel time.
+- 1260: Ranked by level fit and travel time. Install 
+- 1260:  for its quests and XP.
+- 1264: Level
+- 1265: Travel
+- 1268: Raid
+- 1268: Dungeon
+- 1269: %s  ·  %s  ·  fits your level
+- 1271: %s  ·  %s  ·  fits your level
+- 1271: Raid
+- 1271: Group
+- 1281: It's in your log, %s away
+- 1282: Its quest giver is %s away
+- 1283: , the whole trip %s
+- 1284: Don't miss: %s %s.
+- 1286: Quest 
+- 1286:   (in your log)
+- 1287:   -  %s XP
+- 1295: Level
+- 1295: Travel
+- 1296: Trip
+- 1298: Don't miss
+- 1306: Level 
+- 1306: Levels %d-%d
+- 1308: Questing zone: %s you can take now%s%s.
+- 1309: , %d more as their chains unlock
+- 1310: , ~%s XP in all
+- 1313: Start at %s: the trip picks up its %s.
+- 1319: Then: 
+- 1321: Chains lead on to 
+- 1329:   -  %s XP
+- 1331: Quest 
+- 1337: %d + %d
+- 1339: Questing zone
+- 1340: %s  ·  %s  ·  %s  ·  start at %s
+- 1341: %s  ·  start at %s
+- 1342: Quests
+- 1342: Hubs
+- 1343: Trip
+- 1343: Travel
+- 1352: the best of each kind, by XP per minute
+- 1352: the best of each kind, by quests per hour
+- 1355: Level %d: \|cff7fd1ae%s due\|r first, then %s.
+- 1357: Level %d: %s from here.
+- 1362: Nothing to quest fits in %d min: the quickest option, a bit over%s.
+- 1363: , after \|cff7fd1ae%s due\|r
+- 1365: Fits in %d min: \|cff7fd1ae%s due\|r first, then %s; hand-ins and finishes by least travel.
+- 1368: Fits in %d min: %s; hand-ins and finishes by least travel.
+- 1372: Install 
+- 1372:  for quest hubs and XP; dungeons are ranked by level fit and travel time.
+- 1374: At the level cap quests give no XP, so options are ranked by quests per hour.
+- 1376: No quest XP in the data: ranked by quests per hour, weighted by level fit.
+- 1384: %d ready to hand in
+- 1385: %d to finish (timed by objectives left)
+- 1386: Quest log counted at full XP: %s.
+- 1388: %s in your log can't be placed on the map%s.
+- 1389:  without quest data
+- 1401: %s %.0f
+- 1410: Can't read your position here.
+- 1520: best quest
+- 1534: don't miss
+- 1552: %s %s (%d more quest%s)
+- 1553: at level 
+- 1553: after earlier quests
+- 1577: dungeon trip
+- 1589: Also for your level: 
+- 1592: Dungeons later, once you can take most of their quests: 
+- 1618:   ·  a bit over
+- 1619: Nothing fits in %d min; this is the quickest. 
+- 1633: What to do next, for this character, from where you stand.
+- 1637: Nothing to suggest from here yet. Visit a trainer for your class, open a flight map, or install 
+- 1638:  for quest hubs and XP estimates.
+- 1718: Time:
+- 1719: How long you have: For you only suggests what fits.
+- 1721: Any
+- 1726: /ww time <minutes> \| off - For you suggests only what fits in that time
+- 1731: time budget off: For you suggests anything
+- 1734: For you suggests what fits in %d min (/ww time off to stop)
+- 1737: time budget: %d min (/ww time off to stop)
+- 1738: no time budget (/ww time 20: only what fits in 20 minutes)
+- 1740: /ww time <minutes> \| off
+- 1751: Questing zone
+- 1751: Dungeon
+- 1751: Raid
+- 1766: \|level 
+- 1773: spell\|
+- 1852: /ww next - what to do next (opens the For you page)
 
 ## UI/Skin.lua
 
