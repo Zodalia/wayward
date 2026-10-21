@@ -963,41 +963,57 @@ function Nav.RemoveQuest(questID)
   adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
 end
 
--- Picks up a saved trip after logging in, re-planned from where you are.
--- True when that's settled: resumed, or nothing of it left to do. False to
--- try again in a moment: just after a login or reload the game may not have
--- your position, its maps or your quest log ready, and a trip dropped then
--- would be lost.
-function Nav.Resume()
-  local saved = ns.charDB.nav
-  if not saved or Nav.active then return true end
+-- A saved trip re-planned from where you are (the slow part, run as a
+-- background job after a login): { journey } or { goal, route } to start,
+-- "done" when nothing of it is left to do, or nil to try again in a moment:
+-- just after a login or reload the game may not have your position, its maps
+-- or your quest log ready, and a trip dropped then would be lost.
+local function planResume(saved)
   local here = ns.Geo.PlayerNode()
-  if not here then return false end
+  if not here then return nil end
   if saved.journey then
     local def = ns.Journey.Load(saved.journey)
     local journey = ns.Journey.Resume(def, here)
-    if journey then
-      ns.print("resuming journey: " .. journey.title .. " (/ww stop to end it)")
-      Nav.StartJourney(journey, true)
-      if Nav.active and saved.stats then Nav.active.stats = saved.stats end
-      return true
-    end
-    if ns.Journey.HasOpenStops(def) then return false end
+    if journey then return { journey = journey } end
+    if ns.Journey.HasOpenStops(def) then return nil end
   elseif saved.goal then
     local goal = ns.Geo.Node(saved.goal.mapID, saved.goal.x, saved.goal.y, saved.goal.label)
     local route = goal and ns.Router.Plan(here, goal, ns.Network.Build())
-    if route then
-      if goal then goal.npc = saved.goal.npc end
-      Nav.active = { title = saved.title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1,
-        stats = saved.stats or newStats() }
-      ns.print("resuming directions to " .. saved.title .. " (/ww stop to end them)")
-      showStep()
-      return true
-    end
-    return false
+    if not route then return nil end
+    goal.npc = saved.goal.npc
+    return { goal = goal, route = route }
   end
-  ns.charDB.nav = nil
+  return "done"
+end
+
+-- Starts what planResume found. True when that's settled: resumed, nothing
+-- left, or something else started (or the save changed) meanwhile.
+local function applyResume(saved, plan)
+  if Nav.active or ns.charDB.nav ~= saved then return true end
+  if plan == "done" then
+    ns.charDB.nav = nil
+    return true
+  end
+  if not plan then return false end
+  if plan.journey then
+    ns.print("resuming journey: " .. plan.journey.title .. " (/ww stop to end it)")
+    Nav.StartJourney(plan.journey, true)
+    if Nav.active and saved.stats then Nav.active.stats = saved.stats end
+  else
+    Nav.active = { title = saved.title, goal = plan.goal, route = ns.Router.WithZoneSteps(plan.route), index = 1,
+      stats = saved.stats or newStats() }
+    ns.print("resuming directions to " .. saved.title .. " (/ww stop to end them)")
+    showStep()
+  end
   return true
+end
+
+-- Picks up a saved trip, re-planned from where you are, all at once (see
+-- planResume). True when that's settled; false to try again later.
+function Nav.Resume()
+  local saved = ns.charDB.nav
+  if not saved or Nav.active then return true end
+  return applyResume(saved, planResume(saved))
 end
 
 -- XP earned on a trip, across level-ups.
@@ -1022,31 +1038,51 @@ ns.On("PLAYER_MONEY", function()
 end)
 ns.On("PLAYER_LOGIN", function() lastMoney = GetMoney() end)
 
--- After a login or reload: the saved trip back, tried every RESUME_EVERY
--- seconds RESUME_TRIES times while the game isn't ready for it. A trip that
--- can't be re-planned stays saved (/ww resume, or the next login); one that
--- fails with an error RESUME_FAILURES logins running (saved by an older
--- version, say) is dropped rather than fail every login.
+-- After a login or reload: the saved trip back, re-planned as a background
+-- job (ns.Warm) once the quest data is ready, tried every RESUME_EVERY seconds
+-- RESUME_TRIES times while the game isn't ready for it. A trip that can't be
+-- re-planned stays saved (/ww resume, or the next login); one that fails with
+-- an error RESUME_FAILURES logins running (saved by an older version, say) is
+-- dropped rather than fail every login. The game stopping a script that ran
+-- too long says nothing about the trip, so that doesn't count.
 local RESUME_EVERY, RESUME_TRIES, RESUME_FAILURES = 3, 10, 3
 
-local function tryResume(triesLeft)
-  local ok, settled = pcall(Nav.Resume)
-  if not ok then
-    local saved = ns.charDB.nav
-    if saved then
-      saved.failed = (saved.failed or 0) + 1
-      if saved.failed >= RESUME_FAILURES then ns.charDB.nav = nil end
-    end
-    Nav.active = nil
-    clearPin()
-    geterrorhandler()(settled)
-  elseif settled then
-    if not Nav.active then clearPin() end
-  elseif triesLeft > 1 then
-    ns.After(RESUME_EVERY, function() tryResume(triesLeft - 1) end)
-  else
-    ns.print("couldn't re-plan your trip from here yet; it's kept: /ww resume tries again.")
+local function resumeFailed(err, reported)
+  local saved = ns.charDB.nav
+  local timeout = type(err) == "string" and err:find("script ran too long", 1, true)
+  if saved and not timeout then
+    saved.failed = (saved.failed or 0) + 1
+    if saved.failed >= RESUME_FAILURES then ns.charDB.nav = nil end
   end
+  Nav.active = nil
+  clearPin()
+  if not reported then geterrorhandler()(err) end
+end
+
+local function tryResume(triesLeft)
+  local saved = ns.charDB.nav
+  if not saved or Nav.active then
+    if not Nav.active then clearPin() end
+    return
+  end
+  -- Re-planning reads the quest data: after it's indexed (Quests.Warm).
+  if ns.Quests.Warm() then
+    ns.After(RESUME_EVERY, function() tryResume(triesLeft) end)
+    return
+  end
+  ns.Warm(function() return planResume(saved) end, function(ok, plan)
+    -- A job's error is reported already.
+    if not ok then return resumeFailed(plan, true) end
+    local fine, settled = pcall(applyResume, saved, plan)
+    if not fine then return resumeFailed(settled) end
+    if settled then
+      if not Nav.active then clearPin() end
+    elseif triesLeft > 1 then
+      ns.After(RESUME_EVERY, function() tryResume(triesLeft - 1) end)
+    else
+      ns.print("couldn't re-plan your trip from here yet; it's kept: /ww resume tries again.")
+    end
+  end)
 end
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)

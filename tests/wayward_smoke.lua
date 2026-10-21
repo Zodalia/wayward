@@ -2113,9 +2113,38 @@ do
   fire("PLAYER_ENTERING_WORLD", false, true)
   runTimers()
   check(ns.charDB.nav == nil, "after three logins with errors it's dropped")
-  geterrorhandler, ns.Journey.Load = errorHandler, realLoad
+  -- The game stopping a slow script says nothing about the trip: not counted.
   ns.charDB.nav = savedNav
   savedNav.failed = nil
+  ns.Journey.Load = function() error("Interface/AddOns/Wayward/Sources.lua:76: script ran too long") end
+  for _ = 1, 4 do
+    fire("PLAYER_ENTERING_WORLD", false, true)
+    runTimers()
+  end
+  check(ns.charDB.nav == savedNav and savedNav.failed == nil, "a script that ran too long doesn't count against the trip")
+  geterrorhandler, ns.Journey.Load = errorHandler, realLoad
+
+  -- Re-planned in the background, a slice per frame (a slow clock: a pause at
+  -- nearly every step).
+  local realClock, t = debugprofilestop, 0
+  debugprofilestop = function() t = t + 5 return t end
+  ns.Nav.active = nil
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  local frames = 0
+  for _ = 1, 50 do
+    runTimers()
+    local warm = ns.WarmFrame()
+    while ns.Warming() and frames < 10000 do
+      warm.scripts.OnUpdate(warm, 0.016)
+      frames = frames + 1
+    end
+    if ns.Nav.active then break end
+  end
+  debugprofilestop = realClock
+  check(ns.Nav.active and frames >= 1 and ns.Nav.active.journey.stops[1].action.kind == "turnin",
+    "after a reload the trip is re-planned in the background (" .. frames .. " frames) and resumes")
+  ns.Nav.active = nil
+  ns.charDB.nav = savedNav
   ns.Nav.Resume()
   fire("QUEST_TURNED_IN", 40)
   check(ns.Nav.active == nil and ns.charDB.nav == nil, "handing it in ends the trip and clears the save")
