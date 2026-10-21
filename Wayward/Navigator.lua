@@ -153,11 +153,22 @@ local offerFollowUps -- below: offers a trip's follow-up quests (true when it as
 
 -- What a trip has come to so far, for the fanfare at its end: XP earned,
 -- yards travelled, quests handed in, and when it started.
-local lastXP, lastXPMax
+local lastXP, lastXPMax, lastMoney
 
+-- What a trip came to, for its fanfare: quests handed in (`quests`) and
+-- picked up, levels, money looted or earned, flight paths learned,
+-- profession ranks trained.
 function newStats()
   lastXP, lastXPMax = UnitXP and UnitXP("player"), UnitXPMax and UnitXPMax("player")
-  return { started = time(), xp = 0, distance = 0, quests = 0 }
+  lastMoney = GetMoney and GetMoney()
+  return { started = time(), xp = 0, distance = 0, quests = 0, picked = 0, levels = 0, money = 0, flights = 0,
+    ranks = 0 }
+end
+
+-- Adds `n` (default 1) to the trip's `key` (trips saved before a stat existed start it at 0).
+local function count(key, n)
+  local stats = Nav.active and Nav.active.stats
+  if stats then stats[key] = (stats[key] or 0) + (n or 1) end
 end
 
 local function startJourney(journey, quiet)
@@ -298,7 +309,8 @@ local function arrive()
   if a.stats and ns.Fanfare then
     local stats = a.stats
     local ok, err = pcall(ns.Fanfare.TripDone, { title = a.title, xp = stats.xp, seconds = time() - stats.started,
-      distance = stats.distance, quests = stats.quests })
+      distance = stats.distance, quests = stats.quests, picked = stats.picked, levels = stats.levels,
+      money = stats.money, flights = stats.flights, ranks = stats.ranks })
     if not ok then ns.print("couldn't show the trip's fanfare: " .. tostring(err)) end
   end
   Nav.Stop()
@@ -384,6 +396,7 @@ local function finishStop(matches)
     local stop = ns.Journey.PendingAction(step)
     if stop and i >= a.index and matches(stop.action) then
       stop.done, stop.passed = true, nil
+      if stop.action.kind == "train" then count("ranks") end
       if i == #a.route.steps then return arrive() end
       local relocate = false
       for k = i + 1, #a.route.steps do
@@ -549,6 +562,7 @@ local function askPickups()
 end
 
 ns.On("QUEST_ACCEPTED", function(questID)
+  count("picked")
   questAction("pickup", questID)
   syncStops()
   picked[#picked + 1] = questID
@@ -558,7 +572,7 @@ ns.On("QUEST_ACCEPTED", function(questID)
   end
 end)
 ns.On("QUEST_TURNED_IN", function(questID)
-  if Nav.active and Nav.active.stats then Nav.active.stats.quests = Nav.active.stats.quests + 1 end
+  count("quests")
   questAction("turnin", questID)
   syncStops()
 end)
@@ -884,6 +898,17 @@ ns.On("PLAYER_XP_UPDATE", function()
   end
   lastXP, lastXPMax = xp, max
 end)
+
+ns.On("PLAYER_LEVEL_UP", function() count("levels") end)
+ns.Listen("FLIGHTS_CHANGED", function(learned) count("flights", learned) end)
+
+-- Money in on a trip (loot, quest rewards, selling); spending doesn't take it back.
+ns.On("PLAYER_MONEY", function()
+  local money = GetMoney()
+  if lastMoney and money > lastMoney then count("money", money - lastMoney) end
+  lastMoney = money
+end)
+ns.On("PLAYER_LOGIN", function() lastMoney = GetMoney() end)
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   if not (isLogin or isReload) then return end

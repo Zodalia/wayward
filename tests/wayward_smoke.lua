@@ -2309,7 +2309,24 @@ do
   check(ns.Nav.active == nil and f and f.title == "Errands" and f.xp == 1100 and f.quests == 1 and f.distance > 30,
     string.format("a finished trip's fanfare: %s XP, %s quests, %s yd", tostring(f and f.xp), tostring(f and f.quests),
       tostring(f and math.floor(f.distance))))
+  local keys = {}
+  for _, h in ipairs(ns.Fanfare.lastShown) do keys[#keys + 1] = h.key end
+  check(table.concat(keys, ",") == "xp,quests", "the banner shows what the trip achieved (almost half a level first): " .. table.concat(keys, ","))
   UnitXP, UnitXPMax = nil, nil
+
+  -- The banner picks 2 to 4 stats, the biggest achievements first.
+  local function shown(stats)
+    local out = {}
+    for _, h in ipairs(ns.Fanfare.Highlights(stats)) do out[#out + 1] = h.key end
+    return table.concat(out, ",")
+  end
+  check(shown({ seconds = 600, distance = 800 }) == "distance,seconds", "nothing achieved: just distance and time, no zero XP or quests")
+  check(shown({ picked = 3, money = 40000, seconds = 600, distance = 800 }) == "money,picked",
+    "4 gold beats 3 quests taken, and neither needs time or distance")
+  check(shown({ quests = 1, seconds = 600, distance = 800 }) == "quests,distance", "one achievement: topped up to two")
+  check(shown({ levels = 1, quests = 5, money = 500, xp = 5000, picked = 2, flights = 1, seconds = 600,
+    distance = 800 }) == "levels,quests,xp,flights", "a big trip: the four that stand out, a level first")
+  check(shown({ money = 30, picked = 6 }):find("^picked"), "a few copper doesn't beat six quests taken")
 
   -- New journeys: learned quietly the first time, then shown.
   ns.charDB.seenCards = nil

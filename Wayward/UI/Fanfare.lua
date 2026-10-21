@@ -1,8 +1,9 @@
 local _, ns = ...
 
 -- Fanfare. Two frames near the top of the screen:
---   * when a trip is done: what it came to (XP earned, time taken, distance
---     travelled, quests handed in);
+--   * when a trip is done: what it came to, as the 2 to 4 stats that stand out
+--     most (levels, quests handed in, gold, XP, ... ; time and distance fill
+--     in when there's little else);
 --   * when For you has a new major suggestion (a questing zone, a dungeon,
 --     new spells, a profession's next rank): "New journey available", which
 --     you click to start it (or add it to your trip: the usual question).
@@ -39,22 +40,76 @@ local function fadeAfter(f, seconds)
   end)
 end
 
-local function stat(parent, label, x)
+local function stat(parent)
   local l = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  l:SetPoint("TOP", parent, "TOPLEFT", x, -64)
   local v = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
   v:SetPoint("TOP", l, "BOTTOM", 0, -3)
-  l:SetText(string.upper(label))
-  return v
+  return { label = l, value = v }
 end
 
 ---------------------------------------------------------------- trip done
 
 local trip
+local TRIP_WIDTH, MAX_STATS, MIN_STATS = 380, 4, 2
+
+local function number(n)
+  local s = tostring(math.floor((n or 0) + 0.5)):reverse():gsub("(%d%d%d)", "%1,"):reverse()
+  return (s:gsub("^,", ""))
+end
+
+local function xpRef()
+  local max = UnitXPMax and UnitXPMax("player")
+  return max and max > 0 and max / 10 or 1000
+end
+
+-- The stats a trip can show, most important first: { key, label, priority,
+-- ref, format }. `ref` is a good amount (a number, or a function for one that
+-- depends on your level): a stat scores its priority at `ref`, more for more
+-- (up to twice at four times `ref`), less for less. Time and distance are
+-- always there, but score low: they show only when there's little else.
+local STATS = {
+  { "levels", "Levels", 100, 1, function(n) return "+" .. n end },
+  { "quests", "Quests done", 70, 3, tostring },
+  { "ranks", "Ranks trained", 65, 1, tostring },
+  { "flights", "Flight paths", 55, 1, tostring },
+  { "money", "Money", 50, 10000, function(n) return ns.FormatMoney(n) end },
+  { "picked", "Quests taken", 45, 3, tostring },
+  { "xp", "XP earned", 40, xpRef, number },
+  { "distance", "Distance", 12, 500, function(n) return number(n) .. " yd" end },
+  { "seconds", "Time", 10, 300, function(n) return ns.FormatDuration(n) end },
+}
+
+-- The stats worth showing for a trip, best first: { key, label, text, score },
+-- 2 to 4 of them (fewer only when the trip has less: an instant arrival).
+function Fanfare.Highlights(stats)
+  local out = {}
+  for order, s in ipairs(STATS) do
+    local amount = tonumber(stats[s[1]]) or 0
+    if amount >= 1 then
+      local ref = type(s[4]) == "function" and s[4]() or s[4]
+      local score = s[3] * math.sqrt(math.min(amount / ref, 4))
+      out[#out + 1] = { key = s[1], label = s[2], text = s[5](amount), score = score, order = order }
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.score ~= b.score then return a.score > b.score end
+    return a.order < b.order
+  end)
+  -- Time and distance only to make up the minimum.
+  local picked, fillers = {}, {}
+  for _, h in ipairs(out) do
+    if h.key == "seconds" or h.key == "distance" then fillers[#fillers + 1] = h else picked[#picked + 1] = h end
+  end
+  for _, h in ipairs(fillers) do
+    if #picked < MIN_STATS then picked[#picked + 1] = h end
+  end
+  while #picked > MAX_STATS do table.remove(picked) end
+  return picked
+end
 
 local function createTrip()
   local f = ns.Skin.CreateBox("WaywardTripFanfare")
-  f:SetSize(380, 112)
+  f:SetSize(TRIP_WIDTH, 112)
   ns.RestorePosition(f, "tripPos", TRIP_HOME)
   f:SetFrameStrata("HIGH")
   f:SetBackdropColor(0, 0, 0, 0.85)
@@ -66,19 +121,12 @@ local function createTrip()
   f.title:SetPoint("TOP", f.heading, "BOTTOM", 0, -4)
   f.title:SetWidth(350)
   f.title:SetWordWrap(false)
-  f.xp = stat(f, "XP earned", 56)
-  f.time = stat(f, "Time", 146)
-  f.distance = stat(f, "Distance", 236)
-  f.quests = stat(f, "Quests", 326)
+  f.stats = {}
+  for i = 1, MAX_STATS do f.stats[i] = stat(f) end
   f:SetScript("OnMouseUp", function(self) self:Hide() end)
   ns.Skin.Box(f)
   f:Hide()
   return f
-end
-
-local function number(n)
-  local s = tostring(math.floor((n or 0) + 0.5)):reverse():gsub("(%d%d%d)", "%1,"):reverse()
-  return (s:gsub("^,", ""))
 end
 
 -- `sound`: a sound kit instead of the chosen one (for /ww sounds test).
@@ -86,16 +134,30 @@ local function showTrip(stats, sound)
   trip = trip or createTrip()
   trip.heading:SetText("Journey complete!")
   trip.title:SetText(stats.title or "")
-  trip.xp:SetText(number(stats.xp))
-  trip.time:SetText(ns.FormatDuration(stats.seconds))
-  trip.distance:SetText(number(stats.distance) .. " yd")
-  trip.quests:SetText(tostring(stats.quests or 0))
+  local shown = Fanfare.Highlights(stats)
+  for i, slot in ipairs(trip.stats) do
+    local h = shown[i]
+    if h then
+      -- Evenly spread across the banner, however many there are.
+      slot.label:ClearAllPoints()
+      slot.label:SetPoint("TOP", trip, "TOPLEFT", TRIP_WIDTH * (i - 0.5) / #shown, -64)
+      slot.label:SetText(string.upper(h.label))
+      slot.value:SetText(h.text)
+      slot.label:Show()
+      slot.value:Show()
+    else
+      slot.label:Hide()
+      slot.value:Hide()
+    end
+  end
+  Fanfare.lastShown = shown
   trip:Show()
   fadeAfter(trip, TRIP_SECONDS)
   ns.Sounds.Play("complete", sound)
 end
 
--- stats: { title, xp, seconds, distance (yards), quests }
+-- stats: { title, xp, seconds, distance (yards), quests (handed in), picked,
+-- levels, money (copper), flights, ranks }
 function Fanfare.TripDone(stats)
   showTrip(stats)
   Fanfare.lastTrip = stats
@@ -198,7 +260,8 @@ end
 -- shown straight away (one on screen comes back after it) and starts nothing.
 function Fanfare.Preview(kind, sound)
   if kind == "trip" then
-    return showTrip({ title = "Sample journey", xp = 1250, seconds = 754, distance = 2310, quests = 3 }, sound)
+    return showTrip({ title = "Sample journey", xp = 1250, seconds = 754, distance = 2310, quests = 3, picked = 2,
+      money = 41250 }, sound)
   end
   local r = { preview = true, previewSound = sound, title = "Sample journey", category = "Questing zone",
     place = "Westfall", icon = "Interface\\Icons\\INV_Misc_Map_01" }

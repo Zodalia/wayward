@@ -593,65 +593,65 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 51: couldn't use TomTom's arrow; using Wayward's own.
 - 137: tip: talk to a flight master once and Wayward will route you via your flight paths.
 - 145: directions to 
-- 168: journey: %s, %d stop%s, %s
-- 171: no route to 
-- 171: a stop
-- 171: ; left out.
-- 187: You're on a trip: %s.\n\nAdd \"%s\" to it, or replace the trip?
-- 188: Add to trip
-- 188: Cancel
-- 188: Replace
-- 200: Talk to 
-- 202: Go to 
-- 296: you have arrived: 
-- 302: couldn't show the trip's fanfare: 
-- 333: no route from here.
-- 372: faster route with your flight paths: 
-- 459: %d quests
-- 505: couldn't show a question (
-- 529: Add to trip
-- 529: Not now
-- 529: New trip
-- 536: Start trip
-- 536: Not now
-- 543: You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?
-- 546: You picked up %s.%s\n\nStart a trip for it (%s)?
-- 586: %s isn't offered yet (it needs earlier quests): dropped from the trip.
-- 587: that quest
-- 691: no stops left.
-- 703: can't move that stop there: it comes after another stop.
-- 716: Your trip
-- 725: no route to 
-- 725:  from here.
-- 733:  is already in your trip.
-- 740: no route for the trip from here.
-- 745: added %s to your trip: %d stops, %s
-- 818: Add
-- 818: No thanks
-- 822: %s continues with %s, about %s more on the way.\n\nAdd it to your trip too?
-- 858: resuming journey: 
-- 858:  (/ww stop to end it)
-- 870: resuming directions to 
-- 870:  (/ww stop to end them)
-- 921: re-routed from here (
-- 931: you moved a long way
-- 934: you're on another continent
-- 938: you went another way
-- 1001: that spot's cleared: on to another for %s.
-- 1003: that spot's cleared: other stops first while it respawns (%s).
-- 1006: that spot's cleared: back when it respawns (%s).
-- 1052: you're doing %s here: it's next on the trip now.
-- 1105: nothing else on the trip to do first; skip it to take it off.
-- 1110: later: %s, after %s.
-- 1110: that stop
-- 1110: the next stop
-- 1125: Skip
-- 1125: Cancel
-- 1129: Skip \"%s\"?\n\nIt's taken off the trip%s.
-- 1129: this stop
-- 1130: , with \"%s\", which needs it
-- 1130: a stop
-- 1131: , with the %d stops that need it
+- 179: journey: %s, %d stop%s, %s
+- 182: no route to 
+- 182: a stop
+- 182: ; left out.
+- 198: You're on a trip: %s.\n\nAdd \"%s\" to it, or replace the trip?
+- 199: Add to trip
+- 199: Cancel
+- 199: Replace
+- 211: Talk to 
+- 213: Go to 
+- 307: you have arrived: 
+- 314: couldn't show the trip's fanfare: 
+- 345: no route from here.
+- 384: faster route with your flight paths: 
+- 472: %d quests
+- 518: couldn't show a question (
+- 542: Add to trip
+- 542: Not now
+- 542: New trip
+- 549: Start trip
+- 549: Not now
+- 556: You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?
+- 559: You picked up %s.%s\n\nStart a trip for it (%s)?
+- 600: %s isn't offered yet (it needs earlier quests): dropped from the trip.
+- 601: that quest
+- 705: no stops left.
+- 717: can't move that stop there: it comes after another stop.
+- 730: Your trip
+- 739: no route to 
+- 739:  from here.
+- 747:  is already in your trip.
+- 754: no route for the trip from here.
+- 759: added %s to your trip: %d stops, %s
+- 832: Add
+- 832: No thanks
+- 836: %s continues with %s, about %s more on the way.\n\nAdd it to your trip too?
+- 872: resuming journey: 
+- 872:  (/ww stop to end it)
+- 884: resuming directions to 
+- 884:  (/ww stop to end them)
+- 946: re-routed from here (
+- 956: you moved a long way
+- 959: you're on another continent
+- 963: you went another way
+- 1026: that spot's cleared: on to another for %s.
+- 1028: that spot's cleared: other stops first while it respawns (%s).
+- 1031: that spot's cleared: back when it respawns (%s).
+- 1077: you're doing %s here: it's next on the trip now.
+- 1130: nothing else on the trip to do first; skip it to take it off.
+- 1135: later: %s, after %s.
+- 1135: that stop
+- 1135: the next stop
+- 1150: Skip
+- 1150: Cancel
+- 1154: Skip \"%s\"?\n\nIt's taken off the trip%s.
+- 1154: this stop
+- 1155: , with \"%s\", which needs it
+- 1155: a stop
+- 1156: , with the %d stops that need it
 
 ## OnTheWay.lua
 
@@ -1162,25 +1162,30 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Fanfare.lua
 
-- 69: XP earned
-- 70: Time
-- 71: Distance
-- 72: Quests
-- 87: Journey complete!
-- 125: New journey available
-- 150: A sound test: clicking it starts nothing
-- 151: Click to add it to your trip, or start it instead
-- 151: Click to start it
-- 201: Sample journey
-- 203: Sample journey
-- 203: Questing zone
-- 204: Westfall
-- 213: TripDone
-- 213: Journey complete
-- 215: NewJourney
-- 215: New journey toast
-- 219: /ww toasts - the 'new journey available' toasts on or off
-- 221: new journey toasts 
+- 71: Levels
+- 72: Quests done
+- 73: Ranks trained
+- 74: Flight paths
+- 75: Money
+- 76: Quests taken
+- 77: XP earned
+- 78: Distance
+- 79: Time
+- 135: Journey complete!
+- 187: New journey available
+- 212: A sound test: clicking it starts nothing
+- 213: Click to add it to your trip, or start it instead
+- 213: Click to start it
+- 263: Sample journey
+- 266: Sample journey
+- 266: Questing zone
+- 267: Westfall
+- 276: TripDone
+- 276: Journey complete
+- 278: NewJourney
+- 278: New journey toast
+- 282: /ww toasts - the 'new journey available' toasts on or off
+- 284: new journey toasts 
 
 ## UI/Cards.lua
 

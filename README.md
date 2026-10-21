@@ -266,8 +266,12 @@ and once 5 are timed the average of your last 20 replaces the 5 minutes per
 quest. `/ww debug` shows it.
 
 **Fanfare.** When a trip is done, a frame near the top of the screen says
-what it came to: XP earned (across level-ups), time taken, distance travelled
-and quests handed in. When For you has a new major suggestion (a questing
+what it came to: the 2 to 4 stats that stand out most. Each kind has a
+priority (levels, quests handed in, profession ranks trained, flight paths
+learned, money in, quests taken, XP across level-ups) and scores more the
+more of it you got, so 4 gold can beat 3 quests taken; nothing you got none
+of is shown. Distance and time only make up the numbers when a trip
+achieved less than two things. When For you has a new major suggestion (a questing
 zone, a dungeon, spells to train, a profession's next rank) a short "New
 journey available" toast pops up; click it to start the journey, or to add
 it to the trip you're on (the usual question). Both fade after a few seconds,
