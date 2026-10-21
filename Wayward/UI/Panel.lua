@@ -152,16 +152,50 @@ local function addDetails(r)
   if r.details then GameTooltip:AddLine(" ") end
 end
 
+-- A result's item (a "Don't miss" quest's reward) in its own tooltip beside
+-- the main one, stats and all; on the left when there's no room on the right.
+local itemTip
+local function showItem(itemID)
+  if not itemTip then
+    itemTip = CreateFrame("GameTooltip", "WaywardItemTooltip", UIParent, "GameTooltipTemplate")
+    GameTooltip:HookScript("OnHide", function() itemTip:Hide() end)
+  end
+  itemTip:SetOwner(GameTooltip, "ANCHOR_NONE")
+  itemTip:ClearAllPoints()
+  itemTip:SetItemByID(itemID)
+  local right, width = GameTooltip:GetRight(), itemTip:GetWidth()
+  if right and width and UIParent:GetRight() and right + width + 4 > UIParent:GetRight() then
+    itemTip:SetPoint("TOPRIGHT", GameTooltip, "TOPLEFT", -4, 0)
+  else
+    itemTip:SetPoint("TOPLEFT", GameTooltip, "TOPRIGHT", 4, 0)
+  end
+  itemTip:Show()
+end
+
+-- The item tooltip, once shown (nil before), for tests.
+function Panel.ItemTooltip() return itemTip end
+
+local HEARTH_COLOR = { 0.8, 0.65, 1 }
+
 -- The tooltip for a result (rows and cards share it).
 function Panel.ShowTooltip(owner, r)
   GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
   GameTooltip:SetText(r.title)
   addDetails(r)
   if r.journey then
+    local hearth = r.journey.hearth
     for i, stop in ipairs(r.journey.stops) do
+      if hearth and not hearth.cooldown and hearth.stop == stop then
+        GameTooltip:AddLine(string.format("    Hearth to %s (saves %s)", hearth.label, ns.FormatDuration(hearth.saves)),
+          HEARTH_COLOR[1], HEARTH_COLOR[2], HEARTH_COLOR[3], true)
+      end
       local zone = ns.Journey.StopZone(stop)
       GameTooltip:AddLine(i .. ". " .. (stop.text or stop.node.label or "?")
         .. (zone and ("  |cff9d9d9d(" .. zone .. ")|r") or ""), 1, 1, 1, true)
+    end
+    if hearth and hearth.cooldown then
+      GameTooltip:AddLine(string.format("Your Hearthstone (%s) would save %s, but it's ready in %s.", hearth.label,
+        ns.FormatDuration(hearth.saves), ns.FormatDuration(hearth.readyIn)), 0.6, 0.6, 0.6, true)
     end
     GameTooltip:AddLine("Click to start this journey", 0.5, 0.8, 0.7)
     if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
@@ -174,6 +208,7 @@ function Panel.ShowTooltip(owner, r)
     if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
   end
   GameTooltip:Show()
+  if r.item then pcall(showItem, r.item) end
   -- The route on a small map under the tooltip.
   if ns.RouteMap then pcall(ns.RouteMap.Show, r, GameTooltip) end
 end

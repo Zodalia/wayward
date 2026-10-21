@@ -1062,6 +1062,50 @@ player.mapID, player.x, player.y = 1453, 0.5, 0.5
 ns.HUD.Update()
 check(ns.Nav.active == nil, "reaching the final stop ends the journey")
 
+io.write("hearthstone\n")
+do
+  -- Bound in Stormwind, standing in Redridge: a quick pickup, then into Stormwind.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local savedCount = GetItemCount
+  local bags, cooldownStart = { [6948] = 1 }, 0
+  GetItemCount = function(id) return bags[id] or 0 end
+  GetBindLocation = function() return "Stormwind City" end
+  GetItemCooldown = function() return cooldownStart, cooldownStart > 0 and 3600 or 0 end
+  GetTime = function() return 1000 end
+  ns.charDB.hearth = { name = "Stormwind City", mapID = 1453, x = 0.52, y = 0.5 }
+  local function plan()
+    local pickup = stopAt(1433, 0.52, 0.52, "Lakeshire camp", 104)
+    return ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Hearth run", stops = { pickup },
+      finish = stopAt(1453, 0.5, 0.5, "Test Dungeon") })
+  end
+  local function modes(j)
+    local out = {}
+    for _, st in ipairs(j.steps) do out[#out + 1] = st.mode end
+    return table.concat(out, ",")
+  end
+  local with = plan()
+  bags[6948] = nil
+  local without = plan()
+  bags[6948] = 1
+  check(with.hearth and not with.hearth.cooldown and with.hearth.stop.node.label == "Test Dungeon"
+    and with.hearth.label == "Stormwind City" and modes(with):find("hearth", 1, true),
+    "a Hearthstone home stands in for the leg into Stormwind (" .. modes(with) .. ")")
+  check(not without.hearth and not modes(without):find("hearth", 1, true) and with.seconds < without.seconds,
+    string.format("without one in your bags it's the long way (%.0f s vs %.0f s)", with.seconds, without.seconds))
+  local index
+  for i, st in ipairs(with.steps) do if st.mode == "hearth" then index = i end end
+  check(ns.Router.Describe(with, index) == "Hearth to Stormwind City", "the step says to hearth")
+  cooldownStart = 900 -- used 100 s ago: ready in ~58 min
+  local cooling = plan()
+  check(cooling.hearth and cooling.hearth.cooldown and cooling.hearth.readyIn > 3000
+    and not modes(cooling):find("hearth", 1, true), "on cooldown: not used, but the plan says what it would save")
+  cooldownStart = 0
+  ns.charDB.hearth.name = "Goldshire"
+  check(not plan().hearth, "bound somewhere else since: we don't know where it takes you")
+  GetItemCount, GetBindLocation, GetItemCooldown, GetTime = savedCount, nil, nil, nil
+  ns.charDB.hearth = nil
+end
+
 io.write("pages\n")
 local seenQuery
 ns.RegisterPage({ id = "test", label = "Test", order = 5, searchable = true, placeholder = "Find things",
@@ -4439,6 +4483,15 @@ do
   for _, d in ipairs(card and card.details or {}) do why[#why + 1] = d.text end
   check(card and card.details[1].text:find("^Don't miss: Epic quest line") and card.place:find("^Epic"),
     "the card says why in plain words: " .. table.concat(why, " / "))
+  check(card and card.details[1].text:find("Its quest giver is ", 1, true) and not card.details[1].text:find("XP", 1, true),
+    "and how far its quest giver is: " .. tostring(card and card.details[1].text))
+  local rewardReason
+  for _, r in ipairs(ns.Quests.Notable(502)) do if r.kind == "reward" then rewardReason = r end end
+  check(rewardReason and rewardReason.itemID == 9501, "a reward reason carries its item, for the item tooltip")
+  local ok, err = pcall(ns.Panel.ShowTooltip, UIParent, { title = "Do Staff quest", item = 9501, details = {} })
+  check(ok and ns.Panel.ItemTooltip() and ns.Panel.ItemTooltip():IsShown(), "the reward shows in its own tooltip beside it"
+    .. (err and (": " .. tostring(err)) or ""))
+  GameTooltip:Hide()
   local tagged, why
   for i, d in ipairs(zone and zone.details or {}) do
     if d.quest and d.text:find("The Long Tale  (Magistrate Solomon)  ·  Epic", 1, true) then

@@ -328,6 +328,7 @@ local function reasonsFor(q, p)
     local more = usable > 1 and string.format(" and %d more you can use", usable - 1) or ""
     add("reward", best.weight, "Reward for you", string.format("Rewards %s%s (your class can use it%s)%s.",
       reward.name or ("item " .. reward.itemID), rare and ", a rare item" or "", level, more))
+    out[#out].itemID = reward.itemID
   end
 
   if foreverOnly(q) then
@@ -376,8 +377,9 @@ end
 local notableCache, cacheKey = {}, nil
 
 -- Why the quest is worth doing beyond its XP, heaviest first:
--- { {kind, text, weight, tag}, ... } (empty when nothing stands out). Kept per
--- quest until your level, the sources or the client's item cache change.
+-- { {kind, text, weight, tag, itemID?}, ... } (empty when nothing stands out;
+-- itemID: the reward, on a "reward" reason). Kept per quest until your level,
+-- the sources or the client's item cache change.
 function Quests.Notable(questID)
   local q = Quests.Quest(questID)
   if not q then return {} end

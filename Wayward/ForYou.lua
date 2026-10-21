@@ -1249,19 +1249,27 @@ local function plainRow(option)
 end
 
 -- "Don't miss": what makes the quest stand out, in plain words; its XP doesn't rank it.
+-- `travel` is the first leg only (to the quest giver, or on with one in your log).
 local function notableRow(option, ctx)
   local q = option.quests[1]
-  local details = { { text = string.format("Don't miss: %s Shown whatever its XP: it's %s away.",
-    option.reasons[1].text, ns.FormatDuration(option.travel)), color = GOLD } }
+  local where = q.inLog and string.format("It's in your log, %s away", ns.FormatDuration(option.travel))
+    or string.format("Its quest giver is %s away", ns.FormatDuration(option.travel))
+  if option.trip > option.travel then where = where .. string.format(", the whole trip %s", ns.FormatDuration(option.trip)) end
+  local details = { { text = string.format("Don't miss: %s %s.", option.reasons[1].text, where), color = GOLD } }
   for i = 2, #option.reasons do details[#details + 1] = { text = option.reasons[i].text, color = NOTABLE } end
   local line = string.format("[%d] %s%s", q.level or 0, q.name or ("Quest " .. q.id), q.inLog and "  (in your log)" or "")
   if ctx.xpMode then line = line .. string.format("  -  %s XP", formatNumber((questValue(q, ctx)))) end
   details[#details + 1] = { text = line, quest = true,
     color = GetQuestDifficultyColor and q.level and GetQuestDifficultyColor(q.level) }
+  -- The reward that makes it stand out, shown beside the tooltip.
+  local rewardItem
+  for _, reason in ipairs(option.reasons) do
+    if reason.itemID then rewardItem = reason.itemID break end
+  end
   local stats = { { "Level", tostring(q.level or "?") }, { "Travel", ns.FormatDuration(option.travel) } }
   if option.trip > option.travel then stats[#stats + 1] = { "Trip", ns.FormatDuration(option.trip) } end
   return {
-    id = "notable" .. q.id, kind = "notable", category = "Don't miss", title = option.title,
+    id = "notable" .. q.id, kind = "notable", category = "Don't miss", title = option.title, item = rewardItem,
     subtitle = string.format("%s  ·  %s  ·  %s", option.zone, ns.FormatDuration(option.travel), option.tag),
     place = string.format("%s  ·  %s", option.tag, option.zone), stats = stats,
     goal = option.goal, journey = option.journey, details = details,
