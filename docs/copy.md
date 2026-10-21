@@ -1253,45 +1253,49 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Options.lua
 
-- 27: Compass in the directions box
-- 28: An arrow in the directions box points the way while you walk. Off: the box is narrower and shows text only.
-- 31: TomTom's arrow
-- 32: Show Wayward's directions with TomTom's arrow and map pins (needs TomTom). Works with or without the compass.
-- 35: Star over the NPC you're heading for
-- 36: A star over the nameplate of the flight master, quest giver, trainer or vendor the current step is for, and a line in their tooltip. The star needs friendly NPC nameplates (below).
-- 39: Friendly NPC nameplates
-- 40: The game's own setting: nameplates over friendly NPCs. Needed for the star; off by default in the game.
-- 43: Ask when you pick up a quest
-- 44: When you pick up a quest that isn't in your trip: add it to the trip (with the time it adds), start a new trip for it, or not now.
-- 47: Open the journey overview when a trip starts
-- 48: The list of every stop opens by itself when a trip starts. Off: open it from the directions box's book button, or the minimap menu on a trip.
-- 51: New journey toasts
-- 52: A short message when For you has something new for you: a questing zone, a dungeon, spells to train, a profession's next rank. Click it to start the journey.
-- 55: Minimap button
-- 56: The Wayward button on the minimap. Right-click it for this menu; /ww minimap brings it back.
-- 82: windows and boxes put back where they started
-- 105: Windows and boxes
-- 105: Reset positions
-- 106: Put the Wayward window, the directions box, the journey overview and the banners back where they started.
-- 107: Welcome
-- 107: Show again
-- 109: The short introduction shown on the first login: what Wayward does and how it learns.
-- 110: Slash commands
-- 110: List in chat
-- 111: Every /ww command, printed to the chat window.
-- 122: options: /ww compass, /ww tomtom, /ww toasts, /ww marker and /ww minimap turn those on or off.
-- 134: Close Wayward
-- 134: Open Wayward
-- 137: Journey overview
-- 139: Stop directions
-- 146: TomTom's arrow
-- 150: Welcome and help
-- 181: Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow too? 
-- 182: You can change this, and turn Wayward's own compass off, in the options (/ww options).
-- 183: Use TomTom
-- 183: No thanks
-- 202: /ww options - open Wayward's options
-- 203: /ww reset - put every window and box back where it started
+- 34: Compass
+- 35: TomTom's arrow
+- 36: Compass and TomTom's arrow
+- 37: Neither (text directions only)
+- 70: Compass in the directions box
+- 72: Star over the NPC you're heading for
+- 73: A star over the nameplate of the flight master, quest giver, trainer or vendor the current step is for, and a line in their tooltip. The star needs friendly NPC nameplates (below).
+- 76: Friendly NPC nameplates
+- 77: The game's own setting: nameplates over friendly NPCs. Needed for the star; off by default in the game.
+- 80: Ask when you pick up a quest
+- 81: When you pick up a quest that isn't in your trip: add it to the trip (with the time it adds), start a new trip for it, or not now.
+- 84: Open the journey overview when a trip starts
+- 85: The list of every stop opens by itself when a trip starts. Off: open it from the directions box's book button, or the minimap menu on a trip.
+- 88: New journey toasts
+- 89: A short message when For you has something new for you: a questing zone, a dungeon, spells to train, a profession's next rank. Click it to start the journey.
+- 92: Minimap button
+- 93: The Wayward button on the minimap. Right-click it for this menu; /ww minimap brings it back.
+- 119: windows and boxes put back where they started
+- 133: Arrows
+- 139: What points the way. The compass is an arrow in the directions box (without it the box is 
+- 140: narrower, text only); TomTom's arrow and map pins need TomTom.
+- 156: Windows and boxes
+- 156: Reset positions
+- 157: Put the Wayward window, the directions box, the journey overview and the banners back where they started.
+- 158: Welcome
+- 158: Show again
+- 160: The short introduction shown on the first login: what Wayward does and how it learns.
+- 161: Slash commands
+- 161: List in chat
+- 162: Every /ww command, printed to the chat window.
+- 173: options: /ww compass, /ww tomtom, /ww toasts, /ww marker and /ww minimap turn those on or off.
+- 185: Close Wayward
+- 185: Open Wayward
+- 188: Journey overview
+- 190: Stop directions
+- 198: TomTom's arrow
+- 202: Welcome and help
+- 234: Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow instead of 
+- 235: Wayward's compass? You can change this, or use both, in the options (/ww options).
+- 236: Use TomTom
+- 236: No thanks
+- 258: /ww options - open Wayward's options
+- 259: /ww reset - put every window and box back where it started
 
 ## UI/Welcome.lua
 

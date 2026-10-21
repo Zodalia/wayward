@@ -3,9 +3,9 @@ local _, ns = ...
 -- Wayward's options, in the game's Settings (Options > AddOns > Wayward),
 -- the quick menu on the minimap button (right-click; also the addon
 -- compartment), and the one question asked when TomTom is installed: whether
--- to use its arrow. The compass and TomTom's arrow are separate: either,
--- both, or neither (text directions only). Slash commands change the same
--- settings.
+-- to use its arrow (yes turns the compass off). One dropdown picks the
+-- compass, TomTom's arrow, both, or neither (text directions only). Slash
+-- commands change the same settings.
 
 local Options = {}
 ns.Options = Options
@@ -22,16 +22,53 @@ local function setMinimapShown(v)
   if ns.MinimapButton then ns.MinimapButton.Refresh() end
 end
 
+local function compassOn() return ns.db.settings.showArrow ~= false end
+local function setCompass(v) ns.SetSetting("showArrow", v) end
+local function tomtomOn() return ns.db.settings.tomtom == true end
+local function setTomTom(v) ns.SetSetting("tomtom", v) end
+
+---------------------------------------------------------------- arrows
+
+-- The compass and TomTom's arrow, as one dropdown: { value, label, compass, tomtom }.
+local ARROWS = {
+  { 1, "Compass", true, false },
+  { 2, "TomTom's arrow", false, true },
+  { 3, "Compass and TomTom's arrow", true, true },
+  { 4, "Neither (text directions only)", false, false },
+}
+
+-- The dropdown's choices: the TomTom ones only when TomTom is installed.
+function Options.ArrowChoices()
+  local tomtom = ns.Nav and ns.Nav.TomTomInstalled()
+  local out = {}
+  for _, a in ipairs(ARROWS) do
+    if tomtom or not a[4] then out[#out + 1] = { value = a[1], label = a[2] } end
+  end
+  return out
+end
+
+function Options.GetArrows()
+  local tomtom = tomtomOn() and ns.Nav and ns.Nav.TomTomInstalled()
+  for _, a in ipairs(ARROWS) do
+    if a[3] == compassOn() and a[4] == (tomtom and true or false) then return a[1] end
+  end
+end
+
+-- Without TomTom installed, the TomTom choice saved before stays as it was.
+function Options.SetArrows(value)
+  for _, a in ipairs(ARROWS) do
+    if a[1] == value then
+      if compassOn() ~= a[3] then setCompass(a[3]) end
+      if ns.Nav and ns.Nav.TomTomInstalled() and tomtomOn() ~= a[4] then setTomTom(a[4]) end
+      return
+    end
+  end
+end
+
 -- { key, name, tooltip, get, set, quick }: `quick` puts it on the minimap menu too.
+-- The compass rides along on the menu only; the options have the arrows dropdown.
+local COMPASS = { "WAYWARD_COMPASS", "Compass in the directions box", nil, compassOn, setCompass, true }
 local CHOICES = {
-  { "WAYWARD_COMPASS", "Compass in the directions box",
-    "An arrow in the directions box points the way while you walk. Off: the box is narrower and shows text only.",
-    function() return ns.db.settings.showArrow ~= false end,
-    function(v) ns.SetSetting("showArrow", v) end, true },
-  { "WAYWARD_TOMTOM", "TomTom's arrow",
-    "Show Wayward's directions with TomTom's arrow and map pins (needs TomTom). Works with or without the compass.",
-    function() return ns.db.settings.tomtom == true end,
-    function(v) ns.SetSetting("tomtom", v) end },
   { "WAYWARD_MARKER", "Star over the NPC you're heading for",
     "A star over the nameplate of the flight master, quest giver, trainer or vendor the current step is for, and a line in their tooltip. The star needs friendly NPC nameplates (below).",
     function() return ns.db.settings.markNPCs ~= false end,
@@ -91,11 +128,25 @@ local function addButton(c, label, buttonText, onClick, tooltip)
   layout:AddInitializer(CreateSettingsButtonInitializer(label, buttonText, onClick, tooltip, true))
 end
 
+local function addArrows(c)
+  if not (Settings.CreateDropdown and Settings.CreateControlTextContainer) then return end
+  local setting = Settings.RegisterProxySetting(c, "WAYWARD_ARROWS", Settings.VarType.Number, "Arrows",
+    Options.GetArrows(), Options.GetArrows, Options.SetArrows)
+  Settings.CreateDropdown(c, setting, function()
+    local container = Settings.CreateControlTextContainer()
+    for _, a in ipairs(Options.ArrowChoices()) do container:Add(a.value, a.label) end
+    return container:GetData()
+  end, "What points the way. The compass is an arrow in the directions box (without it the box is "
+    .. "narrower, text only); TomTom's arrow and map pins need TomTom.")
+end
+
 local function register()
   if category or not (Settings and Settings.RegisterVerticalLayoutCategory and Settings.RegisterProxySetting
     and Settings.CreateCheckbox and Settings.RegisterAddOnCategory) then return end
   local ok = pcall(function()
     local c = Settings.RegisterVerticalLayoutCategory("Wayward")
+    -- A client without the dropdown API still gets the rest.
+    pcall(addArrows, c)
     for _, choice in ipairs(CHOICES) do
       local setting = Settings.RegisterProxySetting(c, choice[1], Settings.VarType.Boolean, choice[2],
         choice[4](), choice[4], choice[5])
@@ -139,11 +190,12 @@ function Options.MenuEntries()
     entries[#entries + 1] = { text = "Stop directions", run = function() ns.Nav.Stop() end }
   end
   entries[#entries + 1] = {}
+  entries[#entries + 1] = { text = COMPASS[2], get = COMPASS[4], set = COMPASS[5] }
   for _, c in ipairs(CHOICES) do
     if c[6] then entries[#entries + 1] = { text = c[2], get = c[4], set = c[5] } end
   end
   if ns.Nav and ns.Nav.TomTomInstalled() then
-    entries[#entries + 1] = { text = "TomTom's arrow", get = CHOICES[2][4], set = CHOICES[2][5] }
+    entries[#entries + 1] = { text = "TomTom's arrow", get = tomtomOn, set = setTomTom }
   end
   entries[#entries + 1] = {}
   entries[#entries + 1] = { text = "Options...", run = Options.Open }
@@ -173,15 +225,19 @@ end
 
 ---------------------------------------------------------------- TomTom
 
--- The question, once: TomTom is installed and you haven't chosen yet.
+-- The question, once: TomTom is installed and you haven't chosen yet. Using
+-- TomTom turns Wayward's compass off (one arrow is enough).
 function Options.AskTomTom()
   if ns.db.settings.tomtom ~= nil or not ns.Nav.TomTomInstalled() then return false end
   if not (StaticPopupDialogs and StaticPopup_Show) then return false end
   StaticPopupDialogs.WAYWARD_TOMTOM = StaticPopupDialogs.WAYWARD_TOMTOM or {
-    text = "Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow too? "
-      .. "You can change this, and turn Wayward's own compass off, in the options (/ww options).",
+    text = "Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow instead of "
+      .. "Wayward's compass? You can change this, or use both, in the options (/ww options).",
     button1 = "Use TomTom", button2 = "No thanks",
-    OnAccept = function() ns.SetSetting("tomtom", true) end,
+    OnAccept = function()
+      ns.SetSetting("tomtom", true)
+      ns.SetSetting("showArrow", false)
+    end,
     OnCancel = function(_, _, reason) if reason == "clicked" then ns.SetSetting("tomtom", false) end end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
