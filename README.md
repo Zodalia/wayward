@@ -281,7 +281,9 @@ into a dungeon or an epic quest further down its chain, or is new in Forever
 (an ID from 90000 whose name no original quest has). Profession and holiday
 quests and reputation outside your own cities are mentioned but don't tag a
 quest on their own. Notable quests carry a short tag on the Quests tab and on
-For you's quest lines; the tooltip says why. `/ww debug quest <id|name>`
+For you's quest lines; the tooltip says why, and a standout reward shows in
+its own tooltip beside it (Don't miss cards, Quests tab log and search rows,
+Quest hubs rows). `/ww debug quest <id|name>`
 prints a quest's sort, flags, reward items and reasons
 (`ns.Quests.Notable(id)`, `ns.Quests.QuestSort(id)`, `ns.Quests.RewardItems(id)`).
 
@@ -418,8 +420,10 @@ into the trip you're on, or starts one; "In trip" takes it out again. The
 trip is re-ordered from where you are each time, each quest in its own order
 (pick up, objectives, hand in) but interleaved by travel time. "Hand in N
 completed quests" visits every finisher in one trip, and can be added to the
-current trip too. Without quest data the log still lists, but without
-directions.
+current trip too. Adding or starting a trip for one quest that has a chain
+asks which of its next steps to add as well (ticked when on the way); a trip
+of several quests only asks about follow-ups on the way. Without quest data
+the log still lists, but without directions.
 
 **Where a chain leads:** every quest list (Quests tab log and search, For you
 cards, the journey overview's quest stops) has a tooltip line on what follows

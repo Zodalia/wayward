@@ -2351,6 +2351,32 @@ do
   ns.ChainPicker.Cancel()
   check(not ns.ChainPicker.IsShown() and not ns.Nav.active, "Cancel adds nothing")
 
+  -- A follow-up out of the way (10 min more): listed, unticked, for one quest you chose; not for a bigger trip.
+  local realPlan = ns.Journey.Plan
+  ns.Journey.Plan = function(start, def, net)
+    local planned = realPlan(start, def, net)
+    for _, st in ipairs(planned and def.stops or {}) do
+      if st.action and st.action.kind == "pickup" and st.action.questID == 13 then
+        planned.seconds = planned.seconds + 600
+        break
+      end
+    end
+    return planned
+  end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  offer = ns.ChainPicker.current
+  check(ns.ChainPicker.IsShown() and offer and #offer.quests == 1 and offer.quests[1].quest.id == 13
+    and not offer.quests[1].checked and offer.quests[1].travel > 180,
+    "one quest's follow-up out of the way is still offered, unticked")
+  ns.ChainPicker.Cancel()
+  ns.Nav.Stop()
+  local both = ns.Journey.QuestStops(14, here)
+  for _, st in ipairs(ns.Journey.QuestStops(44, here)) do both[#both + 1] = st end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand ins", stops = both }))
+  check(not ns.ChainPicker.IsShown(), "a trip of several hand-ins only asks about follow-ups on the way")
+  ns.Nav.Stop()
+  ns.Journey.Plan = realPlan
+
   -- Abandoning a quest: its stops (and the follow-up after them) leave the trip; nothing left ends it.
   local other = { node = ns.Geo.Node(1433, 0.6, 0.5, "Elsewhere"), text = "Visit Elsewhere" }
   local stops = ns.Journey.QuestStops(14, here)
@@ -4703,6 +4729,30 @@ do
   check(ok and ns.Panel.ItemTooltip() and ns.Panel.ItemTooltip():IsShown(), "the reward shows in its own tooltip beside it"
     .. (err and (": " .. tostring(err)) or ""))
   GameTooltip:Hide()
+  check(ns.Quests.NotableItem(502) == 9501 and ns.Quests.NotableItem(501) == nil, "a quest's notable reward item")
+  local found
+  for _, r in ipairs(ns.QuestsPage.Results("Staff Delivery")) do
+    if r.id == "quest502" then found = r end
+  end
+  check(found and found.item == 9501, "Quests page: a search row shows the reward beside its tooltip")
+  local savedItemLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  C_QuestLog.GetNumQuestLogEntries = function() return 1 end
+  C_QuestLog.GetInfo = function() return { questID = 502, isHeader = false, title = QUESTS[502].name } end
+  C_QuestLog.IsComplete = function() return false end
+  found = nil
+  for _, r in ipairs(ns.QuestsPage.Results("")) do
+    if r.id == "log502" then found = r end
+  end
+  check(found and found.item == 9501, "Quests page: a quest log row too")
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete =
+    savedItemLog[1], savedItemLog[2], savedItemLog[3]
+  found = nil
+  for _, r in ipairs(ns.QuestHubs.Results()) do
+    for _, q in ipairs(r.quests or {}) do
+      if q.id == 502 then found = r end
+    end
+  end
+  check(found and found.item == 9501, "Quest hubs: a hub row shows its quests' notable reward")
   -- (On Classic Era no Forever chain is inferred, so one more quest is open
   -- and The Long Tale falls off the zone card's list: the dungeon one shows it.)
   local line, reason = "The Long Tale  (Magistrate Solomon)  ·  Epic", "Epic quest line"
