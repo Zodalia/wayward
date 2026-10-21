@@ -43,7 +43,7 @@ local function row(parent, i)
 end
 
 local function create()
-  local f = ns.Skin.CreateWindow("WaywardChainPicker")
+  local f, templated = ns.Skin.CreateWindow("WaywardChainPicker")
   f:SetWidth(WIDTH)
   f:SetPoint("CENTER", 0, 120)
   f:SetFrameStrata("DIALOG")
@@ -59,6 +59,12 @@ local function create()
   f.title:SetText("Follow-up quests")
   ns.Skin.Text(f.title)
   ns.Skin.CloseButton(f.close)
+  if templated then
+    f.Inset:ClearAllPoints()
+    f.Inset:SetPoint("TOPLEFT", 4, -26)
+    f.Inset:SetPoint("BOTTOMRIGHT", -6, 4)
+    ns.Skin.Inset(f.Inset)
+  end
 
   f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.heading:SetPoint("TOPLEFT", 18, -34)
