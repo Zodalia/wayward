@@ -3511,7 +3511,6 @@ do
   ns.Nav.Stop()
 
   -- TomTom.
-  check(#ns.Options.ArrowChoices() == 2, "without TomTom, the arrows dropdown offers the compass or neither")
   local added, removed = {}, 0
   TomTom = {
     AddWaypoint = function(_, mapID, x, y, opts) added[#added + 1] = { mapID = mapID, opts = opts } return { #added } end,
@@ -3530,16 +3529,7 @@ do
   StaticPopupDialogs.WAYWARD_TOMTOM.OnCancel(nil, nil, "clicked")
   check(ns.db.settings.tomtom == false and not ns.Options.AskTomTom(), "No thanks: off, and not asked again")
   StaticPopupDialogs.WAYWARD_TOMTOM.OnAccept()
-  check(ns.db.settings.tomtom == true and ns.db.settings.showArrow == false and ns.Options.GetArrows() == 2,
-    "Use TomTom: on, and the compass off")
-  -- The options' arrows dropdown: all four choices with TomTom installed.
-  check(#ns.Options.ArrowChoices() == 4, "with TomTom, the dropdown offers compass, TomTom, both and neither")
-  ns.Options.SetArrows(4)
-  check(not ns.db.settings.showArrow and ns.db.settings.tomtom == false, "neither: text directions only")
-  ns.Options.SetArrows(1)
-  check(ns.db.settings.showArrow and ns.db.settings.tomtom == false and ns.Options.GetArrows() == 1, "compass only")
-  ns.Options.SetArrows(3)
-  check(ns.db.settings.showArrow and ns.db.settings.tomtom == true and ns.Options.GetArrows() == 3, "both")
+  check(ns.db.settings.tomtom == true, "Use TomTom: on")
   StaticPopupDialogs, StaticPopup_Show = nil, nil
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   check(ns.Nav.UsingTomTom() and #added == 1 and added[1].opts.crazy and #waypoints == blizzard,

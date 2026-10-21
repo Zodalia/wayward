@@ -34,9 +34,8 @@ entrances shipped with the addon are approximate until you record them
 
 ## Options
 
-Options > AddOns > Wayward has every setting: what points the way (a
-dropdown: the compass in the directions box, TomTom's arrow, both, or
-neither), the star over the NPC you are heading for (and the
+Options > AddOns > Wayward has every setting: the compass in the directions
+box, TomTom's arrow, the star over the NPC you are heading for (and the
 game's friendly nameplates it needs), the question when you pick up a quest,
 whether the journey overview opens by itself when a trip starts, the
 new-journey toasts and the minimap button, plus buttons to reset window
@@ -300,17 +299,15 @@ play it. `/ww sounds export` opens your choices as one line to copy
   when you're on another continent than the current step expects, or when
   you've walked well away from the current target. Never during a flight,
   and at most every 10 seconds. The R button still re-plans on demand.
-- **TomTom**: when it's installed, Wayward asks once whether to use it
-  (yes turns Wayward's compass off; the options can turn it back on); then
-  each step goes on TomTom's arrow and map pins, titled with what to do
+- **TomTom**: when it's installed, Wayward asks once whether to use it;
+  then each step goes on TomTom's arrow and map pins, titled with what to do
   there (`/ww tomtom` or the options switch it, or retry after TomTom failed).
   The game keeps its own map pin across a logout or reload; Wayward takes
   its pin from last time down when TomTom shows the way or no trip resumes
   (a pin you placed yourself since stays).
-- **Options** (see [Options](#options) above): one dropdown picks the
-  compass, TomTom's arrow, both, or neither for text directions only (the
-  TomTom choices only when it's installed); with the compass off the
-  directions box is narrower.
+- **Options** (see [Options](#options) above): the compass and TomTom are
+  separate: use either, both, or neither for text directions only; with the
+  compass off the directions box is narrower.
 - **Flight paths** are learned per continent: a flight map only lists the
   continent you're on, so open one once per continent. "New flight path
   discovered!" also marks the nearest one as known.
