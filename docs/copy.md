@@ -1233,27 +1233,26 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Profile.lua
 
-- 24: Flight paths
-- 27: Open any flight master's map in %s, so routes can fly.
-- 28: Open any flight master's map, so routes can fly.
-- 35: Class trainer
-- 36: Talk to your class trainer once, so Wayward knows the spells you can learn.
-- 38: Hearthstone
-- 39: Set your Hearthstone at an inn (or use it once), so trips can use it.
-- 41: Quest data
-- 42: Install 
-- 42:  for quests, items and every trainer.
-- 43: Quest
-- 80: Your Wayward profile: %d%%
-- 81: The more Wayward knows, the better its suggestions and routes.
-- 84: :0\|t 
-- 112: StatusBar
-- 159: Next: 
-- 161: Profile complete!
-- 168: /ww profile - what Wayward knows about you so far, and what's left
-- 170: profile: %d%%
-- 172:   done: 
-- 172:   to do: 
+- 21: Flight paths: 
+- 22: Open any flight master's map in %s, so routes can fly there.
+- 31: Eastern Kingdoms
+- 32: Kalimdor
+- 33: Class trainer
+- 34: Talk to your class trainer once, so Wayward knows the spells you can learn.
+- 36: Hearthstone
+- 37: Set your Hearthstone at an inn (or use it once), so trips can use it.
+- 39: Quest data
+- 40: Install 
+- 40:  for quests, items and every trainer.
+- 41: Quest
+- 78: Your Wayward profile: %d%%
+- 79: The more Wayward knows, the better its suggestions and routes.
+- 82: :0\|t 
+- 110: StatusBar
+- 151: /ww profile - what Wayward knows about you so far, and what's left
+- 153: profile: %d%%
+- 155:   done: 
+- 155:   to do: 
 
 ## UI/Panel.lua
 

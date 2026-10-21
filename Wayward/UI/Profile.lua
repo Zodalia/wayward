@@ -1,9 +1,9 @@
 local _, ns = ...
 
 -- Your Wayward profile: the things that make its suggestions and routes as
--- good as they get (a flight map opened here, your class trainer, your
--- Hearthstone, the quest data), as a percentage with the next step, in the
--- main window under the cards (Panel.lua). Hover it for the whole list.
+-- good as they get (a flight map opened on each continent, your class trainer, your
+-- Hearthstone, the quest data), as a percentage bar in the main window under
+-- the cards (Panel.lua). Hover it for the whole list.
 -- At 100% it shows a tick for the rest of that session and is gone from the
 -- next one on (ns.charDB.profileComplete); /ww profile still lists it.
 
@@ -14,24 +14,22 @@ local BAR_WIDTH = 120
 local GREEN = { 0.25, 0.85, 0.3 }
 local TICK = "Interface\\RaidFrame\\ReadyCheck-Ready"
 
-local function currentContinent()
-  local here = ns.Geo.PlayerNode()
-  return here and ns.Geo.Continents()[here.instance]
+-- Classic's two continents (uiMapIDs), one flight-paths step each.
+local EASTERN_KINGDOMS, KALIMDOR = 1415, 1414
+
+local function flights(key, continent, name)
+  return { key, "Flight paths: " .. name,
+    function() return string.format("Open any flight master's map in %s, so routes can fly there.", name) end,
+    function()
+      if next(ns.charDB.knownTaxi or {}) == nil then return false end
+      return ns.Harvest.FlightsKnownOn(continent)
+    end }
 end
 
 -- The steps, in the order they're worth doing: { key, label, how, done() }.
 local STEPS = {
-  { "flights", "Flight paths",
-    function()
-      local continent = currentContinent()
-      return continent and string.format("Open any flight master's map in %s, so routes can fly.", ns.MapName(continent))
-        or "Open any flight master's map, so routes can fly."
-    end,
-    function()
-      if next(ns.charDB.knownTaxi or {}) == nil then return false end
-      local continent = currentContinent()
-      return not continent or ns.Harvest.FlightsKnownOn(continent)
-    end },
+  flights("flightsEK", EASTERN_KINGDOMS, "Eastern Kingdoms"),
+  flights("flightsKalimdor", KALIMDOR, "Kalimdor"),
   { "trainer", "Class trainer",
     function() return "Talk to your class trainer once, so Wayward knows the spells you can learn." end,
     function() return ns.charDB.classSpells ~= nil end },
@@ -95,8 +93,8 @@ local function hoverable(f)
   f:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
--- Under the large card (`anchor`), either side of the cards' page arrows,
--- which stay clickable between them.
+-- Under the large card (`anchor`), left of the cards' page arrows, which stay
+-- clickable beside it.
 function Profile.CreateStrip(parent, anchor, width)
   local f = CreateFrame("Frame", nil, parent)
   f:SetSize(width, 20)
@@ -125,18 +123,8 @@ function Profile.CreateStrip(parent, anchor, width)
   f.tick:SetTexture(TICK)
   f.tick:SetPoint("LEFT", f.percent, "RIGHT", 4, 0)
 
-  f.right = CreateFrame("Frame", nil, f)
-  f.right:SetPoint("TOPRIGHT")
-  f.right:SetSize(280, 20)
-  hoverable(f.right)
-  f.nextText = f.right:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  f.nextText:SetPoint("RIGHT", 0, 0)
-  f.nextText:SetWidth(280)
-  f.nextText:SetJustifyH("RIGHT")
-  f.nextText:SetWordWrap(false)
   ns.Skin.Text(f.label)
   ns.Skin.Text(f.percent)
-  ns.Skin.Text(f.nextText)
   strip = f
   return f
 end
@@ -155,11 +143,6 @@ function Profile.Update()
   strip.bar:SetValue(state.percent)
   strip.percent:SetText(state.percent .. "%")
   strip.tick:SetShown(state.percent >= 100)
-  if state.next then
-    strip.nextText:SetText("Next: " .. state.next.label)
-  else
-    strip.nextText:SetText("Profile complete!")
-  end
   strip:Show()
 end
 

@@ -459,9 +459,15 @@ do
   ns.Harvest.FlightsKnownOn = function() return true end
   P.Update()
   local state = P.State()
-  check(state.percent == 50 and state.next.key == "hearth" and strip:IsShown() and strip.percent:GetText() == "50%"
-    and not strip.tick:IsShown() and strip.nextText:GetText() == "Next: Hearthstone",
-    "the profile shows how far along you are and what's next: " .. tostring(strip.percent:GetText()))
+  check(state.percent == 60 and state.next.key == "hearth" and strip:IsShown() and strip.percent:GetText() == "60%"
+    and not strip.tick:IsShown() and not strip.nextText,
+    "the profile shows how far along you are, with no next step beside it: " .. tostring(strip.percent:GetText()))
+  ns.Harvest.FlightsKnownOn = function(continent) return continent == 1415 end
+  state = P.State()
+  check(state.percent == 40 and state.steps[1].done and not state.steps[2].done
+    and state.steps[2].label == "Flight paths: Kalimdor",
+    "flight paths count once per continent: " .. tostring(state.percent))
+  ns.Harvest.FlightsKnownOn = function() return true end
   ns.Hearth.Node = function() return {} end
   ns.Data.Has = function() return true end
   P.Update()
