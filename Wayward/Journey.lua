@@ -55,7 +55,7 @@ local function completed(questID)
 end
 
 local function objectivesDone(questID)
-  return inLog(questID) and C_QuestLog.IsComplete and C_QuestLog.IsComplete(questID) or false
+  return inLog(questID) and ns.QuestLog.IsComplete(questID) or false
 end
 
 local function hasItem(itemID)

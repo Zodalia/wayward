@@ -94,7 +94,10 @@ end
 
 function Harvest.AllNPCs()
   local all = {}
-  for id, npc in pairs(ns.data.seedNPCs) do all[id] = npc end
+  -- Seed positions were measured in Forever (some of its maps moved since vanilla).
+  if ns.IsForever() then
+    for id, npc in pairs(ns.data.seedNPCs) do all[id] = npc end
+  end
   for id, npc in pairs(ns.db.npcs) do all[id] = npc end
   return all
 end

@@ -35,7 +35,8 @@ local _, ns = ...
 --   TaxiCost(fromNodeID, toNodeID)  copper
 --
 -- Records are read-only. A position is { mapID = uiMapID, x, y, areaID }:
--- x and y 0-1 on that map in Forever coordinates; mapID is nil for a place
+-- x and y 0-1 on that map in this client's coordinates (Forever's, or Era's on
+-- Classic Era); mapID is nil for a place
 -- with no world map (inside a dungeon), areaID (AreaTable) when known.
 --
 -- Quest record:
@@ -207,7 +208,9 @@ function Data.Dungeons()
 end
 
 -- An Era point in Forever coordinates: x, y, converted (false: unchanged).
+-- On Classic Era an Era point is already where it is.
 function Data.EraToForever(mapID, x, y)
+  if not ns.IsForever() then return x, y, false end
   for _, s in ipairs(sources) do
     local fx, fy = call(s, "EraToForever", mapID, x, y)
     if type(fx) == "number" and type(fy) == "number" then return fx, fy, true end

@@ -271,14 +271,13 @@ end
 --   { id, title, level, zone (the log header above it), complete, progress }
 function QuestsPage.LogQuests()
   local out, zone = {}, nil
-  for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-    local info = C_QuestLog.GetInfo(i)
-    if info and info.isHeader then
+  for _, info in ns.QuestLog.Entries() do
+    if info.isHeader then
       zone = info.title
-    elseif info and info.questID and not info.isHidden then
+    elseif info.questID and not info.isHidden then
       local id = info.questID
       local q = ns.Quests.Quest(id)
-      local complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(id) or false
+      local complete = ns.QuestLog.IsComplete(id)
       out[#out + 1] = { id = id, title = info.title or (q and q.name) or ("Quest " .. id),
         level = (info.level or 0) > 0 and info.level or ns.Quests.QuestLevel(id) or 0,
         zone = zone, complete = complete, progress = progress(id, complete) }
@@ -303,7 +302,7 @@ end
 
 local function questName(id)
   local q = ns.Quests.Quest(id)
-  return q and q.name or (C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(id)) or ("Quest " .. id)
+  return q and q.name or ns.QuestLog.Title(id) or ("Quest " .. id)
 end
 
 local function plural(n, word)

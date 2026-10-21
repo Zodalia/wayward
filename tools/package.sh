@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 version=$(sed -n 's/^## Version: *//p' Wayward/Wayward.toc | tr -d '\r')
 [ -n "$version" ] || { echo "no ## Version in Wayward/Wayward.toc" >&2; exit 1; }
 lua tests/wayward_smoke.lua >/dev/null
+WAYWARD_GAME=era lua tests/wayward_smoke.lua >/dev/null
 mkdir -p dist
 out="dist/Wayward-$version.zip"
 rm -f "$out"

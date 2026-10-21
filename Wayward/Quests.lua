@@ -10,7 +10,6 @@ ns.Quests = Quests
 
 local Data = ns.Data
 local HUB_RADIUS = 120 -- yards between neighbouring quest givers in one hub
-local RED_LEVELS = 5 -- a quest this many levels above you shows red
 
 local questIndex
 local giverNodes = {}
@@ -51,7 +50,10 @@ local function npcSet(ends)
   return set
 end
 
+-- Only in Forever: Classic Era's own high IDs (Season of Discovery's) aren't
+-- Forever's additions.
 local function inferChains()
+  local forever = ns.IsForever()
   local byName = {}
   for id, q in pairs(questByID) do
     if type(q.name) == "string" then
@@ -60,7 +62,7 @@ local function inferChains()
     end
   end
   for id, q in pairs(questByID) do
-    if id >= FOREVER_QUEST_IDS and noChainData(q) then
+    if id >= FOREVER_QUEST_IDS and forever and noChainData(q) then
       local after
       for _, other in ipairs(byName[q.name] or {}) do
         if other < id and (not after or other > after) then after = other end
@@ -139,7 +141,8 @@ end
 local function playerProfile()
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
-  return { level = UnitLevel("player"), raceID = raceID, class = class }
+  -- tooHard: read once per profile, not once per quest.
+  return { level = UnitLevel("player"), raceID = raceID, class = class, tooHard = ns.TooHardLevels() }
 end
 
 -- Level <= 0 means "scales with you" in quest data; show your level.
@@ -160,10 +163,9 @@ local function playerQuestState()
     return questState.done, questState.inLog
   end
   local done, inLog = {}, {}
-  for _, id in ipairs(C_QuestLog.GetAllCompletedQuestIDs() or {}) do done[id] = true end
-  for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-    local info = C_QuestLog.GetInfo(i)
-    if info and not info.isHeader and info.questID then inLog[info.questID] = true end
+  for _, id in ipairs(ns.QuestLog.CompletedIDs()) do done[id] = true end
+  for _, info in ns.QuestLog.Entries() do
+    if not info.isHeader and info.questID then inLog[info.questID] = true end
   end
   questState = now and { done = done, inLog = inLog, at = now } or nil
   return done, inLog
@@ -307,12 +309,13 @@ local function blocker(q, p, done, inLog)
   return nil
 end
 
--- Hubs hide grey quests (little XP) and red ones (too hard).
+-- Hubs hide grey quests (little XP) and red ones (too hard; orange too on
+-- Hardcore: ns.TooHardLevels).
 local function fitsLevel(q, p)
   local questLevel = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
   if questLevel <= 0 then return true, questLevel end
   if isTrivial(questLevel, p.level) then return false, questLevel, "grey" end
-  if questLevel - p.level >= RED_LEVELS then return false, questLevel, "red" end
+  if questLevel - p.level >= (p.tooHard or ns.TooHardLevels()) then return false, questLevel, "red" end
   return true, questLevel
 end
 
@@ -605,7 +608,7 @@ end
 local MAX_DROPPERS = 6
 
 local function logArea(questID, label)
-  if not (C_QuestLog.GetLogIndexForQuestID and C_QuestLog.GetLogIndexForQuestID(questID)) then return nil end
+  if not (C_QuestLog.GetQuestsOnMap and ns.QuestLog.LogIndex(questID)) then return nil end
   for _, continent in pairs(ns.Geo.Continents()) do
     for _, poi in ipairs(C_QuestLog.GetQuestsOnMap(continent) or {}) do
       if poi.questID == questID and poi.x and poi.y then

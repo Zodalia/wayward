@@ -215,7 +215,7 @@ end
 local oldNames -- names of quests below FOREVER_QUEST_IDS, built on the first ask
 
 local function foreverOnly(q)
-  if q.id < FOREVER_QUEST_IDS then return false end
+  if q.id < FOREVER_QUEST_IDS or not ns.IsForever() then return false end
   if not oldNames then
     oldNames = {}
     for _, id in ipairs(Data.QuestIDs()) do

@@ -64,19 +64,16 @@ local function candidates(a, here)
     end
   end
   -- Quests in your log ready to hand in.
-  if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.IsComplete then
-    for i = 1, C_QuestLog.GetNumQuestLogEntries() or 0 do
-      local info = C_QuestLog.GetInfo(i)
-      local id = info and not info.isHeader and info.questID
-      if id and not have[id] and C_QuestLog.IsComplete(id) then
-        local finisher, node = ns.Quests.QuestFinisher(id, here)
-        local q = ns.Quests.Quest(id)
-        local name = q and q.name or info.title or ("quest " .. id)
-        if node then
-          out[#out + 1] = { kind = "handin", node = node, label = string.format("Hand in %s (%s)", name, finisher or "?"),
-            stops = { { node = node, npc = finisher, action = { kind = "turnin", questID = id },
-              text = string.format("Hand in %s to %s", name, finisher or "the quest giver") } } }
-        end
+  for _, info in ns.QuestLog.Entries() do
+    local id = not info.isHeader and info.questID
+    if id and not have[id] and ns.QuestLog.IsComplete(id) then
+      local finisher, node = ns.Quests.QuestFinisher(id, here)
+      local q = ns.Quests.Quest(id)
+      local name = q and q.name or info.title or ("quest " .. id)
+      if node then
+        out[#out + 1] = { kind = "handin", node = node, label = string.format("Hand in %s (%s)", name, finisher or "?"),
+          stops = { { node = node, npc = finisher, action = { kind = "turnin", questID = id },
+            text = string.format("Hand in %s to %s", name, finisher or "the quest giver") } } }
       end
     end
   end
