@@ -34,6 +34,24 @@ local function serviceKeys(name, level, rank)
   return name .. "@" .. tostring(level or 0), rank and (name .. "|" .. rank)
 end
 
+-- Whether a spell is in `index` (filled by indexSpell): by name and level, by
+-- name and rank, or by name alone for a spell with no numbered rank (Parry):
+-- its level can differ between clients.
+local function numbered(rank)
+  return rank and rank:find("%d") and rank or nil
+end
+
+local function indexSpell(index, name, level, rank)
+  local byLevel, byRank = serviceKeys(name, level, numbered(rank))
+  index[byLevel] = true
+  index[byRank or name] = true
+end
+
+local function inIndex(index, name, level, rank)
+  local byLevel, byRank = serviceKeys(name, level, numbered(rank))
+  return index[byLevel] or index[byRank or name] or false
+end
+
 -- Your class's spells in the shape of a trainer reading (Harvest.lua), from
 -- the data sources: "used" when you know it, "available" from its level.
 -- Also the spells your trainer has that you can't learn (`blocked`, see
@@ -45,7 +63,7 @@ local function fromData()
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
   local faction = UnitFactionGroup("player")
-  local onList, byID, blocked, partial = {}, {}, {}, false
+  local onList, byID, blocked, known, partial = {}, {}, {}, {}, false
   local function block(spell)
     local name, rank = spellName(spell.spellID)
     if not name then
@@ -91,27 +109,47 @@ local function fromData()
     local at = learnableFrom(spell)
     if at then
       local name, rank = spellName(spell.spellID)
-      local known = knowsSpell(spell.spellID)
+      local knows = knowsSpell(spell.spellID)
+      if name and knows then indexSpell(known, name, spell.level, rank) end
       services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
-        spellID = spell.spellID, levelReq = known and spell.level or at, cost = spell.cost,
-        type = known and "used" or (at <= level and "available" or "unavailable") }
+        spellID = spell.spellID, levelReq = knows and spell.level or at, cost = spell.cost, level = spell.level,
+        named = name ~= nil, type = knows and "used" or (at <= level and "available" or "unavailable") }
     else
       block(spell)
     end
   end
-  dataServices = { level = level, services = services, blocked = blocked, partial = partial }
+  dataServices = { level = level, services = services, blocked = blocked, known = known, partial = partial }
   return dataServices
 end
 
 -- Your last trainer visit without the spells the data says you can't learn.
 -- The trainer marks those unavailable, which after a level up reads as
 -- "level too low then" (Shadowburn rank 2 at 24 without the talent).
+-- Your spellbook wins over the visit: a spell you know is "used" even when
+-- the visit wasn't read again after you bought it.
+-- A visit at a lower level also gains the spells the data has for the levels
+-- since that it doesn't list: Classic Era leaves out a spell whose name
+-- hasn't loaded yet, and the trainer's filter can hide unavailable ones.
 local function fromTrainer(cs)
-  local blocked = fromData().blocked
-  local out = {}
+  local data = fromData()
+  local out, listed = {}, {}
   for _, s in ipairs(cs.services) do
     local byLevel, byRank = serviceKeys(s.name or "", s.levelReq, s.rank)
-    if not (s.name and (blocked[byLevel] or (byRank and blocked[byRank]))) then out[#out + 1] = s end
+    if not (s.name and (data.blocked[byLevel] or (byRank and data.blocked[byRank]))) then
+      if s.name and s.type ~= "used" and inIndex(data.known, s.name, s.levelReq, s.rank) then
+        local copy = {}
+        for k, v in pairs(s) do copy[k] = v end
+        copy.type = "used"
+        s = copy
+      end
+      out[#out + 1] = s
+    end
+    if s.name then indexSpell(listed, s.name, s.levelReq, s.rank) end
+  end
+  for _, d in ipairs(data.services) do
+    if d.type ~= "used" and d.named and d.levelReq > (cs.level or 0) and not inIndex(listed, d.name, d.level, d.rank) then
+      out[#out + 1] = d
+    end
   end
   return out
 end
