@@ -4764,6 +4764,41 @@ do
   fire("SPELLS_CHANGED")
   summary = ns.Trainers.SpellSummary()
   check(summary and summary.trainable == 0, "a spell you know isn't counted again")
+
+  -- Required spells: a rank 2 whose rank 1 is a talent you don't have isn't
+  -- on your list; one whose rank 1 is on it waits for that rank's level.
+  Wayward.RegisterSource({ id = "reqs", label = "Reqs", priority = 2,
+    ClassSpells = function(class)
+      if class == "WARLOCK" then return { { spellID = 9006, level = 6, cost = 200, requires = { 9101 } },
+        { spellID = 9007, level = 10, cost = 300, requires = { 9001 } },
+        { spellID = 9008, level = 8, cost = 400, requires = { 9002 } } } end
+    end })
+  IsPlayerSpell = function() return false end
+  local listed = {}
+  for _, s in ipairs(ns.Trainers.Services()) do listed[s.spellID] = s end
+  summary = ns.Trainers.SpellSummary()
+  check(not listed[9006] and summary.trainable == 2 and summary.cost == 400,
+    "a spell needing a talent (or quest) spell you don't have isn't learnable: " .. summary.trainable .. " trainable")
+  check(listed[9007] and listed[9007].type == "available", "one needing a rank you can learn now is learnable now")
+  check(listed[9008] and listed[9008].levelReq == 30 and listed[9008].type == "unavailable"
+    and summary.nextLevel == 30 and summary.nextCount == 2, "one needing a later rank waits for that rank's level")
+  IsPlayerSpell = function(id) return id == 9101 end
+  fire("SPELLS_CHANGED")
+  check(ns.Trainers.SpellSummary().trainable == 3, "with the talent's spell, the rank after it counts")
+  Wayward.UnregisterSource("reqs")
+
+  -- A trainer reading: unavailable at a level you had then means a required
+  -- spell you don't have, not a level to wait for.
+  ns.charDB.classSpells = { updated = 0, level = 20, services = {
+    { name = "Life Tap", type = "available", levelReq = 20, cost = 1000 },
+    { name = "Hemorrhage", rank = "Rank 2", type = "unavailable", levelReq = 18, cost = 500 },
+    { name = "Shadow Ward", type = "unavailable", levelReq = 22, cost = 700 } } }
+  check(ns.Trainers.SpellSummary().trainable == 1, "a spell the trainer won't teach you isn't counted")
+  local realLevel = UnitLevel
+  UnitLevel = function() return 22 end
+  summary = ns.Trainers.SpellSummary()
+  check(summary.trainable == 2 and summary.names[2] == "Shadow Ward", "one that waited for your level is, once you reach it")
+  UnitLevel = realLevel
   ns.charDB.classSpells, IsPlayerSpell = savedSpells, savedKnown
   check(not ns.Trainers.SpellSummary().fromData, "a trainer visit wins over the data")
 

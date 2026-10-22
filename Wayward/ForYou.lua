@@ -305,8 +305,9 @@ local function trainingNeed(ctx)
   local place = placeName(best.goal, best.zone)
   -- The spells themselves, first thing on the card.
   local details, level = {}, UnitLevel("player")
-  for _, sp in ipairs(ns.Trainers.Services() or {}) do
-    if sp.type ~= "used" and sp.levelReq and sp.levelReq <= level and not ns.Trainers.Skipped(sp) then
+  local services, _, cs = ns.Trainers.Services()
+  for _, sp in ipairs(services or {}) do
+    if ns.Trainers.CanTrain(sp, level, cs and cs.level) and not ns.Trainers.Skipped(sp) then
       details[#details + 1] = { text = string.format("%s%s%s", sp.name, sp.rank and (" (" .. sp.rank .. ")") or "",
         sp.cost and ("  -  " .. ns.FormatMoney(sp.cost)) or "") }
     end

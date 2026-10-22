@@ -35,17 +35,43 @@ local function servicesFromData()
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
   local faction = UnitFactionGroup("player")
-  local services = {}
+  local onList, byID = {}, {}
   for _, spell in ipairs(ns.Data.ClassSpells(class)) do
     -- Spells for another race or faction, or for a talent you don't have,
     -- aren't on your trainer's list.
     if (not spell.races or spell.races[raceID]) and (not spell.faction or spell.faction == faction)
       and (not spell.talent or knowsSpell(spell.talent)) then
+      onList[#onList + 1] = spell
+      byID[spell.spellID] = spell
+    end
+  end
+  -- The level you can learn a spell from: its own, or a later one its
+  -- required spells need; false when one of them is neither known nor on
+  -- your list (a talent or quest spell you don't have).
+  local from = {}
+  local function learnableFrom(spell)
+    if from[spell] ~= nil then return from[spell] end
+    if knowsSpell(spell.spellID) then from[spell] = 0 return 0 end
+    from[spell] = false -- a loop in the data can't make a spell learnable
+    local at = spell.level or 0
+    for _, id in ipairs(spell.requires or {}) do
+      local req = byID[id]
+      local reqAt = knowsSpell(id) and 0 or (req and learnableFrom(req))
+      if not reqAt then return false end
+      at = math.max(at, reqAt)
+    end
+    from[spell] = at
+    return at
+  end
+  local services = {}
+  for _, spell in ipairs(onList) do
+    local at = learnableFrom(spell)
+    if at then
       local name, rank = spellName(spell.spellID)
       local known = knowsSpell(spell.spellID)
       services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
-        spellID = spell.spellID, levelReq = spell.level, cost = spell.cost,
-        type = known and "used" or ((spell.level or 0) <= level and "available" or "unavailable") }
+        spellID = spell.spellID, levelReq = known and spell.level or at, cost = spell.cost,
+        type = known and "used" or (at <= level and "available" or "unavailable") }
     end
   end
   dataServices = { level = level, services = services }
@@ -88,16 +114,26 @@ function Trainers.Skipped(s)
 end
 
 -- Learning happens at a trainer, which refreshes the list, so "not used and
--- level reached" means trainable now. `leaveOutSkipped`: not the spells you
--- left at the trainer (counted in `skipped` instead).
+-- level reached" means trainable now. A spell the trainer marked unavailable
+-- although you had its level then needs a spell you don't have (a talent's
+-- rank 1): never trainable until a visit says otherwise. `readAt`: your level
+-- at that visit (nil for spell data, which is read at your level).
+function Trainers.CanTrain(s, level, readAt)
+  if s.type == "used" or not s.levelReq or s.levelReq > level then return false end
+  return not (s.type == "unavailable" and s.levelReq <= (readAt or level))
+end
+
+-- `leaveOutSkipped`: not the spells you left at the trainer (counted in
+-- `skipped` instead).
 function Trainers.SpellSummary(leaveOutSkipped)
   local services, from, cs = Trainers.Services()
   if not services then return nil end
   local level = UnitLevel("player")
+  local readAt = cs and cs.level
   local out = { trainable = 0, cost = 0, nextCount = 0, skipped = 0, updated = cs and cs.updated,
     level = cs and cs.level, fromData = from == "data", names = {} }
   for _, s in ipairs(services) do
-    if s.type ~= "used" and s.levelReq then
+    if s.type ~= "used" and s.levelReq and (s.levelReq > level or Trainers.CanTrain(s, level, readAt)) then
       if s.levelReq <= level and leaveOutSkipped and Trainers.Skipped(s) then
         out.skipped = out.skipped + 1
       elseif s.levelReq <= level then
