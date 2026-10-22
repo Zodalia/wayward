@@ -286,6 +286,31 @@ ns.charDB.skippedSpells = nil
 check(summary and summary.nextLevel == 24 and summary.nextCount == 1, "next spell at level 24")
 check(ns.db.npcs[999] and ns.db.npcs[999].kinds.classTrainer and ns.db.npcs[999].class == "WARLOCK",
   "trainer harvested as a warlock class trainer")
+-- Classic Era gives a service's name once it has loaded (its rank may come
+-- first): the rank isn't taken for a name, and the list is read again then.
+do
+  local realInfo, lateName = GetTrainerServiceInfo, nil
+  GetTrainerServiceInfo = function(i)
+    if i == 4 then return lateName, "Rank 2", "unavailable", false end
+    return realInfo(i)
+  end
+  SERVICES[4] = { req = 22, cost = 900 }
+  local function named(name)
+    for _, s in ipairs(ns.charDB.classSpells.services) do if s.name == name then return s end end
+  end
+  fire("TRAINER_SHOW")
+  runTimers()
+  check(#ns.charDB.classSpells.services == 3 and not named("Rank 2"), "a service with no name yet isn't read")
+  lateName = "Drain Life"
+  fire("TRAINER_SERVICE_INFO_NAME_UPDATE")
+  check(named("Drain Life") and named("Drain Life").rank == "Rank 2", "once its name loads, it is")
+  fire("TRAINER_CLOSED")
+  SERVICES[4], GetTrainerServiceInfo = nil, realInfo
+  fire("TRAINER_SHOW")
+  runTimers()
+  fire("TRAINER_CLOSED")
+  ns.charDB.skippedSpells = nil
+end
 
 io.write("routing\n")
 ns.db.npcs[999] = nil -- route to the seeded Stormwind trainer only
