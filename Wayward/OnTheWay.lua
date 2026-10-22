@@ -23,7 +23,8 @@ local cache
 
 -- The trip's points: where you are, then its open stops in order (or the
 -- destination), and every place its route passes (for "near the way").
-local function routePoints(a, here)
+-- Errands.lua ranks its places by these too.
+function OnTheWay.RoutePoints(a, here)
   local stops, near = { here }, { here }
   if a.journey then
     for _, stop in ipairs(a.journey.stops) do
@@ -95,7 +96,7 @@ local function candidates(a, here)
 end
 
 -- Seconds of travel `node` adds to the trip at its best place among `stops`.
-local function added(node, stops, net)
+function OnTheWay.Added(node, stops, net)
   local plans = {}
   local function cost(from, to)
     local key = tostring(from) .. ">" .. tostring(to)
@@ -122,7 +123,7 @@ function OnTheWay.Get()
   local key = tostring(a) .. ":" .. a.index .. ":" .. #(a.journey and a.journey.stops or {})
   if cache and cache.key == key and now and now - cache.at < KEEP then return cache.list end
 
-  local stops, near = routePoints(a, here)
+  local stops, near = OnTheWay.RoutePoints(a, here)
   local list = {}
   local ok, all = pcall(candidates, a, here)
   if ok then
@@ -137,7 +138,7 @@ function OnTheWay.Get()
     for i = 1, math.min(#all, CANDIDATES) do
       local c = all[i]
       if c.distance <= NEAR then
-        c.extra = added(c.node, stops, net)
+        c.extra = OnTheWay.Added(c.node, stops, net)
         if c.extra <= SLACK then list[#list + 1] = c end
       end
     end

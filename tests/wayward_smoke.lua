@@ -702,7 +702,8 @@ local function fixtureSource()
     return out
   end
   local FLAGS = { TRAINER = "trainer", VENDOR = "vendor", REPAIR = "repair", FLIGHT_MASTER = "flightMaster",
-    QUEST_GIVER = "questGiver" }
+    QUEST_GIVER = "questGiver", INNKEEPER = "innkeeper", BANKER = "banker", AUCTIONEER = "auctioneer",
+    STABLEMASTER = "stableMaster" }
   local function npcFlags(id)
     local mask, out = NpcDB.Get(id, "npcFlags") or 0, {}
     for enumKey, flag in pairs(FLAGS) do
@@ -747,6 +748,13 @@ local function fixtureSource()
   function source.Object(id)
     if not (ObjectDB and ObjectDB.GetAll(id, { "name" })) then return nil end
     return { id = id, name = ObjectDB.Get(id, "name"), positions = positions(ObjectDB.Get(id, "spawns")) }
+  end
+  function source.ObjectIDs(name)
+    local out = {}
+    for _, id in ipairs(ObjectDB and ObjectDB.GetAllIds() or {}) do
+      if not name or ObjectDB.Get(id, "name") == name then out[#out + 1] = id end
+    end
+    return out
   end
   function source.Item(id)
     if not (ItemDB and ItemDB.GetAll(id, { "name" })) then return nil end
@@ -2786,6 +2794,134 @@ do
   refreshData()
 end
 ---------------------------------------------------------------- on the way (end)
+---------------------------------------------------------------- errands (begin)
+do
+  io.write("errands\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local function trip()
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = {
+      { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" },
+      { node = ns.Geo.Node(1433, 0.56, 0.5, "Second"), text = "Visit Second" } } }))
+  end
+  local function rowText()
+    local out = {}
+    for _, r in ipairs(ns.ErrandPicker.Rows()) do out[#out + 1] = r.text .. " " .. r.time end
+    return table.concat(out, " | ")
+  end
+  trip()
+  local hud = ns.HUD.Frame()
+  check(hud.add and hud.add.scripts.OnClick, "the directions box has a + button")
+
+  -- Worn gear: it opens on repairs, least out of the way first, your side only.
+  durability = { 10, 50 }
+  hud.add.scripts.OnClick(hud.add)
+  check(ns.ErrandPicker.IsShown() and ns.ErrandPicker.Selected() == "repair",
+    "+ opens the list, on repairs with worn gear: " .. tostring(ns.ErrandPicker.Selected()))
+  local repairs = ns.Errands.Get("repair")
+  check(repairs[1] and repairs[1].npc == "Redridge Smith", "the repairer by the trip comes first: " .. rowText())
+  local sorted = true
+  for i = 2, #repairs do
+    if repairs[i].extra < repairs[i - 1].extra then sorted = false end
+  end
+  check(sorted, "sorted by the time each adds to the trip")
+  check(ns.ErrandPicker.Rows()[1].time:find("^%+"), "each row says the time it adds: " .. rowText())
+  durability = { 50, 50 }
+
+  -- Kinds: a stable master only for hunters.
+  local function hasKind(key)
+    for _, kind in ipairs(ns.Errands.Kinds()) do if kind.key == key then return true end end
+    return false
+  end
+  check(hasKind("mailbox") and hasKind("banker") and not hasKind("stableMaster"), "a warlock gets no stable master")
+  UnitClass = function() return "Hunter", "HUNTER", 3 end
+  check(hasKind("stableMaster"), "a hunter does")
+  UnitClass = function() return "Warlock", "WARLOCK", 9 end
+
+  -- Innkeepers and banks from the sources' NPC flags.
+  LibQuestieDB.Enum.npcFlags.INNKEEPER, LibQuestieDB.Enum.npcFlags.BANKER = 128, 131072
+  NPCS[7100] = { name = "Lakeshire Banker", npcFlags = 131072, friendlyToFaction = "A",
+    spawns = { [44] = { { 54.0, 52.0 } } } }
+  NPCS[7101] = { name = "Horde Innkeeper", npcFlags = 128, friendlyToFaction = "H",
+    spawns = { [44] = { { 80.0, 20.0 } } } }
+  refreshData()
+  ns.ErrandPicker.Select("banker")
+  check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].text:find("Lakeshire Banker", 1, true),
+    "banks listed: " .. rowText())
+  ns.ErrandPicker.Select("innkeeper")
+  check(rowText():find("Innkeeper Farley", 1, true) and not rowText():find("Horde Innkeeper", 1, true),
+    "inns of your side only: " .. rowText())
+
+  -- Mailboxes: none known, then the sources' (in your towns), then the ones you open.
+  ns.ErrandPicker.Select("mailbox")
+  check(ns.ErrandPicker.EmptyText() and ns.ErrandPicker.EmptyText():find("Open one once", 1, true),
+    "no mailboxes known: says how to learn one: " .. tostring(ns.ErrandPicker.EmptyText()))
+  local savedObjects = ObjectDB
+  ObjectDB = entity({ [9300] = { name = "Mailbox", spawns = { [44] = { { 52.5, 50.5 } } } },
+    [9301] = { name = "Mailbox", spawns = { [44] = { { 80.5, 20.5 } } } } }, {})
+  refreshData()
+  local boxes = ns.Errands.Get("mailbox")
+  check(#boxes == 1 and math.abs(boxes[1].node.x - 0.525) < 0.001,
+    "the sources' mailboxes in your towns only: " .. #boxes)
+  ObjectDB = savedObjects
+  refreshData()
+  player.x, player.y = 0.545, 0.505
+  fire("MAIL_SHOW")
+  fire("MAIL_SHOW")
+  check(#ns.db.mailboxes == 1, "opening a mailbox records it, once: " .. #ns.db.mailboxes)
+  player.x, player.y = 0.5, 0.5
+  ns.ErrandPicker.Select("mailbox")
+  check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].text:find("Mailbox", 1, true), "and lists it: " .. rowText())
+
+  -- Add: the stop goes in the trip and the list closes; the NPC is someone to talk to.
+  ns.ErrandPicker.Select("repair")
+  check(ns.ErrandPicker.AddRow(1) and not ns.ErrandPicker.IsShown(), "Add puts it in the trip and closes the list")
+  local added
+  for _, st in ipairs(ns.Nav.active.journey.root.stops) do
+    if st.npc == "Redridge Smith" then added = st end
+  end
+  check(added and added.action and added.action.kind == "talk" and added.text == "Repair at Redridge Smith",
+    "a stop to talk to the repairer: " .. tostring(added and added.text))
+  hud.add.scripts.OnClick(hud.add)
+  ns.ErrandPicker.Select("repair")
+  check(ns.ErrandPicker.Rows()[1].time:find("in your trip", 1, true) and not ns.ErrandPicker.AddRow(1),
+    "listed again as in your trip, and not added twice: " .. rowText())
+  -- The last kind you added from is where it opens next time.
+  ns.ErrandPicker.Toggle()
+  ns.ErrandPicker.Toggle()
+  check(ns.ErrandPicker.Selected() == "repair", "opens on the kind you last added from")
+
+  -- A mailbox stop: an object, done when you get there.
+  ns.ErrandPicker.Select("mailbox")
+  ns.ErrandPicker.AddRow(1)
+  local box
+  for _, st in ipairs(ns.Nav.active.journey.root.stops) do
+    if st.text == "Check your mail" then box = st end
+  end
+  check(box and box.node.object and not box.action, "a mailbox stop has nobody to talk to")
+  hud.add.scripts.OnClick(hud.add)
+  ns.ErrandPicker.Select("mailbox")
+  check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].time:find("in your trip", 1, true),
+    "and the mailbox shows as in your trip: " .. rowText())
+  ns.ErrandPicker.Hide()
+
+  -- Plain directions become a trip with the place added.
+  ns.Nav.Stop()
+  check(not ns.ErrandPicker.IsShown(), "stopping the directions closes the list")
+  local second = ns.Geo.Node(1433, 0.56, 0.5, "Second")
+  ns.Nav.Start("Second", second, ns.Router.Plan(here, second, ns.Network.Build()))
+  ns.ErrandPicker.Toggle()
+  ns.ErrandPicker.Select("banker")
+  check(ns.ErrandPicker.AddRow(1) and ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2,
+    "plain directions: the place joins the destination in a trip")
+  ns.Nav.Stop()
+  ns.db.mailboxes = {}
+  NPCS[7100], NPCS[7101] = nil, nil
+  LibQuestieDB.Enum.npcFlags.INNKEEPER, LibQuestieDB.Enum.npcFlags.BANKER = nil, nil
+  refreshData()
+end
+---------------------------------------------------------------- errands (end)
 ---------------------------------------------------------------- fanfare (begin)
 do
   io.write("fanfare\n")

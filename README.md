@@ -94,6 +94,17 @@ shows the introduction again, `/ww reset` puts every window back.
   flight). It also shows the trip, a bar of stops done, the step, which stop
   you're on, and distance and time left, with Blizzard's square buttons for
   skip and move on (on a trip), all stops, recalculate and stop.
+- **Add a stop**: the directions box's + button (bottom right) lists
+  errands to fit into the trip, like a road map's "petrol on the way": repair,
+  vendor (sell and buy), mailbox, bank, inn, auction house and, for hunters,
+  stable master. Pick a kind along the top; under it, the five places that add
+  least to the trip, each with the time it adds ("+2 min") and Add. It opens on
+  repairs when your gear is at 75% or less, on vendors when your bags are
+  full, else on the kind you last added from. Plain directions become a trip
+  with the place as one more stop. NPCs come from the ones you've talked to
+  and from the data source's NPC flags (your faction's); mailboxes from the
+  ones you've opened and the data source's objects named "Mailbox" in your
+  side's towns (judged by the nearest innkeeper or flight master).
 - **Talking to NPCs** is a step of its own. At a flight path it's "Talk to
   Ariena Stormfeather, the flight master at Lakeshire" (named once you've met
   them, or from a data source) until the flight map opens, then "Fly to
@@ -111,7 +122,7 @@ shows the introduction again, `/ww reset` puts every window back.
   the tooltip line off. Quests handed in to (or started from) an object, like
   Buzzbox 323, say "use" instead, with nothing to target.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
-  innkeeper or banker records where they are. Opening a flight map records
+  innkeeper or banker records where they are, and so does opening a mailbox. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
 
 - **Data sources (optional)**: Wayward bundles only hand-made data and what

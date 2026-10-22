@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- Directions box shown while navigating: current step, distance, and our own
 -- compass (an arrow in a circle; /ww compass or the options turn it off, and
--- the box gets narrower). Blizzard's on-screen navigation is off by default in Forever
+-- the box gets narrower), and a + button to add a stop (repair, mail, ...).
+-- Blizzard's on-screen navigation is off by default in Forever
 -- (showInGameNavigation = 0), so we don't rely on it.
 
 local HUD = {}
@@ -16,6 +17,8 @@ local MIN_HEIGHT = 84
 local PADDING = 10
 local CIRCLE = 42
 local TEXT_LEFT = PADDING + CIRCLE + 10
+local ADD_SIZE = 20
+local INFO_RIGHT = -(PADDING + ADD_SIZE + 2) -- the last line stops short of the + button
 local HOME = { "TOP", "TOP", 0, -140 }
 local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the trip gains stops
 local FLASH_PULSES = 3
@@ -159,6 +162,11 @@ local function create()
   f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
     "Skip this step")
   f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
+  -- Bottom right, beside the last line: add a stop (repair, mailbox, ...; UI/ErrandPicker.lua).
+  f.add = squareButton(f, nil, "Interface\\Icons\\Spell_ChargePositive", "+", function() ns.ErrandPicker.Toggle() end,
+    "Add a stop: repair, vendor, mailbox, bank...")
+  f.add:SetSize(ADD_SIZE, ADD_SIZE)
+  f.add:SetPoint("BOTTOMRIGHT", -6, 6)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.title:SetPoint("TOPLEFT", TEXT_LEFT, -PADDING - 2)
@@ -189,7 +197,7 @@ local function create()
 
   f.info = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
-  f.info:SetPoint("RIGHT", -PADDING, 0)
+  f.info:SetPoint("RIGHT", INFO_RIGHT, 0)
   f.info:SetJustifyH("LEFT")
   for _, fs in ipairs({ f.title, f.step, f.sub, f.info }) do ns.Skin.Text(fs) end
 
@@ -304,7 +312,7 @@ function HUD.Update()
   frame.sub:SetText(sub)
   frame.info:ClearAllPoints()
   frame.info:SetPoint("TOPLEFT", sub ~= "" and frame.sub or frame.step, "BOTTOMLEFT", 0, -5)
-  frame.info:SetPoint("RIGHT", -PADDING, 0)
+  frame.info:SetPoint("RIGHT", INFO_RIGHT, 0)
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))

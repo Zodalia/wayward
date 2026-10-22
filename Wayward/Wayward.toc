@@ -40,6 +40,7 @@ Journey.lua
 Camps.lua
 Navigator.lua
 OnTheWay.lua
+Errands.lua
 Marker.lua
 Docks.lua
 Dungeons.lua
@@ -55,6 +56,7 @@ UI\TargetButton.lua
 UI\JourneyOverview.lua
 UI\Fanfare.lua
 UI\ChainPicker.lua
+UI\ErrandPicker.lua
 UI\RouteMap.lua
 UI\Cards.lua
 UI\Profile.lua
