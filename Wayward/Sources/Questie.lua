@@ -151,6 +151,16 @@ function Q.New(spec)
     return { id = id, name = reader.get("object", id, "name"), positions = positions(reader.get("object", id, "spawns")) }
   end
 
+  function source.ObjectIDs(name)
+    local ids = reader.ids("object")
+    if not name then return ids end
+    local out = {}
+    for _, id in ipairs(ids) do
+      if reader.get("object", id, "name") == name then out[#out + 1] = id end
+    end
+    return out
+  end
+
   function source.Item(id)
     if not reader.exists("item", id) then return nil end
     local item = { id = id }
