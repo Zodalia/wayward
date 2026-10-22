@@ -185,6 +185,7 @@ Enum = {
 
 UnitClass = function() return "Warlock", "WARLOCK", 9 end
 UnitFactionGroup = function() return "Alliance" end
+UnitRace = function() return "Human", "Human", 1 end
 UnitLevel = function() return 20 end
 UnitName = function(u) return u == "npc" and "Test Darkbinder" or "Zodalia" end
 UnitGUID = function() return "Creature-0-1-0-2-999-AB" end
@@ -617,7 +618,6 @@ LibQuestieDB = {
     requiredMaxLevel = 32, availableUntilCompleted = 33, availableStartingWith = 34, disabledByQuest = 36 } } },
   Support = { Get = function() return { private = { areaIdToUiMapId = "return { [44] = 1433, [1519] = 1453 }" } } end },
 }
-UnitRace = function() return "Human", "Human", 1 end
 C_QuestLog = {
   GetAllCompletedQuestIDs = function() return { 2 } end,
   GetNumQuestLogEntries = function() return 1 end,
@@ -4817,6 +4817,30 @@ do
   UnitLevel = function() return 22 end
   summary = ns.Trainers.SpellSummary()
   check(summary.trainable == 2 and summary.names[2] == "Shadow Ward", "one that waited for your level is, once you reach it")
+
+  -- A talent's rank 2 the trainer marked unavailable below its level isn't
+  -- counted once you reach it: the data says it needs the talent.
+  Wayward.RegisterSource({ id = "talent", label = "Talent", priority = 2,
+    ClassSpells = function(class)
+      if class == "WARLOCK" then return { { spellID = 9010, level = 24, cost = 150, talent = 9110 } } end
+    end })
+  local realInfo, realSubtext = GetSpellInfo, GetSpellSubtext
+  GetSpellInfo = function(id) if id == 9010 then return "Shadowburn" end end
+  GetSpellSubtext = function(id) if id == 9010 then return "Rank 2" end end
+  IsPlayerSpell = function() return false end
+  fire("SPELLS_CHANGED")
+  ns.charDB.classSpells.services[#ns.charDB.classSpells.services + 1] =
+    { name = "Shadowburn", rank = "Rank 2", type = "unavailable", levelReq = 24, cost = 150 }
+  UnitLevel = function() return 24 end
+  summary = ns.Trainers.SpellSummary()
+  check(summary.trainable == 2 and not summary.names[3],
+    "a talent's rank 2 isn't counted without the talent: " .. table.concat(summary.names, ", "))
+  IsPlayerSpell = function(id) return id == 9110 end
+  fire("SPELLS_CHANGED")
+  check(ns.Trainers.SpellSummary().trainable == 3, "with the talent, it is")
+  GetSpellInfo, GetSpellSubtext = realInfo, realSubtext
+  Wayward.UnregisterSource("talent")
+  fire("SPELLS_CHANGED")
   UnitLevel = realLevel
   ns.charDB.classSpells, IsPlayerSpell = savedSpells, savedKnown
   check(not ns.Trainers.SpellSummary().fromData, "a trainer visit wins over the data")

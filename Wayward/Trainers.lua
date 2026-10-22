@@ -22,27 +22,40 @@ local function spellName(spellID)
   return nil
 end
 
-local dataServices -- { level, services } built from ns.Data.ClassSpells
+local dataServices -- { level, services, blocked } built from ns.Data.ClassSpells
 
 ns.Listen("SOURCES_CHANGED", function() dataServices = nil end)
 ns.On("SPELLS_CHANGED", function() dataServices = nil end)
 
+local function serviceKey(name, rank)
+  return name .. "|" .. (rank or "")
+end
+
 -- Your class's spells in the shape of a trainer reading (Harvest.lua), from
 -- the data sources: "used" when you know it, "available" from its level.
-local function servicesFromData()
+-- Also the spells your trainer has that you can't learn (`blocked`, by name
+-- and rank): for a talent you don't have, or needing a spell that is.
+local function fromData()
   local level = UnitLevel("player")
-  if dataServices and dataServices.level == level then return dataServices.services end
+  if dataServices and dataServices.level == level then return dataServices end
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
   local faction = UnitFactionGroup("player")
-  local onList, byID = {}, {}
+  local onList, byID, blocked = {}, {}, {}
+  local function block(spell)
+    local name, rank = spellName(spell.spellID)
+    if name then blocked[serviceKey(name, rank ~= "" and rank or nil)] = true end
+  end
   for _, spell in ipairs(ns.Data.ClassSpells(class)) do
     -- Spells for another race or faction, or for a talent you don't have,
     -- aren't on your trainer's list.
-    if (not spell.races or spell.races[raceID]) and (not spell.faction or spell.faction == faction)
-      and (not spell.talent or knowsSpell(spell.talent)) then
-      onList[#onList + 1] = spell
-      byID[spell.spellID] = spell
+    if (not spell.races or spell.races[raceID]) and (not spell.faction or spell.faction == faction) then
+      if not spell.talent or knowsSpell(spell.talent) then
+        onList[#onList + 1] = spell
+        byID[spell.spellID] = spell
+      else
+        block(spell)
+      end
     end
   end
   -- The level you can learn a spell from: its own, or a later one its
@@ -72,10 +85,24 @@ local function servicesFromData()
       services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
         spellID = spell.spellID, levelReq = known and spell.level or at, cost = spell.cost,
         type = known and "used" or (at <= level and "available" or "unavailable") }
+    else
+      block(spell)
     end
   end
-  dataServices = { level = level, services = services }
-  return services
+  dataServices = { level = level, services = services, blocked = blocked }
+  return dataServices
+end
+
+-- Your last trainer visit without the spells the data says you can't learn.
+-- The trainer marks those unavailable, which after a level up reads as
+-- "level too low then" (Shadowburn rank 2 at 24 without the talent).
+local function fromTrainer(cs)
+  local blocked = fromData().blocked
+  local out = {}
+  for _, s in ipairs(cs.services) do
+    if not (s.name and blocked[serviceKey(s.name, s.rank)]) then out[#out + 1] = s end
+  end
+  return out
 end
 
 -- Your class's trainer services and where they come from: your last trainer
@@ -83,8 +110,8 @@ end
 -- sources ("data"), or nil without either.
 function Trainers.Services()
   local cs = ns.charDB.classSpells
-  if cs then return cs.services, "trainer", cs end
-  local services = servicesFromData()
+  if cs then return fromTrainer(cs), "trainer", cs end
+  local services = fromData().services
   if #services > 0 then return services, "data" end
   return nil
 end
