@@ -27,24 +27,34 @@ local dataServices -- { level, services, blocked } built from ns.Data.ClassSpell
 ns.Listen("SOURCES_CHANGED", function() dataServices = nil end)
 ns.On("SPELLS_CHANGED", function() dataServices = nil end)
 
-local function serviceKey(name, rank)
-  return name .. "|" .. (rank or "")
+-- A trainer reading has names and levels, and on Forever no rank (its
+-- GetTrainerServiceInfo gives name, type, icon): spells are matched by name
+-- and level, and by name and rank where both have one.
+local function serviceKeys(name, level, rank)
+  return name .. "@" .. tostring(level or 0), rank and (name .. "|" .. rank)
 end
 
 -- Your class's spells in the shape of a trainer reading (Harvest.lua), from
 -- the data sources: "used" when you know it, "available" from its level.
--- Also the spells your trainer has that you can't learn (`blocked`, by name
--- and rank): for a talent you don't have, or needing a spell that is.
+-- Also the spells your trainer has that you can't learn (`blocked`, see
+-- serviceKeys): for a talent you don't have, or needing a spell that is.
+-- Built again while a spell's name hasn't loaded (`partial`).
 local function fromData()
   local level = UnitLevel("player")
-  if dataServices and dataServices.level == level then return dataServices end
+  if dataServices and dataServices.level == level and not dataServices.partial then return dataServices end
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
   local faction = UnitFactionGroup("player")
-  local onList, byID, blocked = {}, {}, {}
+  local onList, byID, blocked, partial = {}, {}, {}, false
   local function block(spell)
     local name, rank = spellName(spell.spellID)
-    if name then blocked[serviceKey(name, rank ~= "" and rank or nil)] = true end
+    if not name then
+      partial = true
+      return
+    end
+    local byLevel, byRank = serviceKeys(name, spell.level, rank ~= "" and rank or nil)
+    blocked[byLevel] = true
+    if byRank then blocked[byRank] = true end
   end
   for _, spell in ipairs(ns.Data.ClassSpells(class)) do
     -- Spells for another race or faction, or for a talent you don't have,
@@ -89,7 +99,7 @@ local function fromData()
       block(spell)
     end
   end
-  dataServices = { level = level, services = services, blocked = blocked }
+  dataServices = { level = level, services = services, blocked = blocked, partial = partial }
   return dataServices
 end
 
@@ -100,7 +110,8 @@ local function fromTrainer(cs)
   local blocked = fromData().blocked
   local out = {}
   for _, s in ipairs(cs.services) do
-    if not (s.name and blocked[serviceKey(s.name, s.rank)]) then out[#out + 1] = s end
+    local byLevel, byRank = serviceKeys(s.name or "", s.levelReq, s.rank)
+    if not (s.name and (blocked[byLevel] or (byRank and blocked[byRank]))) then out[#out + 1] = s end
   end
   return out
 end

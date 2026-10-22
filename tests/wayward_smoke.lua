@@ -4819,7 +4819,8 @@ do
   check(summary.trainable == 2 and summary.names[2] == "Shadow Ward", "one that waited for your level is, once you reach it")
 
   -- A talent's rank 2 the trainer marked unavailable below its level isn't
-  -- counted once you reach it: the data says it needs the talent.
+  -- counted once you reach it: the data says it needs the talent. As on
+  -- Forever, the reading has no rank (the spell does: they match by level).
   Wayward.RegisterSource({ id = "talent", label = "Talent", priority = 2,
     ClassSpells = function(class)
       if class == "WARLOCK" then return { { spellID = 9010, level = 24, cost = 150, talent = 9110 } } end
@@ -4830,7 +4831,7 @@ do
   IsPlayerSpell = function() return false end
   fire("SPELLS_CHANGED")
   ns.charDB.classSpells.services[#ns.charDB.classSpells.services + 1] =
-    { name = "Shadowburn", rank = "Rank 2", type = "unavailable", levelReq = 24, cost = 150 }
+    { name = "Shadowburn", type = "unavailable", levelReq = 24, cost = 150 }
   UnitLevel = function() return 24 end
   summary = ns.Trainers.SpellSummary()
   check(summary.trainable == 2 and not summary.names[3],
