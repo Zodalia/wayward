@@ -30,7 +30,8 @@ local _, ns = ...
 -- 3 quests in Lakeshire") or ride along with the quest hub where you hand them
 -- in; unfinished ones close together are one whole-quest trip ("Finish 2
 -- quests near Lakeshire"); a dungeon's quests in your log count toward it.
--- A card whose trip has a quest your trip on now already has isn't shown.
+-- A card whose trip has a quest your trip on now already has, or a dungeon
+-- your trip goes to, isn't shown.
 
 -- Shown as Adventure Guide style cards (UI/Cards.lua) on a wider panel.
 local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
@@ -1671,22 +1672,33 @@ local function iconFor(r)
   return ICONS[r.kind] or "Interface\\Icons\\INV_Misc_Map_01"
 end
 
--- The quests the trip on now still has stops for: { [questID] = true }.
-local function tripQuests()
+-- What the trip on now still has stops for: the quests ({ [questID] = true })
+-- and the places (the route's goal, or the journey's open stops and finish).
+local function tripStops()
   local a = ns.Nav and ns.Nav.active
   local root = a and a.journey and (a.journey.root or a.journey.def)
-  local ids = {}
+  local ids, nodes = {}, {}
   for _, stop in ipairs(root and root.stops or {}) do
-    if stop.action and stop.action.questID and not stop.done and not stop.skipped then ids[stop.action.questID] = true end
+    if not stop.done and not stop.skipped then
+      if stop.action and stop.action.questID then ids[stop.action.questID] = true end
+      nodes[#nodes + 1] = stop.node
+    end
   end
-  return ids
+  local finish = root and root.finish
+  if finish and not finish.done and not finish.skipped then nodes[#nodes + 1] = finish.node end
+  if a and not root then nodes[#nodes + 1] = a.goal end
+  return ids, nodes
 end
 
+-- A dungeon's entrance this close to a place the trip still goes is that place.
+local SAME_PLACE = 5
+
 -- The cards shown: at most MAX_RESULTS, none with a quest your trip already
--- has (it's being done). Checked on every look, so the cards follow the trip
--- without a rebuild.
+-- has, no dungeon your trip already goes to (a run with its pickups done
+-- still has the entrance). Checked on every look, so the cards follow the
+-- trip without a rebuild.
 local function visible(results)
-  local trip = tripQuests()
+  local trip, places = tripStops()
   local out = {}
   for _, r in ipairs(results or {}) do
     if #out >= MAX_RESULTS then break end
@@ -1697,16 +1709,26 @@ local function visible(results)
         break
       end
     end
+    if r.kind == "dungeon" and r.goal and not overlap then
+      for _, node in ipairs(places) do
+        if ns.Geo.Distance(r.goal, node) <= SAME_PLACE then
+          overlap = true
+          break
+        end
+      end
+    end
     if not overlap then out[#out + 1] = r end
   end
   return out
 end
 
--- Which quests are on the trip, to refresh the cards when that changes.
+-- Which quests and places are on the trip, to refresh the cards when that changes.
 local function tripKey()
+  local trip, places = tripStops()
   local ids = {}
-  for id in pairs(tripQuests()) do ids[#ids + 1] = id end
+  for id in pairs(trip) do ids[#ids + 1] = id end
   table.sort(ids)
+  for _, node in ipairs(places) do ids[#ids + 1] = string.format("%s:%.4f:%.4f", node.mapID, node.x, node.y) end
   return table.concat(ids, ",")
 end
 

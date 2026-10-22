@@ -1893,6 +1893,25 @@ do
     ns.Nav.Stop()
     check(showing(), "and it's back once the trip ends")
   end
+
+  -- Nor a dungeon your trip goes to, after its pickups are done (only the entrance is left).
+  local run = find(rows(), "Run The Deadmines")
+  check(run and run.goal, "a dungeon card: " .. titles(ns.ForYou.Results()))
+  if run then
+    local function showing()
+      return find(ns.ForYou.Results(), "Run The Deadmines") ~= nil
+    end
+    local here = ns.Geo.PlayerNode()
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Deadmines quests", stops = {},
+      finish = { node = run.goal, text = "Enter The Deadmines" } }), true)
+    check(ns.Nav.active and not showing(),
+      "with its entrance on your trip, the dungeon isn't shown: " .. titles(ns.ForYou.Results()))
+    ns.Nav.Stop()
+    ns.Nav.Start("The Deadmines", run.goal, run.route)
+    check(ns.Nav.active and not showing(), "nor with directions to it")
+    ns.Nav.Stop()
+    check(showing(), "and it's back once the trip ends")
+  end
 end
 
 ---------------------------------------------------------------- for you (end)
