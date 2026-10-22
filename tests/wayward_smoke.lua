@@ -286,6 +286,31 @@ ns.charDB.skippedSpells = nil
 check(summary and summary.nextLevel == 24 and summary.nextCount == 1, "next spell at level 24")
 check(ns.db.npcs[999] and ns.db.npcs[999].kinds.classTrainer and ns.db.npcs[999].class == "WARLOCK",
   "trainer harvested as a warlock class trainer")
+-- Classic Era gives a service's name once it has loaded (its rank may come
+-- first): the rank isn't taken for a name, and the list is read again then.
+do
+  local realInfo, lateName = GetTrainerServiceInfo, nil
+  GetTrainerServiceInfo = function(i)
+    if i == 4 then return lateName, "Rank 2", "unavailable", false end
+    return realInfo(i)
+  end
+  SERVICES[4] = { req = 22, cost = 900 }
+  local function named(name)
+    for _, s in ipairs(ns.charDB.classSpells.services) do if s.name == name then return s end end
+  end
+  fire("TRAINER_SHOW")
+  runTimers()
+  check(#ns.charDB.classSpells.services == 3 and not named("Rank 2"), "a service with no name yet isn't read")
+  lateName = "Drain Life"
+  fire("TRAINER_SERVICE_INFO_NAME_UPDATE")
+  check(named("Drain Life") and named("Drain Life").rank == "Rank 2", "once its name loads, it is")
+  fire("TRAINER_CLOSED")
+  SERVICES[4], GetTrainerServiceInfo = nil, realInfo
+  fire("TRAINER_SHOW")
+  runTimers()
+  fire("TRAINER_CLOSED")
+  ns.charDB.skippedSpells = nil
+end
 
 io.write("routing\n")
 ns.db.npcs[999] = nil -- route to the seeded Stormwind trainer only
@@ -1700,6 +1725,57 @@ do
       .. tostring(notCounted))
   ns.charDB.skippedSpells = nil
   check(find(rows(), "Train 2 new spells"), "without it, both count again")
+
+  -- A spell is known when any of the client's checks says so (Classic Era's
+  -- spellbook can hide a lower rank IsPlayerSpell knows).
+  C_SpellBook = { IsSpellKnown = function() return false end }
+  IsPlayerSpell = function(id) return id == 1130 end
+  check(ns.KnowsSpell(1130) == true and ns.KnowsSpell(1131) == false, "known when either check says so")
+  C_SpellBook, IsPlayerSpell = nil, nil
+  check(ns.KnowsSpell(1130) == nil, "nil when the client can't say")
+
+  -- A hunter's level 6 visit, not read again after buying Hunter's Mark, that
+  -- doesn't list Concussive Shot (Classic Era leaves out a spell whose name
+  -- hasn't loaded). At level 8 the spellbook and the spell data win: a card
+  -- for the level 8 spells, and it pops up.
+  Wayward.RegisterSource({ id = "hunter", label = "Hunter", priority = 2,
+    ClassSpells = function(class)
+      if class == "WARLOCK" then return { { spellID = 1130, level = 6, cost = 100 },
+        { spellID = 5116, level = 8, cost = 200 }, { spellID = 14260, level = 8, cost = 200 } } end
+    end })
+  local NAMES = { [1130] = { "Hunter's Mark", "Rank 1" }, [5116] = { "Concussive Shot", "" },
+    [14260] = { "Raptor Strike", "Rank 2" } }
+  local realInfo, realSubtext, realKnown, realLevel = GetSpellInfo, GetSpellSubtext, IsPlayerSpell, UnitLevel
+  GetSpellInfo = function(id) return NAMES[id] and NAMES[id][1] end
+  GetSpellSubtext = function(id) return NAMES[id] and NAMES[id][2] end
+  IsPlayerSpell = function(id) return id == 1130 end
+  UnitLevel = function() return 6 end
+  fire("SPELLS_CHANGED")
+  ns.charDB.classSpells = { updated = 0, level = 6, services = {
+    { name = "Hunter's Mark", rank = "Rank 1", type = "available", levelReq = 6, cost = 100 },
+    { name = "Raptor Strike", type = "unavailable", levelReq = 8, cost = 200 } } }
+  ns.Trainers.RecordSkipped(ns.charDB.classSpells.services)
+  local hunter = ns.Trainers.SpellSummary()
+  check(hunter.trainable == 0 and hunter.nextLevel == 8 and hunter.nextCount == 2,
+    "a spell you know isn't trainable, whatever the visit says; the level 8 spells wait: "
+      .. table.concat(hunter.names, ", "))
+  UnitLevel = function() return 8 end
+  ns.charDB.seenCards, ns.Fanfare.lastNew = ns.charDB.seenCards or {}, nil
+  hunter = ns.Trainers.SpellSummary(true)
+  local card = find(rows(), "Train ")
+  check(hunter.trainable == 2 and hunter.skipped == 0 and table.concat(hunter.names, ", ")
+    == "Raptor Strike, Concussive Shot", "level 8: the spells since the visit, not Hunter's Mark: "
+      .. table.concat(hunter.names, ", "))
+  check(card and card.title:find("^Train 2 new spells in ") and ns.Fanfare.lastNew
+    and ns.Fanfare.lastNew.title == card.title, "a card for them, shown as a new journey: "
+      .. tostring(card and card.title))
+  -- The same spell at another level on this client: matched by name, not added twice.
+  table.insert(ns.charDB.classSpells.services, { name = "Concussive Shot", type = "unavailable", levelReq = 7 })
+  check(ns.Trainers.SpellSummary().trainable == 2, "a spell without ranks the visit lists isn't added again")
+  Wayward.UnregisterSource("hunter")
+  GetSpellInfo, GetSpellSubtext, IsPlayerSpell, UnitLevel = realInfo, realSubtext, realKnown, realLevel
+  ns.charDB.skippedSpells = nil
+  fire("SPELLS_CHANGED")
   ns.charDB.classSpells = savedSpells
 
   -- The best quest is a whole-quest trip.

@@ -270,12 +270,19 @@ function ns.ItemCount(itemID)
   return fn and fn(itemID) or 0
 end
 
--- true / false, or nil when this client can't say.
+-- true / false, or nil when this client can't say. Known when any of the
+-- client's checks says so: they look in different places (the spellbook,
+-- what you have learned), and Classic Era's spellbook can hide lower ranks.
 function ns.KnowsSpell(spellID)
-  if C_SpellBook and C_SpellBook.IsSpellKnown then return C_SpellBook.IsSpellKnown(spellID) and true or false end
-  if IsPlayerSpell then return IsPlayerSpell(spellID) and true or false end
-  if IsSpellKnown then return IsSpellKnown(spellID) and true or false end
-  return nil
+  local checks = { C_SpellBook and C_SpellBook.IsSpellKnown, IsPlayerSpell, IsSpellKnown }
+  local answer = nil
+  for i = 1, 3 do
+    if checks[i] then
+      if checks[i](spellID) then return true end
+      answer = false
+    end
+  end
+  return answer
 end
 
 ---------------------------------------------------------------- flights
