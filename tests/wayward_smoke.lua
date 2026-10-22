@@ -1692,6 +1692,14 @@ do
       .. tostring(notCounted))
   ns.charDB.skippedSpells = nil
   check(find(rows(), "Train 2 new spells"), "without it, both count again")
+
+  -- A spell is known when any of the client's checks says so (Classic Era's
+  -- spellbook can hide a lower rank IsPlayerSpell knows).
+  C_SpellBook = { IsSpellKnown = function() return false end }
+  IsPlayerSpell = function(id) return id == 1130 end
+  check(ns.KnowsSpell(1130) == true and ns.KnowsSpell(1131) == false, "known when either check says so")
+  C_SpellBook, IsPlayerSpell = nil, nil
+  check(ns.KnowsSpell(1130) == nil, "nil when the client can't say")
   ns.charDB.classSpells = savedSpells
 
   -- The best quest is a whole-quest trip.
