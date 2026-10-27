@@ -62,6 +62,7 @@ UI\ErrandPicker.lua
 UI\RouteMap.lua
 UI\Cards.lua
 UI\JourneyBox.lua
+UI\QuestLogButtons.lua
 UI\Observations.lua
 UI\Profile.lua
 UI\Panel.lua

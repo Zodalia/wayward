@@ -5961,6 +5961,45 @@ do
     "a picked-up quest's journey is of the quest kind")
   check(ns.Nav.AddDetour == ns.Nav.AddToTrip, "Nav.AddDetour is Nav.AddToTrip")
 
+  -- The quest log's buttons, for the quest selected in it: start a journey,
+  -- or with one on, add the quest to it or start a new one.
+  do
+    local QLB = ns.QuestLogButtons
+    local savedInfo = ns.QuestLog.Info
+    ns.QuestLog.Info = function(i) return i == 1 and { questID = 1, title = "Log quest" } or nil end
+    GetQuestLogSelection = function() return 1 end
+    QuestLogFrame = newObj()
+    QuestLogFrame:Show()
+    local id, title = QLB.Selected()
+    check(id == 1 and title == "Log quest" and QLB.Mode(1) == "start", "quest log: nothing on, it offers to start a journey")
+    -- Planned as the quest really is (not in the log yet: a pickup first).
+    ns.QuestLog.Info = savedInfo
+    QLB.Sync()
+    check(QLB.NewJourney(1, title) and ns.Nav.active and ns.Nav.active.title == "Log quest"
+      and ns.Nav.active.journey.kind == "quest" and ns.Nav.TripHasQuest(1) and QLB.Mode(1) == "new",
+      "quest log: starts a journey for the quest; it can't be added again")
+    ns.Nav.Stop()
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Other", kind = "zone", stops = { visit(0.53, "O1") } }))
+    check(QLB.Mode(1) == "both", "quest log: with a journey on, add or new")
+    QLB.Sync()
+    QLB.AddToJourney(1, title)
+    check(ns.Nav.active.title == "Other" and ns.Nav.TripHasQuest(1) and QLB.Mode(1) == "new",
+      "quest log: added to the journey on")
+    ns.Nav.Stop()
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Other", kind = "zone", stops = { visit(0.53, "O1") } }))
+    local aside = #ns.Nav.SetAsideList()
+    QLB.NewJourney(1, title)
+    check(#ns.Nav.SetAsideList() == aside + 1 and ns.Nav.SetAsideList()[1].title == "Other"
+      and ns.Nav.active.title == "Log quest", "quest log: a new journey sets the one on aside")
+    ns.Nav.Stop()
+    ns.Nav.ForgetSetAside(1)
+    ns.QuestLog.Info = function() return nil end
+    check(QLB.Selected() == nil, "quest log: a header selected, no buttons")
+    QuestLogFrame:Hide()
+    QLB.Sync()
+    ns.QuestLog.Info, GetQuestLogSelection, QuestLogFrame = savedInfo, nil, nil
+  end
+
   -- Nav.Progress: the one count for the directions box and the home screen.
   local p1, p2, p3 = visit(0.53, "P1"), visit(0.56, "P2"), visit(0.59, "P3")
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Progress", kind = "custom", stops = { p1, p2, p3 } }))
