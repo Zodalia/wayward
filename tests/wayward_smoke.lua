@@ -4949,9 +4949,28 @@ do
   C_Map.GetMapArtLayerTextures = function() return { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 } end
   ns.Panel.ShowTooltip(UIParent, r)
   check(ns.RouteMap.view < 1, "a short route zooms in: " .. tostring(ns.RouteMap.view))
-  check(ns.RouteMap.mapID == 1433 and ns.RouteMap.lines >= 1 and ns.RouteMap.marks == 2,
-    string.format("hovering shows the zone map with the route (map %s, %s lines, %s marks)",
+  check(ns.RouteMap.mapID == 1433 and ns.RouteMap.lines >= 1 and ns.RouteMap.youShown and ns.RouteMap.marks == 1
+    and ns.RouteMap.numbers[1] == false,
+    string.format("hovering shows the zone map with the route, you and an unnumbered destination (map %s, %s lines, %s marks)",
       tostring(ns.RouteMap.mapID), tostring(ns.RouteMap.lines), tostring(ns.RouteMap.marks)))
+  -- A point the client can't place in a zone doesn't cost the route its zone map.
+  local realInfo = C_Map.GetMapInfoAtPosition
+  C_Map.GetMapInfoAtPosition = function() return nil end
+  ns.RouteMap.Show({ title = "Camp", route = { steps = {
+    { mode = "walk", from = ns.Geo.Node(1433, 0.31, 0.29), to = ns.Geo.Node(1433, 0.71, 0.67), seconds = 30 } } } })
+  check(ns.RouteMap.mapID == 1433, "a route on one zone's map shows that zone: " .. tostring(ns.RouteMap.mapID))
+  C_Map.GetMapInfoAtPosition = realInfo
+  -- What you've explored is drawn over the bare zone art, as on the world map.
+  C_MapExplorationInfo = { GetExploredMapTextures = function() return {
+    { textureWidth = 300, textureHeight = 200, offsetX = 100, offsetY = 50, fileDataIDs = { 1, 2 } },
+    { textureWidth = 100, textureHeight = 100, offsetX = 0, offsetY = 0, isShownByMouseOver = true, fileDataIDs = { 3 } } } end }
+  ns.RouteMap.Show(r)
+  check(ns.RouteMap.overlays == 2, "explored areas are drawn on the map: " .. tostring(ns.RouteMap.overlays))
+  C_MapExplorationInfo = nil
+  -- Two zones: their continent.
+  ns.RouteMap.Show({ title = "Wetlands", route = { steps = {
+    { mode = "walk", from = here, to = ns.Geo.Node(1437, 0.5, 0.5, "Wetlands"), seconds = 300 } } } })
+  check(ns.RouteMap.mapID == 1415, "a route across zones shows the continent: " .. tostring(ns.RouteMap.mapID))
   -- A trip across the sea: the world map, or the destination's continent without its art.
   player.mapID, player.x, player.y = 1439, 0.5, 0.5
   local sw = ns.Geo.Node(1453, 0.5, 0.5, "Stormwind")
@@ -4960,6 +4979,11 @@ do
   check(trip and ns.RouteMap.Show({ title = "Over the sea", journey = trip }) and ns.RouteMap.mapID == 947,
     "a trip over the sea uses the world map: " .. tostring(ns.RouteMap.mapID))
   check(ns.RouteMap.marks >= 2, "you, its stops and the destination are marked")
+  check(ns.RouteMap.youShown, "you're the arrow facing your way, not a badge")
+  local numbers = {}
+  for _, n in ipairs(ns.RouteMap.numbers) do numbers[#numbers + 1] = tostring(n) end
+  check(table.concat(numbers, ",") == "1,2", "the stop and destination are numbered in order: " .. table.concat(numbers, ","))
+  check(ns.RouteMap.chevrons >= 1, "chevrons point the way along the legs")
   check(not ns.RouteMap.hearthShown, "no hearthstone on the way: no hearthstone icon")
   local here = ns.Geo.PlayerNode()
   local inn = ns.Geo.Node(1439, 0.45, 0.3, "Inn")
@@ -4967,7 +4991,36 @@ do
     { mode = "walk", from = here, to = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), seconds = 30 },
     { mode = "hearth", from = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), to = inn, seconds = 10 } }, seconds = 40 },
     goal = inn })
-  check(ns.RouteMap.hearthShown, "a hearthstone leg is marked with its icon where you use it")
+  -- Each way of travel has its own icon; one the client lacks gives way to the next.
+  local realFaction = UnitFactionGroup
+  local function iconFor(step)
+    ns.RouteMap.Show({ title = "Leg", route = { steps = { step } } })
+    return ns.RouteMap.iconFiles[1]
+  end
+  local a, b = ns.Geo.Node(1439, 0.4, 0.4), ns.Geo.Node(1439, 0.6, 0.6)
+  check(iconFor({ mode = "fly", from = a, to = b, seconds = 60 }):find("Gryphon", 1, true), "an Alliance flight is a gryphon")
+  UnitFactionGroup = function() return "Horde" end
+  check(iconFor({ mode = "fly", from = a, to = b, seconds = 60 }):find("Wyvern", 1, true), "a Horde flight is a wind rider")
+  UnitFactionGroup = realFaction
+  check(iconFor({ mode = "transport", kind = "boat", from = a, to = b, seconds = 60 }):find("Ship", 1, true), "a boat is a ship")
+  check(iconFor({ mode = "transport", kind = "zeppelin", from = a, to = b, seconds = 60 }):find("Zeppelin", 1, true),
+    "a zeppelin is a zeppelin")
+  -- A client without an icon (no file ID for it) gets the next one.
+  GetFileIDFromPath = function(path) if not path:find("Classic", 1, true) then return 1 end end
+  check(iconFor({ mode = "transport", kind = "boat", from = a, to = b, seconds = 60 }):find("ShipMount$"),
+    "a client without the Classic ship gets the next one: " .. tostring(ns.RouteMap.iconFiles[1]))
+  GetFileIDFromPath = function() return nil end
+  check(iconFor({ mode = "transport", kind = "boat", from = a, to = b, seconds = 60 }):find("Map", 1, true),
+    "with none of them, the last")
+  GetFileIDFromPath = nil
+  check(iconFor({ mode = "transport", kind = "submarine", from = a, to = b, seconds = 60 }):find("Map", 1, true),
+    "something new is the map")
+  ns.RouteMap.Show({ title = "Hearth home", route = { steps = {
+    { mode = "walk", from = here, to = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), seconds = 30 },
+    { mode = "hearth", from = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), to = inn, seconds = 10 } }, seconds = 40 },
+    goal = inn })
+  check(ns.RouteMap.hearthShown and ns.RouteMap.modeIcons == 1, "a hearthstone leg has its icon mid-leg, walking none: "
+    .. tostring(ns.RouteMap.modeIcons))
   C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
   ns.RouteMap.Hide()
 end

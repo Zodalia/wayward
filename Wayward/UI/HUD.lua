@@ -39,12 +39,8 @@ local STOP_ICONS = {
   explore = "Interface\\Icons\\INV_Misc_Map_01",
   enter = "Interface\\Icons\\INV_Misc_Key_03",
 }
-local MODE_ICONS = {
-  fly = "Interface\\Icons\\Ability_Hunter_EagleEye",
-  hearth = "Interface\\Icons\\INV_Misc_Rune_01",
-  transport = "Interface\\Icons\\INV_Misc_Map_01",
-  walk = "Interface\\Icons\\Ability_Rogue_Sprint",
-}
+-- Travel icons are the route map's (RouteMap.TravelIcon); walking is this.
+local WALK_ICON = "Interface\\Icons\\Ability_Rogue_Sprint"
 local DISTANCE_ICON = "|TInterface\\Icons\\Ability_Tracking:13:13:0:0:64:64:5:59:5:59|t"
 local TIME_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:13:13:0:0:64:64:5:59:5:59|t"
 
@@ -406,7 +402,7 @@ function HUD.Update()
   else
     frame.arrow:Hide()
     local action = (step.stop or {}).action
-    frame.icon:SetTexture(action and STOP_ICONS[action.kind] or MODE_ICONS[step.mode] or MODE_ICONS.walk)
+    frame.icon:SetTexture(action and STOP_ICONS[action.kind] or ns.RouteMap.TravelIcon(step) or WALK_ICON)
     frame.icon:Show()
   end
 end
