@@ -1146,6 +1146,18 @@ local function zoneOptions(ctx, start, net)
     end
     zones = kept
   end
+  -- Below HOME_LEVEL, never another race's starting zone across the sea: a
+  -- neighbour by road or tram (Elwynn from Dun Morogh) is a fine change of
+  -- scenery, a boat to Teldrassil isn't.
+  if home then
+    local kept = {}
+    for _, z in ipairs(zones) do
+      local node = z.now[1] and z.now[1].node
+      local far = STARTING_ZONES[z.mapID] and z.mapID ~= home and node and node.instance ~= start.instance
+      if not far then kept[#kept + 1] = z end
+    end
+    zones = kept
+  end
 
   local out = {}
   for _, z in ipairs(zones) do
@@ -1448,11 +1460,14 @@ end
 local PART_ORDER = { progression = 1, novelty = 2, suitability = 3, intent = 4, proximity = 5 }
 local LEAD_ORDER = { "progression", "novelty", "suitability", "intent", "proximity" }
 
--- The part with the biggest value (LEAD_ORDER on a tie).
+-- The part with the biggest value (LEAD_ORDER on a tie). Proximity never
+-- leads: anything within two minutes scores full marks for it, and being
+-- close is a reason to go, not what a suggestion is about (it still counts in
+-- the relevance and can still be named in the why).
 local function lead(parts)
   local best, bestValue = nil, -1
   for _, name in ipairs(LEAD_ORDER) do
-    if (parts[name] or 0) > bestValue then best, bestValue = name, parts[name] or 0 end
+    if name ~= "proximity" and (parts[name] or 0) > bestValue then best, bestValue = name, parts[name] or 0 end
   end
   return best
 end
@@ -2274,24 +2289,25 @@ local function assignRoles(rows)
   end
   local function any() return true end
   local function differs(a, b) return a.zoneKey ~= b.zoneKey or a.kind ~= b.kind end
+  -- A card's tag says what it is, whichever slot it filled: a card about a new
+  -- zone is never tagged as carrying on, however few cards there are.
+  local function roleOf(r)
+    if r.lead == "progression" then return "continue" end
+    if r.lead == "novelty" then return "explore" end
+    return "alternative"
+  end
   local out = {}
   while #left > 0 do
     local cont = take(function(r) return r.lead == "progression" end) or take(any)
-    cont.role = "continue"
     out[#out + 1] = cont
     local explore = take(function(r) return r.lead == "novelty" and differs(r, cont) end)
       or take(function(r) return differs(r, cont) end) or take(any)
-    if explore then
-      explore.role = "explore"
-      out[#out + 1] = explore
-    end
+    if explore then out[#out + 1] = explore end
     local alternative = take(function(r) return r.kind ~= cont.kind and (not explore or r.kind ~= explore.kind) end)
       or take(any)
-    if alternative then
-      alternative.role = "alternative"
-      out[#out + 1] = alternative
-    end
+    if alternative then out[#out + 1] = alternative end
   end
+  for _, r in ipairs(out) do r.role = roleOf(r) end
   return out
 end
 ForYou.AssignRoles = assignRoles

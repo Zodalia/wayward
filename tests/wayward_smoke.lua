@@ -113,6 +113,7 @@ local ZONES = {
   -- Starting zones: no NPCs of their own (For you's starting-zone test fills them).
   [1429] = { cont = 1415, x0 = 0.40, y0 = 0.76, w = 0.08, h = 0.08, name = "Elwynn Forest" },
   [1426] = { cont = 1415, x0 = 0.28, y0 = 0.55, w = 0.08, h = 0.08, name = "Dun Morogh" },
+  [1438] = { cont = 1414, x0 = 0.28, y0 = 0.05, w = 0.08, h = 0.08, name = "Teldrassil" },
 }
 
 local function vec(x, y) return { x = x, y = y, GetXY = function(s) return s.x, s.y end } end
@@ -1673,10 +1674,13 @@ do
     and goulash and goulash.category == "Best quest" and deadmines and deadmines.category == "Dungeon"
     and count("Due now") == 0 and count("Worth a visit") == 0,
     "one card per kind: a questing zone, the dungeon, the best quest; nothing due as a card (" .. titles(list) .. ")")
-  local roles = {}
-  for i = 1, math.min(3, #list) do roles[#roles + 1] = list[i].role or "?" end
-  check(table.concat(roles, ",") == "continue,explore,alternative",
-    "the first page is a continuation, an exploration and an alternative: " .. table.concat(roles, ","))
+  local roles, honest = {}, #list > 0
+  local ROLE_FOR = { progression = "continue", novelty = "explore" }
+  for _, r in ipairs(list) do
+    roles[#roles + 1] = r.role or "?"
+    if r.role ~= (ROLE_FOR[r.lead] or "alternative") then honest = false end
+  end
+  check(honest, "every card's tag is what it is about (progression continues, novelty explores): " .. table.concat(roles, ","))
   local scored = #list > 0
   for _, r in ipairs(list) do
     local p = r.relevance_parts
@@ -1938,6 +1942,10 @@ do
   player.mapID = 1429
   check(zoneTitles() == "Dun Morogh,Redridge Mountains",
     "with too few quests left at home, another starting zone is fine: " .. zoneTitles())
+  counts[1438] = 9
+  check(zoneTitles() == "Dun Morogh,Redridge Mountains",
+    "but not one across the sea, however many quests it has: " .. zoneTitles())
+  counts[1438] = nil
   counts[1429] = 4
   UnitLevel = function() return 10 end
   check(zoneTitles() == "Dun Morogh,Elwynn Forest,Redridge Mountains",
@@ -6075,10 +6083,12 @@ do
   local ordered = F.AssignRoles({ A, C, B, D, E })
   local got = {}
   for _, r in ipairs(ordered) do got[#got + 1] = r.title .. "=" .. r.role end
-  check(table.concat(got, ",") == "A=continue,B=explore,D=alternative,C=continue,E=explore",
-    "roles: the continuation, an exploration elsewhere, an alternative kind, then again: " .. table.concat(got, ","))
+  check(table.concat(got, ",") == "A=continue,B=explore,D=alternative,C=explore,E=alternative",
+    "roles: a page mixes kinds and zones, and each card is tagged by what leads it: " .. table.concat(got, ","))
   local only = F.AssignRoles({ row("Z", "zone", "Y", "novelty", 0.3) })
-  check(#only == 1 and only[1].role == "continue", "a lone card is the continuation")
+  check(#only == 1 and only[1].role == "explore", "a lone card about a new zone is the exploration, not a continuation")
+  local fitOnly = F.AssignRoles({ row("N", "quest", "Y", "suitability", 0.6) })
+  check(fitOnly[1].role == "alternative", "a card led by fit alone is an alternative")
 
   -- The real cards: QuestieDB XP, a quest ready to hand in out in the hills.
   local zoneSupport = LibQuestieDB.Support.Get
@@ -6104,12 +6114,14 @@ do
   ns.Fanfare.lastNew = nil
 
   local list = rows()
-  local pattern = { "continue", "explore", "alternative" }
-  local repeating = #list >= 4
-  for i, r in ipairs(list) do
-    if r.role ~= pattern[(i - 1) % 3 + 1] then repeating = false end
+  local ROLE_FOR = { progression = "continue", novelty = "explore" }
+  local function honest(cards)
+    for _, r in ipairs(cards) do
+      if r.role ~= (ROLE_FOR[r.lead] or "alternative") or r.lead == "proximity" then return false end
+    end
+    return #cards > 0
   end
-  check(repeating, "every page of three repeats continue, explore, alternative: " .. titles(list))
+  check(#list >= 4 and honest(list), "every card is tagged by its strongest reason, never by distance: " .. titles(list))
   local first, second, third = list[1], list[2], list[3]
   check(first and second and (first.zoneKey ~= second.zoneKey or first.kind ~= second.kind),
     "the exploration is in another zone or of another kind than the continuation")
@@ -6275,7 +6287,7 @@ do
   SlashCmdList.WAYWARD("debug cards")
   local printed = table.concat(chat, "\n", said + 1)
   check(printed:find("card 1 [continue] ", 1, true) and printed:find("relevance %d%.%d%d %(suitability %d%.%d%d, proximity")
-    and printed:find("; why: ", 1, true) and printed:find("card 2 [explore] ", 1, true)
+    and printed:find("; why: ", 1, true) and printed:find("card 2 %[%a+%] ")
     and printed:find("observation 1 [", 1, true) and printed:find("urgency %d%.%d%d: "),
     "/ww debug cards prints roles, relevance, parts, why and the observations")
   local lines = F.Diagnose()
@@ -6287,11 +6299,8 @@ do
   local here = ns.Geo.PlayerNode()
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Just the hand-in", stops = ns.Journey.QuestStops(50, here) }), true)
   list = F.Results()
-  local held = #list >= 3 and not find(list, "Hand in 1 quest to Watcher Dodds")
-  for i, r in ipairs(list) do
-    if r.role ~= pattern[(i - 1) % 3 + 1] then held = false end
-  end
-  check(held, "with the hand-in on your journey, the roles are picked over the cards left: " .. titles(list))
+  local held = #list >= 3 and not find(list, "Hand in 1 quest to Watcher Dodds") and honest(list)
+  check(held, "with the hand-in on your journey, the cards left keep honest tags: " .. titles(list))
   ns.Nav.Stop()
   runTimers()
 
