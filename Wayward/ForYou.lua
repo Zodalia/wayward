@@ -1962,7 +1962,9 @@ local function handinObservations(handins, start)
       out[#out + 1] = observationFor({
         id = "obs:handin" .. i, kind = "handin", urgency = math.min(0.75, 0.5 + 0.05 * n),
         title = h.title,
-        text = string.format("%s ready to hand in %s, %s away.", plural(n, "quest"), h.where, ns.FormatDuration(h.trip)),
+        -- "ready to hand in at Brewnall Village" (not "in in"), "... to Watcher Dodds".
+        text = string.format("%s ready to hand in %s, %s away.", plural(n, "quest"),
+          h.place and ("at " .. h.place) or h.where, ns.FormatDuration(h.trip)),
         highlights = { plural(n, "quest"), ns.FormatDuration(h.trip) },
         goal = h.goal, route = h.route, stop = stops[1], stops = stops,
       })
@@ -1974,8 +1976,10 @@ end
 ---------------------------------------------------------------- page
 
 local function summaryFor(ctx, observations)
+  -- The header above already says your level and zone, and the Good to know
+  -- region shows its own tiles: the summary is only what they don't say.
   local level = UnitLevel("player")
-  local parts = { string.format("Level %d: a few good options from where you are.", level) }
+  local parts = { "A few good options from where you are." }
   if ctx.budget then
     local minutes = ctx.budget / 60
     if ctx.nothingFits then
@@ -1983,9 +1987,6 @@ local function summaryFor(ctx, observations)
     else
       parts[1] = string.format("Fits in %d min: a few good options from where you are.", minutes)
     end
-  end
-  if #observations > 0 then
-    parts[#parts + 1] = string.format("|cff7fd1ae%s|r good to know.", plural(#observations, "thing"))
   end
   if not ctx.quests then
     parts[#parts + 1] = "Install " .. ns.Data.ADDON .. " for quest hubs and XP; dungeons are ranked by level fit and travel time."
@@ -2001,7 +2002,7 @@ local function summaryFor(ctx, observations)
   if ready + unfinished > 0 then
     local counted = {}
     if ready > 0 then counted[#counted + 1] = string.format("%d ready to hand in", ready) end
-    if unfinished > 0 then counted[#counted + 1] = string.format("%d to finish (timed by objectives left)", unfinished) end
+    if unfinished > 0 then counted[#counted + 1] = string.format("%d to finish", unfinished) end
     parts[#parts + 1] = string.format("Quest log: %s.", table.concat(counted, ", "))
     if ctx.unplaced > 0 then
       parts[#parts + 1] = string.format("%s in your log can't be placed on the map%s.", plural(ctx.unplaced, "quest"),

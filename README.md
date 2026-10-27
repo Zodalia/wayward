@@ -264,7 +264,8 @@ with their own jobs:
   or of any row with directions or a journey, has a small map under it with
   the route drawn on it (the zone, the continent or the world map, whichever
   holds it all, zoomed in on the route; walking white, flights light blue,
-  boats and the like deeper blue). The arrows under the cards (or the mouse
+  boats and the like deeper blue, a hearthstone purple with its icon where
+  you use it). The arrows under the cards (or the mouse
   wheel) page through the rest, three at a time (back to page 1 when the
   cards change). Shift-click adds a card to your journey as a detour; while a
   journey is on, Start journey asks instead: **Add as detour**, **Switch

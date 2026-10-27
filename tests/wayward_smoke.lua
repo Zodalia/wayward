@@ -1733,7 +1733,8 @@ do
     "the training observation highlights the spells and the cost: " .. table.concat(train and train.highlights or {}, ","))
   check(train and train.details[1] and not train.details[1].more and train.details[1].text:find("  -  ", 1, true),
     "the spells you can learn come first in its details: " .. tostring(train and train.details[1] and train.details[1].text))
-  check(ns.ForYou.SummaryText():find("a few good options") and ns.ForYou.SummaryText():find("good to know")
+  check(ns.ForYou.SummaryText():find("^A few good options") and not ns.ForYou.SummaryText():find("^Level")
+    and not ns.ForYou.SummaryText():find("good to know")
     and not ns.ForYou.SummaryText():find("quests per hour") and not ns.ForYou.SummaryText():find("XP per minute"),
     "summary: " .. ns.ForYou.SummaryText())
 
@@ -1804,7 +1805,7 @@ do
   check(soon and soon.text:find("^Gear at 70%%: ") and soon.urgency < 0.5 and ti and si > ti
     and soon.action and soon.action.kind == "detour",
     "gear at 70% with a repairer close by: an observation after what's due (" .. obsTexts(obs) .. ")")
-  check(ns.ForYou.SummaryText():find("things|r good to know", 1, true), "the summary counts the observations: " .. ns.ForYou.SummaryText())
+  check(not ns.ForYou.SummaryText():find("good to know", 1, true), "the tiles speak for themselves: " .. ns.ForYou.SummaryText())
   durability = { 50, 50 }
 
   -- No spell list yet, at an even level: a visit to the trainer is worth it.
@@ -4885,6 +4886,14 @@ do
   check(trip and ns.RouteMap.Show({ title = "Over the sea", journey = trip }) and ns.RouteMap.mapID == 947,
     "a trip over the sea uses the world map: " .. tostring(ns.RouteMap.mapID))
   check(ns.RouteMap.marks >= 2, "you, its stops and the destination are marked")
+  check(not ns.RouteMap.hearthShown, "no hearthstone on the way: no hearthstone icon")
+  local here = ns.Geo.PlayerNode()
+  local inn = ns.Geo.Node(1439, 0.45, 0.3, "Inn")
+  ns.RouteMap.Show({ title = "Hearth home", route = { steps = {
+    { mode = "walk", from = here, to = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), seconds = 30 },
+    { mode = "hearth", from = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), to = inn, seconds = 10 } }, seconds = 40 },
+    goal = inn })
+  check(ns.RouteMap.hearthShown, "a hearthstone leg is marked with its icon where you use it")
   C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
   ns.RouteMap.Hide()
 end
@@ -6427,8 +6436,8 @@ do
   if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
   lines = Box.Lines()
   check(Box.State() == "journey" and lines[1] == "The Perfect Stout" and lines[2] == "Stop 1 of 3  ·  Talk to the innkeeper"
-    and lines[3]:find("^0 of 3 stops complete  ·  .* remaining$") and lines[4] ~= "",
-    "a journey: title, the current stop, stops done and time left, a description (" .. table.concat(lines, " / ") .. ")")
+    and lines[3]:find("^0 of 3 stops complete  ·  .* remaining$") and lines[4] == "Then: Find Shimmerweed, and 1 more stop.",
+    "a journey: title, the current stop, stops done and time left, what comes next (" .. table.concat(lines, " / ") .. ")")
   continue, details = Box.Buttons()
   check(continue == "Continue journey" and details == "View details", "with Continue journey and View details")
   local a = ns.Nav.active
@@ -6924,6 +6933,45 @@ do
   end
   check(ns.Journey.NameFor({ stops = { { text = "Done already", done = true }, { text = "Repair at Thrawn Boltar" } } })
     == "Repair at Thrawn Boltar", "no quests: the first stop still to do")
+
+  -- Side-panel rows: one line each, the travel time in its own place.
+  local function split(text) local a, b = ns.Panel.SplitTime(text) return a .. "|" .. tostring(b) end
+  check(split("[9] Frostmane Hold  ·  Dun Morogh  ·  ~2 min") == "[9] Frostmane Hold  ·  Dun Morogh|~2 min"
+    and split("Grif Wildheart  ·  Dun Morogh  ·  <1 min") == "Grif Wildheart  ·  Dun Morogh|<1 min"
+    and split("Far  ·  ~1 h 5 min") == "Far|~1 h 5 min",
+    "a subtitle's travel time is lifted out of it")
+  check(split("Zone  ·  Dun Morogh  ·  no route found from here") == "Zone  ·  Dun Morogh  ·  no route found from here|nil"
+    and split("Levels 17-19  ·  start at Lakeshire") == "Levels 17-19  ·  start at Lakeshire|nil",
+    "anything else stays as it is")
+
+  -- Places: where no flight path names a town, the subzone of an NPC you met there does.
+  ns.db.npcs[990777] = { name = "Thrawn Boltar", kinds = { vendor = true }, faction = "Alliance", mapID = 1426,
+    x = 0.32, y = 0.59, subZone = "Kharanos" }
+  ns.Fire("DATA_CHANGED")
+  check(ns.Places.NameFor(ns.Geo.Node(1426, 0.321, 0.59)) == "Kharanos", "a spot by an NPC you met takes their subzone's name")
+  check(ns.Places.NameFor(ns.Geo.Node(1426, 0.9, 0.9)) ~= "Kharanos", "but not one across the zone")
+  ns.db.npcs[990777] = nil
+  ns.Fire("DATA_CHANGED")
+  check(ns.Places.NameFor(ns.Geo.Node(1426, 0.321, 0.59)) ~= "Kharanos", "forgotten with the NPC")
+
+  -- Good to know: fewer tiles share the row, so none stands empty beside a cut-off one.
+  if ns.Observations.TileWidth then
+    local savedObs = ns.ForYou.Observations
+    local function tiles(n)
+      local out = {}
+      for i = 1, n do out[i] = { id = "t" .. i, kind = "x", text = "Tile " .. i, highlights = {}, urgency = 0.5 } end
+      return out
+    end
+    ns.ForYou.Observations = function() return tiles(2) end
+    ns.Observations.Update()
+    local two = ns.Observations.TileWidth()
+    ns.ForYou.Observations = function() return tiles(4) end
+    ns.Observations.Update()
+    local four = ns.Observations.TileWidth()
+    check(two and four and two > four * 1.8, "two tiles are each about twice as wide as four: " .. tostring(two) .. " / " .. tostring(four))
+    ns.ForYou.Observations = savedObs
+    ns.Observations.Update()
+  end
 
   -- Remaining time counts the quest work left, not only the travel.
   local savedObjectives = C_QuestLog.GetQuestObjectives

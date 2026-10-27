@@ -21,7 +21,7 @@ local LEFT = PAD + ICON + 14
 local GOLD = { 1, 0.82, 0 }
 local GREY = { 0.62, 0.62, 0.62 }
 local NONE_TEXT = "No journey on the go. Pick something below."
-local DESCRIPTION = "A flexible plan you can continue, reorder or expand."
+local LAST_STOP = "The last stop. View details to reorder, add a detour or set it aside."
 local DIRECTIONS_DESCRIPTION = "Directions to one place. Starting a journey folds it in as a stop."
 
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
@@ -56,6 +56,30 @@ end
 
 -- { done, total, seconds, stopIndex, stopText } for the journey on now:
 -- the navigator's own when it has one, else from the journey's stops.
+-- What comes after the stop you're heading for: "Then: Do Frostmane Hold,
+-- and 3 more stops", plus the journeys set aside; on the last stop, how to
+-- change the plan.
+function Box.NextText(a)
+  local heading = ns.Nav.HeadingFor and ns.Nav.HeadingFor()
+  local after, passed = {}, heading == nil
+  for _, s in ipairs(a.journey and a.journey.stops or {}) do
+    if passed and not (s.done or s.skipped or s.passed) then after[#after + 1] = s end
+    if s == heading then passed = true end
+  end
+  local text
+  if #after == 0 then
+    text = LAST_STOP
+  else
+    local first = after[1].text or (after[1].node and after[1].node.label) or "the next stop"
+    text = "Then: " .. first
+    if #after > 1 then text = text .. string.format(", and %d more stop%s", #after - 1, #after == 2 and "" or "s") end
+    text = text .. "."
+  end
+  local aside = ns.Nav.SetAsideList and #ns.Nav.SetAsideList() or 0
+  if aside > 0 then text = text .. string.format("  %d set aside.", aside) end
+  return text
+end
+
 function Box.Progress()
   if ns.Nav.Progress then
     local ok, p = pcall(ns.Nav.Progress)
@@ -236,7 +260,7 @@ function Box.Update()
     f.bar:SetValue(p.total > 0 and p.done / p.total or 0)
     f.bar:Show()
     local def = a.journey.root or a.journey.def
-    f.description:SetText(def and def.description or DESCRIPTION)
+    f.description:SetText(def and def.description or Box.NextText(a))
     f.continue:SetText("Continue journey")
     f.details:Show()
   else

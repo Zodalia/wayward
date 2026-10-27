@@ -145,10 +145,25 @@ local function fill(tile, o)
   if action then tile.button:SetText(action.label or LABELS[action.kind] or "Go") end
 end
 
+-- The tiles share the row: fewer tiles, wider ones, so no slot stands
+-- empty while another tile's text is cut short.
+local function layout(count)
+  if not frame then return end
+  local n = math.max(1, math.min(count, MAX))
+  local tileWidth = math.floor((frame.width - (n - 1) * GAP) / n)
+  for i, tile in ipairs(frame.tiles) do
+    tile:ClearAllPoints()
+    tile:SetPoint("TOPLEFT", (i - 1) * (tileWidth + GAP), 0)
+    tile:SetWidth(tileWidth)
+  end
+  frame.tileWidth = tileWidth
+end
+
 -- Brings the tiles up to date; returns the region's height.
 function Obs.Update()
   if not frame then return 0 end
   local list = Obs.List()
+  layout(#list)
   for i, tile in ipairs(frame.tiles) do
     local ok, err = pcall(fill, tile, list[i])
     if not ok then
@@ -162,6 +177,9 @@ function Obs.Update()
 end
 
 function Obs.Height() return TILE_H end
+
+-- How wide each tile is drawn now (for tests).
+function Obs.TileWidth() return frame and frame.tileWidth end
 
 -- The tiles as drawn, { text, label } each (for tests).
 function Obs.Tiles()
