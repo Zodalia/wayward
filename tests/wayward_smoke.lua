@@ -5656,6 +5656,295 @@ do
   refreshData()
 end
 ---------------------------------------------------------------- game and season (end)
+-- ===== stream A: relevance =====
+---------------------------------------------------------------- stream A: relevance (begin)
+do
+  io.write("stream A: relevance\n")
+  ns.Nav.Stop()
+  runTimers()
+  local F = ns.ForYou
+  local function rows()
+    F.Invalidate()
+    return F.Results()
+  end
+  local function find(list, prefix)
+    for i, r in ipairs(list) do
+      if r.title:sub(1, #prefix) == prefix then return r, i end
+    end
+  end
+  local function titles(list)
+    local out = {}
+    for _, r in ipairs(list) do out[#out + 1] = r.title end
+    return table.concat(out, " | ")
+  end
+  local function obsFind(list, kind)
+    for i, o in ipairs(list) do if o.kind == kind then return o, i end end
+  end
+  local function kinds(list)
+    local out = {}
+    for _, o in ipairs(list) do out[#out + 1] = o.kind end
+    return table.concat(out, ",")
+  end
+  local function near(a, b) return math.abs(a - b) < 0.01 end
+
+  -- The scoring curves.
+  local fit = F.LevelFit
+  check(fit(20, 20) == 1 and fit(18, 20) == 1 and fit(22, 20) == 1 and near(fit(17, 20), 0.8) and fit(13, 20) == 0
+    and near(fit(24, 20), 1 / 3) and fit(25, 20) == 0,
+    "level fit: 1.0 within two levels, 0 at grey and five levels up")
+  C_GameRules = { IsHardcoreActive = function() return true end }
+  check(fit(22, 20) == 1 and fit(23, 20) == 0, "on Hardcore three levels up is already too hard")
+  C_GameRules = nil
+  local near0 = F.Proximity
+  check(near0(60) == 1 and near0(120) == 1 and near(near0(300), 0.75) and near(near0(480), 0.5) and near(near0(990), 0.25)
+    and near0(1500) == 0 and near0(3000) == 0 and near0(nil) == 0,
+    "proximity: 1.0 within 2 min, 0.5 at 8, 0 past 25")
+  local w = F.WEIGHTS
+  check(near(w.suitability + w.proximity + w.progression + w.novelty + w.intent, 1) and w.suitability == 0.3,
+    "the five weights add up to one, suitability the heaviest")
+
+  -- Roles over synthetic rows: continue leads with progression, explore with
+  -- novelty elsewhere, alternative is yet another kind; later pages repeat.
+  local function row(title, kind, zone, leadPart, relevance)
+    return { title = title, kind = kind, zoneKey = zone, lead = leadPart, relevance = relevance }
+  end
+  local A = row("A", "handin", "X", "progression", 0.9)
+  local B = row("B", "zone", "Y", "novelty", 0.8)
+  local C = row("C", "handin", "X", "novelty", 0.85)
+  local D = row("D", "dungeon", "Z", "suitability", 0.5)
+  local E = row("E", "zone", "Y", "suitability", 0.4)
+  local ordered = F.AssignRoles({ A, C, B, D, E })
+  local got = {}
+  for _, r in ipairs(ordered) do got[#got + 1] = r.title .. "=" .. r.role end
+  check(table.concat(got, ",") == "A=continue,B=explore,D=alternative,C=continue,E=explore",
+    "roles: the continuation, an exploration elsewhere, an alternative kind, then again: " .. table.concat(got, ","))
+  local only = F.AssignRoles({ row("Z", "zone", "Y", "novelty", 0.3) })
+  check(#only == 1 and only[1].role == "continue", "a lone card is the continuation")
+
+  -- The real cards: QuestieDB XP, a quest ready to hand in out in the hills.
+  local zoneSupport = LibQuestieDB.Support.Get
+  local XP = { [1] = { 18, 1500 }, [7] = { 19, 1500 }, [11] = { 17, 1500 }, [15] = { 18, 1500 },
+    [6] = { 20, 1400 }, [14] = { 19, 1400 }, [20] = { 20, 1600 }, [10] = { 19, 1000 }, [50] = { 19, 1200 } }
+  LibQuestieDB.Support.Get = function(name)
+    if name == "QuestXP" then return { db = XP } end
+    return zoneSupport(name)
+  end
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  NPCS[6100] = { name = "Watcher Dodds", npcFlags = 2, friendlyToFaction = "A", spawns = { [44] = { { 70.0, 70.0 } } } }
+  QUESTS[50] = { name = "Watch Report", questLevel = 19, requiredLevel = 15, startedBy = { { 6100 } }, finishedBy = { { 6100 } } }
+  refreshData()
+  local log = { 50 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function(id) return id == 50 end
+  C_QuestLog.GetQuestObjectives = function() return {} end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local savedSeen, savedKinds, savedVisited = ns.charDB.seenCards, ns.charDB.startedKinds, ns.charDB.visitedZones
+  ns.charDB.seenCards, ns.charDB.startedKinds, ns.charDB.visitedZones = nil, nil, {}
+  ns.Fanfare.lastNew = nil
+
+  local list = rows()
+  local pattern = { "continue", "explore", "alternative" }
+  local repeating = #list >= 4
+  for i, r in ipairs(list) do
+    if r.role ~= pattern[(i - 1) % 3 + 1] then repeating = false end
+  end
+  check(repeating, "every page of three repeats continue, explore, alternative: " .. titles(list))
+  local first, second, third = list[1], list[2], list[3]
+  check(first and second and (first.zoneKey ~= second.zoneKey or first.kind ~= second.kind),
+    "the exploration is in another zone or of another kind than the continuation")
+  check(third and third.kind ~= first.kind and third.kind ~= second.kind, "the alternative is of a third kind")
+  local handin = find(list, "Hand in 1 quest to Watcher Dodds")
+  check(handin and handin.role == "continue" and handin.lead == "progression" and handin.relevance_parts.progression == 1,
+    "a quest ready to hand in leads with progression and is the continuation: " .. tostring(handin and handin.role))
+  check(handin and handin.why == "Quests in your log are ready to hand in, right nearby",
+    "its why names its two strongest parts in words: " .. tostring(handin and handin.why))
+  local deadmines = find(list, "Run The Deadmines")
+  check(deadmines and deadmines.relevance_parts.novelty >= 0.9 and deadmines.role == "explore"
+    and deadmines.why:find("^A dungeon you haven't run"),
+    "a dungeon you haven't run is the exploration, and says so: " .. tostring(deadmines and deadmines.why))
+  local redridge = find(list, "Quest in Redridge Mountains")
+  check(redridge and redridge.relevance_parts.novelty <= 0.2 and redridge.relevance_parts.progression == 0.7,
+    "the zone you stand in: nothing new, but it continues what you're doing")
+  local stats = {}
+  for _, st in ipairs(redridge and redridge.stats or {}) do stats[#stats + 1] = st[1] end
+  local rateStat = false
+  for _, r in ipairs(list) do
+    for _, st in ipairs(r.stats or {}) do if st[1] == "XP/min" or st[1] == "Quests/h" then rateStat = true end end
+    for _, d in ipairs(r.details or {}) do if d.text:find("by XP per minute", 1, true) or d.text:find("^#%d+ of %d+") then rateStat = true end end
+  end
+  check(not rateStat, "no card shows XP per minute or a rank")
+  -- Parts are rounded, 0..1, and the relevance is their weighted sum.
+  local sums = #list > 0
+  for _, r in ipairs(list) do
+    local p = r.relevance_parts
+    local total = 0
+    for name, weight in pairs(w) do
+      if not (p[name] >= 0 and p[name] <= 1) then sums = false end
+      total = total + weight * p[name]
+    end
+    if not near(total, r.relevance) then sums = false end
+  end
+  check(sums, "relevance is the weighted sum of its five parts, each 0..1")
+
+  -- Shown and never started: a card loses novelty slowly (never hidden for it).
+  -- (With a clock the cache holds between refreshes, so each rows() is one build.)
+  local clock = 1000
+  GetTime = function() return clock end
+  local key = redridge and (redridge.id .. "|" .. redridge.title)
+  check(key and ns.charDB.seenCards[key] == 1, "a refresh counts the cards it showed")
+  for _ = 1, 4 do rows() end
+  local dmAgain = find(F.Results(), "Run The Deadmines")
+  check(ns.charDB.seenCards[key] == 5 and dmAgain and near(dmAgain.relevance_parts.novelty, 0.9 * 0.84),
+    string.format("shown five times and never started: a little less new (%.2f -> %.2f), still offered",
+      deadmines and deadmines.relevance_parts.novelty or 0, dmAgain and dmAgain.relevance_parts.novelty or 0))
+  F.NoteStarted(dmAgain)
+  check(ns.charDB.seenCards[dmAgain.id .. "|" .. dmAgain.title] == 1 and ns.charDB.startedKinds.dungeon == 1,
+    "starting it from the card resets that and learns the kind")
+  local fresh = find(rows(), "Run The Deadmines")
+  check(fresh and near(fresh.relevance_parts.novelty, 0.9 * 0.96), "and it is new again next time: " .. tostring(fresh and fresh.relevance_parts.novelty))
+  GetTime = nil
+
+  -- Learned intent: the kind you start most scores higher on intent.
+  local before = find(F.Results(), "Quest in Redridge Mountains").relevance_parts.intent
+  ns.charDB.startedKinds = { zone = 6, dungeon = 1 }
+  list = rows()
+  local rz, dz = find(list, "Quest in Redridge Mountains"), find(list, "Run The Deadmines")
+  check(rz and dz and rz.relevance_parts.intent > before and rz.relevance_parts.intent > dz.relevance_parts.intent,
+    string.format("zones started most: a zone's intent rises (%.2f -> %.2f), above the dungeon's (%.2f)", before,
+      rz.relevance_parts.intent, dz.relevance_parts.intent))
+  -- A journey started from a card counts its kind (journey.def.kind), once.
+  ns.charDB.startedKinds = {}
+  check(rz.journey and rz.journey.def.kind == "zone", "a card's journey carries its kind")
+  ns.Nav.StartJourney(rz.journey)
+  check(ns.charDB.startedKinds.zone == 1, "JOURNEY_STARTED learns it: " .. tostring(ns.charDB.startedKinds.zone))
+  ns.Nav.Stop()
+  runTimers()
+  local dj = find(rows(), "Run The Deadmines")
+  F.NoteStarted(dj)
+  ns.Nav.StartJourney(dj.journey)
+  check(ns.charDB.startedKinds.dungeon == 1, "the card button noting it first doesn't count it twice")
+  ns.Nav.Stop()
+  runTimers()
+  -- The explicit preference hook (no setting yet): a preferred kind scores higher on intent.
+  ns.charDB.startedKinds = nil
+  local plainIntent = find(rows(), "Run The Deadmines").relevance_parts.intent
+  ns.charDB.preferKind = "dungeon"
+  local preferred = find(rows(), "Run The Deadmines")
+  check(F.Preference() == "dungeon" and preferred.relevance_parts.intent > plainIntent,
+    string.format("a preferred kind (the hook) scores higher on intent (%.2f -> %.2f)", plainIntent,
+      preferred.relevance_parts.intent))
+  ns.charDB.preferKind = nil
+
+  -- Observations: ordered by urgency, each with one action.
+  local obs = F.Observations()
+  local sorted = #obs > 0
+  for i = 2, #obs do if obs[i].urgency > obs[i - 1].urgency then sorted = false end end
+  check(sorted, "observations come most urgent first: " .. kinds(obs))
+  local shaped = #obs > 0
+  for _, o in ipairs(obs) do
+    if not (o.id and o.kind and o.icon and o.text and o.highlights and o.urgency >= 0 and o.urgency <= 1) then shaped = false end
+    local a = o.action
+    if a and not (a.label and ((a.kind == "detour" and a.stop and a.stop.node) or (a.kind == "show" and a.page)
+      or (a.kind == "go" and a.goal and a.route))) then shaped = false end
+  end
+  check(shaped, "every observation has id, kind, icon, text, highlights, urgency and at most one well-formed action")
+  local ready = obsFind(obs, "handin")
+  check(ready and ready.text == "1 quest ready to hand in to Watcher Dodds, <1 min away." and ready.action.kind == "detour"
+    and ready.action.stop.action.kind == "turnin" and ready.action.stop.action.questID == 50
+    and ready.highlights[1] == "1 quest",
+    "a quest ready to hand in: an observation with its hand-in stop as a detour: " .. tostring(ready and ready.text))
+  GetTime = function() return clock end
+  F.Invalidate()
+  obs = F.Observations()
+  check(F.Observations() == obs and F.Results() and F.Observations() == obs, "observations are cached with the cards")
+  local runs = F.runs
+  F.Invalidate()
+  check(F.Observations() ~= obs and F.runs == runs + 1, "and rebuilt with them")
+  local vendor = obsFind(F.Observations(), "vendor")
+  check(vendor and vendor.urgency < 0.2 and vendor.action.kind == "detour" and vendor.text:find("^A vendor nearby: "),
+    "a vendor a couple of minutes away is worth a quiet tile: " .. tostring(vendor and vendor.text))
+
+  -- Full bags: the nearest vendor to sell at.
+  local free = 0
+  C_Container = {
+    GetContainerNumSlots = function(bag) return bag == 0 and 16 or 0 end,
+    GetContainerNumFreeSlots = function() return free end,
+    GetContainerItemInfo = function() return nil end,
+  }
+  obs = F.Observations()
+  F.Invalidate()
+  obs = F.Observations()
+  local bags = obsFind(obs, "bags")
+  check(bags and bags.urgency == 0.85 and bags.text:find("^Bags full: the nearest vendor is ") and bags.highlights[1] == "full"
+    and bags.action.kind == "detour" and bags.action.stop.text:find("^Sell at ") and not obsFind(obs, "vendor"),
+    "full bags: the nearest vendor as a detour, and no separate vendor tile: " .. tostring(bags and bags.text))
+  free = 2
+  F.Invalidate()
+  bags = obsFind(F.Observations(), "bags")
+  check(bags and bags.urgency == 0.45 and bags.text:find("^Bags nearly full %(2 of 16 slots free%)"),
+    "nearly full: a quieter tile: " .. tostring(bags and bags.text))
+  free = 10
+  F.Invalidate()
+  check(not obsFind(F.Observations(), "bags"), "room in the bags: nothing to say")
+  C_Container = nil
+
+  -- New spells at the next even level, and where the trainer is.
+  local savedSpells = ns.charDB.classSpells
+  ns.charDB.classSpells = { updated = 0, level = 20, services = {
+    { name = "Old", type = "used", levelReq = 18 },
+    { name = "Shadow Bolt", rank = "Rank 5", type = "unavailable", levelReq = 22, cost = 2000 },
+    { name = "Curse of Weakness", rank = "Rank 3", type = "unavailable", levelReq = 22, cost = 1500 } } }
+  F.Invalidate()
+  obs = F.Observations()
+  local abilities = obsFind(obs, "abilities")
+  check(abilities and abilities.text:find("^2 new spells at level 22: your trainer is ") and abilities.text:find("in Stormwind", 1, true)
+    and abilities.action.kind == "go" and abilities.action.route and abilities.highlights[2] == "level 22"
+    and not obsFind(obs, "train"),
+    "two levels ahead: new spells at level 22, with directions to the trainer: " .. tostring(abilities and abilities.text))
+  ns.charDB.classSpells.services[2].levelReq, ns.charDB.classSpells.services[3].levelReq = 24, 24
+  F.Invalidate()
+  check(not obsFind(F.Observations(), "abilities"), "four levels ahead: not yet")
+  ns.charDB.classSpells = savedSpells
+
+  -- /ww debug cards prints each card's role, relevance and parts, and each observation.
+  F.Invalidate()
+  local wasShown = ns.Panel.IsShown()
+  ns.Panel.Search("foryou")
+  local said = #chat
+  SlashCmdList.WAYWARD("debug cards")
+  local printed = table.concat(chat, "\n", said + 1)
+  check(printed:find("card 1 [continue] ", 1, true) and printed:find("relevance %d%.%d%d %(suitability %d%.%d%d, proximity")
+    and printed:find("; why: ", 1, true) and printed:find("card 2 [explore] ", 1, true)
+    and printed:find("observation 1 [", 1, true) and printed:find("urgency %d%.%d%d: "),
+    "/ww debug cards prints roles, relevance, parts, why and the observations")
+  local lines = F.Diagnose()
+  check(#lines >= 4 and lines[1]:find("^card 1 %[continue%]"), "ForYou.Diagnose has the same lines")
+  if not wasShown then ns.Panel.Toggle() end
+
+  -- Cards hidden by the journey keep the roles whole: the next page is re-rolled.
+  GetTime = nil
+  local here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Just the hand-in", stops = ns.Journey.QuestStops(50, here) }), true)
+  list = F.Results()
+  local held = #list >= 3 and not find(list, "Hand in 1 quest to Watcher Dodds")
+  for i, r in ipairs(list) do
+    if r.role ~= pattern[(i - 1) % 3 + 1] then held = false end
+  end
+  check(held, "with the hand-in on your journey, the roles are picked over the cards left: " .. titles(list))
+  ns.Nav.Stop()
+  runTimers()
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+  LibQuestieDB.Support.Get = zoneSupport
+  QUESTS[50], NPCS[6100] = nil, nil
+  ns.charDB.seenCards, ns.charDB.startedKinds, ns.charDB.visitedZones = savedSeen, savedKinds, savedVisited
+  refreshData()
+  F.Invalidate()
+end
+---------------------------------------------------------------- stream A: relevance (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
