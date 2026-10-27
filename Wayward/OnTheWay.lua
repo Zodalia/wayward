@@ -1,10 +1,10 @@
 local _, ns = ...
 
--- Suggestions along your trip (shown in the trip overview): quests you can
--- pick up, quests in your log ready to hand in, and vendors you need, that
--- are near the way and add little to it: SLACK seconds of travel or less
--- (the same as follow-up quests). Each comes with the stops to add; a
--- pickup brings its quest's objectives and hand-in along when they add under
+-- Detours on the way (shown in the journey overview): quests you can pick
+-- up, quests in your log ready to hand in, and vendors you need, that are
+-- near the way and add little to it: SLACK seconds of travel or less (the
+-- same as follow-up quests). Each comes with the stops to add; a pickup
+-- brings its quest's objectives and hand-in along when they add under
 -- AUTO_ADD seconds more.
 
 local OnTheWay = {}
@@ -21,9 +21,10 @@ local AUTO_ADD = 60     -- seconds: a pickup whose objectives and hand-in add le
 
 local cache
 
--- The trip's points: where you are, then its open stops in order (or the
+-- The journey's points: where you are, then its open stops in order (or the
 -- destination), and every place its route passes (for "near the way").
-local function routePoints(a, here)
+-- Errands.lua ranks its places by these too.
+function OnTheWay.RoutePoints(a, here)
   local stops, near = { here }, { here }
   if a.journey then
     for _, stop in ipairs(a.journey.stops) do
@@ -94,8 +95,8 @@ local function candidates(a, here)
   return out
 end
 
--- Seconds of travel `node` adds to the trip at its best place among `stops`.
-local function added(node, stops, net)
+-- Seconds of travel `node` adds to the journey at its best place among `stops`.
+function OnTheWay.Added(node, stops, net)
   local plans = {}
   local function cost(from, to)
     local key = tostring(from) .. ">" .. tostring(to)
@@ -113,7 +114,7 @@ local function added(node, stops, net)
   return math.max(0, best)
 end
 
--- The suggestions for the trip on now, best first: { {kind, label, stops, extra} }.
+-- The detours for the journey on now, best first: { {kind, label, stops, extra} }.
 function OnTheWay.Get()
   local a = ns.Nav.active
   local here = ns.Geo.PlayerNode()
@@ -122,7 +123,7 @@ function OnTheWay.Get()
   local key = tostring(a) .. ":" .. a.index .. ":" .. #(a.journey and a.journey.stops or {})
   if cache and cache.key == key and now and now - cache.at < KEEP then return cache.list end
 
-  local stops, near = routePoints(a, here)
+  local stops, near = OnTheWay.RoutePoints(a, here)
   local list = {}
   local ok, all = pcall(candidates, a, here)
   if ok then
@@ -137,7 +138,7 @@ function OnTheWay.Get()
     for i = 1, math.min(#all, CANDIDATES) do
       local c = all[i]
       if c.distance <= NEAR then
-        c.extra = added(c.node, stops, net)
+        c.extra = OnTheWay.Added(c.node, stops, net)
         if c.extra <= SLACK then list[#list + 1] = c end
       end
     end
@@ -149,26 +150,25 @@ function OnTheWay.Get()
 end
 
 -- A pickup's quest done and handed in, when that adds under AUTO_ADD seconds
--- of travel to the trip with the pickup: added with it rather than asked
+-- of travel to the journey with the pickup: added with it rather than asked
 -- about once you pick it up. `stops` are the suggestion's pickups; returns
 -- the stops to add, and the names of the quests that came whole.
 local function withHandIns(stops)
   local a, here = ns.Nav.active, ns.Geo.PlayerNode()
   if not (a and here) then return stops, {} end
   local root = a.journey and (a.journey.root or a.journey.def)
-  local open, finish = {}, nil
+  local open = {}
   if root then
     for _, st in ipairs(root.stops or {}) do
       if not st.done and not st.skipped then open[#open + 1] = st end
     end
-    finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
   else
     open[1] = { node = a.goal, text = a.title }
   end
   local function plan(list)
     local all = { unpack(open) }
     for _, st in ipairs(list) do all[#all + 1] = st end
-    return ns.Journey.Plan(here, { stops = all, finish = finish })
+    return ns.Journey.Plan(here, { stops = all })
   end
   local out, whole = { unpack(stops) }, {}
   local base = plan(out)
@@ -193,7 +193,7 @@ local function withHandIns(stops)
   return out, whole
 end
 
--- Adds a suggestion to the trip.
+-- Adds a detour to the journey.
 function OnTheWay.Add(s)
   cache = nil
   local stops, whole = s.stops, {}

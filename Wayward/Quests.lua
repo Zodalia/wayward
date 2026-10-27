@@ -28,7 +28,6 @@ end
 
 local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
 local questByID -- [questID] = quest row (every quest, with or without a starter)
-local nameIndex -- { {lowercase name, quest row}, ... }, built on the first search
 
 -- Forever adds quests the data knows nothing about the chains of (e.g. a
 -- second "Return the Statuette", 98189, after the original 286). For those
@@ -191,7 +190,7 @@ for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED" })
 end
 -- Abandoning a quest: QUEST_REMOVED fires for a hand-in too, so a moment
 -- later, a quest that wasn't handed in and isn't back in your log was dropped:
--- QUEST_ABANDONED(questID) for the trip, For you and quest times.
+-- QUEST_ABANDONED(questID) for the journey, For you and quest times.
 local ABANDON_CHECK = 0.5
 local handedIn = {}
 
@@ -1196,22 +1195,41 @@ function Quests.ChainStart(questID, done, inLog)
   return chainStart(q, playerProfile(), done, inLog, {})
 end
 
--- Quests whose name contains `text` (case-insensitive), with or without a
--- starter, lowest ID first. The name index is built once, on the first search.
-function Quests.FindQuests(text)
+-- Where you stand with a quest whose reward you want (the Items page):
+-- "available", "low" (grey, you can still take it), "inLog", "done", "level"
+-- (you are too low), "hard" (red, or orange on Hardcore), "chain" (needs
+-- earlier quests), or nil (never for you, or not any more). The same rules
+-- as QuestStatus, in the Items page's words.
+function Quests.RewardStatus(questID, done, inLog)
+  local q = Quests.Quest(questID)
+  if not q then return nil end
+  if not done then done, inLog = playerQuestState() end
+  local p = playerProfile()
+  local status = blocker(q, p, done, inLog)
+  if status == "done" or status == "inLog" then return status end
+  if status == "tooLow" then return "level" end
+  if status == "needsEarlier" then return "chain" end
+  if status then return nil end
+  local _, _, why = fitsLevel(q, p)
+  if why == "red" then return "hard" end
+  if why == "grey" then return "low" end
+  return "available"
+end
+
+-- Every quest the data knows, by ID (with or without a starter), for indexes
+-- built over all of them (Search.lua). Read-only.
+function Quests.Index()
   if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
-  if not nameIndex then
-    nameIndex = {}
-    for _, q in pairs(questByID) do
-      if type(q.name) == "string" then nameIndex[#nameIndex + 1] = { q.name:lower(), q } end
-    end
-    table.sort(nameIndex, function(a, b) return a[2].id < b[2].id end)
-  end
-  local needle, out = text:lower(), {}
-  for _, entry in ipairs(nameIndex) do
-    if entry[1]:find(needle, 1, true) then out[#out + 1] = entry[2] end
-  end
+  return questByID
+end
+
+-- Quests whose name contains `text` (case-insensitive), with or without a
+-- starter, best match first (Search.lua does the matching).
+function Quests.FindQuests(text)
+  if not Quests.Available() then return {} end
+  local out = {}
+  for _, m in ipairs(ns.Search.Find(text, "quest")) do out[#out + 1] = m.quest end
   return out
 end
 
@@ -1256,7 +1274,7 @@ end
 -- Indexes are rebuilt when a source registers (a companion loading later).
 ns.Listen("SOURCES_CHANGED", function()
   generation = generation + 1
-  questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
+  questIndex, predecessors, questByID, followers = nil, nil, nil, nil
   giverNodes, objectiveCache, groupCache, areaCache, mobCache, zoneCache, takeable = {}, {}, {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
   chainCache = {}

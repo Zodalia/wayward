@@ -26,7 +26,7 @@ local MOMENTS = {
     { 3175, "MAP_PING", "minimap ping" },
     { 618, "#618", "the vanilla quest chime" },
   } },
-  { key = "step", label = "a stop added to your trip", options = {
+  { key = "step", label = "a stop added to your journey", options = {
     { 836, "IG_ABILITY_PAGE_TURN", "spellbook page turn" },
     { 206497, "UI_PROFESSION_TRACK_RECIPE_CHECKBOX", "tiny tick, the quietest" },
     { 856, "IG_MAINMENU_OPTION_CHECKBOX_ON", "the same tick, louder (every checkbox)" },
@@ -43,7 +43,7 @@ local MOMENTS = {
     { 43936, "UI_QUEST_ROLLING_FORWARD_01", "a new objective rolling into the tracker" },
     { 3093, "IG_WRITE_QUEST", "quill scribble" },
   } },
-  { key = "start", label = "a trip or directions started", options = {
+  { key = "start", label = "a journey or directions started", options = {
     { 231913, "CONTENT_TRACKING_ITEM_ACQUIRED_TOAST", "quest objective complete" },
     { 44323, "UI_GARRISON_COMMAND_TABLE_MISSION_START", "a mission sent off" },
     { 73275, "UI_WORLDQUEST_START", "world quest banner swell" },
@@ -264,15 +264,15 @@ local TESTS = {
     if not (StaticPopupDialogs and StaticPopup_Show) then return end
     StaticPopupDialogs.WAYWARD_SOUND_TEST = StaticPopupDialogs.WAYWARD_SOUND_TEST or {
       text = "%s",
-      button1 = "Start trip", button2 = "Not now",
+      button1 = "Start journey", button2 = "Not now",
       OnAccept = function() ns.print("that was a sound test: nothing started.") end,
       timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
     }
-    StaticPopup_Show("WAYWARD_SOUND_TEST", "You picked up Sample Quest.\n\nStart a trip for it (~4 min)?")
+    StaticPopup_Show("WAYWARD_SOUND_TEST", "You picked up Sample Quest.\n\nStart a journey for it (~4 min)?")
     Sounds.Play("popup", kit)
   end,
   step = function(kit)
-    ns.print("added Sample Quest to your trip: 4 stops, ~12 min (a sound test)")
+    ns.print("added Sample Quest to your journey: 4 stops, ~12 min (a sound test)")
     Sounds.Play("step", kit)
   end,
   start = function(kit)

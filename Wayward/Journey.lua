@@ -1,15 +1,18 @@
 local _, ns = ...
 
--- Journeys: trips with several stops, e.g. "pick up three quests, then go to
--- the Deadmines". Stops are visited in the quickest order found (nearest
--- next stop, then pairwise swaps) that respects each stop's `after` list,
--- with an optional fixed final stop.
+-- Journeys: adventures with several stops, e.g. "pick up three quests, then
+-- go to the Deadmines". Stops are visited in the quickest order found
+-- (nearest next stop, then pairwise swaps) that respects each stop's `after`
+-- list.
 --
 -- A journey definition:
 --   {
 --     title = "Deadmines run",
+--     kind = "quest" | "zone" | "dungeon" | "hand-in" | "finish" | "profession" | "custom" ...,
+--     icon = "Interface\\Icons\\...",   -- both optional, shown by the home screen and the fanfare
 --     stops = { stop, ... },   -- visited in any order allowed by `after`
---     finish = stop,           -- optional, always last (e.g. a dungeon entrance)
+--     finish = stop,           -- older definitions: a stop that comes after the others
+--                              -- ("Enter X" becomes an `enter` stop, see Journey.Plan)
 --   }
 -- A stop:
 --   {
@@ -20,7 +23,11 @@ local _, ns = ...
 --       { kind = "manual", questID } (a step of a quest you confirm with next) and
 --       { kind = "talk", npc } (done when you talk to them: a trainer, a vendor) and
 --       { kind = "train", profession, cap, npc } (done when that profession's skill
---       cap is over `cap`: you bought the next rank)
+--       cap is over `cap`: you bought the next rank) and
+--       { kind = "explore", mapID } (done once you're in that zone, or a subzone of it) and
+--       { kind = "enter", dungeon = "The Deadmines" } (done when you load into it) and
+--       { kind = "learn", spells = { spellID or name, ... }, npc } (class training: done at the
+--       trainer once one of those, or any new spell, is learned; Navigator.lua)
 --     after = { stop, ... },   -- optional: stops that must come first
 --     later = { stop, ... },   -- set by Journey.Postpone: stops you chose to do first
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
@@ -499,19 +506,87 @@ local function hearthLeg(legs, net)
   return { stop = leg.stop, label = hearth.node.label, saves = best.saves }
 end
 
+---------------------------------------------------------------- stop kinds
+
+-- Stop kinds that wait for something at the stop (besides a quest's own).
+local WAITS = { talk = true, train = true, explore = true, enter = true, learn = true }
+
+-- Every stop kind a journey can hold, for code that builds stops (Trainers
+-- falls back to a talk stop where `learn` is missing).
+Journey.STOP_KINDS = { pickup = true, complete = true, turnin = true, item = true, manual = true,
+  talk = true, train = true, explore = true, enter = true, learn = true }
+
+-- What a stop says when its definition gives no text.
+function Journey.DefaultText(stop)
+  local action, label = stop.action, stop.node and stop.node.label
+  local kind = action and action.kind
+  if kind == "explore" then
+    return "Explore " .. (action.mapID and ns.MapName(action.mapID) or label or "the zone")
+  elseif kind == "enter" then
+    return "Enter " .. (action.dungeon or label or "the dungeon")
+  elseif kind == "learn" then
+    return "Train your new spells" .. (action.npc and (" at " .. action.npc) or "")
+  elseif kind == "talk" then
+    return "Talk to " .. (action.npc or "them")
+  end
+  return label and ("Go to " .. label) or nil
+end
+
+-- The dungeon an older `finish` stop leads into ("Enter The Deadmines"), or nil.
+local function dungeonOf(stop)
+  local name = stop.text and stop.text:match("^Enter (.+)$")
+  if not name and stop.node and stop.node.label and stop.node.label:find(" entrance$") then
+    name = stop.node.label:gsub(" entrance$", "")
+  end
+  return name
+end
+
+-- An older definition's `finish` becomes an ordinary stop that comes after the
+-- stops defined with it; a dungeon entrance gets the `enter` kind, so it is
+-- done when you load into the dungeon, not on reaching its door.
+local function adoptFinish(def)
+  local finish = def.finish
+  if not finish then return end
+  def.finish = nil
+  def.stops = def.stops or {}
+  for _, stop in ipairs(def.stops) do
+    if stop == finish then return end
+  end
+  if not finish.action then
+    local dungeon = dungeonOf(finish)
+    if dungeon then finish.action = { kind = "enter", dungeon = dungeon } end
+  end
+  local after, seen = {}, {}
+  for _, s in ipairs(finish.after or {}) do
+    after[#after + 1], seen[s] = s, true
+  end
+  for _, s in ipairs(def.stops) do
+    if not seen[s] then after[#after + 1] = s end
+  end
+  finish.after = #after > 0 and after or nil
+  def.stops[#def.stops + 1] = finish
+end
+
 ---------------------------------------------------------------- planning
 
 -- Plans a journey from `start`. Returns
---   { title, def, root, stops = ordered stops, skipped = unreachable stops,
+--   { title, kind, icon, def, root, stops = ordered stops, skipped = unreachable stops,
 --     steps = route steps (the last step of each leg carries .stop), seconds }
 -- where seconds counts travel and any waits for a cleared camp to respawn.
 -- or nil when no stop is reachable. `root` is the original definition, kept
--- across re-plans so the overview can show stops already done.
+-- across re-plans so the overview can show stops already done; the journey's
+-- kind and icon live on it too.
 function Journey.Plan(start, def, net)
   net = net or ns.Network.Build()
-  for _, stop in ipairs(def.stops or {}) do resolve(stop, start) end
-  if def.finish then resolve(def.finish, start) end
+  adoptFinish(def)
   local root = def.root or def
+  if root ~= def then adoptFinish(root) end
+  def.kind, def.icon = def.kind or root.kind, def.icon or root.icon
+  root.kind, root.icon = root.kind or def.kind, root.icon or def.icon
+  for _, stop in ipairs(def.stops or {}) do
+    stop.text = stop.text or Journey.DefaultText(stop)
+    resolve(stop, start)
+  end
   local ordered = root.manual and manualOrder(start, def.stops or {}, net) or orderStops(start, def.stops or {}, net)
   -- `first`: the stop you're doing now (another quest's objectives, on the
   -- way), when nothing it needs is still open.
@@ -539,7 +614,6 @@ function Journey.Plan(start, def, net)
       root.stops = stops
     end
   end
-  if def.finish then ordered[#ordered + 1] = def.finish end
 
   -- Objectives in several areas: the one least out of the way between the
   -- stops either side of it.
@@ -552,8 +626,8 @@ function Journey.Plan(start, def, net)
     previous = stop.node or previous
   end
 
-  local journey = { title = def.title, def = def, root = root, stops = {}, skipped = {}, steps = {},
-    seconds = 0 }
+  local journey = { title = def.title, kind = def.kind, icon = def.icon, def = def, root = root, stops = {},
+    skipped = {}, steps = {}, seconds = 0 }
   local legs, from, clock = {}, start, 0
   for _, stop in ipairs(ordered) do
     local route = stop.node and ns.Router.Plan(from, stop.node, net)
@@ -599,8 +673,8 @@ function Journey.Replan(journey, start, net, first)
   for _, stop in ipairs(root.stops or {}) do
     if open(stop) then remaining[#remaining + 1] = stop end
   end
-  local finish = open(root.finish) and root.finish or nil
-  return Journey.Plan(start, { title = root.title, stops = remaining, finish = finish, root = root, first = first }, net)
+  return Journey.Plan(start, { title = root.title, kind = root.kind, icon = root.icon, stops = remaining, root = root,
+    first = first }, net)
 end
 
 local function questKey(stop)
@@ -639,16 +713,14 @@ end
 function Journey.Move(journey, stop, target)
   if not (stop and target) or stop == target then return false end
   local root = journey.root or journey.def
-  if stop == root.finish then return false end
   local order, from, to = {}, nil, nil
   for _, s in ipairs(journey.stops) do
-    if open(s) and s ~= root.finish then
+    if open(s) then
       order[#order + 1] = s
       if s == stop then from = #order end
       if s == target then to = #order end
     end
   end
-  if target == root.finish then to = #order end
   if not (from and to) then return false end
   table.remove(order, from)
   table.insert(order, to, stop)
@@ -667,13 +739,14 @@ function Journey.Move(journey, stop, target)
 end
 
 -- Puts an open stop after the next one in the current plan that doesn't need
--- it (the directions box's move on: do that one first). In a trip you ordered
--- yourself it moves there (Journey.Move); otherwise it becomes a rule for the
--- plans after (stop.later), so the rest is still ordered for you. Returns the
--- stop it now comes after, or nil when there's none. Re-plan afterwards.
+-- it (the directions box's move on: do that one first). In a journey you
+-- ordered yourself it moves there (Journey.Move); otherwise it becomes a rule
+-- for the plans after (stop.later), so the rest is still ordered for you.
+-- Returns the stop it now comes after, or nil when there's none. Re-plan
+-- afterwards.
 function Journey.Postpone(journey, stop)
   local root = journey.root or journey.def
-  if not open(stop) or stop == root.finish then return nil end
+  if not open(stop) then return nil end
   -- Your newest choice wins: stops you put after this one before needn't wait for it now.
   local waived = {}
   for _, s in ipairs(root.stops or {}) do
@@ -701,7 +774,7 @@ function Journey.PostponeAfter(journey, stop)
   for _, s in ipairs(journey.stops) do
     if s == stop then
       seen = true
-    elseif seen and open(s) and s ~= root.finish then
+    elseif seen and open(s) then
       local dependent = false
       for _, before in ipairs(prerequisites(s)) do
         if needs[before] then dependent = true end
@@ -722,20 +795,13 @@ function Journey.PostponeAfter(journey, stop)
   return nil
 end
 
--- A journey's open stops as plain stops to add elsewhere; its fixed final stop
--- (e.g. a dungeon entrance) comes after the rest.
+-- A journey's open stops as plain stops to add elsewhere (a dungeon entrance
+-- keeps its `after`, so it still comes after the stops planned with it).
 function Journey.OpenStops(journey)
   local root = journey.root or journey.def
   local out = {}
   for _, stop in ipairs(root.stops or {}) do
     if open(stop) then out[#out + 1] = stop end
-  end
-  if open(root.finish) then
-    local finish = root.finish
-    local after = {}
-    for _, stop in ipairs(out) do after[#after + 1] = stop end
-    finish.after = #after > 0 and after or finish.after
-    out[#out + 1] = finish
   end
   return out
 end
@@ -752,16 +818,15 @@ function Journey.AllStops(journey)
   for _, stop in ipairs(root.stops or {}) do
     if not seen[stop] then out[#out + 1] = stop end
   end
-  if root.finish and not seen[root.finish] then out[#out + 1] = root.finish end
   return out
 end
 
--- Stop that a step arrives at, if it still waits for a quest action.
+-- Stop that a step arrives at, if it still waits for something there (a
+-- quest action, someone to talk to, a zone or dungeon to enter, spells to learn).
 function Journey.PendingAction(step)
   local stop = step and step.stop
   local action = stop and stop.action
-  return action and (action.questID or action.kind == "talk" or action.kind == "train") and not stop.done
-    and not stop.skipped and stop or nil
+  return action and (action.questID or WAITS[action.kind]) and not stop.done and not stop.skipped and stop or nil
 end
 
 function Journey.StopsDone(journey)
@@ -770,6 +835,20 @@ function Journey.StopsDone(journey)
     if stop.done and not stop.passed then done = done + 1 end
   end
   return done
+end
+
+-- Stops done and stops in all, over the whole journey (the current plan and
+-- the stops done before it was planned again), skipped ones left out: the
+-- one count the directions box, the overview and the home screen share.
+function Journey.Progress(journey)
+  local done, total = 0, 0
+  for _, stop in ipairs(Journey.AllStops(journey)) do
+    if not (stop.skipped or stop.passed) then
+      total = total + 1
+      if stop.done then done = done + 1 end
+    end
+  end
+  return done, total
 end
 
 -- The zone a stop is in ("Stormwind City"), for lists of stops.
@@ -805,15 +884,15 @@ function Journey.Save(journey)
       done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = #after > 0 and after or nil,
       later = #later > 0 and later or nil }
   end
-  local saved = { title = root.title, manual = root.manual, stops = {} }
+  local saved = { title = root.title, kind = root.kind, icon = root.icon, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
-  if root.finish then saved.finish = save(root.finish) end
   return saved
 end
 
--- The definition back from Journey.Save; plan it with Journey.Plan.
+-- The definition back from Journey.Save; plan it with Journey.Plan. A save
+-- from before dungeon entrances were stops (`finish`) still loads.
 function Journey.Load(saved)
-  local def = { title = saved.title, manual = saved.manual, stops = {} }
+  local def = { title = saved.title, kind = saved.kind, icon = saved.icon, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, giver = s.giver, npc = s.npc, action = s.action, resolve = s.resolve, done = s.done,
       passed = s.passed, skipped = s.skipped, worked = s.worked }
@@ -827,7 +906,10 @@ function Journey.Load(saved)
       end
     end
   end
-  if saved.finish then def.finish = load(saved.finish) end
+  if saved.finish then
+    def.finish = load(saved.finish)
+    adoptFinish(def)
+  end
   return def
 end
 
@@ -838,9 +920,8 @@ function Journey.Resume(def, start, net)
   for _, stop in ipairs(def.stops) do
     if open(stop) and stop.node then remaining[#remaining + 1] = stop end
   end
-  local finish = open(def.finish) and def.finish or nil
-  if #remaining == 0 and not finish then return nil end
-  return Journey.Plan(start, { title = def.title, stops = remaining, finish = finish, root = def }, net)
+  if #remaining == 0 then return nil end
+  return Journey.Plan(start, { title = def.title, kind = def.kind, icon = def.icon, stops = remaining, root = def }, net)
 end
 
 -- Whether a loaded definition still has a stop to do (placed on the map or not).
@@ -848,5 +929,5 @@ function Journey.HasOpenStops(def)
   for _, stop in ipairs(def.stops or {}) do
     if open(stop) then return true end
   end
-  return open(def.finish) and true or false
+  return false
 end

@@ -1,9 +1,12 @@
 local _, ns = ...
 
--- The Wayward window. The main window shows the card page (For you) and
--- never changes size; the other pages (Quests, Vendors, Trainers, Dungeons,
--- Items) open in a side panel docked to its right, from icon tabs inside its
--- right edge.
+-- The Wayward window. The main window is the home screen, in three regions
+-- under a header (your portrait, "Level 8 · Dun Morogh", the summary line and
+-- the time buttons): Your journey (UI/JourneyBox.lua), Something to do next
+-- (the card page's results as cards, UI/Cards.lua) and Good to know
+-- (UI/Observations.lua). It never changes size; the other pages (Quests,
+-- Vendors, Trainers, Dungeons, Items) open in a side panel docked to its
+-- right, from icon tabs inside its right edge.
 --
 -- Page contract (register with ns.RegisterPage(page) from any file that loads
 -- before this one):
@@ -31,29 +34,37 @@ local _, ns = ...
 --   place and stats = { {label, value}, ... } (up to 3) for cards: a "where" line
 --     and labelled numbers in place of the subtitle,
 --   category for cards: what kind of suggestion it is ("Best quest"),
+--   role ("continue" | "explore" | "alternative") and why (one plain sentence)
+--     for cards: the tag and the line under the title (UI/Cards.lua),
 --   actions = { {label, run = function(result) end} } (the first is shown as a button).
 
 local Panel = {}
 ns.Panel = Panel
 
-local MAX_ROWS = 7
-local MAIN_WIDTH = 730 -- when no card page says otherwise
+local MAX_ROWS = 11
+local MAIN_WIDTH = 840 -- at least; a card page's `width` can ask for more
 local SIDE_WIDTH = 384
-local HEIGHT = 530
+local HEIGHT = 672     -- roughly 4:3 with the tab column; fits 1080p at UI scale 1
 local ROW_HEIGHT = 42
+local MARGIN = 18      -- inside the main window's left and right edges
+local HEADER_TOP = -32 -- the portrait's top
+local PORTRAIT = 44
+local HEADING_GAP = 10 -- above a region's heading
+local HEADING_H = 18   -- the heading's line, to the region under it
 local MAX_DETAIL_LINES = 12
 local SEARCH_DELAY = 0.3
 local SIDE_TAB_SIZE = 32
 -- The tab column inside the main window's right edge.
 local TAB_COLUMN = SIDE_TAB_SIZE + 16
 local TAB_ICONS = {
-  quests = "Interface\\Icons\\INV_Misc_QuestionMark",
+  find = "Interface\\Icons\\INV_Misc_QuestionMark",
+  quests = "Interface\\Icons\\INV_Misc_Note_01",
   vendors = "Interface\\Icons\\INV_Misc_Coin_02",
   trainers = "Interface\\Icons\\INV_Misc_Book_11",
   dungeons = "Interface\\Icons\\INV_Misc_Key_14",
   items = "Interface\\Icons\\INV_Misc_Bag_08",
 }
-local MAX_CATEGORIES = 4
+local MAX_CATEGORIES = 5
 local CONTROL_WIDTH, CONTROL_GAP = 36, 2
 
 local frame, side
@@ -198,14 +209,14 @@ function Panel.ShowTooltip(owner, r)
         ns.FormatDuration(hearth.saves), ns.FormatDuration(hearth.readyIn)), 0.6, 0.6, 0.6, true)
     end
     GameTooltip:AddLine("Click to start this journey", 0.5, 0.8, 0.7)
-    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
+    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your journey", 0.5, 0.8, 0.7) end
   elseif r.route then
     local route = ns.Router.WithZoneSteps(r.route)
     for i = 1, #route.steps do
       GameTooltip:AddLine(i .. ". " .. ns.Router.Describe(route, i), 1, 1, 1, true)
     end
     GameTooltip:AddLine("Click for directions", 0.5, 0.8, 0.7)
-    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your trip", 0.5, 0.8, 0.7) end
+    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your journey", 0.5, 0.8, 0.7) end
   end
   GameTooltip:Show()
   if r.item then pcall(showItem, r.item) end
@@ -213,22 +224,63 @@ function Panel.ShowTooltip(owner, r)
   if ns.RouteMap then pcall(ns.RouteMap.Show, r, GameTooltip) end
 end
 
--- What clicking a result does (rows and cards): start its directions or
--- journey; with shift held during a trip, add it to the trip instead.
-function Panel.Activate(r)
-  if ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then
-    local stops = ns.Nav.StopsFor(r)
-    if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
-    Panel.Refresh()
-    return
-  end
+-- Starts a result's journey or directions and closes the window.
+local function start(r)
   if r.journey then
     ns.Nav.StartJourney(r.journey)
-    if frame then frame:Hide() end
   elseif r.route then
     ns.Nav.Start(r.title, r.goal, r.route)
-    if frame then frame:Hide() end
+  else
+    return
   end
+  if frame then frame:Hide() end
+  if ns.ForYou and ns.ForYou.NoteStarted then pcall(ns.ForYou.NoteStarted, r) end
+end
+
+-- Adds a result's stops to the journey on now (a detour), or starts one.
+local function addDetour(r)
+  local stops = ns.Nav.StopsFor(r)
+  if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
+  Panel.Refresh()
+end
+
+-- Sets the journey on now aside (kept to resume later) where the navigator
+-- can, else ends it.
+local function setAside()
+  if ns.Nav.SetAside then ns.Nav.SetAside() else ns.Nav.Stop() end
+end
+
+-- Starting something while a journey is on: add it as a detour, switch to it
+-- (the journey on now is set aside), or cancel. Switches straight away where
+-- the game's dialogs aren't there.
+function Panel.Choose(r)
+  if not (StaticPopupDialogs and StaticPopup_Show) then
+    setAside()
+    return start(r)
+  end
+  StaticPopupDialogs.WAYWARD_SWITCH = StaticPopupDialogs.WAYWARD_SWITCH or {
+    text = "%s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.",
+    button1 = "Add as detour", button2 = "Cancel", button3 = "Switch journey",
+    OnAccept = function(_, data) addDetour(data.result) end,
+    OnAlt = function(_, data)
+      setAside()
+      start(data.result)
+    end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  local a = ns.Nav.active
+  local now = a.journey and string.format("You're on a journey: %s.", a.title or "")
+    or string.format("You have directions to %s.", a.title or "")
+  StaticPopup_Show("WAYWARD_SWITCH", now, r.title or "", { result = r })
+end
+
+-- What clicking a result does (rows, cards and tiles): start its directions
+-- or journey; with shift held during a journey, add it as a detour instead;
+-- during a journey, the button asks: detour, switch or cancel.
+function Panel.Activate(r)
+  if ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then return addDetour(r) end
+  if ns.Nav.active and (r.journey or r.route) then return Panel.Choose(r) end
+  start(r)
 end
 
 local function subtitle(r)
@@ -435,12 +487,38 @@ end
 
 ---------------------------------------------------------------- main window
 
+-- A region's heading, in gold small caps like the mockup's.
+local function heading(parent, label)
+  local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  fs:SetJustifyH("LEFT")
+  fs:SetText(label)
+  ns.Skin.Text(fs)
+  return fs
+end
+
+-- The main window's width without the tab column: the card page's, at least MAIN_WIDTH.
+local function mainWidth()
+  return math.max(MAIN_WIDTH, mainPage and mainPage.width or 0)
+end
+
+-- "Level 8 · Dun Morogh" for the header: the zone you're in, by the map.
+local function headline()
+  local level = UnitLevel and UnitLevel("player") or 0
+  local here = ns.Geo.PlayerNode()
+  local zone = here and ns.Geo.ZoneAt(here.instance, here.wx, here.wy)
+  local name = zone and ns.MapName(zone)
+  if (not name or name == "?") and here and here.mapID then name = ns.MapName(here.mapID) end
+  if (not name or name == "?") and GetRealZoneText then name = GetRealZoneText() end
+  if name and name ~= "?" and name ~= "" then return string.format("Level %d  ·  %s", level, name) end
+  return string.format("Level %d", level)
+end
+
 local function create()
   -- ButtonFrameTemplate is Blizzard's standard window (title bar, close button,
   -- inset), so UI suites that restyle Blizzard windows know it too.
   local f, templated = ns.Skin.CreateWindow("WaywardPanel")
   mainPage = mainPage or defaultMain()
-  local width = mainPage and mainPage.width or MAIN_WIDTH
+  local width = mainWidth()
   f:SetSize(width + TAB_COLUMN, HEIGHT)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
@@ -514,13 +592,29 @@ local function create()
     f.tabs[i] = { button = b, page = page }
   end
 
+  -- The header: your portrait, "Level 8 · Dun Morogh", the page's summary line.
+  f.portrait = f:CreateTexture(nil, "ARTWORK")
+  f.portrait:SetSize(PORTRAIT, PORTRAIT)
+  f.portrait:SetPoint("TOPLEFT", MARGIN, HEADER_TOP)
+  if f.portrait.SetMask then pcall(f.portrait.SetMask, f.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+  f.portraitRing = f:CreateTexture(nil, "OVERLAY")
+  f.portraitRing:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+  f.portraitRing:SetSize(PORTRAIT * 1.2, PORTRAIT * 1.2)
+  f.portraitRing:SetPoint("CENTER", f.portrait, "CENTER", 8, -8)
+  f.headline = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  f.headline:SetPoint("TOPLEFT", f.portrait, "TOPRIGHT", 12, -2)
+  f.headline:SetJustifyH("LEFT")
+  f.headline:SetWordWrap(false)
+  ns.Skin.Text(f.headline)
+
   f.summary = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  f.summary:SetPoint("TOPLEFT", 18, -34)
-  f.summary:SetWidth(width - 36)
+  f.summary:SetPoint("TOPLEFT", f.headline, "BOTTOMLEFT", 0, -4)
+  f.summary:SetWidth(width - MARGIN * 2 - PORTRAIT - 12)
   f.summary:SetJustifyH("LEFT")
   f.summary:SetWordWrap(true)
+  if f.summary.SetMaxLines then f.summary:SetMaxLines(2) end
 
-  -- The page's own buttons at the right end of the summary line (For you: how long you have).
+  -- The page's own buttons at the right of the header (For you: how long you have).
   f.controls = {}
   local controls = mainPage and mainPage.controls
   if controls then
@@ -528,7 +622,7 @@ local function create()
     for i, choice in ipairs(controls.choices) do
       local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
       b:SetSize(CONTROL_WIDTH, 20)
-      b:SetPoint("TOPRIGHT", f, "TOPLEFT", width - 18 - (n - i) * (CONTROL_WIDTH + CONTROL_GAP), -31)
+      b:SetPoint("TOPRIGHT", f, "TOPLEFT", width - MARGIN - (n - i) * (CONTROL_WIDTH + CONTROL_GAP), HEADER_TOP - 2)
       b:SetText(choice.text)
       b.choice = choice
       b:SetScript("OnClick", function()
@@ -550,21 +644,29 @@ local function create()
     f.controlLabel:SetPoint("RIGHT", f.controls[1], "LEFT", -6, 0)
     f.controlLabel:SetText(controls.label or "")
     ns.Skin.Text(f.controlLabel)
-    f.summary:SetWidth(width - 36 - n * (CONTROL_WIDTH + CONTROL_GAP) - 50)
+    f.summary:SetWidth(width - MARGIN * 2 - PORTRAIT - 12 - n * (CONTROL_WIDTH + CONTROL_GAP) - 50)
   end
 
-  f.cards = ns.Cards.Create(f)
-  f.cards:SetPoint("TOPLEFT", f.summary, "BOTTOMLEFT", 0, -12)
-  -- Under the large card, beside the page arrows: how complete your profile is.
-  f.profile = ns.Profile.CreateStrip(f, f.cards.large, width - 36)
+  -- The three regions, each under its heading; Panel.Layout places them,
+  -- since the journey box is one line when nothing is on.
+  local inner = width - MARGIN * 2
+  f.journeyHeading = heading(f, "YOUR JOURNEY")
+  f.journey = ns.JourneyBox.Create(f, inner)
+  f.cardsHeading = heading(f, "SOMETHING TO DO NEXT")
+  f.cards = ns.Cards.Create(f, inner)
+  -- Under the first card, left of the page arrows: how complete your profile is.
+  f.profile = ns.Profile.CreateStrip(f, f.cards.cards[1], inner)
+  f.observationsHeading = heading(f, "GOOD TO KNOW")
+  f.observations = ns.Observations.Create(f, inner)
   f:EnableMouseWheel(true)
   f:SetScript("OnMouseWheel", function(_, delta) ns.Cards.Step(delta) end)
 
   f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.footer:SetPoint("BOTTOMLEFT", 18, 16)
-  f.footer:SetWidth(width - 36)
+  f.footer:SetPoint("BOTTOMLEFT", MARGIN, 14)
+  f.footer:SetWidth(inner)
   f.footer:SetJustifyH("LEFT")
   f.footer:SetWordWrap(true)
+  if f.footer.SetMaxLines then f.footer:SetMaxLines(2) end
   ns.Skin.Text(f.summary)
   ns.Skin.Text(f.footer)
 
@@ -642,6 +744,33 @@ local function cardsKey(page, results)
   return table.concat(parts, "|")
 end
 
+-- Places the three regions under the header: the journey box first (one
+-- line when nothing is on), the cards and the observations under it. Called
+-- on each refresh and when the journey changes.
+function Panel.Layout()
+  if not frame then return end
+  local f = frame
+  local journeyHeight = ns.JourneyBox.Update()
+  local y = HEADER_TOP - PORTRAIT - 10
+  local function place(title, region, height)
+    y = y - HEADING_GAP
+    title:ClearAllPoints()
+    title:SetPoint("TOPLEFT", MARGIN, y)
+    y = y - HEADING_H
+    region:ClearAllPoints()
+    region:SetPoint("TOPLEFT", MARGIN, y)
+    y = y - height
+  end
+  place(f.journeyHeading, f.journey, journeyHeight)
+  place(f.cardsHeading, f.cards, ns.Cards.Height())
+  place(f.observationsHeading, f.observations, ns.Observations.Height())
+end
+
+local function refreshHeader()
+  if SetPortraitTexture then pcall(SetPortraitTexture, frame.portrait, "player") end
+  frame.headline:SetText(headline())
+end
+
 local function refreshMain()
   if not mainPage then return nil end
   local results, err, net = mainPage.Results("")
@@ -649,6 +778,7 @@ local function refreshMain()
   local key = cardsKey(mainPage, results)
   local fresh = key ~= cardKey
   cardKey = key
+  refreshHeader()
   frame.summary:SetText(mainPage.SummaryText("") or "")
   if mainPage.controls then
     local current = mainPage.controls.get()
@@ -657,7 +787,9 @@ local function refreshMain()
     end
   end
   ns.Cards.Show(results, err or (#results == 0 and mainPage.EmptyText("")) or "", fresh)
+  ns.Observations.Update()
   ns.Profile.Update()
+  Panel.Layout()
   return net
 end
 
@@ -814,6 +946,20 @@ end
 function Panel.Toggle()
   frame = frame or create()
   if frame:IsShown() then frame:Hide() else frame:Show() end
+end
+
+function Panel.Hide()
+  if frame then frame:Hide() end
+end
+
+-- The header's "Level 8 · Dun Morogh" line as drawn (for tests).
+function Panel.Headline()
+  return frame and frame.headline:GetText()
+end
+
+-- The main window's width and height (for tests).
+function Panel.Size()
+  return mainWidth() + TAB_COLUMN, HEIGHT
 end
 
 -- Data changes come in bursts (a vendor window records goods, repairs and

@@ -55,7 +55,7 @@ end
 -- The game's map pin (and its marker on screen) outlasts a logout or reload,
 -- so where we put ours is saved: one still there next time is ours to take
 -- down, not left pointing at an old step (TomTom showing the way instead,
--- or no trip to resume).
+-- or no journey to resume).
 local function clearPin()
   if Nav.ownsWaypoint and C_Map.ClearUserWaypoint then
     C_Map.ClearUserWaypoint()
@@ -104,7 +104,7 @@ function Nav.CurrentStep()
   return a and a.route.steps[a.index]
 end
 
--- The trip is saved per character so it survives logging out (see Resume).
+-- The journey is saved per character so it survives logging out (see Resume).
 local function save()
   local a = Nav.active
   if not a then
@@ -151,13 +151,13 @@ local function startRoute(title, goal, route)
   if Nav.active then ns.Sounds.Play("start") end
 end
 
-local offerFollowUps -- below: offers a trip's follow-up quests (true when it asked)
+local offerFollowUps -- below: offers a journey's follow-up quests (true when it asked)
 
--- What a trip has come to so far, for the fanfare at its end: XP earned,
+-- What a journey has come to so far, for the fanfare at its end: XP earned,
 -- yards travelled, quests handed in, and when it started.
 local lastXP, lastXPMax, lastMoney
 
--- What a trip came to, for its fanfare: quests handed in (`quests`) and
+-- What a journey came to, for its fanfare: quests handed in (`quests`) and
 -- picked up, levels, money looted or earned, flight paths learned,
 -- profession ranks trained.
 function newStats()
@@ -167,7 +167,7 @@ function newStats()
     ranks = 0 }
 end
 
--- Adds `n` (default 1) to the trip's `key` (trips saved before a stat existed start it at 0).
+-- Adds `n` (default 1) to the journey's `key` (journeys saved before a stat existed start it at 0).
 local function count(key, n)
   local stats = Nav.active and Nav.active.stats
   if stats then stats[key] = (stats[key] or 0) + (n or 1) end
@@ -187,23 +187,29 @@ local function startJourney(journey, quiet)
   end
   showStep()
   if not quiet and #journey.stops > 1 then ns.Fire("JOURNEY_STARTED") end
-  -- One sound: the follow-up question's when it asks one, none when the trip
-  -- ended at once (the fanfare has its own).
+  -- One sound: the follow-up question's when it asks one, none when the
+  -- journey ended at once (the fanfare has its own).
   if not quiet and not offerFollowUps(journey.stops) and Nav.active then ns.Sounds.Play("start") end
 end
 
--- Starting something new while a trip is on asks: add it to the trip, or
--- replace the trip? (Replaces straight away where the game's dialogs aren't there.)
-local function ask(label, add, replace)
-  if not (StaticPopupDialogs and StaticPopup_Show) then return replace() end
+-- Starting something new while a journey is on asks: add it as a detour, or
+-- switch to it (the journey on now is set aside, to resume later; see
+-- Nav.SetAside)? Switches straight away where the game's dialogs aren't there.
+local function ask(label, detour, start)
+  local function switch()
+    if Nav.active then Nav.SetAside() end
+    start()
+  end
+  if not (StaticPopupDialogs and StaticPopup_Show) then return switch() end
   StaticPopupDialogs.WAYWARD_TRIP = StaticPopupDialogs.WAYWARD_TRIP or {
-    text = "You're on a trip: %s.\n\nAdd \"%s\" to it, or replace the trip?",
-    button1 = "Add to trip", button2 = "Cancel", button3 = "Replace",
+    text = "You're on a journey: %s.\n\nAdd \"%s\" to it as a detour, or switch to it? "
+      .. "Switching sets your journey aside, to resume later (View details in the directions box).",
+    button1 = "Add as detour", button2 = "Cancel", button3 = "Switch journey",
     OnAccept = function(_, data) data.add() end,
-    OnAlt = function(_, data) data.replace() end,
+    OnAlt = function(_, data) data.switch() end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
-  StaticPopup_Show("WAYWARD_TRIP", Nav.active.title, label, { add = add, replace = replace })
+  StaticPopup_Show("WAYWARD_TRIP", Nav.active.title, label, { add = detour, switch = switch })
 end
 
 -- A stop for a plain destination (a trainer, a vendor, a hub); someone to
@@ -215,10 +221,16 @@ local function visitStop(title, goal)
   return { node = goal, text = "Go to " .. (goal.label or title) }
 end
 
--- A panel result's stops for adding to a trip: a journey's open stops, or a
+-- A panel result's stops for adding to a journey: a journey's open stops, a
+-- class trainer with spells to learn (`spells`, the training card), or a
 -- visit to a route's destination.
 function Nav.StopsFor(result)
   if result.journey then return ns.Journey.OpenStops(result.journey) end
+  if result.goal and result.spells then
+    local npc = result.goal.npc
+    return { { node = result.goal, npc = npc, text = "Train your new spells at " .. (npc or result.title),
+      action = { kind = "learn", spells = result.spells, npc = npc } } }
+  end
   if result.goal then return { visitStop(result.title, result.goal) } end
   return {}
 end
@@ -274,7 +286,9 @@ function Nav.TargetNPC()
   if stop then
     local action = stop.action
     if stop.node and stop.node.object then return nil end -- an object, not someone
-    if action and (action.kind == "talk" or action.kind == "train") then return action.npc, stop.node end
+    if action and (action.kind == "talk" or action.kind == "train" or action.kind == "learn") then
+      return action.npc, stop.node
+    end
     if action and action.kind == "pickup" then return stop.giver, stop.node end
     if action and action.kind == "turnin" then return stop.npc, stop.node end
     return nil
@@ -292,7 +306,8 @@ function Nav.TargetObject()
   return stop.giver or stop.npc or stop.node.label, stop.node
 end
 
--- What you do where you are now ("talk", "use", "fly", "hearth", or nil), for the directions box.
+-- What you do where you are now ("talk", "use", "fly", "hearth", "enter",
+-- or nil), for the directions box.
 function Nav.Interaction()
   local a = Nav.active
   if not a then return nil end
@@ -302,6 +317,8 @@ function Nav.Interaction()
   if step and step.mode == "hearth" then return "hearth" end
   if a.waiting and Nav.TargetObject() then return "use" end
   if a.waiting and Nav.TargetNPC() then return "talk" end
+  local action = a.waiting and step and step.stop and step.stop.action
+  if action and action.kind == "enter" then return "enter" end
   return nil
 end
 
@@ -310,13 +327,14 @@ local UP_NEXT_DELAY = 4 -- seconds after a journey's fanfare before "Up next"
 local function arrive()
   local a = Nav.active
   ns.print("you have arrived: " .. a.title)
-  -- The end of a trip (or plain directions): its fanfare.
+  -- The end of a journey (or plain directions): its fanfare.
   if a.stats and ns.Fanfare then
     local stats = a.stats
-    local ok, err = pcall(ns.Fanfare.TripDone, { title = a.title, xp = stats.xp, seconds = time() - stats.started,
+    local ok, err = pcall(ns.Fanfare.TripDone, { title = a.title, kind = a.journey and a.journey.kind,
+      icon = a.journey and a.journey.icon, xp = stats.xp, seconds = time() - stats.started,
       distance = stats.distance, quests = stats.quests, picked = stats.picked, levels = stats.levels,
       money = stats.money, flights = stats.flights, ranks = stats.ranks })
-    if not ok then ns.print("couldn't show the trip's fanfare: " .. tostring(err)) end
+    if not ok then ns.print("couldn't show the journey's fanfare: " .. tostring(err)) end
   end
   -- A journey done: what next, once the fanfare has had a moment.
   if a.journey and ns.ForYou then
@@ -430,10 +448,10 @@ local function questAction(kind, questID)
   return finishStop(function(action) return action.kind == kind and action.questID == questID end)
 end
 
--- Every other stop of the trip that the quest log, your bags or the completed
--- quests say is done now: skipped stops you did anyway, and steps of a quest
--- whose objectives are complete. The trip is re-planned if the stop you were
--- heading for is among them.
+-- Every other stop of the journey that the quest log, your bags or the
+-- completed quests say is done now: skipped stops you did anyway, and steps
+-- of a quest whose objectives are complete. The journey is re-planned if the
+-- stop you were heading for is among them.
 local function syncStops()
   local a = Nav.active
   if not (a and a.journey) then return end
@@ -447,13 +465,14 @@ local function syncStops()
   end
 end
 
--- Picking up a quest that isn't in your trip yet: its stops (do it, hand it
--- in) planned, and a question: add them to the trip (and how much longer it
--- gets), start a new trip for them, or not now. Quests picked up one after
--- another are asked about together, once the trip has no more pickups to do
--- right where you are.
+-- Picking up a quest that isn't in your journey yet: its stops (do it, hand
+-- it in) planned, and a question: add them to the journey (and how much
+-- longer it gets), start a new journey for them (the one on now is set
+-- aside), or not now. Quests picked up one after another are asked about
+-- together, once the journey has no more pickups to do right where you are.
 local PICKUP_WAIT = 1.5
 local picked, waiting = {}, false
+local QUEST_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
 
 local function stillPicking()
   local step = Nav.CurrentStep()
@@ -462,7 +481,7 @@ local function stillPicking()
 end
 
 -- The offer for the quests picked up: { label, stops, alone (seconds), extra
--- (seconds more on the current trip, or nil without one) }, or nil.
+-- (seconds more on the current journey, or nil without one) }, or nil.
 function Nav.PickupOffer(questIDs)
   local here = ns.Geo.PlayerNode()
   if not here then return nil end
@@ -480,7 +499,7 @@ function Nav.PickupOffer(questIDs)
   end
   if #stops == 0 then return nil end
   local label = #names == 1 and names[1] or string.format("%d quests", #names)
-  local alone = ns.Journey.Plan(here, { title = label, stops = stops })
+  local alone = ns.Journey.Plan(here, { title = label, kind = "quest", icon = QUEST_ICON, stops = stops })
   if not alone then return nil end
   local offer = { label = label, names = names, ids = ids, stops = stops, alone = alone.seconds, journey = alone }
   local a = Nav.active
@@ -494,8 +513,7 @@ function Nav.PickupOffer(questIDs)
         if not s.done and not s.skipped then open[#open + 1] = s end
       end
       for _, s in ipairs(stops) do open[#open + 1] = s end
-      local finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
-      local with = base and ns.Journey.Plan(here, { stops = open, finish = finish })
+      local with = base and ns.Journey.Plan(here, { stops = open })
       offer.extra = base and with and math.max(0, with.seconds - base.seconds) or nil
     else
       local with = ns.Journey.Plan(here, { stops = { { node = a.goal, text = a.title } , unpack(stops) } })
@@ -549,24 +567,29 @@ local function askPickups()
   -- built here and passed as one.
   StaticPopupDialogs.WAYWARD_PICKUP_ADD = StaticPopupDialogs.WAYWARD_PICKUP_ADD or {
     text = "%s",
-    button1 = "Add to trip", button2 = "Not now", button3 = "New trip",
+    button1 = "Add to journey", button2 = "Not now", button3 = "New journey",
     OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
-    OnAlt = function(_, data) startJourney(data.journey) end,
+    OnAlt = function(_, data)
+      -- A new journey never loses the one on now: it's set aside.
+      if Nav.active then Nav.SetAside() end
+      startJourney(data.journey)
+    end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   StaticPopupDialogs.WAYWARD_PICKUP_NEW = StaticPopupDialogs.WAYWARD_PICKUP_NEW or {
     text = "%s",
-    button1 = "Start trip", button2 = "Not now",
+    button1 = "Start journey", button2 = "Not now",
     OnAccept = function(_, data) startJourney(data.journey) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   local note = chainNote(offer)
   if Nav.active and offer.extra then
     askPlayer("WAYWARD_PICKUP_ADD", string.format(
-      "You picked up %s.%s\n\nAdd it to your trip (about %s more), or start a new trip for it (%s)?",
+      "You picked up %s.%s\n\nAdd it to your journey (about %s more), or start a new journey for it (%s)? "
+      .. "A new journey sets the one on now aside, to resume later.",
       offer.label, note, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
   else
-    askPlayer("WAYWARD_PICKUP_NEW", string.format("You picked up %s.%s\n\nStart a trip for it (%s)?",
+    askPlayer("WAYWARD_PICKUP_NEW", string.format("You picked up %s.%s\n\nStart a journey for it (%s)?",
       offer.label, note, ns.FormatDuration(offer.alone)), offer)
   end
 end
@@ -588,9 +611,9 @@ ns.On("QUEST_TURNED_IN", function(questID)
   syncStops()
 end)
 
--- Talking to a quest giver: pickups on the trip that they don't offer you are
--- locked (the data missed an earlier quest). They're dropped, with what needs
--- them, and treated as locked everywhere until you hand something in.
+-- Talking to a quest giver: pickups on the journey that they don't offer you
+-- are locked (the data missed an earlier quest). They're dropped, with what
+-- needs them, and treated as locked everywhere until you hand something in.
 local OFFER_RADIUS = 25 -- yards from a pickup stop that count as "at its giver"
 
 ns.Listen("QUESTS_OFFERED", function(npcName, ids)
@@ -608,7 +631,7 @@ ns.Listen("QUESTS_OFFERED", function(npcName, ids)
   end
   for _, stop in ipairs(missing) do
     ns.Quests.MarkNotOffered(stop.action.questID)
-    ns.print(string.format("%s isn't offered yet (it needs earlier quests): dropped from the trip.",
+    ns.print(string.format("%s isn't offered yet (it needs earlier quests): dropped from the journey.",
       (stop.text or "that quest"):gsub("^Pick up ", ""):gsub(" from .*$", "")))
     if Nav.active then Nav.Drop(stop) end
   end
@@ -637,7 +660,10 @@ function Nav.Talked(npcName)
   if not ((name and npcName == name) or close) then return end
   local step = a.route.steps[a.index]
   local stop = step and step.stop
-  if stop and stop.action and stop.action.kind == "talk" then
+  local kind = stop and stop.action and stop.action.kind
+  -- Class training is done once you've learned something (below); where the
+  -- client can't show the trainer's list, talking to them has to do.
+  if kind == "talk" or (kind == "learn" and not Nav.CanWatchTraining()) then
     finishStop(function(action) return action == stop.action end)
   elseif not stop and a.index == #a.route.steps and step.to.npc then
     a.talked = true
@@ -649,6 +675,128 @@ for _, event in ipairs({ "GOSSIP_SHOW", "MERCHANT_SHOW", "TRAINER_SHOW", "QUEST_
   "BANKFRAME_OPENED", "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" }) do
   ns.On(event, function() Nav.Talked(UnitName("npc")) end)
 end
+
+-- Class training (a `learn` stop): done at the trainer once one of the stop's
+-- spells is known, or any spell on their list has just been bought. The list
+-- is read from the trainer window (empty at TRAINER_SHOW, filled in by
+-- TRAINER_UPDATE): what was "used" when it first filled in against what is
+-- used now. Leaving without training keeps the stop; move on or skip it.
+local learning -- { stop, used = { [service name] = true } or nil } while a trainer is open for a learn stop
+
+function Nav.CanWatchTraining()
+  return type(GetNumTrainerServices) == "function" and type(GetTrainerServiceInfo) == "function"
+end
+
+local function usedServices()
+  local out, n = {}, GetNumTrainerServices()
+  for i = 1, n or 0 do
+    local name, kind = GetTrainerServiceInfo(i)
+    if name and kind == "used" then out[name] = true end
+  end
+  return n and n > 0 and out or nil
+end
+
+-- The learn stop you're at (or heading for), or nil.
+local function learnStop()
+  local a = Nav.active
+  if not (a and a.journey) then return nil end
+  for k = a.index, #a.route.steps do
+    local stop = ns.Journey.PendingAction(a.route.steps[k])
+    if stop and stop.action.kind == "learn" then return stop end
+  end
+  return nil
+end
+
+-- A listed spell known (an ID this client can check, or a name the trainer
+-- lists as used), or a service used since the list was read.
+local function trained(stop, used)
+  for _, spell in ipairs(stop.action.spells or {}) do
+    if type(spell) == "number" and ns.KnowsSpell(spell) then return true end
+    if type(spell) == "string" and used and used[spell] then return true end
+  end
+  if learning and learning.used and used then
+    for name in pairs(used) do
+      if not learning.used[name] then return true end
+    end
+  end
+  return false
+end
+
+local function learnCheck()
+  local stop = learning and learning.stop
+  if not (stop and Nav.CanWatchTraining()) then return end
+  local used = usedServices()
+  if trained(stop, used) then
+    learning = nil
+    finishStop(function(action) return action == stop.action end)
+  elseif used and not learning.used then
+    learning.used = used
+  end
+end
+
+ns.On("TRAINER_SHOW", function()
+  local stop = learnStop()
+  if not stop then return end
+  learning = { stop = stop }
+  learnCheck()
+end)
+ns.On("TRAINER_UPDATE", learnCheck)
+ns.On("SPELLS_CHANGED", learnCheck)
+ns.On("TRAINER_CLOSED", function()
+  learnCheck()
+  learning = nil
+end)
+
+-- Exploring (an `explore` stop): done once you're in that zone, or a zone
+-- inside it (a city in its zone), from wherever you crossed; flying over it
+-- doesn't count.
+local function inZone(mapID, here)
+  local id = C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+  for _ = 1, 10 do
+    if not id then break end
+    if id == mapID then return true end
+    local info = C_Map.GetMapInfo and C_Map.GetMapInfo(id)
+    id = info and info.parentMapID
+  end
+  return here ~= nil and ns.Geo.ZoneAt(here.instance, here.wx, here.wy) == mapID
+end
+
+function Nav.InZone(mapID)
+  return inZone(mapID, ns.Geo.PlayerNode())
+end
+
+-- True when an explore stop was just done.
+local function exploreCheck(here)
+  local a = Nav.active
+  if not (a and a.journey) or onTaxi() then return false end
+  return finishStop(function(action) return action.kind == "explore" and inZone(action.mapID, here) end)
+end
+
+ns.On("ZONE_CHANGED_NEW_AREA", function() exploreCheck(ns.Geo.PlayerNode()) end)
+
+-- Entering a dungeon (an `enter` stop): done when the world you load into is
+-- that instance, as Dungeons.lua learns entrances. A wing counts for its
+-- dungeon ("Scarlet Monastery - Armory").
+local function instanceKey(name)
+  return ((name or ""):lower():gsub("^the ", ""):gsub("[^%w]", ""))
+end
+
+function Nav.EnteredInstance(name)
+  local key = instanceKey(name)
+  if key == "" then return false end
+  return finishStop(function(action)
+    if action.kind ~= "enter" then return false end
+    local want = instanceKey(action.dungeon)
+    return want ~= "" and (key == want or key:sub(1, #want) == want or want:sub(1, #key) == key)
+  end)
+end
+
+ns.On("PLAYER_ENTERING_WORLD", function()
+  if not (Nav.active and IsInInstance and GetInstanceInfo) then return end
+  local inside, kind = IsInInstance()
+  if not inside or (kind ~= "party" and kind ~= "raid") then return end
+  Nav.EnteredInstance((GetInstanceInfo()))
+end)
 
 -- Buying a profession's next rank: the skill cap goes up.
 local function trainedCheck()
@@ -719,8 +867,8 @@ function Nav.Drop(stop)
   adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
 end
 
--- Moves a stop of the trip to where `target` is (the overview's drag and
--- drop) and re-plans; the trip keeps your order from then on.
+-- Moves a stop of the journey to where `target` is (the overview's drag and
+-- drop) and re-plans; the journey keeps your order from then on.
 function Nav.MoveStop(stop, target)
   local a = Nav.active
   if not (a and a.journey) then return false end
@@ -735,17 +883,18 @@ function Nav.MoveStop(stop, target)
   return true
 end
 
--- Adds stops to the current trip and re-plans the order from where you are;
--- plain directions become a trip with their destination as a stop. With no
--- trip on, this starts one. Returns true when the trip changed.
-local TRIP_TITLE = "Your trip"
+-- Adds stops to the current journey as detours and re-plans the order from
+-- where you are; plain directions become a journey ("custom") with their
+-- destination as a stop. With no journey on, this starts one. Returns true
+-- when the journey changed.
+local TRIP_TITLE = "Your journey"
 
 function Nav.AddToTrip(stops, label)
   local here = ns.Geo.PlayerNode()
   if not here or #stops == 0 then return false end
   local a = Nav.active
   if not a then
-    local journey = ns.Journey.Plan(here, { title = label, stops = stops })
+    local journey = ns.Journey.Plan(here, { title = label, kind = "custom", stops = stops })
     if not journey then
       ns.print("no route to " .. label .. " from here.")
       return false
@@ -753,21 +902,21 @@ function Nav.AddToTrip(stops, label)
     startJourney(journey)
     return true
   end
-  local journey = a.journey or { root = { title = a.title, stops = { visitStop(a.title, a.goal) } } }
+  local journey = a.journey or { root = { title = a.title, kind = "custom", stops = { visitStop(a.title, a.goal) } } }
   if ns.Journey.Extend(journey, stops) == 0 then
-    ns.print(label .. " is already in your trip.")
+    ns.print(label .. " is already in your journey.")
     return false
   end
   local root = journey.root or journey.def
   root.title = TRIP_TITLE
   local planned = ns.Journey.Replan(journey, here)
   if not planned then
-    ns.print("no route for the trip from here.")
+    ns.print("no route for the journey from here.")
     return false
   end
   a.title = planned.title
   adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
-  ns.print(string.format("added %s to your trip: %d stops, %s", label, #planned.stops,
+  ns.print(string.format("added %s to your journey: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
   ns.Fire("JOURNEY_EXTENDED")
   -- One sound: the follow-up question's, when it asks one.
@@ -775,7 +924,10 @@ function Nav.AddToTrip(stops, label)
   return true
 end
 
--- Follow-up quests. When a trip gains a quest's hand-in, the quests that
+-- The same, by the name the design uses: a detour is a stop added to a journey.
+Nav.AddDetour = Nav.AddToTrip
+
+-- Follow-up quests. When a journey gains a quest's hand-in, the quests that
 -- follow it (Quests.FollowUps) are offered when adding them costs little
 -- travel (FOLLOW_UP_SLACK more seconds): you pick them up where you hand the
 -- first in, often from the same NPC. The rest of the chain after them is
@@ -783,7 +935,7 @@ end
 -- it is on the way as well, for you to tick or untick (UI/ChainPicker.lua).
 -- Adding one quest (from your log, a search, a pickup) lists its follow-ups
 -- out of the way too, unticked: you chose that quest, so its chain is wanted;
--- a trip of several only asks about the ones on the way.
+-- a journey of several only asks about the ones on the way.
 local FOLLOW_UP_SLACK = 180
 local CHAIN_OFFER_DEPTH = 4
 local CHAIN_OFFER_MAX = 8
@@ -817,10 +969,9 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
   for _, s in ipairs(root.stops) do
     if not s.done and not s.skipped then open[#open + 1] = s end
   end
-  local finish = root.finish and not root.finish.done and not root.finish.skipped and root.finish or nil
   local perQuest = questSeconds()
   local offer = { quests = {}, stops = {}, extra = 0, perQuest = perQuest }
-  local travel = 0 -- what every quest listed so far adds to the trip
+  local travel = 0 -- what every quest listed so far adds to the journey
 
   local function consider(turnin, afterID, parent, depth)
     for _, q in ipairs(ns.Quests.FollowUps(afterID)) do
@@ -830,10 +981,10 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
         local qs = ns.Journey.QuestStops(q.id, here)
         if #qs > 0 and qs[1].action and qs[1].action.kind == "pickup" then
           qs[1].after = { turnin }
-          -- The trip with it (and the ones listed before), against the trip without.
+          -- The journey with it (and the ones listed before), against the journey without.
           local with = { unpack(open) }
           for _, s in ipairs(qs) do with[#with + 1] = s end
-          local planned = ns.Journey.Plan(here, { stops = with, finish = finish })
+          local planned = ns.Journey.Plan(here, { stops = with })
           local extra = planned and planned.seconds - base.seconds - travel
           -- A first follow-up only when it's on the way (or anyDistance); the chain after it is listed anyway.
           if extra and (parent or anyDistance or extra <= FOLLOW_UP_SLACK) then
@@ -901,7 +1052,7 @@ function Nav.FollowUpChoice(offer)
   return choice
 end
 
--- Adds the ticked quests of the offer to the trip. The ones left unticked
+-- Adds the ticked quests of the offer to the journey. The ones left unticked
 -- aren't asked about again straight away; the chain past the offer can be.
 local answered
 
@@ -939,7 +1090,7 @@ function offerFollowUps(stops)
   return true
 end
 
--- True when the current trip still has an open stop for this quest.
+-- True when the current journey still has an open stop for this quest.
 function Nav.TripHasQuest(questID)
   local a = Nav.active
   local root = a and a.journey and (a.journey.root or a.journey.def)
@@ -949,7 +1100,7 @@ function Nav.TripHasQuest(questID)
   return false
 end
 
--- Takes a quest's open stops out of the trip.
+-- Takes a quest's open stops out of the journey.
 function Nav.RemoveQuest(questID)
   local a = Nav.active
   if not (a and a.journey) then return end
@@ -963,11 +1114,11 @@ function Nav.RemoveQuest(questID)
   adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
 end
 
--- A saved trip re-planned from where you are (the slow part, run as a
+-- A saved journey re-planned from where you are (the slow part, run as a
 -- background job after a login): { journey } or { goal, route } to start,
 -- "done" when nothing of it is left to do, or nil to try again in a moment:
 -- just after a login or reload the game may not have your position, its maps
--- or your quest log ready, and a trip dropped then would be lost.
+-- or your quest log ready, and a journey dropped then would be lost.
 local function planResume(saved)
   local here = ns.Geo.PlayerNode()
   if not here then return nil end
@@ -1008,7 +1159,7 @@ local function applyResume(saved, plan)
   return true
 end
 
--- Picks up a saved trip, re-planned from where you are, all at once (see
+-- Picks up a saved journey, re-planned from where you are, all at once (see
 -- planResume). True when that's settled; false to try again later.
 function Nav.Resume()
   local saved = ns.charDB.nav
@@ -1016,7 +1167,7 @@ function Nav.Resume()
   return applyResume(saved, planResume(saved))
 end
 
--- XP earned on a trip, across level-ups.
+-- XP earned on a journey, across level-ups.
 ns.On("PLAYER_XP_UPDATE", function()
   local xp, max = UnitXP("player"), UnitXPMax("player")
   local a = Nav.active
@@ -1030,7 +1181,7 @@ end)
 ns.On("PLAYER_LEVEL_UP", function() count("levels") end)
 ns.Listen("FLIGHTS_CHANGED", function(learned) count("flights", learned) end)
 
--- Money in on a trip (loot, quest rewards, selling); spending doesn't take it back.
+-- Money in on a journey (loot, quest rewards, selling); spending doesn't take it back.
 ns.On("PLAYER_MONEY", function()
   local money = GetMoney()
   if lastMoney and money > lastMoney then count("money", money - lastMoney) end
@@ -1038,13 +1189,13 @@ ns.On("PLAYER_MONEY", function()
 end)
 ns.On("PLAYER_LOGIN", function() lastMoney = GetMoney() end)
 
--- After a login or reload: the saved trip back, re-planned as a background
+-- After a login or reload: the saved journey back, re-planned as a background
 -- job (ns.Warm) once the quest data is ready, tried every RESUME_EVERY seconds
--- RESUME_TRIES times while the game isn't ready for it. A trip that can't be
--- re-planned stays saved (/ww resume, or the next login); one that fails with
--- an error RESUME_FAILURES logins running (saved by an older version, say) is
--- dropped rather than fail every login. The game stopping a script that ran
--- too long says nothing about the trip, so that doesn't count.
+-- RESUME_TRIES times while the game isn't ready for it. A journey that can't
+-- be re-planned stays saved (/ww resume, or the next login); one that fails
+-- with an error RESUME_FAILURES logins running (saved by an older version,
+-- say) is dropped rather than fail every login. The game stopping a script
+-- that ran too long says nothing about the journey, so that doesn't count.
 local RESUME_EVERY, RESUME_TRIES, RESUME_FAILURES = 3, 10, 3
 
 local function resumeFailed(err, reported)
@@ -1080,7 +1231,7 @@ local function tryResume(triesLeft)
     elseif triesLeft > 1 then
       ns.After(RESUME_EVERY, function() tryResume(triesLeft - 1) end)
     else
-      ns.print("couldn't re-plan your trip from here yet; it's kept: /ww resume tries again.")
+      ns.print("couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.")
     end
   end)
 end
@@ -1093,10 +1244,171 @@ ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   end)
 end)
 
-ns.RegisterCommand("resume", "/ww resume - pick up the saved trip again", function()
-  if Nav.active then return ns.print("a trip is already on.") end
-  if not ns.charDB.nav then return ns.print("no saved trip.") end
+ns.RegisterCommand("resume", "/ww resume - pick up the saved journey again", function()
+  if Nav.active then return ns.print("a journey is already on.") end
+  if not ns.charDB.nav then return ns.print("no saved journey.") end
   tryResume(1)
+end)
+
+---------------------------------------------------------------- set aside
+
+-- A journey you set aside (to start another, or for later) is saved with its
+-- stops done so far, newest first, up to MAX_SET_ASIDE of them; the oldest
+-- goes when there's more. Resuming one plans what's left of it from here.
+-- The journey overview lists them under the journey on now; /ww journeys
+-- lists them in chat.
+local MAX_SET_ASIDE = 5
+
+function Nav.SetAsideList()
+  ns.charDB.journeys = ns.charDB.journeys or {}
+  return ns.charDB.journeys
+end
+
+-- Saves the journey on now (plain directions as a one-stop journey) and ends
+-- navigation, without the fanfare. Returns the list entry, or nil without one.
+function Nav.SetAside()
+  local a = Nav.active
+  if not a then return nil end
+  local journey = a.journey or { root = { title = a.title, kind = "custom", stops = { visitStop(a.title, a.goal) } } }
+  local saved = ns.Journey.Save(journey)
+  local left = 0
+  for _, s in ipairs(saved.stops) do
+    if not (s.done or s.skipped) then left = left + 1 end
+  end
+  local entry = { title = a.title, kind = saved.kind, icon = saved.icon, at = time(), stops = left, journey = saved,
+    stats = a.stats }
+  local list = Nav.SetAsideList()
+  table.insert(list, 1, entry)
+  while #list > MAX_SET_ASIDE do table.remove(list) end
+  clearWaypoints()
+  Nav.active = nil
+  save()
+  ns.print(string.format("set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.",
+    a.title, left, left == 1 and "" or "s"))
+  ns.Fire("NAV_CHANGED")
+  ns.Fire("JOURNEYS_CHANGED")
+  return entry
+end
+
+-- Starts set-aside journey `i` again, planned from here; a journey on now is
+-- set aside in its place. True when it started.
+function Nav.ResumeSetAside(i)
+  local list = Nav.SetAsideList()
+  local entry = list[i or 1]
+  if not entry then
+    ns.print("no journey set aside there.")
+    return false
+  end
+  local here = ns.Geo.PlayerNode()
+  if not here then
+    ns.print("can't read your position here.")
+    return false
+  end
+  local def = ns.Journey.Load(entry.journey)
+  local journey = ns.Journey.Resume(def, here)
+  if not journey then
+    if ns.Journey.HasOpenStops(def) then
+      ns.print("no route from here to what's left of " .. entry.title .. "; it's kept.")
+      return false
+    end
+    table.remove(list, i or 1)
+    ns.print("nothing left to do on " .. entry.title .. ".")
+    ns.Fire("JOURNEYS_CHANGED")
+    return false
+  end
+  table.remove(list, i or 1)
+  if Nav.active then Nav.SetAside() end
+  ns.print("resuming journey: " .. entry.title)
+  startJourney(journey)
+  if Nav.active and entry.stats then Nav.active.stats = entry.stats end
+  ns.Fire("JOURNEYS_CHANGED")
+  return true
+end
+
+function Nav.ForgetSetAside(i)
+  local list = Nav.SetAsideList()
+  local entry = table.remove(list, i or 1)
+  if not entry then return false end
+  ns.print("forgotten: " .. entry.title)
+  ns.Fire("JOURNEYS_CHANGED")
+  return true
+end
+
+-- "~5 min ago" for a set-aside entry.
+function Nav.SetAsideAge(entry)
+  local seconds = time() - (entry.at or time())
+  return (seconds < 60 and "just now") or (ns.FormatDuration(seconds) .. " ago")
+end
+
+ns.RegisterCommand("journeys", "/ww journeys [resume|forget <n>] - the journey on now and the ones set aside", function(rest)
+  local verb, n = (rest or ""):lower():match("^(%a*)%s*(%d*)")
+  if verb == "resume" then return Nav.ResumeSetAside(tonumber(n) or 1) end
+  if verb == "forget" then
+    if not Nav.ForgetSetAside(tonumber(n) or 1) then ns.print("no journey set aside there.") end
+    return
+  end
+  local p = Nav.Progress()
+  if p then
+    ns.print(string.format("on now: %s (%d of %d stops done, %s to go)", p.title, p.done, p.total,
+      ns.FormatDuration(p.seconds)))
+  else
+    ns.print("no journey on now.")
+  end
+  local list = Nav.SetAsideList()
+  if #list == 0 then return ns.print("none set aside.") end
+  for i, entry in ipairs(list) do
+    ns.print(string.format("set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d",
+      i, entry.title, entry.stops or 0, entry.stops == 1 and "" or "s", Nav.SetAsideAge(entry), i, i))
+  end
+end)
+
+---------------------------------------------------------------- progress
+
+-- How the journey on now stands, for the directions box and the home screen:
+-- { title, kind, icon, done, total (stops), seconds (left), stopIndex,
+--   stopText (the stop you're heading for), directions (true with plain
+--   directions: one stop, the destination) }, or nil with nothing on.
+function Nav.Progress()
+  local a = Nav.active
+  if not a then return nil end
+  local here = ns.Geo.PlayerNode()
+  local out = { title = a.title, seconds = Nav.RemainingSeconds(here), done = 0, total = 1, stopIndex = 1,
+    stopText = a.title, directions = a.journey == nil }
+  if a.journey then
+    out.kind, out.icon = a.journey.kind, a.journey.icon
+    out.done, out.total = ns.Journey.Progress(a.journey)
+    local stop = Nav.HeadingFor()
+    out.stopText = stop and (stop.text or (stop.node and stop.node.label)) or a.title
+    local before = 0
+    for _, s in ipairs(a.journey.stops) do
+      if s == stop then break end
+      if not (s.done or s.skipped or s.passed) then before = before + 1 end
+    end
+    out.stopIndex = math.min(out.done + before + 1, math.max(out.total, 1))
+  end
+  return out
+end
+
+---------------------------------------------------------------- detail
+
+-- How much the directions box shows (per character): "steps" (each step to
+-- the next stop, with a count) or "stops" (the stop you're heading for and
+-- the compass; the step on hover).
+function Nav.Detail()
+  return ns.charDB.detail == "stops" and "stops" or "steps"
+end
+
+function Nav.SetDetail(mode)
+  ns.charDB.detail = mode == "stops" and "stops" or nil
+  ns.Fire("SETTINGS_CHANGED", "detail")
+end
+
+ns.RegisterCommand("detail", "/ww detail steps|stops - what the directions box shows: every step, or just the stop", function(rest)
+  local mode = (rest or ""):lower():match("^(%a+)")
+  if mode ~= "steps" and mode ~= "stops" then mode = Nav.Detail() == "steps" and "stops" or "steps" end
+  Nav.SetDetail(mode)
+  ns.print(mode == "stops" and "directions box: the stop you're heading for; hover it for the step."
+    or "directions box: every step to the next stop.")
 end)
 
 -- True while standing at a journey stop that waits for a quest action.
@@ -1184,9 +1496,9 @@ local function questName(questID)
 end
 
 -- Left the area of the stop you're on, its objectives not done. A cleared
--- area: the trip from here, on to another. A short step out: the way back to
--- the nearest area you haven't cleared.
--- A camp of the stop's is cleared: the trip from here, on to another camp
+-- area: the journey from here, on to another. A short step out: the way back
+-- to the nearest area you haven't cleared.
+-- A camp of the stop's is cleared: the journey from here, on to another camp
 -- (or other stops while it respawns), saying which. False without a route.
 local function onFromCamp(a, stop, here)
   local journey = a.journey and ns.Journey.Replan(a.journey, here)
@@ -1248,7 +1560,7 @@ local function doingLater()
           local journey = ns.Journey.Replan(a.journey, here, nil, stop)
           if journey then
             a.lastReplan = GetTime and GetTime()
-            ns.print(string.format("you're doing %s here: it's next on the trip now.", questName(stop.action.questID)))
+            ns.print(string.format("you're doing %s here: it's next on the journey now.", questName(stop.action.questID)))
             adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
           end
           return
@@ -1262,8 +1574,8 @@ ns.On("QUEST_LOG_UPDATE", doingLater)
 
 -- Abandoning a quest (Quests.lua): it isn't asked about if just picked up,
 -- an open follow-up question about its chain closes, and its open stops
--- leave the trip with the stops that need them (a follow-up picked up where
--- you'd have handed it in). A trip with nothing left ends.
+-- leave the journey with the stops that need them (a follow-up picked up
+-- where you'd have handed it in). A journey with nothing left ends.
 function Nav.QuestAbandoned(questID)
   for i = #picked, 1, -1 do
     if picked[i] == questID then table.remove(picked, i) end
@@ -1291,10 +1603,10 @@ function Nav.QuestAbandoned(questID)
   local here = ns.Geo.PlayerNode()
   local planned = here and ns.Journey.Replan(a.journey, here)
   if not planned then
-    ns.print(string.format("you abandoned %s: nothing left on the trip, so it's cancelled.", questName(questID)))
+    ns.print(string.format("you abandoned %s: nothing left on the journey, so it's cancelled.", questName(questID)))
     return Nav.Stop()
   end
-  ns.print(string.format("you abandoned %s: dropped from your trip.", questName(questID)))
+  ns.print(string.format("you abandoned %s: dropped from your journey.", questName(questID)))
   a.title = planned.title or a.title
   adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
 end
@@ -1303,7 +1615,7 @@ ns.Listen("QUEST_ABANDONED", Nav.QuestAbandoned)
 
 ---------------------------------------------------------------- move on, skip
 
--- The stop the current leg of a trip leads to (the step may be a flight on the way).
+-- The stop the current leg of a journey leads to (the step may be a flight on the way).
 function Nav.HeadingFor()
   local a = Nav.active
   if not (a and a.journey) then return nil end
@@ -1316,7 +1628,7 @@ end
 
 -- What move on does now: "cleared" (you're in one of the stop's camps: it
 -- counts as cleared), "done" (a quest step only you can tell is done, and
--- you're at it), "later" (the next stop first), or nil off a trip.
+-- you're at it), "later" (the next stop first), or nil off a journey.
 function Nav.MoveOnKind()
   local stop = Nav.HeadingFor()
   if not stop then return nil end
@@ -1342,7 +1654,7 @@ function Nav.MoveOn()
   else
     local first = ns.Journey.Postpone(a.journey, stop)
     if not first then
-      ns.print("nothing else on the trip to do first; skip it to take it off.")
+      ns.print("nothing else on the journey to do first; skip it to take it off.")
       return
     end
     local journey = ns.Journey.Replan(a.journey, here)
@@ -1352,8 +1664,8 @@ function Nav.MoveOn()
   end
 end
 
--- Takes the stop you're heading for off the trip, with the stops that need it
--- (a hand-in when you skip the objectives), once you say yes.
+-- Takes the stop you're heading for off the journey, with the stops that need
+-- it (a hand-in when you skip the objectives), once you say yes.
 function Nav.Skip()
   local a = Nav.active
   local stop = Nav.HeadingFor()
@@ -1366,7 +1678,7 @@ function Nav.Skip()
     OnAccept = function(_, data) if Nav.active then Nav.Drop(data.stop) end end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
-  local text = string.format("Skip \"%s\"?\n\nIt's taken off the trip%s.", stop.text or "this stop",
+  local text = string.format("Skip \"%s\"?\n\nIt's taken off the journey%s.", stop.text or "this stop",
     #also == 0 and "" or #also == 1 and string.format(", with \"%s\", which needs it", also[1].text or "a stop")
     or string.format(", with the %d stops that need it", #also))
   askPlayer("WAYWARD_SKIP", text, { stop = stop })
@@ -1385,7 +1697,7 @@ function Nav.Flying()
 end
 
 -- Dying. From death until you're alive again (at your corpse or a spirit
--- healer) the trip holds still: releasing moves you to a graveyard, which
+-- healer) the journey holds still: releasing moves you to a graveyard, which
 -- isn't leaving a camp (its visit just ends, not cleared) or a reason to
 -- re-plan, and the way still points where it did.
 local dead = false
@@ -1419,7 +1731,7 @@ end)
 local function alive()
   dead = false
   local a = Nav.active
-  -- Where you died and where you are now aren't a trip's distance or a detour.
+  -- Where you died and where you are now aren't a journey's distance or a stray.
   if a then a.died, a.lastHere, a.closest = nil, nil, nil end
 end
 ns.On("PLAYER_UNGHOST", alive)
@@ -1440,7 +1752,7 @@ function Nav.Tick()
     return here, a.route.steps[a.index]
   end
   a.died = nil
-  -- Yards travelled on a trip (not jumps: a hearthstone, a loading screen).
+  -- Yards travelled on a journey (not jumps: a hearthstone, a loading screen).
   local last = a.lastHere
   if a.stats and last and last.instance == here.instance then
     local d = ns.Geo.Distance(last, here)
@@ -1467,6 +1779,8 @@ function Nav.Tick()
   end
   local previous = a.lastHere
   a.lastHere = here
+  -- In a zone you set out to explore: that stop is done, wherever you crossed in.
+  if exploreCheck(here) then return here, Nav.CurrentStep() end
   local startIndex = a.index
   local steps = a.route.steps
   -- Never jump past a stop that still waits for a quest action.

@@ -524,5 +524,9 @@ function Vendors.Results()
       end
     end
   end
+  for _, r in ipairs(out) do
+    r.kind = "vendor"
+    ns.Search.WithDetour(r)
+  end
   return out, nil, net
 end

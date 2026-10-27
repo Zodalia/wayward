@@ -25,6 +25,7 @@ Data\ClassSpells.lua
 Sources\Questie.lua
 Sources\QuestieLive.lua
 Sources\Spells.lua
+Search.lua
 Harvest.lua
 Network.lua
 Hearth.lua
@@ -40,11 +41,13 @@ Journey.lua
 Camps.lua
 Navigator.lua
 OnTheWay.lua
+Errands.lua
 Marker.lua
 Docks.lua
 Dungeons.lua
 Vendors.lua
 ItemsPage.lua
+Find.lua
 QuestTimes.lua
 ForYou.lua
 UI\Skin.lua
@@ -55,8 +58,11 @@ UI\TargetButton.lua
 UI\JourneyOverview.lua
 UI\Fanfare.lua
 UI\ChainPicker.lua
+UI\ErrandPicker.lua
 UI\RouteMap.lua
 UI\Cards.lua
+UI\JourneyBox.lua
+UI\Observations.lua
 UI\Profile.lua
 UI\Panel.lua
 UI\MinimapButton.lua

@@ -1,44 +1,67 @@
 local _, ns = ...
 
--- Suggestion cards in the style of modern WoW's Adventure Guide ("Suggested
--- Content"): one large featured card on the left, two smaller ones stacked on
--- the right, arrows under them to page through the rest, three at a time (so
--- no suggestion shows twice); hover a card for
--- every detail and step. Sizes, fonts and colours follow
--- Blizzard's own frame (Blizzard_EncounterJournal, AdventureJournal templates).
--- The Adventure Guide isn't in Forever, so its art is used only when the
--- client has those atlases; otherwise a plain parchment look.
+-- "Something to do next": suggestion cards, three equal ones per page, arrows
+-- under them to page through the rest (so no suggestion shows twice); hover a
+-- card for every detail, its stops and the route map. Each card: the round
+-- icon, its role tag (QUESTING / EXPLORE / ALTERNATIVE), the title, one or
+-- two lines of why, a row of up to three facts, and Start journey (or
+-- Directions when the row has only a route).
+-- The card art is the Adventure Guide pane where the client has that atlas
+-- (Forever does); otherwise plain parchment.
 --
 -- A page opts in with `layout = "cards"` (and `width`); results are the usual
--- panel results, plus optional `icon` (file) / `iconCoords`, `kind`, and
--- `place` / `stats` / `category` (see the page contract in Panel.lua), and
+-- panel results (see the page contract in Panel.lua), plus optional `icon`
+-- (file) / `iconCoords`, `kind`, `role`, `why`, `stats`, `category` and
 -- `badge` ("~12 min", top right; red when `over`).
 
 local Cards = {}
 ns.Cards = Cards
 
-local LARGE_W, LARGE_H = 335, 365
-local SMALL_W, SMALL_H = 344, 175
-local GAP = 11
-local WIDTH = LARGE_W + 12 + SMALL_W
-local NAV_HEIGHT = 34      -- the arrows under the cards
+local PER_PAGE = 3
+local GAP = 10
+local CARD_H = 180
+local NAV_HEIGHT = 28      -- the arrows under the cards
+local ICON = 48
+local PAD = 12
 -- Ink on parchment, darkest for titles.
 local TITLE_COLOR = { 0.20, 0.10, 0.02 }
 local TEXT_COLOR = { 0.22, 0.14, 0.06 }
 local DETAIL_COLOR = { 0.28, 0.19, 0.09 }
-local TAG_COLOR = { 0.45, 0.06, 0.02 } -- the card's kind ("BEST QUEST"), a deep red
+local TAG_COLOR = { 0.45, 0.06, 0.02 } -- the role tag, a deep red
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
+local RULE = { 0.35, 0.22, 0.08, 0.35 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
+
+-- The tag for a role, or for "continue" when the kind isn't a quest thing,
+-- the kind itself; with no role, today's category.
+local QUEST_KINDS = { quest = true, hub = true, handin = true, finish = true, zone = true, notable = true }
+local ROLE_TAGS = { explore = "EXPLORE", alternative = "ALTERNATIVE" }
+
+-- Small icons for the facts row, by what the fact is about.
+local FACT_ICONS = {
+  { "level", "Interface\\Icons\\Achievement_Level_10" },
+  { "travel", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
+  { "journey", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
+  { "time", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
+  { "where", "Interface\\Icons\\INV_Misc_Spyglass_03" },
+  { "nearby", "Interface\\Icons\\INV_Misc_Spyglass_03" },
+  { "distance", "Interface\\Icons\\INV_Misc_Spyglass_03" },
+  { "quest", "Interface\\Icons\\INV_Scroll_03" },
+  { "ready", "Interface\\Icons\\INV_Letter_15" },
+  { "log", "Interface\\Icons\\INV_Scroll_03" },
+  { "xp", "Interface\\Icons\\INV_Misc_Book_11" },
+  { "hub", "Interface\\Icons\\INV_Misc_Note_01" },
+}
+local DEFAULT_FACT_ICON = "Interface\\Icons\\INV_Misc_Note_01"
+local NEARBY_SECONDS = 120
 
 local function hasAtlas(name)
   return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
 end
 
 -- Friz Quadrata in ink colours, no shadow or outline (with them, everything on
--- parchment looks bold). Morpheus was tried for titles: in Forever it's all
--- decorative small caps, hard to read. The template is the fallback if the
--- file can't be set. (The Adventure Guide's own fonts are missing or broken
--- in Forever: text with them showed nothing.)
+-- parchment looks bold). The template is the fallback if the file can't be
+-- set. (The Adventure Guide's own fonts are missing or broken in Forever.)
 local FONT = "Fonts\\FRIZQT__.TTF"
 
 local function text(parent, template, size, c)
@@ -50,42 +73,12 @@ local function text(parent, template, size, c)
   return fs
 end
 
--- The large pane's art has a reward ribbon in its top-left corner (retail
--- shows a reward there; we have none), so the large card is built from the
--- small pane's art in three slices instead: its top and bottom as drawn
--- (torn edges and corners), the band between them stretched to fit.
-local SLICE = 0.4 -- share of the small pane's height kept as drawn, top and bottom
-
-local function sliced(card, atlas)
-  local info = C_Texture.GetAtlasInfo(atlas)
-  if not (info and info.file and info.leftTexCoord and info.rightTexCoord and info.topTexCoord
-    and info.bottomTexCoord and info.height and info.height > 0) then return false end
-  local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
-  local w, h = card:GetWidth() or LARGE_W, card:GetHeight() or LARGE_H
-  local edge = math.floor(info.height * SLICE + 0.5)
-  local function piece(v0, v1, height, point, y)
-    local tex = card:CreateTexture(nil, "BACKGROUND")
-    tex:SetTexture(info.file)
-    tex:SetTexCoord(l, r, t + (b - t) * v0, t + (b - t) * v1)
-    tex:SetSize(w, height)
-    tex:SetPoint(point, 0, y)
-  end
-  piece(0, SLICE, edge, "TOP", 0)
-  piece(SLICE, 1 - SLICE, h - 2 * edge, "TOP", -edge)
-  piece(1 - SLICE, 1, edge, "BOTTOM", 0)
-  return true
-end
-
 -- Card background: the Adventure Guide pane, or parchment.
-local function background(card, atlas)
-  if atlas == "adventureguide-pane-large" and hasAtlas("adventureguide-pane-small") then
-    local ok, done = pcall(sliced, card, "adventureguide-pane-small")
-    if ok and done then return end
-  end
+local function background(card)
   local bg = card:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
-  if hasAtlas(atlas) then
-    bg:SetAtlas(atlas)
+  if hasAtlas("adventureguide-pane-small") then
+    bg:SetAtlas("adventureguide-pane-small")
   else
     bg:SetColorTexture(PARCHMENT[1], PARCHMENT[2], PARCHMENT[3], PARCHMENT[4])
     local edge = card:CreateTexture(nil, "BORDER")
@@ -118,21 +111,17 @@ local function icon(card, size, ringSize)
   end
 end
 
-local function button(card, width, height, large)
+local function button(card, width, height)
   local b = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
   b:SetSize(width, height)
-  if large and GameFontNormalLarge and b.SetNormalFontObject then
-    b:SetNormalFontObject(GameFontNormalLarge)
-    b:SetHighlightFontObject(GameFontNormalLarge)
-  end
   b:SetScript("OnClick", function() if card.result then ns.Panel.Activate(card.result) end end)
   return b
 end
 
--- Small text-style button for a result's own action ("Flight only").
+-- Small button for a result's own action ("Flight only").
 local function extra(card)
   local b = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-  b:SetSize(96, 20)
+  b:SetSize(80, 20)
   b:Hide()
   b:SetScript("OnClick", function()
     local r = card.result
@@ -149,168 +138,109 @@ local function hover(card)
   card:EnableMouse(true)
   card:SetScript("OnEnter", function(self) if self.result then ns.Panel.ShowTooltip(self, self.result) end end)
   card:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  -- Shift-click adds to the trip, like the panel's rows.
+  -- Shift-click adds to the journey, like the panel's rows.
   card:SetScript("OnMouseUp", function(self)
     if self.result and IsShiftKeyDown and IsShiftKeyDown() then ns.Panel.Activate(self.result) end
   end)
 end
 
--- A row of up to three numbers, label over value ("TRAVEL / ~5 min"), split
--- evenly across `width` with thin rules between them.
-local MAX_STATS = 3
-local RULE = { 0.35, 0.22, 0.08, 0.35 }
+-- A row of up to three facts, an icon and a value each ("~4 min away"),
+-- across `width`.
+local MAX_FACTS = 3
 
-local function statStrip(card, width, labelSize, valueSize, justify)
-  local strip = CreateFrame("Frame", nil, card)
-  strip:SetSize(width, labelSize + valueSize + 8)
-  strip.width, strip.justify = width, justify
-  strip.columns, strip.rules = {}, {}
-  for i = 1, MAX_STATS do
-    local label = text(strip, "GameFontHighlightSmall", labelSize, DETAIL_COLOR)
-    label:SetJustifyH(justify)
-    label:SetWordWrap(false)
-    local value = text(strip, "GameFontNormal", valueSize, TITLE_COLOR)
-    value:SetJustifyH(justify)
-    value:SetWordWrap(false)
-    strip.columns[i] = { label = label, value = value }
-    if i > 1 then
-      local rule = strip:CreateTexture(nil, "ARTWORK")
-      rule:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
-      rule:SetSize(1, labelSize + valueSize + 4)
-      strip.rules[i] = rule
-    end
+local function factRow(card, width)
+  local row = CreateFrame("Frame", nil, card)
+  row:SetSize(width, 16)
+  row.width = width
+  row.facts = {}
+  for i = 1, MAX_FACTS do
+    local fact = { }
+    fact.icon = row:CreateTexture(nil, "ARTWORK")
+    fact.icon:SetSize(14, 14)
+    fact.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    fact.value = text(row, "GameFontNormalSmall", 11, TITLE_COLOR)
+    fact.value:SetJustifyH("LEFT")
+    fact.value:SetWordWrap(false)
+    row.facts[i] = fact
   end
-  return strip
+  return row
 end
 
-local function fillStats(strip, stats)
-  local count = math.min(#stats, MAX_STATS)
-  local width = strip.width / math.max(count, 1)
-  for i, col in ipairs(strip.columns) do
+local function factIcon(label)
+  local key = (label or ""):lower()
+  for _, pair in ipairs(FACT_ICONS) do
+    if key:find(pair[1], 1, true) then return pair[2] end
+  end
+  return DEFAULT_FACT_ICON
+end
+
+local function fillFacts(row, stats)
+  local count = math.min(#stats, MAX_FACTS)
+  local width = row.width / math.max(count, 1)
+  for i, fact in ipairs(row.facts) do
     local stat = stats[i]
     local shown = stat ~= nil and i <= count
-    col.label:SetShown(shown)
-    col.value:SetShown(shown)
+    fact.icon:SetShown(shown)
+    fact.value:SetShown(shown)
     if shown then
-      local inset = strip.justify == "LEFT" and (i > 1 and 8 or 0) or 4
-      col.label:ClearAllPoints()
-      col.label:SetPoint("TOPLEFT", (i - 1) * width + inset, 0)
-      col.label:SetWidth(width - inset - 4)
-      col.label:SetText(string.upper(stat[1]))
-      col.value:ClearAllPoints()
-      col.value:SetPoint("TOPLEFT", col.label, "BOTTOMLEFT", 0, -3)
-      col.value:SetWidth(width - inset - 4)
-      col.value:SetText(stat[2])
-    end
-    local rule = strip.rules[i]
-    if rule then
-      rule:SetShown(shown)
-      rule:ClearAllPoints()
-      rule:SetPoint("TOPLEFT", (i - 1) * width, 0)
+      fact.icon:ClearAllPoints()
+      fact.icon:SetPoint("LEFT", row, "LEFT", (i - 1) * width, 0)
+      fact.icon:SetTexture(factIcon(stat[1]))
+      fact.value:ClearAllPoints()
+      fact.value:SetPoint("LEFT", fact.icon, "RIGHT", 4, 0)
+      fact.value:SetWidth(width - 20)
+      fact.value:SetText(stat[2])
+      fact.label = stat[1]
     end
   end
 end
 
--- A thin rule across a card, between its blocks.
-local function divider(card, width)
-  local line = card:CreateTexture(nil, "ARTWORK")
-  line:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
-  line:SetSize(width, 1)
-  return line
-end
-
--- Large card, top to bottom: icon, its kind ("DUNGEON"), title, where; the
--- numbers; a rule; the quests and notes; the button. Fixed gaps, so every card lines up the same.
-local LARGE_TEXT_W = 270
-
-local function largeCard(parent)
+-- A card, top to bottom: the icon with the tag and title beside it; the why;
+-- a rule; the facts; the button. Fixed gaps, so every card lines up the same.
+local function makeCard(parent, width)
   local card = CreateFrame("Frame", nil, parent)
-  card:SetSize(LARGE_W, LARGE_H)
-  background(card, "adventureguide-pane-large")
-  icon(card, 64, 94)
-  card.icon:SetPoint("TOPLEFT", (LARGE_W - 64) / 2, -16)
+  card:SetSize(width, CARD_H)
+  background(card)
+  icon(card, ICON, ICON + 22)
+  card.icon:SetPoint("TOPLEFT", PAD + 2, -PAD - 2)
+  local left = PAD + ICON + 14
+  local textWidth = width - left - PAD
 
-  card.badge = text(card, "GameFontNormalLarge", 16, TITLE_COLOR)
-  card.badge:SetPoint("TOPRIGHT", -24, -24)
+  card.badge = text(card, "GameFontNormal", 12, TITLE_COLOR)
+  card.badge:SetPoint("TOPRIGHT", -PAD - 2, -PAD)
   card.badge:SetJustifyH("RIGHT")
 
   card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
-  card.tag:SetPoint("TOP", card.icon, "BOTTOM", 0, -10)
-  card.tag:SetWidth(LARGE_TEXT_W)
-  card.tag:SetJustifyH("CENTER")
-
-  card.title = text(card, "GameFontNormalHuge", 18, TITLE_COLOR)
-  card.title:SetPoint("TOP", card.tag, "BOTTOM", 0, -4)
-  card.title:SetWidth(LARGE_TEXT_W)
-  card.title:SetJustifyH("CENTER")
-  if card.title.SetMaxLines then card.title:SetMaxLines(2) end
-
-  card.text = text(card, "GameFontHighlight", 12, TEXT_COLOR)
-  card.text:SetPoint("TOP", card.title, "BOTTOM", 0, -4)
-  card.text:SetWidth(LARGE_TEXT_W)
-  card.text:SetJustifyH("CENTER")
-  card.text:SetSpacing(2)
-  if card.text.SetMaxLines then card.text:SetMaxLines(2) end
-
-  card.stats = statStrip(card, LARGE_TEXT_W, 10, 15, "CENTER")
-  card.rule = divider(card, LARGE_TEXT_W - 20)
-
-  card.detail = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
-  card.detail:SetWidth(LARGE_TEXT_W - 12)
-  card.detail:SetJustifyH("LEFT")
-  card.detail:SetSpacing(3)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(5) end
-
-  card.button = button(card, 116, 32, true)
-  card.button:SetPoint("BOTTOM", 0, 22)
-  card.extra = extra(card)
-  card.extra:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
-  hover(card)
-  return card
-end
-
--- Small card: the same blocks beside the icon, one line each.
-local SMALL_LEFT, SMALL_TEXT_W = 74, 254
-
-local function smallCard(parent)
-  local card = CreateFrame("Frame", nil, parent)
-  card:SetSize(SMALL_W, SMALL_H)
-  background(card, "adventureguide-pane-small")
-  icon(card, 64, 94)
-  card.icon:SetPoint("TOPLEFT", -10, -2)
-
-  -- Clear of the pane's worn top edge, and no smaller than the large card's.
-  card.badge = text(card, "GameFontNormal", 13, TITLE_COLOR)
-  card.badge:SetPoint("TOPRIGHT", -18, -13)
-  card.badge:SetJustifyH("RIGHT")
-
-  card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
-  card.tag:SetPoint("TOPLEFT", SMALL_LEFT, -15)
-  card.tag:SetWidth(SMALL_TEXT_W)
+  card.tag:SetPoint("TOPLEFT", left, -PAD - 2)
+  card.tag:SetWidth(textWidth)
   card.tag:SetJustifyH("LEFT")
+  card.tag:SetWordWrap(false)
 
   card.title = text(card, "GameFontNormalLarge", 14, TITLE_COLOR)
   card.title:SetPoint("TOPLEFT", card.tag, "BOTTOMLEFT", 0, -3)
-  card.title:SetWidth(SMALL_TEXT_W)
+  card.title:SetWidth(textWidth)
   card.title:SetJustifyH("LEFT")
-  card.title:SetWordWrap(false)
+  card.title:SetSpacing(1)
+  if card.title.SetMaxLines then card.title:SetMaxLines(2) end
 
-  card.text = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
-  card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
-  card.text:SetWidth(SMALL_TEXT_W)
-  card.text:SetJustifyH("LEFT")
-  card.text:SetWordWrap(false)
-
-  card.stats = statStrip(card, SMALL_TEXT_W, 9, 12, "LEFT")
-
-  card.detail = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
-  card.detail:SetWidth(SMALL_TEXT_W)
+  -- The why, under the icon too: the card's full width.
+  card.detail = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
+  card.detail:SetPoint("TOPLEFT", PAD, -PAD - ICON - 16)
+  card.detail:SetWidth(width - 2 * PAD)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(2)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(2) end
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(3) end
 
-  card.button = button(card, 116, 24)
-  card.button:SetPoint("BOTTOMLEFT", SMALL_LEFT - 2, 14)
+  card.rule = card:CreateTexture(nil, "ARTWORK")
+  card.rule:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
+  card.rule:SetSize(width - 2 * PAD, 1)
+  card.rule:SetPoint("BOTTOMLEFT", PAD, 54)
+
+  card.stats = factRow(card, width - 2 * PAD)
+  card.stats:SetPoint("TOPLEFT", card.rule, "BOTTOMLEFT", 0, -6)
+
+  card.button = button(card, 120, 22)
+  card.button:SetPoint("BOTTOM", 0, 10)
   card.extra = extra(card)
   card.extra:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
   hover(card)
@@ -324,7 +254,7 @@ local results, offset = {}, 0
 
 local function pageButton(parent, direction, onClick)
   local b = CreateFrame("Button", nil, parent)
-  b:SetSize(32, 32)
+  b:SetSize(28, 28)
   local base = "Interface\\Buttons\\UI-SpellbookIcon-" .. direction .. "Page-"
   b:SetNormalTexture(base .. "Up")
   b:SetPushedTexture(base .. "Down")
@@ -334,36 +264,85 @@ local function pageButton(parent, direction, onClick)
   return b
 end
 
-function Cards.Create(parent)
+-- The cards across `width`, three per page, the arrows under them.
+function Cards.Create(parent, width)
+  width = width or 694
   local holder = CreateFrame("Frame", nil, parent)
-  holder:SetSize(WIDTH, LARGE_H + NAV_HEIGHT)
-  holder.large = largeCard(holder)
-  holder.large:SetPoint("TOPLEFT", 0, 0)
-  holder.small = { smallCard(holder), smallCard(holder) }
-  holder.small[1]:SetPoint("TOPLEFT", holder.large, "TOPRIGHT", 12, -4)
-  holder.small[2]:SetPoint("TOPLEFT", holder.small[1], "BOTTOMLEFT", 0, -GAP)
-
-  -- Under the cards: back, "2 of 7", forward.
+  holder:SetSize(width, CARD_H + NAV_HEIGHT)
+  holder.width = width
+  local cardWidth = math.floor((width - (PER_PAGE - 1) * GAP) / PER_PAGE)
+  holder.cards = {}
+  for i = 1, PER_PAGE do
+    local card = makeCard(holder, cardWidth)
+    card:SetPoint("TOPLEFT", (i - 1) * (cardWidth + GAP), 0)
+    holder.cards[i] = card
+  end
+  -- Under the cards, at the right: back, "Page 2 of 3", forward.
   holder.position = text(holder, "GameFontHighlightSmall", 11, { 0.85, 0.8, 0.7 })
-  holder.position:SetPoint("TOP", holder.large, "BOTTOM", (WIDTH - LARGE_W) / 2, -11)
+  holder.position:SetPoint("TOPRIGHT", holder.cards[PER_PAGE], "BOTTOMRIGHT", -40, -8)
+  holder.position:SetJustifyH("RIGHT")
   holder.prev = pageButton(holder, "Prev", function() Cards.Step(1) end)
-  holder.prev:SetPoint("RIGHT", holder.position, "LEFT", -10, 0)
+  holder.prev:SetPoint("RIGHT", holder.position, "LEFT", -6, 0)
   holder.next = pageButton(holder, "Next", function() Cards.Step(-1) end)
-  holder.next:SetPoint("LEFT", holder.position, "RIGHT", 10, 0)
+  holder.next:SetPoint("LEFT", holder.position, "RIGHT", 6, 0)
 
   holder.empty = holder:CreateFontString(nil, "ARTWORK", "GameFontDisable")
   holder.empty:SetPoint("TOPLEFT", 0, -8)
-  holder.empty:SetWidth(WIDTH)
+  holder.empty:SetWidth(width)
   holder.empty:SetJustifyH("LEFT")
   view = holder
   return holder
 end
 
+-- The holder's height (the cards and the arrows), for laying out the window.
+function Cards.Height() return CARD_H + NAV_HEIGHT end
+
 local function plain(text)
   return ((text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
-local function fill(card, r, large)
+-- The role tag drawn on a card.
+function Cards.TagFor(r)
+  if r.role == "continue" then
+    if QUEST_KINDS[r.kind] then return "QUESTING" end
+    return string.upper(r.category or r.kind or "CONTINUE")
+  end
+  if ROLE_TAGS[r.role] then return ROLE_TAGS[r.role] end
+  if r.category then return string.upper(r.category) end
+  return r.role == nil and "ALTERNATIVE" or string.upper(r.role)
+end
+
+-- The why line: the row's own, else its first detail (the ranking, today).
+function Cards.WhyFor(r)
+  if r.why and r.why ~= "" then return plain(r.why) end
+  local first = r.details and r.details[1]
+  return first and plain(first.text) or ""
+end
+
+-- Up to three facts for the row: its stats, else what the row itself tells
+-- (level from the title, travel time from the route, "Nearby" when close).
+function Cards.FactsFor(r)
+  if r.stats and #r.stats > 0 then return r.stats end
+  local facts = {}
+  local level = (r.title or ""):match("level (%d+)$")
+  if level then facts[#facts + 1] = { "Level", level } end
+  local seconds = (r.journey and r.journey.seconds) or (r.route and r.route.seconds)
+  if seconds then
+    if seconds < NEARBY_SECONDS then
+      facts[#facts + 1] = { "Nearby", "Nearby" }
+    else
+      facts[#facts + 1] = { "Travel", ns.FormatDuration(seconds) .. " away" }
+    end
+  end
+  return facts
+end
+
+-- The button's label: a journey, or plain directions.
+function Cards.ButtonFor(r)
+  return r.journey and "Start journey" or "Directions"
+end
+
+local function fill(card, r)
   card.result = r
   if not r then
     card:Hide()
@@ -380,67 +359,33 @@ local function fill(card, r, large)
     card.icon:Show()
     card.sheetIcon:Hide()
   end
-  -- "Run The Stockade  ·  level 23": the level is one of the numbers.
-  local title, level = (r.title or ""):match("^(.-)%s+·%s+level (%d+)$")
+  -- "Run The Stockade  ·  level 23": the level is one of the facts.
+  local title = (r.title or ""):match("^(.-)%s+·%s+level %d+$")
   card.title:SetText(title or r.title)
-  card.tag:SetText(r.category and string.upper(r.category) or "")
+  card.tag:SetText(Cards.TagFor(r))
   card.badge:SetText(r.badge or "")
   card.badge:SetShown(r.badge ~= nil)
   local ink = r.over and TAG_COLOR or TITLE_COLOR
   card.badge:SetTextColor(ink[1], ink[2], ink[3])
-
-  -- Where, then the numbers; rows without them show their subtitle instead.
-  local stats = r.stats
-  if not stats and level then stats = { { "Level", level } } end
-  card.text:SetText(plain(r.place or r.subtitle))
-  local below = card.text
-  if stats and #stats > 0 then
-    fillStats(card.stats, stats)
-    card.stats:ClearAllPoints()
-    card.stats:SetPoint("TOP", card.text, "BOTTOM", 0, large and -14 or -8)
-    if not large then
-      card.stats:ClearAllPoints()
-      card.stats:SetPoint("TOPLEFT", card.text, "BOTTOMLEFT", 0, -8)
-    end
-    card.stats:Show()
-    below = card.stats
-  else
-    card.stats:Hide()
-  end
-
-  -- The quests and notes (details after the ranking line, without those
-  -- marked `more`); the tooltip has everything.
-  local lines, room = {}, large and 5 or 2
-  for i = 2, #(r.details or {}) do
-    if #lines >= room then break end
-    if not r.details[i].more then lines[#lines + 1] = plain(r.details[i].text) end
-  end
-  card.detail:SetText(table.concat(lines, "\n"))
-  card.detail:ClearAllPoints()
-  if large then
-    card.rule:ClearAllPoints()
-    card.rule:SetPoint("TOP", below, "BOTTOM", 0, -10)
-    card.rule:SetShown(#lines > 0)
-    card.detail:SetPoint("TOP", card.rule, "BOTTOM", 0, -10)
-  else
-    card.detail:SetPoint("TOPLEFT", below, "BOTTOMLEFT", 0, -8)
-  end
-  card.button:SetText(r.journey and "Start trip" or "Go")
+  card.detail:SetText(Cards.WhyFor(r))
+  local facts = Cards.FactsFor(r)
+  fillFacts(card.stats, facts)
+  card.stats:SetShown(#facts > 0)
+  card.rule:SetShown(#facts > 0)
+  card.button:SetText(Cards.ButtonFor(r))
   card.button:SetEnabled(r.journey ~= nil or r.route ~= nil)
   local action = r.actions and r.actions[1]
   card.extra:SetShown(action ~= nil)
   if action then card.extra:SetText(action.label) end
-  if large then
-    -- Side by side when there are two buttons.
-    card.button:ClearAllPoints()
-    card.button:SetPoint("BOTTOM", action and -51 or 0, 22)
-  end
+  -- Side by side when there are two buttons.
+  card.button:ClearAllPoints()
+  card.button:SetPoint("BOTTOM", action and -43 or 0, 10)
 end
 
 local reported
 
-local function safeFill(card, r, large)
-  local ok, err = pcall(fill, card, r, large)
+local function safeFill(card, r)
+  local ok, err = pcall(fill, card, r)
   if not ok and not reported then
     reported = true
     -- In chat too: Lua errors are often switched off.
@@ -449,16 +394,12 @@ local function safeFill(card, r, large)
   end
 end
 
-local PER_PAGE = 3
-
 local function paint()
   if not view then return end
   local pages = math.max(1, math.ceil(#results / PER_PAGE))
   local maxOffset = (pages - 1) * PER_PAGE
   if offset > maxOffset then offset = maxOffset end
-  safeFill(view.large, results[offset + 1], true)
-  safeFill(view.small[1], results[offset + 2])
-  safeFill(view.small[2], results[offset + 3])
+  for i, card in ipairs(view.cards) do safeFill(card, results[offset + i]) end
   local several = pages > 1
   view.prev:SetShown(several)
   view.next:SetShown(several)
@@ -491,41 +432,46 @@ function Cards.Step(delta)
   paint()
 end
 
--- The results on the large and small cards, in that order (for tests).
+local function card(index)
+  return view and view.cards[index]
+end
+
+-- The results on the cards, left to right (for tests).
 function Cards.Visible()
   local out = {}
   if not view then return out end
-  for _, card in ipairs({ view.large, view.small[1], view.small[2] }) do
-    if card.result then out[#out + 1] = card.result end
+  for _, c in ipairs(view.cards) do
+    if c.result then out[#out + 1] = c.result end
   end
   return out
 end
 
--- The details drawn on a card (1 = large), for tests.
+-- The why line drawn on a card (1 = leftmost), for tests.
 function Cards.Detail(index)
-  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
-  return card and card.detail:GetText()
+  local c = card(index)
+  return c and c.detail:GetText()
 end
+Cards.Why = Cards.Detail
 
--- A card's kind as drawn (1 = large), for tests.
+-- A card's tag as drawn (1 = leftmost), for tests.
 function Cards.Tag(index)
-  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
-  return card and card.tag:GetText()
+  local c = card(index)
+  return c and c.tag:GetText()
 end
 
--- A card's time as drawn (1 = large), or nil when it has none, for tests.
+-- A card's time as drawn (1 = leftmost), or nil when it has none, for tests.
 function Cards.Badge(index)
-  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
-  return card and card.badge:IsShown() and card.badge:GetText() or nil
+  local c = card(index)
+  return c and c.badge:IsShown() and c.badge:GetText() or nil
 end
 
--- A card's numbers as drawn, "LABEL=value" (1 = large), for tests.
+-- A card's facts as drawn, "LABEL=value" (1 = leftmost), for tests.
 function Cards.Stats(index)
-  local card = view and ({ view.large, view.small[1], view.small[2] })[index]
+  local c = card(index)
   local out = {}
-  if not (card and card.stats:IsShown()) then return out end
-  for _, col in ipairs(card.stats.columns) do
-    if col.label:IsShown() then out[#out + 1] = col.label:GetText() .. "=" .. col.value:GetText() end
+  if not (c and c.stats:IsShown()) then return out end
+  for _, fact in ipairs(c.stats.facts) do
+    if fact.value:IsShown() then out[#out + 1] = string.upper(fact.label or "") .. "=" .. fact.value:GetText() end
   end
   return out
 end
@@ -534,9 +480,9 @@ end
 function Cards.Drawn()
   local out = {}
   if not view then return out end
-  for _, card in ipairs({ view.large, view.small[1], view.small[2] }) do
-    if card.result then
-      out[#out + 1] = (card.title:GetText() or "") .. "|" .. (card.button:GetText() or "")
+  for _, c in ipairs(view.cards) do
+    if c.result then
+      out[#out + 1] = (c.title:GetText() or "") .. "|" .. (c.button:GetText() or "")
     end
   end
   return out
@@ -546,14 +492,13 @@ end
 function Cards.Diagnose()
   if not view then return { "cards not created yet: open /ww first" } end
   local lines = {}
-  local names = { "large", "small 1", "small 2" }
-  for i, card in ipairs({ view.large, view.small[1], view.small[2] }) do
-    local fontFile, size = card.title:GetFont()
-    local r, g, b, a = card.title:GetTextColor()
-    lines[#lines + 1] = string.format("%s: shown=%s visible=%s result=%s title=%q font=%s size=%s colour=%.2f,%.2f,%.2f,%.2f width=%s",
-      names[i], tostring((card:IsShown())), tostring((card:IsVisible())), tostring(card.result ~= nil),
-      tostring((card.title:GetText())), tostring(fontFile), tostring(size), r or -1, g or -1, b or -1, a or -1,
-      tostring((card.title:GetStringWidth())))
+  for i, c in ipairs(view.cards) do
+    local fontFile, size = c.title:GetFont()
+    local r, g, b, a = c.title:GetTextColor()
+    lines[#lines + 1] = string.format("card %d: shown=%s visible=%s result=%s title=%q font=%s size=%s colour=%.2f,%.2f,%.2f,%.2f width=%s",
+      i, tostring((c:IsShown())), tostring((c:IsVisible())), tostring(c.result ~= nil),
+      tostring((c.title:GetText())), tostring(fontFile), tostring(size), r or -1, g or -1, b or -1, a or -1,
+      tostring((c.title:GetStringWidth())))
   end
   return lines
 end

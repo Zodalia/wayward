@@ -16,8 +16,8 @@ local frame
 function Welcome.Lines()
   local status = ns.Data and ns.Data.Has("Quest") and ns.Data.Status()
   return {
-    "Wayward suggests what to do next for this character and gives step-by-step directions: "
-      .. "on foot, by flight path, boat, zeppelin and tram.",
+    "Wayward suggests journeys for this character (a questing zone, a dungeon, your trainer) and gives "
+      .. "step-by-step directions to each stop: on foot, by flight path, boat, zeppelin and tram.",
     "Open it with /ww or the minimap button. Right-click the button for the options "
       .. "(also in Options > AddOns > Wayward).",
     "It learns as you play: open a flight map once on each continent, visit your class trainer, "
@@ -26,7 +26,8 @@ function Welcome.Lines()
       or ("Wayward ships no quest database. For quests, items and every trainer, install "
         .. ns.Data.ADDON .. " (the Questie team's free database); Wayward reads it by itself. "
         .. "Until then it knows the places you've been."),
-    "Directions open in a box you can drag; its compass points the way. /ww help lists every command.",
+    "Directions open in a box you can drag; its compass points the way. A journey is yours to reorder, "
+      .. "add detours to (the box's +), set aside and pick up again. /ww help lists every command.",
   }
 end
 

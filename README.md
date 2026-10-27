@@ -68,16 +68,23 @@ clients (`WAYWARD_GAME=era`), against stubs.
 ## Options
 
 Options > AddOns > Wayward has every setting, in sections: **Navigation
-aid** (the compass in the directions box, TomTom's arrow), **NPCs** (the
+aid** (the compass in the directions box, TomTom's arrow, and whether the
+box shows every step or just the stop you're heading for; that one is per
+character, `/ww detail steps|stops`), **NPCs** (the
 star over the NPC you are heading for, and the game's friendly nameplates it
-needs), **Trips and quests** (the question when you pick up a quest, whether
-the journey overview opens by itself when a trip starts, the new-journey
+needs), **Journeys and quests** (the question when you pick up a quest, whether
+the journey overview opens by itself when a journey starts, the new-journey
 toasts), **Minimap** (the button), and **Windows and help** (reset window
 positions, show the welcome again, list the slash commands). Right-click the
 minimap button or the addon compartment entry, or click Options in the
 window's title bar, to open them.
 `/ww options` opens the panel, `/ww help` lists the commands, `/ww welcome`
 shows the introduction again, `/ww reset` puts every window back.
+
+## Design
+
+The pillars, the vocabulary (journey, stop, step, detour) and the 0.5
+rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
 
 ## What it does
 
@@ -91,9 +98,27 @@ shows the introduction again, `/ww reset` puts every window back.
   when you get there. The directions box has its own compass (`/ww compass` hides
   it), because Blizzard's on-screen navigation is off by default in Forever;
   without an arrow its circle shows what's ahead (quest pickup or hand-in,
-  flight). It also shows the trip, a bar of stops done, the step, which stop
-  you're on, and distance and time left, with Blizzard's square buttons for
-  skip and move on (on a trip), all stops, recalculate and stop.
+  flight, a zone to explore, a dungeon to enter). On a journey it also shows
+  the journey's title, a bar of stops done ("2 of 5 done", `ns.Nav.Progress()`),
+  the step, which step of the way to the next stop you're on, and distance
+  and time left, with Blizzard's square buttons for skip this stop and do
+  this stop later (on a journey), View details (the journey overview),
+  recalculate, and End journey (Stop directions on plain directions). Detail
+  on demand: with `/ww detail stops` (or the option) the box shows only the
+  stop you're heading for and the compass, and the step when you hover it.
+- **Add a detour**: the directions box's + button (bottom right) lists
+  errands to fit into the journey, like a road map's "petrol on the way":
+  repair, vendor (sell and buy), mailbox, bank, inn, auction house and, for
+  hunters, stable master. Pick a kind along the top; under it, the five
+  places that add least to the journey, each with the time it adds ("+2 min")
+  and Add. It opens on repairs when your gear is at 75% or less, on vendors
+  when your bags are full, else on the kind you last added from. Plain
+  directions become a journey with the place as one more stop. NPCs come
+  from the ones you've talked to and from the data source's NPC flags (your
+  faction's); mailboxes from the ones you've opened and the data source's
+  objects named "Mailbox" in your side's towns (judged by the nearest
+  innkeeper or flight master). `ns.Nav.AddDetour(stops, label)` is what
+  every "add" in Wayward calls.
 - **Talking to NPCs** is a step of its own. At a flight path it's "Talk to
   Ariena Stormfeather, the flight master at Lakeshire" (named once you've met
   them, or from a data source) until the flight map opens, then "Fly to
@@ -101,7 +126,9 @@ shows the introduction again, `/ww reset` puts every window back.
   the air there's no compass or TomTom arrow and nothing is re-planned;
   landing picks up from where you are. A
   trainer or vendor you're heading for is done when you talk to them, not on
-  arrival. The NPC the step is for (flight master, quest giver, the one you
+  arrival; a class trainer with spells to learn (a `learn` stop) is done once
+  you've learned one of them, or anything on their list, there (talking has
+  to do where the client can't show the trainer's list). The NPC the step is for (flight master, quest giver, the one you
   hand in to, trainer, vendor) is easy to find near there: a star over their
   nameplate (friendly NPC nameplates have to be on; the options can switch
   the game's setting), a Wayward line in their tooltip, and a target button
@@ -111,7 +138,7 @@ shows the introduction again, `/ww reset` puts every window back.
   the tooltip line off. Quests handed in to (or started from) an object, like
   Buzzbox 323, say "use" instead, with nothing to target.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
-  innkeeper or banker records where they are. Opening a flight map records
+  innkeeper or banker records where they are, and so does opening a mailbox. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
 
 - **Data sources (optional)**: Wayward bundles only hand-made data and what
@@ -171,38 +198,91 @@ repair flag and English subtitles ("Food & Drink", "Bowyer"); without one, only
 vendors you visited are listed. Food, ammo and reagent tiers in
 `Data/VendorGoods.lua` are vanilla item IDs, not yet checked in Forever.
 
+### Find
+
+**Find** (the "?" tab, first on the right edge; `/ww find <text>` in chat)
+is the one place to ask "where is...?". Its search box looks through
+everything Wayward knows: quests, items, people by name or by role ("warlock
+trainer", "innkeeper", "repair"), dungeons, zones, flight-path towns, your
+class's spells and the professions. An exact name comes first, then names
+starting with what you typed, then names containing it, then matches on a
+role; shorter names first. The buttons under the box narrow it to **All**,
+**Quests**, **Items**, **People** or **Places**; `/ww quest <name>` and `/ww
+item <link>` open Find on Quests or Items. Every result is a row like any
+other: click it for directions or a journey, hover for the details and the
+route map, **Add detour** (or shift-click) while a journey is on. A person
+gets directions to where they stand (a talk stop when added); your own class
+trainer gets the Trainers row with the spells you can learn there; a zone
+gets directions to its nearest flight-path town, or to where the way crosses
+its border; a dungeon to its entrance; a spell to the trainer who teaches it.
+
+With nothing typed, Find lists likely questions for right now, each a row
+with directions: the stop you're heading for ("Where is Magistrate
+Solomon?"), every quest in your log with something left to do ("Where do I
+find Murloc Fin?", to where the game or the quest data places the
+objective), "Where is my class trainer?", "Nearest repair" and "Nearest
+flight master" (Places: the nearest flight master and inn).
+
+Item tooltips and quest tooltips get a "Wayward: /ww find for directions"
+line when Wayward knows the item's sources or the quest (never in combat).
+
 ### Items
 
-**Items** tells you where an item comes from, with directions. Shift-click an
-item into its search box, type `/ww item <link>` in chat, or type part of the
-name. Each source is a row: dungeon drops ("Drops from Edwin VanCleef in The
-Deadmines", routed to the entrance, with a **+N quests** button that picks up
-the dungeon's quests on the way), mobs and objects in the world (nearest spawn,
-one row per zone), quests that reward it (can take now, in your log, needs
-earlier quests or a higher level) and the nearest vendor that sells it. Things
-you can do now come first, then shorter trips. Drops and quest rewards need
-item data from a data source; without it only vendors you visited that sold the item are
-known. Item tooltips get a "Wayward: /ww item for directions" line when an
-item has known sources (never in combat).
+**Items** (also Find's Items view) tells you where an item comes from, with
+directions. Shift-click an item into its search box, type `/ww item <link>`
+in chat, or type part of the name. Each source is a row: dungeon drops
+("Drops from Edwin VanCleef in The Deadmines", routed to the entrance, with a
+**+N quests** button that picks up the dungeon's quests on the way), mobs and
+objects in the world (nearest spawn, one row per zone), quests that reward it
+(can take now, in your log, needs earlier quests or a higher level) and the
+nearest vendor that sells it. Things you can do now come first, then the
+nearest. Drops and quest rewards need item data from a data source; without
+it only vendors you visited that sold the item are known. The quest rules
+are the Quests page's (`ns.Quests.RewardStatus(id)`), the name matching
+Find's (`ns.Search.Find(text, "item")`).
 
 ### For you
 
-The page is laid out like the Suggested Content tab of modern WoW's Adventure
-Guide: the top suggestion on a large card (icon, title, why, details, a Go or
-Start trip button, and arrows to step through the rest), the next two on
-smaller cards beside it. The card art comes from the client when it has the
-Adventure Guide textures (Forever does); otherwise the cards are plain
-parchment. Each card shows the trip's key numbers (level, travel time,
-quests, XP per minute) and its quests; hover it for every detail and step.
-The tooltip of a card, or of any row with directions or a trip, has a small
-map under it with the route drawn on it (the zone, the continent or the world
-map, whichever holds it all, zoomed in on the route; walking white, flights
-light blue, boats and the like deeper blue). The arrows under the cards page through the rest, three at a time (back to page 1 when the cards change); shift-click adds a card to
-your trip.
+The main window is the home screen: under a header with your portrait,
+"Level 8 · Dun Morogh", the summary line and the time buttons, three regions
+with their own jobs:
 
-The window keeps one size: For you is the main window, and **Quests**
+- **Your journey**: the journey you're on, with its icon, title, the current
+  stop ("Stop 3 of 5 · Find Shimmerweed in Dun Morogh"), stops done and the
+  time remaining, a progress bar, a map of what's left, **Continue journey**
+  (closes the window and makes sure the directions box is up) and **View
+  details** (the journey overview). On plain directions it shows the
+  destination and "Directions"; with nothing on it is one line, and the
+  suggestions move up.
+- **Something to do next**: the suggestions as three equal cards per page,
+  each with its icon, a tag for its role (QUESTING, EXPLORE, ALTERNATIVE), the
+  title, a line of why in plain words, up to three facts (where or "Nearby",
+  level, travel time) and **Start journey** (**Directions** when there is only
+  a route). The card art comes from the client when it has the Adventure
+  Guide textures (Forever does); otherwise the cards are plain parchment.
+  Hover a card for every detail, its stops and steps; the tooltip of a card,
+  or of any row with directions or a journey, has a small map under it with
+  the route drawn on it (the zone, the continent or the world map, whichever
+  holds it all, zoomed in on the route; walking white, flights light blue,
+  boats and the like deeper blue). The arrows under the cards (or the mouse
+  wheel) page through the rest, three at a time (back to page 1 when the
+  cards change). Shift-click adds a card to your journey as a detour; while a
+  journey is on, Start journey asks instead: **Add as detour**, **Switch
+  journey** (the journey you're on is set aside) or Cancel.
+- **Good to know**: up to four small observations (new abilities at the next
+  level, gear wearing out, a quest ready to hand in, vendors nearby...), the
+  numbers in gold, each with at most one button: **Add detour** (the stop
+  joins your journey, or starts one), **Show ...** (a side page) or **Go**
+  (plain directions). Hover one for the full text.
+
+The window keeps one size (roughly 4:3, so it fits a 1080p screen at UI
+scale 1): the home screen is the main window, and **Find** (the
+"?": search everything, or the likely questions for right now; see
+[Find](#find)), **Quests**
 (Journal: your quest log and quest search; Hubs), **Vendors**, **Trainers**
-(Class; Weapons: one row per weapon your class can learn and you don't know,
+(Class: the nearest trainers for your class, each with the spells you can
+learn there and a journey that ends with learning them; Weapons: one row per
+weapon your class can learn and you don't know,
 "Polearms (Woo Ping)", with the nearest weapon master who teaches it to your
 class and the cost against your purse; weapon masters list what they teach
 when you visit, so ones not seen yet point to a master you haven't visited;
@@ -210,48 +290,40 @@ Professions: each of your professions with its skill, the next rank and the
 nearest trainer for it, then the ones you could still learn),
 **Dungeons** and **Items** are icon tabs inside its right edge that open a
 list panel docked beside them (click the tab again, or the panel's close
-button, to close it). The search box filters any list. If the cards ever show no text, `/ww debug cards` reports what
+button, to close it). The search box filters any list; the Quests, Vendors,
+Trainers, Dungeons and Items tabs are browse views of the same Find system,
+with the same rows and actions. If the cards ever show no text, `/ww debug cards` reports what
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
 page is a list in the side panel.
 
-**For you** is the first tab (`/ww next` opens it): a short, curated list of
-things to do next, one card per kind of thing, each labelled with its kind:
+**For you** is the first tab (`/ww next` opens it): a short, curated set of
+suggestions, each a journey on a card labelled with its kind, and a row of
+observations ("Good to know"). The suggestions come from these providers:
 
-- **Due now** (at most two, always first): spells you can train and afford
-  (the card lists them, with rank and cost)
-  (after one trainer visit; spells you could have learned when you last
-  closed the trainer's window and didn't are left out, and only the Class
-  page still lists them), repairs at 50% durability or lower, ammo under
-  200, food and drink under 5 (not mages, from level 6), and an undiscovered
-  flight path within about 3 minutes.
-- **Don't miss** (right after what's due): the quest that stands out most
-  among those you can take nearby or have in your log, with its first stop
-  under 10 minutes away, whatever its XP. The card says why in plain words.
+- **Don't miss**: the quest that stands out most among those you can take
+  nearby or have in your log, with its first stop under 10 minutes away,
+  whatever its XP. The card says why in plain words.
 - **Profession**: the next rank of a profession you can train now
   (Journeyman at 50 skill and level 10, Expert at 125 and 20, Artisan at 200
-  and 35), at the nearest trainer known to teach it; due when you're at your
-  cap, worth a visit before that. Its trip ends with buying the rank: done
-  when the game raises that profession's skill cap, not just on talking.
-- **Worth a visit** (sharing those two slots, after what's due): your class
-  trainer at an even level (when classes get new spells) before your first
-  visit or two levels after the last one, and a repair when your gear is at
-  75% or lower and a repairer is under 2 minutes away.
+  and 35), at the nearest trainer known to teach it. Its journey ends with
+  buying the rank: done when the game raises that profession's skill cap,
+  not just on talking. At your cap it is an observation too.
 - **Hand in**: the best group of quests ready to hand in, grouped by where you
   hand them in (30 seconds each).
 - **Finish**: the best group of unfinished quests in your log whose
-  objectives are close together, as one whole-quest trip, timed at 5 minutes
-  times the share of objectives left (at least a quarter).
+  objectives are close together, as one whole-quest journey, timed at 5
+  minutes times the share of objectives left (at least a quarter).
 - **Best quest**: the single quest worth the most XP that you can pick up
-  nearby, as a whole-quest trip (pick it up, do it, hand it in).
+  nearby, as a whole-quest journey (pick it up, do it, hand it in).
 - **Questing zone** (up to three, anywhere in the world): where to quest at
   your level. Each counts the quests you can take there now and the ones
   their chains unlock (follow-ups whose first step you can take or have in
-  your log), all fitting your level, with their XP. Its trip goes to the hub
-  with the most quests for you and picks all of them up, giver by giver; the
-  card names the next hubs and where the chains lead on to. A zone needs 4 quests you can take now; zones are
-  ranked by XP. Below level 10 your starting zone comes first (the one
-  you're in, else your race's) and no other starting zone is suggested
-  while yours still has quests for you.
+  your log), all fitting your level, with their XP. Its journey goes to the
+  hub with the most quests for you and picks all of them up, giver by giver;
+  the card names the next hubs and where the chains lead on to. A zone needs
+  4 quests you can take now. Below level 10 your starting zone is offered
+  (the one you're in, else your race's) and no other starting zone is
+  suggested while yours still has quests for you.
 - **Dungeon** (or **Raid**): the best one, with its quests picked up on the
   way to the entrance, and the others for your level named on the card.
   Mobs in Forever's dungeons give little XP, so the quests make the run: a
@@ -260,18 +332,55 @@ things to do next, one card per kind of thing, each labelled with its kind:
   named with the level their quests open at ("The Stockade at level 22").
   Without quest data, the best by level fit and travel time.
 
-Due now, Don't miss and Worth a visit come first, then the zones, then the dungeon; hand
-in, finish and best quest follow in order of estimated XP per minute: XP over the
-trip plus 5 minutes per quest (`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes
-from a data source's quest XP table, with the vanilla penalty for quests below your
-level; quests it has no XP for (Forever-only ones) get the average for their
-level. Without that table the ranking falls back to quests per hour weighted
-by level fit, and without quest data to dungeons by level fit and travel time;
-the summary line says which. Quests already in your log count at full XP, with
+**Relevance, not XP per minute.** Every suggestion gets a relevance score
+from five parts, each 0 to 1: *suitability* (30%: level fit, 1.0 within two
+levels of yours and falling to 0 at grey and at too hard, stricter on
+Hardcore; a reward your class would use; dungeons and raids count less when
+you're on your own; and XP for the time, against the best on offer, which is
+the only place XP per minute still counts), *proximity* (20%: travel time to
+the first stop, 1.0 within 2 minutes, 0.5 at about 8, 0 past 25, transports
+counted as time), *progression* (20%: quests in your log, a chain's next
+step, the zone you're in or your journey is in, a dungeon whose quests you
+hold, a profession at its cap), *novelty* (15%: a zone or dungeon you
+haven't been to, a notable quest; a card shown refresh after refresh and
+never started slowly loses a little, down to 60%, and is never hidden for
+it) and *intent* (15%: the time budget, the kind of journey you start most,
+learned per character, and the zone of the journey you're on). Each page of
+three cards is picked by *role* rather than by rank: a **continuation** (the
+most relevant card whose strongest part is progression), an **exploration**
+(the most relevant whose strongest part is novelty, in another zone or of
+another kind) and an **alternative** (the most relevant of a third kind);
+later pages repeat that over what is left. Each card says in one sentence
+what its two strongest parts are ("Picks up where your log left off, right
+nearby"; "A zone you haven't seen, 6 quests at your level"), and the tooltip
+has the estimate underneath (XP, the travel and the time per quest). XP comes
+from a data source's quest XP table, with the vanilla penalty for quests
+below your level; quests it has no XP for (Forever-only ones) get the
+average for their level. Without that table quests count by level fit, and
+without quest data dungeons are ranked by level fit and travel time; the
+summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
-A card with a quest your trip on now already has isn't shown until the trip
-is done. The Quests page has every hub and your whole log. `/ww debug` shows how long a
-refresh took.
+A card with a quest your journey already has isn't shown until the journey
+is done. The Quests page has every hub and your whole log. `/ww debug` shows
+how long a refresh took; `/ww debug cards` prints each card's role,
+relevance and parts, and each observation.
+
+**Good to know.** The needs are observations, not cards: small tiles with a
+fact and at most one action (**Add detour** adds a stop to your journey,
+**Show** opens a side page, **Go** gives directions). Most urgent first:
+some gear broken or at 50% durability or lower (repair at the nearest
+repairer), no ammo or under 200, no food and drink or under 5 (not mages,
+from level 6), full or nearly full bags (the nearest vendor to sell at),
+spells you can train and afford (listed with rank and cost; after one
+trainer visit; spells you could have learned when you last closed the
+trainer's window and didn't are left out, and only the Class page still
+lists them), a profession at its cap, quests ready to hand in (the hand-in
+stops as a detour), an undiscovered flight path within about 3 minutes,
+gear at 75% or lower with a repairer under 2 minutes away, your class
+trainer at an even level before your first visit or two levels after the
+last one, spells you can't afford yet, new spells coming at the next level
+or two (and where your trainer is), and a vendor under 2 minutes away. The
+time budget doesn't filter them.
 
 **Notable quests.** XP isn't everything: Wayward also asks "am I missing
 something cool here?". A quest is notable when it is your class's quest, part
@@ -292,9 +401,9 @@ prints a quest's sort, flags, reward items and reasons
 
 **Only have 20 minutes?** The buttons at the right of the summary line (15,
 30, 60, Any), or `/ww time 20` and `/ww time off`, set how long you have,
-per character. For you then shows only what its estimate (trip plus quest
+per character. For you then shows only what its estimate (travel plus quest
 time) says fits, with each card's time in its corner: hand-ins and finishes
-by least travel rather than XP per minute, a questing zone only when the trip
+by least travel rather than XP per minute, a questing zone only when the journey
 to its first hub plus one quest fits, and no dungeon under an hour. When
 nothing fits it says so and offers the quickest option anyway, "a bit over".
 The estimates are rough, so Wayward learns yours: each quest you accept
@@ -303,26 +412,25 @@ last hand-in, so quests done side by side share the time; at most an hour),
 and once 5 are timed the average of your last 20 replaces the 5 minutes per
 quest. `/ww debug` shows it.
 
-**Fanfare.** When a trip is done, a frame near the top of the screen says
+**Fanfare.** When a journey is done, a frame near the top of the screen says
 what it came to: the 2 to 4 stats that stand out most. Each kind has a
 priority (levels, quests handed in, profession ranks trained, flight paths
 learned, money in, quests taken, XP across level-ups) and scores more the
 more of it you got, so 4 gold can beat 3 quests taken; nothing you got none
-of is shown. Distance and time only make up the numbers when a trip
+of is shown. Distance and time only make up the numbers when a journey
 achieved less than two things. When For you has a new major suggestion (a questing
-zone, a dungeon, spells to train, a profession's next rank) a short "New
+zone, a dungeon, a profession's next rank) a short "New
 journey available" toast pops up; click it to start the journey, or to add
-it to the trip you're on (the usual question). Both fade after a few seconds,
+it to the journey you're on (the usual question). Both fade after a few seconds,
 not while the mouse is over them. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
 zones flown over wait for the landing); the first look after this update
-only learns what's there. A trainer card pops up only for a spell no toast
-has shown yet, whichever town's trainer is nearest. `/ww toasts` or the options turn the toasts
+only learns what's there. `/ww toasts` or the options turn the toasts
 off.
 
 **Sounds.** Wayward plays one of the game's own sounds when it asks about a
 quest you picked up (or one that continues a chain), when a stop is added to
-your trip, when a trip starts, when it's done, and for the toast. When a trip
+your journey, when a journey starts, when it's done, and for the toast. When a journey
 starts or grows and asks about a follow-up quest, you hear the question's
 sound alone. `/ww sounds` lists each moment's shortlist;
 `/ww sounds <moment> <n|next>` plays one to compare,
@@ -347,7 +455,7 @@ play it. `/ww sounds export` opens your choices as one line to copy
   each step goes on TomTom's arrow and map pins, titled with what to do
   there (`/ww tomtom` or the options switch it, or retry after TomTom failed).
   The game keeps its own map pin (Forever only: Classic Era has none) across a logout or reload; Wayward takes
-  its pin from last time down when TomTom shows the way or no trip resumes
+  its pin from last time down when TomTom shows the way or no journey resumes
   (a pin you placed yourself since stays).
 - **Options** (see [Options](#options) above): the compass and TomTom are
   separate: use either, both, or neither for text directions only; with the
@@ -362,7 +470,7 @@ play it. `/ww sounds export` opens your choices as one line to copy
 - **Class trainers** in the same room are one row ("3 warlock trainers in
   Stormwind City").
 - **Minimap button**: left-click opens Wayward, right-click opens the
-  options, shift-right-click the journey overview during a trip. It uses LibDBIcon when another addon provides it
+  options, shift-right-click the journey overview during a journey. It uses LibDBIcon when another addon provides it
   (so button managers can handle it), otherwise a plain button you can drag
   around the minimap. `/ww minimap` hides it. Wayward is also in the addon
   compartment menu.
@@ -408,23 +516,25 @@ can take it: available (grey and red quests say so), in your log, done, needs
 earlier quests (naming the first one you can take, or the one in your log to
 finish), too low, not for your race or class, or not available (closed by a
 quest you did, outlevelled, needs a profession). Click a quest to go to its
-quest giver, to where you hand it in, or to the start of its chain; the trip
+quest giver, to where you hand it in, or to the start of its chain; the journey
 waits there until you accept or hand in the quest. When a search matches
-dungeon quests, and on the Dungeons tab ("Quests" button), one trip picks up
+dungeon quests, and on the Dungeons tab ("Quests" button), one journey picks up
 every quest you can take for that dungeon and ends at the entrance. The rules
 are the Quest hubs rules (`ns.Quests.QuestStatus(id)` and
 `ns.Quests.ChainStart(id)` give the status, reason and first chain step).
 Needs quest data.
 
 With an empty search the tab lists your quest log: level, zone and the first
-objective not done yet (or "ready to hand in"). Click a quest for a trip for
-what is left of it. "Add" (on log quests and search results) puts the quest
-into the trip you're on, or starts one; "In trip" takes it out again. The
-trip is re-ordered from where you are each time, each quest in its own order
-(pick up, objectives, hand in) but interleaved by travel time. "Hand in N
-completed quests" visits every finisher in one trip, and can be added to the
-current trip too. Adding or starting a trip for one quest that has a chain
-asks which of its next steps to add as well (ticked when on the way); a trip
+objective not done yet (or "ready to hand in"). Click a quest for a journey
+for what is left of it. "Add detour" (on log quests and search results) puts
+the quest into the journey you're on, or starts one; "In journey" takes it
+out again. The journey is re-ordered from where you are each time, each
+quest in its own order (pick up, objectives, hand in) but interleaved by
+travel time. "Hand in N completed quests" visits every finisher in one
+journey, and can be added to the current journey too. Quest matching and
+the rows are Find's (`ns.Search.Find(text, "quest")`,
+`ns.QuestsPage.RowFor(id, start, net)`). Adding or starting a journey for one quest that has a chain
+asks which of its next steps to add as well (ticked when on the way); a journey
 of several quests only asks about follow-ups on the way. Without quest data
 the log still lists, but without directions.
 
@@ -433,16 +543,18 @@ cards, the journey overview's quest stops) has a tooltip line on what follows
 the quest: "Chain: 4 more quests (levels 18-24), ends in The Deadmines" or
 "Leads to a Shadowfang Keep quest". A quest whose chain reaches a dungeon
 quest says so on its row too, and picking up a quest that starts a long chain
-(3+ quests) or leads to a dungeon quest says so in the "start a trip?"
+(3+ quests) or leads to a dungeon quest says so in the "start a journey?"
 question. The chain is walked forward from the data (next quest, quests that
 need it, inferred Forever links), up to 12 steps; quests that close each other
 count as one step, and only quests your race, class and level can do count.
 `ns.Quests.ChainAhead(id)` returns the steps and summary,
 `ns.Quests.ChainText(id)` the line; `/ww debug quest <id|name>` lists the steps.
 
-**Trips are flexible:** starting new directions while a trip is on asks
-whether to add them to the trip or replace it. Shift-click any row in the
-panel to add it to the trip you're on.
+**Journeys are flexible:** starting new directions while a journey is on
+asks whether to add them to it as a detour or switch to them; switching sets
+the journey on now aside, to resume later (see the journey overview, or
+`/ww journeys`). Shift-click any row in the panel, or its **Add detour**
+button, to add it to the journey you're on.
 
 ### Building on Wayward: pages and journeys
 
@@ -454,18 +566,42 @@ panel to add it to the trip you're on.
   with `categories` (Quests, Trainers) show them as buttons; `categoryPage` in
   `UI/Panel.lua` builds such a page from providers. `ns.Panel.Search(pageID, text)` opens a page
   with a search, and shift-clicked links go into the search box.
-- **Journeys** are trips with several stops (`Journey.lua`): stops are put in
-  the quickest order, with an optional fixed final stop. A stop with
+- **Journeys** are adventures with several stops (`Journey.lua`): stops are
+  put in the quickest order. A stop with
   `action = { kind = "pickup" | "turnin", questID }` waits until that quest is
   accepted or handed in; a quest done early is planned out of the rest of the
-  trip. Start one with `ns.Nav.StartJourney(ns.Journey.Plan(start, def))`, or
-  return it as a result's `journey`.
+  journey. Start one with `ns.Nav.StartJourney(ns.Journey.Plan(start, def))`,
+  or return it as a result's `journey`. A definition can carry a `kind`
+  ("quest", "zone", "dungeon", "hand-in", "finish", "profession", "custom",
+  ...) and an `icon`, kept through saves and re-plans, for the home screen
+  and the "Journey complete!" banner.
   - A stop can list `after = { otherStop }` (it must come later), and
     `resolve = { kind = "objectives", questID }` to find its place at planning
     time. Action kinds: `pickup`, `complete` (the objectives; done when the game
     reports the quest complete), `turnin`, `item` (collect an item a quest
-    needs; done when it's in your bags) and `manual` (a quest step only you can
-    tell is done; the directions box's move on button confirms it there).
+    needs; done when it's in your bags), `manual` (a quest step only you can
+    tell is done; the directions box's move on button confirms it there),
+    `talk { npc }` (done when you talk to them), `train { profession, cap,
+    npc }` (a profession rank; done when the cap goes up), `explore { mapID }`
+    (done once you're in that zone or a zone inside it, wherever you crossed;
+    not from the air), `enter { dungeon }` (done when you load into that
+    instance, as entrances are learned) and `learn { spells, npc }` (class
+    training; done at the trainer once a listed spell, or any spell on their
+    list, is learned). A stop without text gets one from its kind ("Explore
+    Wetlands", "Enter The Deadmines"). An older definition's `finish` stop is
+    still accepted: it becomes a stop that comes after the others, an `enter`
+    stop when its text is "Enter X", so a dungeon can also sit in the middle of
+    a journey.
+  - **Set aside and resume**: `ns.Nav.SetAside()` saves the journey on now
+    (its stops done so far, kind, icon, when) in `charDB.journeys` (five at
+    most, the oldest goes) and ends navigation without the fanfare;
+    `ns.Nav.ResumeSetAside(i)` plans what's left of it from here (a journey
+    on now is set aside in its place); `ns.Nav.ForgetSetAside(i)` drops it.
+    The "Switch journey" answer when you start something new, and "New
+    journey" when you pick up a quest, use it, so starting something never
+    loses the plan you had. The journey overview lists set-aside journeys
+    under the stops with Resume and Forget; `/ww journeys` lists them in
+    chat (`/ww journeys resume 2`, `/ww journeys forget 2`).
   - `ns.Journey.QuestStops(questID, here)` gives the stops for a whole quest
     from where it stands now: pick it up, do the objectives (the game's quest
     area marker once it's in your log, else the quest data's objective mobs, objects,
@@ -480,17 +616,17 @@ panel to add it to the trip you're on.
     Past 120 yards you've left, and the way points at the nearest spawn from
     where you are. A finished objective's spawns stop counting.
   - Spawns close together are one area (a camp; `ns.Quests.ObjectiveAreas`),
-    and a quest's objectives can have several. The trip heads for the one
+    and a quest's objectives can have several. The journey heads for the one
     least out of the way between the stops either side (`ns.Journey.PickArea`).
     Leave an area after 30 seconds or more in it and it counts as cleared for
-    5 minutes (about a respawn): the trip is re-planned from where you are, on
-    to another area, or to the stops on the way there first, and the
+    5 minutes (about a respawn): the journey is re-planned from where you
+    are, on to another area, or to the stops on the way there first, and the
     directions box says "Next spot". A short step out points at the nearest
     area you haven't cleared. When every area is cleared (a quest with one
-    camp, say), the stop waits for the first to respawn: the trip does other
-    stops first when they fit, and the directions box says when it respawns.
-    The trip's time counts the wait (and it shrinks as the camp respawns).
-    Cleared areas are saved with the trip.
+    camp, say), the stop waits for the first to respawn: the journey does
+    other stops first when they fit, and the directions box says when it
+    respawns. The journey's time counts the wait (and it shrinks as the camp
+    respawns). Cleared areas are saved with the journey.
   - Making progress on a later stop's objectives while you're in their area
     (another quest's camp on the way) makes that stop the next one.
   - In a camp, its mobs on nameplates count (`Camps.lua`; enemy nameplates
@@ -498,37 +634,38 @@ panel to add it to the trip you're on.
     seconds none are in sight that you could kill (dead, or tapped by someone
     else), the box says "Camp looks cleared", and leaving counts it as cleared
     straight away. After two kills there it also says how long the rest should
-    take at your pace ("~3 min left here"), and the trip's time counts it.
+    take at your pace ("~3 min left here"), and the journey's time counts it.
     Whatever the game keeps secret counts as not seen, so without nameplates
     the 30 seconds in the area decide.
-  - Dying holds the trip still until you're alive again: releasing to a
+  - Dying holds the journey still until you're alive again: releasing to a
     graveyard doesn't count as leaving the camp (the visit just ends, not
     cleared), doesn't re-plan, and the way still points where it did.
-  - Picking up a quest that isn't in your trip asks whether to add it (with
-    how much longer the trip gets), start a new trip for it (with its time),
-    or not now; quests picked up one after another are asked about together,
-    once the trip has no more pickups right where you are. The options turn
-    the question off.
-  - When a trip gains a quest's hand-in, the quests that follow it (picked
+  - Picking up a quest that isn't in your journey asks whether to add it
+    (with how much longer the journey gets), start a new journey for it (with
+    its time; the journey on now is set aside), or not now; quests picked up
+    one after another are asked about together, once the journey has no more
+    pickups right where you are. The options turn the question off.
+  - When a journey gains a quest's hand-in, the quests that follow it (picked
     up where you hand it in, often from the same NPC) are offered if adding
     them costs 3 minutes of travel or less.
-  - **Move on** (the directions box's >> button) works on the stop you're
-    heading for: in one of its camps, that camp counts as cleared and the
-    trip goes on (another camp, or other stops while it respawns; the camp
-    isn't "the area" again until you've walked out of it); at a quest step
-    only you can tell is done, it's done; anywhere else, the stop comes after
-    the next one that doesn't need it (a pickup never goes after its own
-    hand-in). In a trip planned for you that's a rule the later plans keep
-    (`Journey.Postpone`, saved with the trip; your newest choice wins), so the
-    rest is still ordered for you; in a trip you ordered yourself it moves.
-  - **Skip** (the box's x button) asks first, then takes the stop off the trip
-    with the stops that need it (a hand-in when you skip the objectives), like
-    the overview's x.
+  - **Do this stop later** (the directions box's >> button) works on the
+    stop you're heading for: in one of its camps, that camp counts as cleared
+    and the journey goes on (another camp, or other stops while it respawns;
+    the camp isn't "the area" again until you've walked out of it); at a
+    quest step only you can tell is done, it's done; anywhere else, the stop
+    comes after the next one that doesn't need it (a pickup never goes after
+    its own hand-in). In a journey planned for you that's a rule the later
+    plans keep (`Journey.Postpone`, saved with the journey; your newest
+    choice wins), so the rest is still ordered for you; in a journey you
+    ordered yourself it moves.
+  - **Skip this stop** (the box's x button) asks first, then takes the stop
+    off the journey with the stops that need it (a hand-in when you skip the
+    objectives), like the overview's x.
   - Quest data can miss a step of a chain, so a follow-up looks available
     when it isn't. When you talk to a quest giver, the game lists what they
-    offer you: a trip's pickup there that isn't on the list is dropped (with
-    its hand-in), and that quest counts as locked everywhere until you hand
-    something in or level up. `/ww debug quest <name or ID>` prints what
+    offer you: a journey's pickup there that isn't on the list is dropped
+    (with its hand-in), and that quest counts as locked everywhere until you
+    hand something in or level up. `/ww debug quest <name or ID>` prints what
     the quest data says about a quest's chain.
   - Forever's own quests (IDs from 90000) often have no chain data at all,
     like the second Return the Statuette (98189) after the original 286.
@@ -536,29 +673,30 @@ panel to add it to the trip you're on.
     lower ID, else the quest one ID lower when its hand-in NPC starts this
     one. An inferred link only counts while you could do that earlier quest
     (so the other faction's quest of the same name never holds one up).
-  - The current trip is saved per character and resumed after a login or
+  - The current journey is saved per character and resumed after a login or
     reload, re-planned from where you are (tried again for half a minute
-    while the game isn't ready to place you; a trip it still can't re-plan
-    stays saved, and `/ww resume` tries again). The directions box's book button
-    (it flashes a few times when stops are added to the trip, rather than
-    the overview popping open) opens an overview of every stop (done / now / next; stops you skipped
-    aren't listed; finished stops fold
-    into one line you can click open, by themselves from three of them or
-    when they'd push open stops off the list; under the current stop, the
-    steps that get you there, walk, fly, boat, with the one you're on
-    marked, and any stop's +/- shows or hides its own, so you can see where
-    it's taking you and hearth instead; under the stops, "On the way": up
-    to four things near the route that add 3 minutes of travel or less,
-    quest givers with quests for you, quests in your log ready to hand in
-    and vendors you need, each with an Add button (a quest whose objectives
-    and hand-in add under a minute more comes whole, not asked about once you
-    pick it up); and a map of the rest of
-    the trip; the mouse wheel scrolls the list when it doesn't all fit); a
-    stop can be dropped
-    there, together with the stops that need it, or dragged up or down by its
-    handle to reorder the trip. A reordered trip keeps your order (`Journey.Move`);
-    stops added later go where they add the least travel, and a stop can't
-    move before one it needs (a hand-in before its pickup).
+    while the game isn't ready to place you; a journey it still can't re-plan
+    stays saved, and `/ww resume` tries again). The directions box's book
+    button, **View details** (it flashes a few times when stops are added to
+    the journey, rather than the overview popping open), opens an overview of
+    every stop (done / now / next; stops you skipped aren't listed; finished
+    stops fold into one line you can click open, by themselves from three of
+    them or when they'd push open stops off the list; under the current
+    stop, the steps that get you there, walk, fly, boat, with the one you're
+    on marked, and any stop's +/- shows or hides its own, so you can see
+    where it's taking you and hearth instead; under the stops, "Detours on
+    the way (3 min or less)": up to four things near the route that add 3
+    minutes of travel or less, quest givers with quests for you, quests in
+    your log ready to hand in and vendors you need, each with an Add button
+    (a quest whose objectives and hand-in add under a minute more comes
+    whole, not asked about once you pick it up); then "Set aside", the
+    journeys you set aside, each with Resume and Forget; and a map of the
+    rest of the journey; the mouse wheel scrolls the list when it doesn't all
+    fit); a stop can be dropped there, together with the stops that need it,
+    or dragged up or down by its handle to reorder the journey. A reordered
+    journey keeps your order (`Journey.Move`); stops added later go where
+    they add the least travel, and a stop can't move before one it needs (a
+    hand-in before its pickup).
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/ww <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
 - **Quest helpers** on `ns.Quests`: `Quest(id)`, `AllQuests()`,

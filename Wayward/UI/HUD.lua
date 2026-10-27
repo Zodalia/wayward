@@ -2,8 +2,12 @@ local _, ns = ...
 
 -- Directions box shown while navigating: current step, distance, and our own
 -- compass (an arrow in a circle; /ww compass or the options turn it off, and
--- the box gets narrower). Blizzard's on-screen navigation is off by default in Forever
+-- the box gets narrower), and a + button to add a detour (repair, mail, ...).
+-- Blizzard's on-screen navigation is off by default in Forever
 -- (showInGameNavigation = 0), so we don't rely on it.
+-- Detail on demand (Nav.Detail): "steps" shows each step to the next stop
+-- with a count; "stops" shows only the stop you're heading for and the
+-- compass, and the step when you hover the box.
 
 local HUD = {}
 ns.HUD = HUD
@@ -16,8 +20,10 @@ local MIN_HEIGHT = 84
 local PADDING = 10
 local CIRCLE = 42
 local TEXT_LEFT = PADDING + CIRCLE + 10
+local ADD_SIZE = 20
+local INFO_RIGHT = -(PADDING + ADD_SIZE + 2) -- the last line stops short of the + button
 local HOME = { "TOP", "TOP", 0, -140 }
-local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the trip gains stops
+local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the journey gains stops
 local FLASH_PULSES = 3
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
@@ -27,6 +33,11 @@ local STOP_ICONS = {
   complete = "Interface\\Icons\\INV_Sword_04",
   item = "Interface\\Icons\\INV_Misc_Bag_10",
   manual = "Interface\\Icons\\INV_Misc_Note_01",
+  talk = "Interface\\GossipFrame\\GossipGossipIcon",
+  train = "Interface\\GossipFrame\\TrainerGossipIcon",
+  learn = "Interface\\GossipFrame\\TrainerGossipIcon",
+  explore = "Interface\\Icons\\INV_Misc_Map_01",
+  enter = "Interface\\Icons\\INV_Misc_Key_03",
 }
 local MODE_ICONS = {
   fly = "Interface\\Icons\\Ability_Hunter_EagleEye",
@@ -37,10 +48,12 @@ local MODE_ICONS = {
 local DISTANCE_ICON = "|TInterface\\Icons\\Ability_Tracking:13:13:0:0:64:64:5:59:5:59|t"
 local TIME_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:13:13:0:0:64:64:5:59:5:59|t"
 
+-- A button's tooltip; `b.tip` can change later (the x says what it ends).
 local function tooltip(b, text)
+  b.tip = text
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText(text)
+    GameTooltip:SetText(self.tip)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -132,7 +145,7 @@ local function create()
   if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   f.icon:Hide()
 
-  -- Buttons top right: skip and move on (trips), all stops, recalculate, stop.
+  -- Buttons top right: skip and move on (journeys), all stops, recalculate, stop.
   f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   f.close:SetSize(24, 24)
   f.close:SetPoint("TOPRIGHT", -3, -3)
@@ -143,29 +156,44 @@ local function create()
     "Recalculate from here")
   f.recalc:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
-    "See full journey")
+    "View details")
   f.list:SetPoint("RIGHT", f.recalc, "LEFT", -2, 0)
-  -- A glow over the book button, pulsed when the trip gains stops (HUD.FlashJourney).
+  -- A glow over the book button, pulsed when the journey gains stops (HUD.FlashJourney).
   f.listGlow = f.list:CreateTexture(nil, "OVERLAY")
   f.listGlow:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
   f.listGlow:SetBlendMode("ADD")
   f.listGlow:SetPoint("TOPLEFT", -2, 2)
   f.listGlow:SetPoint("BOTTOMRIGHT", 2, -2)
   f.listGlow:SetAlpha(0)
-  f.moveOn = squareButton(f, "RIGHT", nil, ">>", function() ns.Nav.MoveOn() end,
-    "Move to the next step and do this later")
+  f.moveOn = squareButton(f, "RIGHT", nil, ">>", function() ns.Nav.MoveOn() end, "Do this stop later")
   fastForward(f.moveOn)
   f.moveOn:SetPoint("RIGHT", f.list, "LEFT", -2, 0)
   f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
-    "Skip this step")
+    "Skip this stop")
   f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
+  -- Bottom right, beside the last line: add a detour (repair, mailbox, ...; UI/ErrandPicker.lua).
+  f.add = squareButton(f, nil, "Interface\\Icons\\Spell_ChargePositive", "+", function() ns.ErrandPicker.Toggle() end,
+    "Add a detour: repair, vendor, mailbox, bank...")
+  f.add:SetSize(ADD_SIZE, ADD_SIZE)
+  f.add:SetPoint("BOTTOMRIGHT", -6, 6)
+
+  -- With the detail on "stops", the step is in a tooltip over the box.
+  f:SetScript("OnEnter", function(self)
+    local lines = HUD.StepTooltip()
+    if not lines then return end
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    GameTooltip:SetText(lines[1])
+    for i = 2, #lines do GameTooltip:AddLine(lines[i], 0.6, 0.6, 0.6, true) end
+    GameTooltip:Show()
+  end)
+  f:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.title:SetPoint("TOPLEFT", TEXT_LEFT, -PADDING - 2)
   f.title:SetJustifyH("LEFT")
   f.title:SetWordWrap(false)
 
-  -- Stops done, as a thin bar under the title (trips only).
+  -- Stops done, as a thin bar under the title (journeys only).
   f.progress = CreateFrame("StatusBar", nil, f)
   f.progress:SetHeight(4)
   f.progress:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
@@ -189,7 +217,7 @@ local function create()
 
   f.info = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
-  f.info:SetPoint("RIGHT", -PADDING, 0)
+  f.info:SetPoint("RIGHT", INFO_RIGHT, 0)
   f.info:SetJustifyH("LEFT")
   for _, fs in ipairs({ f.title, f.step, f.sub, f.info }) do ns.Skin.Text(fs) end
 
@@ -209,7 +237,7 @@ local function create()
       elapsed = 0
       local ok, err = pcall(HUD.Update)
       if not ok then
-        -- Reported once, and the trip stops rather than failing ten times a second.
+        -- Reported once, and the journey stops rather than failing ten times a second.
         pcall(ns.Nav.Stop)
         f:Hide()
         geterrorhandler()(err)
@@ -248,8 +276,8 @@ function HUD.ObjectiveText(questID)
   return nil
 end
 
--- Where the current step is among the steps to the next stop (a trip) or to
--- the destination: position and count.
+-- Where the current step is among the steps to the next stop (a journey) or
+-- to the destination: position and count.
 local function legPosition(a)
   local steps = a.route.steps
   if not a.journey then return a.index, #steps end
@@ -263,7 +291,7 @@ local function legPosition(a)
   return a.index - first + 1, last - first + 1
 end
 
--- Lays the text out under the title, or under the progress bar on a trip.
+-- Lays the text out under the title, or under the progress bar on a journey.
 local function place(trip)
   frame.progress:SetShown(trip)
   frame.step:ClearAllPoints()
@@ -271,6 +299,13 @@ local function place(trip)
   frame.step:SetPoint("RIGHT", -PADDING, 0)
   -- The title stops short of the buttons.
   frame.title:SetPoint("RIGHT", trip and frame.skip or frame.recalc, "LEFT", -6, 0)
+end
+
+-- The step and its count, for the tooltip when the box shows only the stop
+-- (nil when it shows them itself).
+function HUD.StepTooltip()
+  if not (frame and frame.stepHidden) then return nil end
+  return { frame.stepText, frame.subText ~= "" and frame.subText or nil }
 end
 
 function HUD.Update()
@@ -286,25 +321,31 @@ function HUD.Update()
   frame.list:SetShown(trip)
   frame.moveOn:SetShown(trip)
   frame.skip:SetShown(trip)
+  frame.close.tip = trip and "End journey" or "Stop directions"
   place(trip)
 
   -- One count each: stops done in the title, steps to the next stop (or to
   -- the destination) under the step, only when there's more than one.
+  local progress = ns.Nav.Progress()
   if trip then
-    local done, total = ns.Journey.StopsDone(a.journey), #a.journey.stops
-    frame.title:SetText(string.format("%s  |cff9d9d9d%d of %d done|r", a.title or "", done, total))
-    frame.progress:SetValue(total > 0 and done / total or 0)
+    frame.title:SetText(string.format("%s  |cff9d9d9d%d of %d done|r", progress.title or "", progress.done,
+      progress.total))
+    frame.progress:SetValue(progress.total > 0 and progress.done / progress.total or 0)
   else
     frame.title:SetText(a.title or "")
   end
-  frame.step:SetText(ns.Router.Describe(a.route, a.index))
   local position, count = legPosition(a)
-  local sub = count > 1 and string.format(trip and "Step %d of %d to get there" or "Step %d of %d", position, count)
+  frame.stepText = ns.Router.Describe(a.route, a.index)
+  frame.subText = count > 1 and string.format(trip and "Step %d of %d to get there" or "Step %d of %d", position, count)
     or ""
+  -- Detail on demand: just the stop (and the compass), the step on hover.
+  frame.stepHidden = ns.Nav.Detail() == "stops" and frame.stepText ~= progress.stopText
+  local sub = frame.stepHidden and "" or frame.subText
+  frame.step:SetText(frame.stepHidden and progress.stopText or frame.stepText)
   frame.sub:SetText(sub)
   frame.info:ClearAllPoints()
   frame.info:SetPoint("TOPLEFT", sub ~= "" and frame.sub or frame.step, "BOTTOMLEFT", 0, -5)
-  frame.info:SetPoint("RIGHT", -PADDING, 0)
+  frame.info:SetPoint("RIGHT", INFO_RIGHT, 0)
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
@@ -331,15 +372,18 @@ function HUD.Update()
     frame.info:SetText(string.format("Use your Hearthstone     %s", remaining))
   elseif ns.Nav.Interaction() == "use" then
     frame.info:SetText(string.format("|cff7fd1aeYou're here:|r use %s     %s", (ns.Nav.TargetObject()), remaining))
+  elseif ns.Nav.Interaction() == "enter" then
+    frame.info:SetText("|cff7fd1aeYou're here:|r go in     " .. remaining)
   elseif ns.Nav.Interaction() == "talk" and not (step.stop and step.stop.action and step.stop.action.kind == "manual") then
     local name = ns.Nav.TargetNPC()
-    local training = step.stop and step.stop.action and step.stop.action.kind == "train"
+    local kind = step.stop and step.stop.action and step.stop.action.kind
     frame.info:SetText(string.format("|cff7fd1aeYou're here:|r talk to %s%s     %s", name or "them",
-      training and " and train it" or "", remaining))
+      kind == "train" and " and train it" or kind == "learn" and " and train your spells" or "", remaining))
   elseif ns.Nav.Waiting() then
-    -- A quest step only you can tell is done.
-    local manual = step.stop and step.stop.action and step.stop.action.kind == "manual"
-    frame.info:SetText((manual and "|cff7fd1aeYou're here:|r do it, then move on (>>)" or "|cff7fd1aeYou're here|r")
+    -- A quest step only you can tell is done; spells to train.
+    local kind = step.stop and step.stop.action and step.stop.action.kind
+    frame.info:SetText((kind == "manual" and "|cff7fd1aeYou're here:|r do it, then move on (>>)"
+      or kind == "learn" and "|cff7fd1aeYou're here:|r train your spells" or "|cff7fd1aeYou're here|r")
       .. "     " .. remaining)
   elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%s %d yd     %s", DISTANCE_ICON, math.floor(distance), remaining))
@@ -395,7 +439,7 @@ function HUD.Lines()
   return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText() }
 end
 
--- Pulses the book button a few times: the trip has changed, its overview is a click away.
+-- Pulses the book button a few times: the journey has changed, its overview is a click away.
 function HUD.FlashJourney()
   if frame then frame.flashLeft = FLASH_PERIOD * FLASH_PULSES end
 end
@@ -404,7 +448,7 @@ end
 function HUD.Flashing() return frame ~= nil and frame.flashLeft ~= nil end
 
 ns.Listen("SETTINGS_CHANGED", function(key)
-  if key == "showArrow" and frame then HUD.Update() end
+  if (key == "showArrow" or key == "detail") and frame then HUD.Update() end
 end)
 
 ns.Listen("JOURNEY_EXTENDED", function()

@@ -2,10 +2,12 @@ local _, ns = ...
 
 -- "Quests" page: search quests by name and see whether you can take them.
 -- Clicking a quest goes to its quest giver, to where you hand it in, or to the
--- start of its chain. Dungeon quests can be picked up in one trip that ends at
--- the entrance (also offered on the Dungeons page). With an empty search it
--- lists your quest log; "Add" puts a quest (log or search) into the current trip.
--- Searching and directions need quest data (Sources.lua); the log list does not.
+-- start of its chain. Dungeon quests can be picked up in one journey that ends
+-- at the entrance (also offered on the Dungeons page). With an empty search it
+-- lists your quest log; "Add detour" puts a quest (log or search) into the
+-- journey you're on. The matching is Search.lua's (the Find page shows the
+-- same rows); searching and directions need quest data (Sources.lua), the
+-- log list does not.
 
 -- The Quests side page's "Journal" category (UI/Panel.lua); it searches itself.
 local QuestsPage = { id = "journal", label = "Journal", searchable = true,
@@ -65,9 +67,9 @@ end
 
 ---------------------------------------------------------------- dungeon runs
 
--- A trip that picks up `quests` ({id, name}, ...) from their givers, then goes
--- to the dungeon entrance. Returns a planned journey, or nil when no giver can
--- be reached.
+-- A journey that picks up `quests` ({id, name}, ...) from their givers, then
+-- goes to the dungeon entrance. Returns a planned journey, or nil when no
+-- giver can be reached.
 function QuestsPage.DungeonJourney(dungeonName, entrance, quests, start, net)
   local stops = {}
   for _, quest in ipairs(quests) do
@@ -126,12 +128,13 @@ local function dungeonRows(matches, start, net)
         if journey then
           local details = {}
           for _, stop in ipairs(journey.stops) do details[#details + 1] = { text = stop.text } end
-          rows[#rows + 1] = {
+          rows[#rows + 1] = ns.Search.WithDetour({
+            id = "run" .. entry.keys[1],
             title = string.format("%s: pick up %d quest%s", entry.name, #quests, #quests == 1 and "" or "s"),
             subtitle = string.format("%sDungeon quest run|r  ·  %s  ·  ends at the entrance", GREEN,
               ns.FormatDuration(journey.seconds)),
             journey = journey,
-          }
+          })
           if #rows >= MAX_DUNGEON_ROWS then break end
         end
       end
@@ -140,23 +143,24 @@ local function dungeonRows(matches, start, net)
   return rows
 end
 
----------------------------------------------------------------- the current trip
+---------------------------------------------------------------- the current journey
 
--- "Add" puts a quest (what's left of it: pick up, objectives, hand in) into the
--- trip you're on, re-ordered from where you are; with no trip on it starts
--- one. "In trip" takes it out again.
-local function tripAction(questID, name)
+-- "Add detour" puts a quest (what's left of it: pick up, objectives, hand in)
+-- into the journey you're on, re-ordered from where you are; with no journey
+-- on it starts one. "In journey" takes it out again.
+local function journeyAction(questID, name)
   if ns.Nav.TripHasQuest(questID) then
-    return { label = "In trip", run = function() ns.Nav.RemoveQuest(questID) end }
+    return { label = "In journey", run = function() ns.Nav.RemoveQuest(questID) end }
   end
-  return { label = "Add", run = function()
+  return { label = "Add detour", run = function()
     local here = ns.Geo.PlayerNode()
     local stops = here and ns.Journey.QuestStops(questID, here) or {}
     if #stops == 0 then
       ns.print("no known places for " .. (name or "that quest") .. ".")
       return
     end
-    ns.Nav.AddToTrip(stops, name or ("quest " .. questID))
+    local add = ns.Nav.AddDetour or ns.Nav.AddToTrip
+    add(stops, name or ("quest " .. questID))
   end }
 end
 
@@ -256,9 +260,25 @@ local function questRow(m, start, net)
   local chainLine, leads = chainInfo(q.id)
   if chainLine then details[#details + 1] = chainLine end
   if leads then sub = sub .. "  ·  " .. leads end
-  local actions = (m.status == "available" or m.status == "inLog") and { tripAction(q.id, q.name) } or nil
+  local actions = (m.status == "available" or m.status == "inLog") and { journeyAction(q.id, q.name) } or nil
   return { id = "quest" .. q.id, title = questTitle(q), titleColor = ns.DifficultyColor(ns.Quests.QuestLevel(q.id)),
-    subtitle = sub, journey = journey, details = details, actions = actions, item = rewardItem(q.id, m.status) }
+    subtitle = sub, journey = journey, details = details, actions = actions, item = rewardItem(q.id, m.status),
+    kind = "quest", questID = q.id }
+end
+
+-- The match record for a quest row: its status and chain step.
+local function match(q, done, inLog)
+  local status, reason, stepID, stepState = ns.Quests.QuestStatus(q.id, done, inLog)
+  return { q = q, status = status, reason = reason, stepID = stepID, stepState = stepState,
+    level = ns.Quests.QuestLevel(q.id) or 0 }
+end
+
+-- A quest row for other pages (Find): the same row a search here shows.
+function QuestsPage.RowFor(questID, start, net, done, inLog)
+  local q = ns.Quests.Quest(questID)
+  if not q then return nil end
+  if not done then done, inLog = ns.Quests.PlayerQuestState() end
+  return questRow(match(q, done, inLog), start, net)
 end
 
 ---------------------------------------------------------------- quest log
@@ -292,8 +312,8 @@ function QuestsPage.LogQuests()
   return out
 end
 
--- One trip for several quests: each quest's own stops keep their order (their
--- `after` links) while the planner interleaves quests by travel time.
+-- One journey for several quests: each quest's own stops keep their order
+-- (their `after` links) while the planner interleaves quests by travel time.
 -- Returns the journey (or nil) and the IDs with no known places.
 function QuestsPage.TripFor(questIDs, title, start, net)
   local stops, missing = {}, {}
@@ -305,6 +325,7 @@ function QuestsPage.TripFor(questIDs, title, start, net)
   if #stops == 0 then return nil, missing end
   return ns.Journey.Plan(start, { title = title, stops = stops }, net), missing
 end
+QuestsPage.JourneyFor = QuestsPage.TripFor
 
 local function questName(id)
   local q = ns.Quests.Quest(id)
@@ -315,9 +336,9 @@ local function plural(n, word)
   return n .. " " .. word .. (n == 1 and "" or "s")
 end
 
--- "Plan a trip for N quests" and "Hand in N completed quests" rows.
-local function tripRow(title, ids, start, net, tripTitle)
-  local journey, missing = QuestsPage.TripFor(ids, tripTitle, start, net)
+-- "Hand in N completed quests" rows: one journey for several quests.
+local function journeyRow(title, ids, start, net, journeyTitle)
+  local journey, missing = QuestsPage.TripFor(ids, journeyTitle, start, net)
   local unplaced = {}
   for _, id in ipairs(missing) do unplaced[id] = true end
   local details = {}
@@ -328,7 +349,7 @@ local function tripRow(title, ids, start, net, tripTitle)
   end
   local sub
   if journey then
-    sub = string.format("%sOne trip|r  ·  %s  ·  %s", GREEN, ns.FormatDuration(journey.seconds),
+    sub = string.format("%sOne journey|r  ·  %s  ·  %s", GREEN, ns.FormatDuration(journey.seconds),
       plural(#journey.stops, "stop"))
     if #missing > 0 then sub = sub .. string.format("  ·  %s%d without known places|r", RED, #missing) end
   else
@@ -337,7 +358,7 @@ local function tripRow(title, ids, start, net, tripTitle)
   return { title = title, subtitle = sub, journey = journey, details = details }
 end
 
--- A quest from your log: progress, and a trip for what is left of it (no
+-- A quest from your log: progress, and a journey for what is left of it (no
 -- pickup: it is already in your log).
 local function logRow(entry, start, net)
   local parts = {}
@@ -370,11 +391,12 @@ local function logRow(entry, start, net)
   return { id = "log" .. entry.id, title = string.format("[%d] %s", entry.level, entry.title),
     titleColor = ns.DifficultyColor(entry.level),
     subtitle = table.concat(parts, "  ·  ") .. tag, journey = journey, details = details,
-    actions = ns.Quests.Available() and { tripAction(entry.id, entry.title) } or nil,
-    item = ns.Quests.Available() and rewardItem(entry.id) or nil }
+    actions = ns.Quests.Available() and { journeyAction(entry.id, entry.title) } or nil,
+    item = ns.Quests.Available() and rewardItem(entry.id) or nil,
+    kind = "quest", questID = entry.id }
 end
 
--- Empty search: trip rows for picked and completed quests, then the log.
+-- Empty search: a hand-in row for completed quests, then the log.
 local function logResults()
   local log = QuestsPage.LogQuests()
   local available = ns.Quests.Available()
@@ -387,15 +409,9 @@ local function logResults()
       if entry.complete then complete[#complete + 1] = entry.id end
     end
     if #complete > 0 then
-      local row = tripRow("Hand in " .. plural(#complete, "completed quest"), complete, start, net, "Hand in quests")
+      local row = journeyRow("Hand in " .. plural(#complete, "completed quest"), complete, start, net, "Hand in quests")
       row.id = "handin"
-      if row.journey and ns.Nav.active then
-        local journey = row.journey
-        row.actions = { { label = "Add", run = function()
-          ns.Nav.AddToTrip(ns.Journey.OpenStops(journey), "the hand-ins")
-        end } }
-      end
-      results[#results + 1] = row
+      results[#results + 1] = ns.Search.WithDetour(row, "the hand-ins")
     end
   end
   for _, entry in ipairs(log) do results[#results + 1] = logRow(entry, start, net) end
@@ -406,28 +422,31 @@ local function logResults()
     summary = string.format("Your quest log: %s. No quest data. Install " .. ns.Data.ADDON .. " for directions and to search quests.",
       plural(#log, "quest"))
   else
-    summary = string.format("Your quest log: %s. Click one for a trip, or Add it to the trip you're on. "
-      .. "Type to search all quests.", plural(#log, "quest"))
+    summary = string.format("Your quest log: %s. Click one for a journey, or add it as a detour to the journey "
+      .. "you're on. Type to search all quests.", plural(#log, "quest"))
   end
   return results, nil, net
 end
 
 ---------------------------------------------------------------- search
 
+-- An exact name first, then by status (available, in your log, ...), then
+-- the better match (Search.lua's score), lower level, lower ID.
 local function rank(a, b)
-  if a.exact ~= b.exact then return a.exact end
+  local ea, eb = a.score >= 400, b.score >= 400
+  if ea ~= eb then return ea end
   local ra, rb = STATUS[a.status][3], STATUS[b.status][3]
   if ra ~= rb then return ra < rb end
-  if a.prefix ~= b.prefix then return a.prefix end
+  if a.score ~= b.score then return a.score > b.score end
   if a.level ~= b.level then return a.level < b.level end
   return a.q.id < b.q.id
 end
 
 -- Text typed, or the quest of a shift-clicked link (|Hquest:id:...|h[Name]|h).
 local function parse(text)
-  text = (text or ""):match("^%s*(.-)%s*$")
-  local linked = tonumber(text:match("|Hquest:(%d+)") or text:match("^#(%d+)$"))
-  return text, linked, text:match("|h%[(.-)%]|h")
+  local kind, id, name = ns.Search.Parse(text)
+  if kind and kind ~= "quest" then id = nil end
+  return ((text or ""):match("^%s*(.-)%s*$")), id, name
 end
 
 function QuestsPage.SummaryText(query)
@@ -466,17 +485,16 @@ function QuestsPage.Results(query)
       summary = "That quest isn't in the quest data."
       return { { title = linkedName or ("Quest " .. linkedID), subtitle = label("unknown") } }, nil, net
     end
-    found = { q }
+    found = { { quest = q, score = 400 } }
   else
-    found = ns.Quests.FindQuests(text)
+    found = ns.Search.Find(text, "quest")
   end
 
-  local needle, matches = text:lower(), {}
-  for _, q in ipairs(found) do
-    local status, reason, stepID, stepState = ns.Quests.QuestStatus(q.id, done, inLog)
-    local name = (q.name or ""):lower()
-    matches[#matches + 1] = { q = q, status = status, reason = reason, stepID = stepID, stepState = stepState,
-      exact = name == needle, prefix = name:sub(1, #needle) == needle, level = ns.Quests.QuestLevel(q.id) or 0 }
+  local matches = {}
+  for _, f in ipairs(found) do
+    local m = match(f.quest, done, inLog)
+    m.score = f.score
+    matches[#matches + 1] = m
   end
   table.sort(matches, rank)
 
@@ -495,7 +513,29 @@ function QuestsPage.Results(query)
   return results, nil, net
 end
 
+---------------------------------------------------------------- tooltip
 
+local TOOLTIP_COLOR = { r = 0.5, g = 0.82, b = 0.68 }
+
+-- The line for a quest's tooltip (the quest log, a chat link), or nil: only
+-- for quests the data knows, never in combat.
+function QuestsPage.TooltipLine(questID)
+  if InCombatLockdown and InCombatLockdown() then return nil end
+  if type(issecretvalue) == "function" and issecretvalue(questID) then return nil end
+  if type(questID) ~= "number" or not ns.Quests.Quest(questID) then return nil end
+  return "Wayward: /ww find for directions"
+end
+
+if type(TooltipDataProcessor) == "table" and type(TooltipDataProcessor.AddTooltipPostCall) == "function"
+  and type(Enum) == "table" and Enum.TooltipDataType and Enum.TooltipDataType.Quest then
+  TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Quest, function(tooltip, data)
+    if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+    local ok, line = pcall(QuestsPage.TooltipLine, data and data.id)
+    if ok and line then pcall(tooltip.AddLine, tooltip, line, TOOLTIP_COLOR.r, TOOLTIP_COLOR.g, TOOLTIP_COLOR.b) end
+  end)
+end
+
+-- /ww quest opens Find on its Quests view (Find.lua), which shows these rows.
 ns.RegisterCommand("quest", "/ww quest <name> - find a quest: can you take it, and where to go", function(rest)
-  ns.Panel.Search("quests", rest)
+  if ns.Find then ns.Find.Open("quests", rest) else ns.Panel.Search("quests", rest) end
 end)

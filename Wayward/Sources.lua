@@ -21,6 +21,7 @@ local _, ns = ...
 --   Npc(id)            NPC record
 --   NpcIDs(flag)       { npcID, ... } with that flag: "trainer", "vendor", "repair", "flightMaster"
 --   Object(id)         object record
+--   ObjectIDs(name)    { objectID, ... }; with `name` (English), only objects of that name
 --   Item(id)           item record
 --   ItemIDs()          { itemID, ... }
 --   QuestRewards()     { [questID] = { itemID, ... } }: the items each quest rewards
@@ -176,6 +177,7 @@ end
 function Data.Quest(id) return first("Quest", id) end
 function Data.QuestIDs() return union("QuestIDs") end
 function Data.Object(id) return first("Object", id) end
+function Data.ObjectIDs(name) return union("ObjectIDs", name) end
 function Data.Item(id) return first("Item", id) end
 function Data.ItemIDs() return union("ItemIDs") end
 function Data.QuestRewards() return first("QuestRewards") end
