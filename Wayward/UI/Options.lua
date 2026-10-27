@@ -32,6 +32,12 @@ local SECTIONS = {
       "Show Wayward's directions with TomTom's arrow and map pins (needs TomTom). Works with or without the compass.",
       function() return ns.db.settings.tomtom == true end,
       function(v) ns.SetSetting("tomtom", v) end },
+    { "WAYWARD_DETAIL", "Every step in the directions box",
+      "On: the box shows each step to the next stop (walk, fly, take the boat) and a step count. "
+        .. "Off: it shows only the stop you're heading for and the compass; hover the box for the step. "
+        .. "Per character; /ww detail steps|stops changes it too.",
+      function() return ns.Nav.Detail() ~= "stops" end,
+      function(v) ns.Nav.SetDetail(v and "steps" or "stops") end },
   },
   { "NPCs",
     { "WAYWARD_MARKER", "Star over the NPC you're heading for",
@@ -43,13 +49,13 @@ local SECTIONS = {
       function() return ns.Marker.FriendlyNameplates() end,
       function(v) ns.Marker.SetFriendlyNameplates(v) end },
   },
-  { "Trips and quests",
+  { "Journeys and quests",
     { "WAYWARD_ASK_PICKUP", "Ask when you pick up a quest",
-      "When you pick up a quest that isn't in your trip: add it to the trip (with the time it adds), start a new trip for it, or not now.",
+      "When you pick up a quest that isn't in your journey: add it to the journey (with the time it adds), start a new journey for it (the one on now is set aside), or not now.",
       function() return ns.db.settings.askOnPickup ~= false end,
       function(v) ns.SetSetting("askOnPickup", v) end },
-    { "WAYWARD_OVERVIEW", "Open the journey overview when a trip starts",
-      "The list of every stop opens by itself when a trip starts. Off: open it from the directions box's book button, or shift-right-click the minimap button on a trip.",
+    { "WAYWARD_OVERVIEW", "Open the journey overview when a journey starts",
+      "The list of every stop opens by itself when a journey starts. Off: open it from the directions box's book button (View details), or shift-right-click the minimap button on a journey.",
       function() return ns.db.settings.overviewOnStart ~= false end,
       function(v) ns.SetSetting("overviewOnStart", v) end },
     { "WAYWARD_TOASTS", "New journey toasts",
@@ -149,7 +155,8 @@ function Options.Open()
   if category and Settings.OpenToCategory then
     Settings.OpenToCategory(category:GetID())
   else
-    ns.print("options: /ww compass, /ww tomtom, /ww toasts, /ww marker and /ww minimap turn those on or off.")
+    ns.print("options: /ww compass, /ww tomtom, /ww toasts, /ww marker and /ww minimap turn those on or off; "
+      .. "/ww detail steps|stops sets what the directions box shows.")
   end
 end
 
