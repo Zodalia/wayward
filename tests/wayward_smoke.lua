@@ -1604,6 +1604,22 @@ do
     for _, r in ipairs(list) do out[#out + 1] = r.title end
     return table.concat(out, " | ")
   end
+  -- Needs are observations now (ForYou.Observations), not cards.
+  local function observations()
+    ns.ForYou.Invalidate()
+    ns.ForYou.Results()
+    return ns.ForYou.Observations()
+  end
+  local function obsFind(list, kind, text)
+    for i, o in ipairs(list) do
+      if o.kind == kind and (not text or o.text:find(text, 1, true)) then return o, i end
+    end
+  end
+  local function obsTexts(list)
+    local out = {}
+    for _, o in ipairs(list) do out[#out + 1] = o.kind .. ": " .. o.text end
+    return table.concat(out, " | ")
+  end
 
   local lowest
   for _, page in ipairs(ns.pages) do
@@ -1625,8 +1641,12 @@ do
   local list = rows()
   local ms = (os.clock() - started) * 1000
   check(ms < 100, string.format("a refresh takes %.1f ms here", ms))
-  check(list[1] and list[1].title == "Train 1 new spell in Stormwind" and list[1].route,
-    "trainable, affordable spell comes first with directions (" .. titles(list) .. ")")
+  local obs = ns.ForYou.Observations()
+  local train = obsFind(obs, "train")
+  check(train and train.text:find("1 new spell to train for ", 1, true) and train.text:find("in Stormwind", 1, true)
+    and train.action and train.action.kind == "detour" and train.action.stop and train.action.stop.node,
+    "a trainable, affordable spell is an observation with a detour to the trainer (" .. obsTexts(obs) .. ")")
+  check(not find(list, "Train ") and not find(list, "Visit your trainer"), "and not a card (" .. titles(list) .. ")")
   local function count(category)
     local n = 0
     for _, r in ipairs(list) do if r.category == category then n = n + 1 end end
@@ -1635,13 +1655,21 @@ do
   local redridge = find(list, "Quest in Redridge Mountains")
   local goulash = find(list, "Do ")
   local deadmines = find(list, "Run The Deadmines")
-  check(list[1].category == "Due now" and redridge and redridge.category == "Questing zone"
-    and goulash and goulash.category == "Best quest" and deadmines and deadmines.category == "Dungeon",
-    "one card per kind: due now, a questing zone, the dungeon, the best quest (" .. titles(list) .. ")")
-  local order = {}
-  for _, r in ipairs(list) do order[#order + 1] = r.category end
-  check(table.concat(order, ","):find("^Due now,Questing zone,Dungeon"), "what's due, then where to quest, then the dungeon: "
-    .. table.concat(order, ","))
+  check(redridge and redridge.category == "Questing zone"
+    and goulash and goulash.category == "Best quest" and deadmines and deadmines.category == "Dungeon"
+    and count("Due now") == 0 and count("Worth a visit") == 0,
+    "one card per kind: a questing zone, the dungeon, the best quest; nothing due as a card (" .. titles(list) .. ")")
+  local roles = {}
+  for i = 1, math.min(3, #list) do roles[#roles + 1] = list[i].role or "?" end
+  check(table.concat(roles, ",") == "continue,explore,alternative",
+    "the first page is a continuation, an exploration and an alternative: " .. table.concat(roles, ","))
+  local scored = #list > 0
+  for _, r in ipairs(list) do
+    local p = r.relevance_parts
+    if not (r.why and r.relevance and r.relevance >= 0 and r.relevance <= 1 and p and p.suitability and p.proximity
+      and p.progression and p.novelty and p.intent and r.details[1].text == r.why .. ".") then scored = false end
+  end
+  check(scored, "every card has a relevance 0..1, its five parts and a why that heads its details")
   check(not find(list, "Quest in Stormwind City"), "a zone with fewer than 4 quests for you gets no card")
   check(count("Dungeon") == 1, "one dungeon card")
   local also
@@ -1654,11 +1682,11 @@ do
     "a dungeon without quests for you is still suggested (its mobs give full XP)")
   -- The zone: what you can take now, what chains unlock, where to start.
   check(redridge and redridge.place == "Levels 17-19  ·  start at Lakeshire" and redridge.route
-    and redridge.details[1].text:find("4 quests you can take now, 1 more as their chains unlock", 1, true),
-    "a questing zone: levels, quests now and unlocked by chains, the hub to start at: " .. tostring(redridge and redridge.details[1].text))
-  check(redridge and redridge.details[2].text == "Start at Lakeshire: the trip picks up its 4 quests."
+    and redridge.details[2].text:find("4 quests you can take now, 1 more as their chains unlock", 1, true),
+    "a questing zone: levels, quests now and unlocked by chains, the hub to start at: " .. tostring(redridge and redridge.details[2].text))
+  check(redridge and redridge.details[3].text == "Start at Lakeshire: the journey picks up its 4 quests."
     and redridge.goal.label:find("^Lakeshire"),
-    "the first hub (one hub per place): " .. tostring(redridge and redridge.details[2].text))
+    "the first hub (one hub per place): " .. tostring(redridge and redridge.details[3].text))
   local pickups = {}
   for _, st in ipairs(redridge and redridge.journey and redridge.journey.stops or {}) do
     pickups[#pickups + 1] = st.action and st.action.kind or "?"
@@ -1677,29 +1705,30 @@ do
   end
   check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Trip="),
     "a zone's card numbers: quests now + later, XP, travel: " .. statText(redridge))
-  check(list[1].stats and list[1].stats[1][1] == "Spells" and list[1].stats[2][1] == "Cost" and list[1].place:find("spell"),
-    "the training card: spells, cost and travel: " .. tostring(list[1].place))
-  check(list[1].details[2] and not list[1].details[2].more and list[1].details[2].text:find("  -  ", 1, true),
-    "the spells you can learn come first on it: " .. tostring(list[1].details[2] and list[1].details[2].text))
-  check(ns.ForYou.SummaryText():find("1 thing due") and ns.ForYou.SummaryText():find("best of each kind")
-    and not ns.ForYou.SummaryText():find("quests per hour"), "summary: " .. ns.ForYou.SummaryText())
+  check(train and train.highlights[1] == "1 new spell" and train.highlights[2] == ns.FormatMoney(1000),
+    "the training observation highlights the spells and the cost: " .. table.concat(train and train.highlights or {}, ","))
+  check(train and train.details[1] and not train.details[1].more and train.details[1].text:find("  -  ", 1, true),
+    "the spells you can learn come first in its details: " .. tostring(train and train.details[1] and train.details[1].text))
+  check(ns.ForYou.SummaryText():find("a few good options") and ns.ForYou.SummaryText():find("good to know")
+    and not ns.ForYou.SummaryText():find("quests per hour") and not ns.ForYou.SummaryText():find("XP per minute"),
+    "summary: " .. ns.ForYou.SummaryText())
 
   -- Spells left at the trainer: no card for them, the Class page still lists them.
   local savedSpells = ns.charDB.classSpells
   ns.charDB.classSpells = { updated = 0, level = 20, services = {
     { name = "Life Tap", type = "available", levelReq = 20, cost = 1000 } } }
   ns.Trainers.RecordSkipped(ns.charDB.classSpells.services)
-  check(not find(rows(), "Train "), "closing the trainer without Life Tap: no training card for it")
+  check(not obsFind(observations(), "train"), "closing the trainer without Life Tap: no training observation for it")
   check(ns.Trainers.SpellSummary().trainable == 1, "the Class page still counts it")
   table.insert(ns.charDB.classSpells.services, { name = "Drain Soul", type = "available", levelReq = 20, cost = 500 })
-  local train = find(rows(), "Train ")
+  train = obsFind(observations(), "train")
   local notCounted = train and train.details[#train.details].text
-  check(train and train.title:find("^Train 1 new spell in ") and train.details[2].text:find("^Drain Soul")
+  check(train and train.text:find("^1 new spell to train") and train.details[1].text:find("^Drain Soul")
     and notCounted == "Not counted: 1 spell you left at the trainer.",
-    "a spell you haven't left there gets a card of its own: " .. tostring(train and train.title) .. " / "
+    "a spell you haven't left there gets an observation of its own: " .. tostring(train and train.text) .. " / "
       .. tostring(notCounted))
   ns.charDB.skippedSpells = nil
-  check(find(rows(), "Train 2 new spells"), "without it, both count again")
+  check(obsFind(observations(), "train", "2 new spells"), "without it, both count again")
   ns.charDB.classSpells = savedSpells
 
   -- The best quest is a whole-quest trip.
@@ -1734,44 +1763,58 @@ do
   refreshData()
   list = rows()
 
-  -- Gear at 20%: repair before training.
+  -- Gear at 20%: the repair is more urgent than training.
   durability = { 10, 50 }
-  list = rows()
-  check(list[1] and list[1].title:find("^Repair") and list[2] and list[2].title:find("^Train"),
-    "low durability: repair first, then training (" .. titles(list) .. ")")
+  obs = observations()
+  check(obs[1] and obs[1].kind == "repair" and obs[1].text:find("^Gear at 20%%: repair at ") and obs[2] and obs[2].kind == "train"
+    and obs[1].highlights[1] == "20%" and obs[1].action.kind == "detour",
+    "low durability: the repair observation first, then training (" .. obsTexts(obs) .. ")")
+  check(not find(ns.ForYou.Results(), "Repair"), "and no repair card")
   durability = { 50, 50 }
 
-  -- Gear at 70%: worth a repair when a repairer is close; never before what's due.
+  -- Gear at 70%: worth knowing when a repairer is close; less urgent than what's due.
   durability = { 35, 50 }
-  list = rows()
-  local soon = find(list, "Repair at")
-  check(soon and soon.category == "Worth a visit" and list[1].category == "Due now",
-    "gear at 70% with a repairer close by: worth a visit, after what's due (" .. titles(list) .. ")")
-  check(ns.ForYou.SummaryText():find("1 thing due"), "worth-a-visit cards aren't counted as due")
+  obs = observations()
+  local soon, si = obsFind(obs, "repair")
+  local _, ti = obsFind(obs, "train")
+  check(soon and soon.text:find("^Gear at 70%%: ") and soon.urgency < 0.5 and ti and si > ti
+    and soon.action and soon.action.kind == "detour",
+    "gear at 70% with a repairer close by: an observation after what's due (" .. obsTexts(obs) .. ")")
+  check(ns.ForYou.SummaryText():find("things|r good to know", 1, true), "the summary counts the observations: " .. ns.ForYou.SummaryText())
   durability = { 50, 50 }
 
   -- No spell list yet, at an even level: a visit to the trainer is worth it.
   local savedSpells = ns.charDB.classSpells
   ns.charDB.classSpells = nil
-  list = rows()
-  local visit = find(list, "Visit your trainer in")
-  check(visit and visit.category == "Worth a visit" and visit.place:find("level 20"),
-    "never visited a trainer, level 20: new spells likely (" .. titles(list) .. ")")
+  obs = observations()
+  local visit = obsFind(obs, "train")
+  check(visit and visit.text:find("^New spells are likely at level 20") and visit.action and visit.action.kind == "go"
+    and visit.action.route,
+    "never visited a trainer, level 20: new spells likely, with directions (" .. obsTexts(obs) .. ")")
   UnitLevel = function() return 21 end
-  check(not find(rows(), "Visit your trainer in"), "odd levels don't")
+  check(not obsFind(observations(), "train"), "odd levels don't")
   UnitLevel = function() return 20 end
   -- Last visit two levels ago, nothing left to learn then: likely again.
   ns.charDB.classSpells = { updated = 0, level = 18, services = { { name = "Old", type = "used", levelReq = 16 } } }
-  check(find(rows(), "Visit your trainer in"), "two levels since the last visit: worth another")
+  check(obsFind(observations(), "train", "likely"), "two levels since the last visit: worth another")
   ns.charDB.classSpells = { updated = 0, level = 20, services = { { name = "Old", type = "used", levelReq = 16 } } }
-  check(not find(rows(), "Visit your trainer in"), "just visited: no")
+  check(not obsFind(observations(), "train"), "just visited: no")
   ns.charDB.classSpells = savedSpells
 
-  -- A big XP quest in Stormwind becomes the best quest; needs stay their own cards.
+  -- Training you can't afford yet: an observation that shows the Class page.
+  local savedMoney = GetMoney
+  GetMoney = function() return 0 end
+  local short = obsFind(observations(), "train")
+  check(short and short.text:find("once you have 10s", 1, true) and short.action and short.action.kind == "show"
+    and short.action.page == "trainers", "spells you can't afford yet: an observation that shows the Class page: "
+    .. tostring(short and short.text))
+  GetMoney = savedMoney
+
+  -- A big XP quest in Stormwind becomes the best quest; training stays an observation.
   XP[6] = { 20, 12000 }
   list = rows()
-  check(find(list, "Do Stormwind errand") and not list[1].journey,
-    "the quest worth the most XP is the best quest; training stays a card of its own (" .. titles(list) .. ")")
+  check(find(list, "Do Stormwind errand") and not find(list, "Train"),
+    "the quest worth the most XP is the best quest; training isn't a card (" .. titles(list) .. ")")
   XP[6] = { 20, 1400 }
 
   -- Without XP data: quests per hour, weighted by level fit.
@@ -1786,8 +1829,8 @@ do
   dropData()
   list = rows()
   check(ns.ForYou.SummaryText():find("Install QuestieDB"), "without QuestieDB the summary says so")
-  check(list[1] and list[1].title:find("^Train") and find(list, "Run The Deadmines") and not find(list, "Pick up"),
-    "without QuestieDB: training, then dungeons (" .. titles(list) .. ")")
+  check(obsFind(ns.ForYou.Observations(), "train") and find(list, "Run The Deadmines") and not find(list, "Pick up"),
+    "without QuestieDB: training to know about, dungeons as cards (" .. titles(list) .. ")")
   refreshData()
   LibQuestieDB.Support.Get = function(name)
     if name == "QuestXP" then return { db = XP } end
@@ -1797,8 +1840,12 @@ do
 
   -- An undiscovered flight path where you stand.
   ns.charDB.knownTaxi[5] = nil
-  list = rows()
-  check(find(list, "Learn the Lakeshire flight path"), "undiscovered flight path close by (" .. titles(list) .. ")")
+  obs = observations()
+  local flight = obsFind(obs, "flight")
+  check(flight and flight.text:find("^The Lakeshire flight path is ") and flight.highlights[1] == "Lakeshire"
+    and flight.action.kind == "detour" and flight.action.stop.text:find("flight master", 1, true),
+    "undiscovered flight path close by: an observation with a detour (" .. obsTexts(obs) .. ")")
+  check(not find(ns.ForYou.Results(), "Learn the"), "and no card")
   ns.charDB.knownTaxi[5] = true
 
   -- Low on food (2 Melon Juice in the bags).
@@ -1806,18 +1853,20 @@ do
     GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
     GetContainerItemInfo = function(bag, slot) if slot == 1 then return { itemID = 1205, stackCount = 2 } end end,
   }
-  list = rows()
-  local food, fi = find(list, "Buy food & drink at")
-  check(food and fi <= 2 and food.subtitle:find("2 food & drink left"), "low on food: buy some (" .. titles(list) .. ")")
+  obs = observations()
+  local food = obsFind(obs, "food")
+  check(food and food.text:find("^2 food & drink left: buy food & drink at ") and food.highlights[1] == "2 food",
+    "low on food: an observation to buy some (" .. obsTexts(obs) .. ")")
   C_Container = nil
 
   -- A hunter with a bow and no ammo.
   UnitClass = function() return "Hunter", "HUNTER", 3 end
   GetInventoryItemID = function(_, slot) return slot == 18 and 100 or nil end
-  list = rows()
-  local ammo = list[1]
-  check(ammo and ammo.title:find("^Buy ammo at Lakeshire Cook") and ammo.subtitle:find("no ammo left"),
-    "out of ammo: the nearest arrow seller first (" .. titles(list) .. ")")
+  obs = observations()
+  local ammo = obs[1]
+  check(ammo and ammo.kind == "ammo" and ammo.text:find("^No ammo left: buy ammo at Lakeshire Cook")
+    and ammo.urgency > (obsFind(obs, "train") or { urgency = 0 }).urgency,
+    "out of ammo: the nearest arrow seller, the most urgent thing (" .. obsTexts(obs) .. ")")
   UnitClass = function() return "Warlock", "WARLOCK", 9 end
   GetInventoryItemID = function() return nil end
 
@@ -1855,28 +1904,30 @@ do
     end
     return zones
   end
+  -- (The cards are in role order now, so the zones offered are compared as a set.)
   local function zoneTitles()
     local out = {}
     for _, r in ipairs(rows()) do
       if r.category == "Questing zone" then out[#out + 1] = r.title:gsub("^Quest in ", "") end
     end
+    table.sort(out)
     return table.concat(out, ",")
   end
   UnitLevel = function() return 5 end
   player.mapID, player.x, player.y = 1429, 0.5, 0.5
   check(zoneTitles() == "Elwynn Forest,Redridge Mountains",
-    "level 5 in Elwynn: Elwynn first, no other starting zone: " .. zoneTitles())
+    "level 5 in Elwynn: Elwynn, no other starting zone: " .. zoneTitles())
   player.mapID = 1453
   check(zoneTitles() == "Elwynn Forest,Redridge Mountains",
-    "level 5 in Stormwind: your race's starting zone first: " .. zoneTitles())
+    "level 5 in Stormwind: your race's starting zone: " .. zoneTitles())
   counts[1429] = 2
   player.mapID = 1429
   check(zoneTitles() == "Dun Morogh,Redridge Mountains",
     "with too few quests left at home, another starting zone is fine: " .. zoneTitles())
   counts[1429] = 4
   UnitLevel = function() return 10 end
-  check(zoneTitles() == "Dun Morogh,Redridge Mountains,Elwynn Forest",
-    "from level 10, zones by XP again: " .. zoneTitles())
+  check(zoneTitles() == "Dun Morogh,Elwynn Forest,Redridge Mountains",
+    "from level 10, every zone with quests for you: " .. zoneTitles())
   ns.Quests.ZoneQuests, UnitLevel = realZoneQuests, realLevel
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   LibQuestieDB.Support.Get = zoneSupport
@@ -2029,14 +2080,21 @@ do
   local list = ns.ForYou.Results()
   local card
   for _, r in ipairs(list) do if r.title:find("^Train Journeyman Tailoring") then card = r end end
-  check(card and card.category == "Worth a visit" and card.stats[1][2] == "73/75",
-    "a For you card to train Journeyman Tailoring (worth a visit below your cap)")
+  check(card and card.category == "Profession" and card.stats[1][2] == "73/75" and card.role and card.why,
+    "a For you card to train Journeyman Tailoring (a suggestion below your cap)")
+  local capObs
+  for _, o in ipairs(ns.ForYou.Observations()) do if o.kind == "profession" then capObs = o end end
+  check(capObs == nil, "below your cap it isn't an observation")
   skills[2][3] = 75
   ns.ForYou.Invalidate()
   list = ns.ForYou.Results()
   card = nil
   for _, r in ipairs(list) do if r.title:find("^Train Journeyman Tailoring") then card = r end end
-  check(card and card.category == "Due now", "at your cap it's due")
+  for _, o in ipairs(ns.ForYou.Observations()) do if o.kind == "profession" then capObs = o end end
+  check(card and card.category == "Profession" and card.relevance_parts.progression == 1 and capObs
+    and capObs.text:find("^Tailoring is at its cap %(75/75%)") and capObs.action.kind == "detour"
+    and capObs.action.stop.action.kind == "train",
+    "at your cap it's an observation too, with a detour to train the rank: " .. tostring(capObs and capObs.text))
   -- Its trip: to the trainer, then buy the rank (done when the cap goes up).
   local stop = card and card.journey and card.journey.stops[1]
   check(stop and stop.action.kind == "train" and stop.text == "Train Journeyman Tailoring at Georgio Bolero",
@@ -3620,8 +3678,15 @@ do
     for _, r in ipairs(list) do out[#out + 1] = r.title end
     return table.concat(out, " | ")
   end
+  -- The estimate line of a card's tooltip ("~2,300 XP in ~5 min (trip ...)").
+  local function estimate(row)
+    for _, d in ipairs(row and row.details or {}) do
+      if d.text:find("^~") or d.text:find("^Least travel") then return d.text end
+    end
+    return ""
+  end
   local function xpOf(row)
-    local n = row and row.details[1].text:match("~([%d,]+) XP")
+    local n = estimate(row):match("~([%d,]+) XP")
     return n and tonumber((n:gsub(",", ""))) or 0
   end
   local function actions(journey)
@@ -3671,20 +3736,27 @@ do
   local ms = (os.clock() - started) * 1000
   check(ms < 100, string.format("a refresh with log quests takes %.1f ms here", ms))
 
-  -- Hand-ins: full XP for only the trip, so they come first.
+  -- Hand-ins continue what's under way: the continuation on the first page.
   local handin, hi = find(list, "Hand in 2 quests to Watcher Dodds")
-  local _, fi2 = find(list, "Finish ")
-  check(handin and fi2 and hi < fi2, "quests ready to hand in rank before finishing (" .. titles(list) .. ")")
-  local best = true
-  for _, r in ipairs(list) do
-    if r ~= handin and r.rate and handin and r.rate >= handin.rate then best = false end
-  end
-  check(best and handin.subtitle:find("2 quests ready", 1, true) and xpOf(handin) == 2300,
-    "hand-ins: 1,200 + 1,100 XP, the best XP per minute: " .. tostring(handin and handin.subtitle))
+  local finishRow = find(list, "Finish ")
+  check(handin and hi == 1 and handin.role == "continue" and handin.relevance_parts.progression == 1 and finishRow,
+    "quests ready to hand in are the continuation (" .. titles(list) .. ")")
+  check(handin and handin.why:find("^Quests in your log are ready to hand in") and not handin.why:find("XP"),
+    "and the card says so, not XP per minute: " .. tostring(handin and handin.why))
+  check(handin and handin.subtitle:find("2 quests ready", 1, true) and xpOf(handin) == 2300,
+    "hand-ins: 1,200 + 1,100 XP in the tooltip: " .. estimate(handin))
   check(handin and actions(handin.journey) == "turnin50,turnin51",
     "the hand-in trip waits for each quest to be handed in (" .. actions(handin and handin.journey) .. ")")
-  check(handin and handin.details[1].text:find("2 x 30 s per hand-in", 1, true),
-    "tooltip times hand-ins: " .. tostring(handin and handin.details[1].text))
+  check(handin and estimate(handin):find("2 x 30 s per hand-in", 1, true),
+    "tooltip times hand-ins: " .. estimate(handin))
+  local readyObs
+  for _, o in ipairs(ns.ForYou.Observations()) do
+    if o.kind == "handin" and o.text:find("^2 quests ready to hand in to Watcher Dodds") then readyObs = o end
+  end
+  check(readyObs and readyObs.action.kind == "detour" and #readyObs.action.stops == 2
+    and readyObs.action.stops[1].action.kind == "turnin" and readyObs.action.stop == readyObs.action.stops[1],
+    "quests ready to hand in are an observation too, with the hand-in stops as a detour: "
+      .. tostring(readyObs and readyObs.text))
 
   -- One hand-in card (the best group); the hub card just picks up.
   local handinCards = 0
@@ -3702,15 +3774,15 @@ do
     "finish trip: do each quest's objectives, then hand it in (" .. trip .. ")")
   local resolved = finish and finish.journey.stops[1].resolve
   check(resolved and resolved.kind == "objectives", "finish trip stops come from Journey.QuestStops")
-  check(finish and xpOf(finish) == 2700 and finish.details[1].text:find("left on 2 in your log", 1, true)
+  check(finish and xpOf(finish) == 2700 and estimate(finish):find("left on 2 in your log", 1, true)
     and finish.subtitle:find("2 quests in your log", 1, true),
-    "finish trip: full XP, time left only: " .. tostring(finish and finish.details[1].text))
+    "finish trip: full XP, time left only: " .. estimate(finish))
   local fins
   for _, d in ipairs(finish and finish.details or {}) do
     if d.text:find("Murloc Fins") then fins = d.text end
   end
   check(fins and fins:find("~50%% done"), "objective progress shows: " .. tostring(fins))
-  check(finish and finish.details[1].text:find("~8 min left", 1, true),
+  check(finish and estimate(finish):find("~8 min left", 1, true),
     "half-done objectives: 2.5 + 5 min left, not two full quests")
 
   -- Dungeon quests in your log count toward the dungeon, not a finish trip.
@@ -3733,13 +3805,16 @@ do
   deadmines = find(list, "Run The Deadmines")
   check(deadmines and not deadmines.subtitle:find("in your log") and find(list, "Hand in"),
     "a done dungeon quest is a hand-in, not dungeon XP (" .. titles(list) .. ")")
-  check(ns.ForYou.SummaryText():find("Quest log counted at full XP: 4 ready to hand in, 2 to finish", 1, true),
+  check(ns.ForYou.SummaryText():find("Quest log: 4 ready to hand in, 2 to finish", 1, true),
     "summary says how the log counts: " .. ns.ForYou.SummaryText())
 
-  -- A need on the way to hand-ins goes wherever it is quickest.
+  -- Training, once affordable, is an observation; the cards stay the journeys.
   GetMoney = savedMoney
   list = rows()
-  check(list[1] and list[1].title:find("Train") and #list <= 7, "training back first once affordable (" .. titles(list) .. ")")
+  local trainObs
+  for _, o in ipairs(ns.ForYou.Observations()) do if o.kind == "train" then trainObs = o end end
+  check(trainObs and trainObs.action.kind == "detour" and not find(list, "Train") and #list <= 9,
+    "training once affordable: an observation with a detour, not a card (" .. titles(list) .. ")")
 
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
     savedLog[1], savedLog[2], savedLog[3], savedLog[4]
@@ -3869,7 +3944,7 @@ do
   local list = rows()
   check(find(list, "Run The Deadmines") and find(list, "Hand in 2 quests to Watcher Dodds") and not list[1].badge
     and not ns.ForYou.SummaryText():find("Fits in"),
-    "no budget: the dungeon, hand-ins by XP per minute, no times on the cards (" .. describe(list) .. ")")
+    "no budget: the dungeon and the hand-ins, no times on the cards (" .. describe(list) .. ")")
 
   SlashCmdList.WAYWARD("time 20")
   check(ns.charDB.budgetMinutes == 20, "/ww time 20 sets a 20 minute budget for this character")
@@ -3878,8 +3953,8 @@ do
   check(allFit(list, 20), "every card shows its time, all within 20 min (" .. describe(list) .. ")")
   check(not find(list, "Run The Deadmines"), "no dungeon in 20 minutes")
   local handin = find(list, "Hand in")
-  check(handin and handin.title == "Hand in 1 quest in Lakeshire" and handin.details[1].text:find("^Least travel of 2 that fit in 20 min"),
-    "with a budget, hand-ins by least travel, not XP per minute (" .. tostring(handin and handin.details[1].text) .. ")")
+  check(handin and handin.title == "Hand in 1 quest in Lakeshire" and handin.details[2].text:find("^Least travel of 2 that fit in 20 min"),
+    "with a budget, hand-ins by least travel (" .. tostring(handin and handin.details[2].text) .. ")")
 
   ns.ForYou.SetBudget(60)
   list = rows()
@@ -3910,8 +3985,8 @@ do
   ns.ForYou.SetBudget(nil)
   list = rows()
   local finish = find(list, "Finish")
-  check(finish and finish.details[1].text:find("~10 min left on 1 in your log", 1, true),
-    "the finish trip uses your 10 min average: " .. tostring(finish and finish.details[1].text))
+  check(finish and finish.details[2].text:find("~10 min left on 1 in your log", 1, true),
+    "the finish trip uses your 10 min average: " .. tostring(finish and finish.details[2].text))
   ns.charDB.questTimes = nil
 
   -- The buttons by the summary line, and each card's time.
@@ -5160,7 +5235,7 @@ do
   check(results[1] and not results[1].subtitle:find("Class quest", 1, true), "another class's quest isn't tagged")
   UnitClass = savedClass
 
-  -- For you: "Don't miss" the most notable quest close by, right after what's due.
+  -- For you: "Don't miss" the most notable quest close by, a card with its reason as its why.
   ns.ForYou.Invalidate()
   local list = ns.ForYou.Results()
   local order, card, zone = {}, nil, nil
@@ -5172,13 +5247,16 @@ do
   local text = table.concat(order, ",")
   check(card and card.title == "Do The Long Tale" and card.journey and card.icon,
     "Don't miss: the epic quest, the most notable one close by (" .. text .. ")")
-  check(text:find("^Due now,Don't miss") or text:find("^Don't miss"), "right after what's due: " .. text)
+  check(card and card.role and card.relevance_parts.novelty == 1 and card.lead == "novelty",
+    "its novelty leads: " .. tostring(card and card.role))
   local why = {}
   for _, d in ipairs(card and card.details or {}) do why[#why + 1] = d.text end
-  check(card and card.details[1].text:find("^Don't miss: Epic quest line") and card.place:find("^Epic"),
+  check(card and card.why:find("^Epic quest line") and card.details[2].text:find("^Don't miss: Epic quest line")
+    and card.place:find("^Epic"),
     "the card says why in plain words: " .. table.concat(why, " / "))
-  check(card and card.details[1].text:find("Its quest giver is ", 1, true) and not card.details[1].text:find("XP", 1, true),
-    "and how far its quest giver is: " .. tostring(card and card.details[1].text))
+  check(card and card.details[2].text:find("Its quest giver is ", 1, true) and not card.details[2].text:find("XP", 1, true)
+    and not card.why:find("XP"),
+    "and how far its quest giver is: " .. tostring(card and card.details[2].text))
   local rewardReason
   for _, r in ipairs(ns.Quests.Notable(502)) do if r.kind == "reward" then rewardReason = r end end
   check(rewardReason and rewardReason.itemID == 9501, "a reward reason carries its item, for the item tooltip")
