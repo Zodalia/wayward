@@ -1,37 +1,45 @@
 local _, ns = ...
 
 -- "For you" page, the panel's first tab: a handful of things to do next for
--- this character, right now, one card per kind of thing (its `category`):
---   Due now     spells you can train and afford, repairs, ammo, food, a flight
---               path close by (at most MAX_NEEDS), always first;
---   Don't miss  the quest that stands out most (Notable.lua: a class quest, a
---               reward for your class, a Forever-only quest...) that you can
---               take or have in your log within NOTABLE_SECONDS of travel,
---               whatever its XP; right after what's due;
---   Hand in     the best group of quests ready to hand in;
---   Finish      the best group of unfinished quests in your log;
---   Best quest  the single quest worth the most XP that you can pick up nearby,
---               as a whole-quest trip;
---   Questing zone  where to quest at your level, anywhere in the world (up to
---               MAX_ZONES): the quests you can take there now and the ones their
---               chains unlock, and the hub to start at;
---   Dungeon     the best dungeon, with its quests picked up on the way, and the
---               others for your level;
--- in that order after the due ones; then hand-ins, finishing and the best
--- quest by estimated XP per minute.
+-- this character, right now, as suggestion cards (each a journey) and a row
+-- of observations ("Good to know" tiles).
+--
+-- Suggestions come from the candidate providers:
+--   Don't miss     the quest that stands out most (Notable.lua: a class quest, a
+--                  reward for your class, a Forever-only quest...) that you can
+--                  take or have in your log within NOTABLE_SECONDS of travel;
+--   Hand in        the best group of quests ready to hand in;
+--   Finish         the best group of unfinished quests in your log;
+--   Best quest     the quest worth the most XP that you can pick up nearby, as a
+--                  whole-quest journey;
+--   Questing zone  where to quest at your level, anywhere (up to MAX_ZONES);
+--   Dungeon        the best dungeon, with its quests picked up on the way;
+--   Profession     a profession's next rank you can train now.
+-- Each gets a relevance score (see "relevance" below): suitability,
+-- proximity, progression, novelty and intent, 0..1 each, weighted; XP per
+-- minute counts inside suitability only. The cards are then picked by role
+-- for each page of three: a continuation (the most relevant whose strongest
+-- part is progression), an exploration (strongest part novelty, somewhere or
+-- something else) and an alternative (yet another kind). Every card says in
+-- one sentence what its two strongest parts are (`why`).
+--
+-- Observations (ForYou.Observations) are the needs: repairs, ammo, food,
+-- spells to train, an undiscovered flight path, gear wearing down, a
+-- profession at its cap, quests ready to hand in, new spells at the next
+-- level, full bags and a vendor nearby. Each has at most one action: a
+-- detour (a stop to add to the journey), a side page to show, or directions.
 --
 -- XP comes from the data's quest XP table (ns.Data.QuestXP). Without it,
--- options are ranked by quests per hour weighted by level fit, and the
--- summary line says so. Without quest data there are no hubs or dungeon quests,
--- so dungeons are ranked by level fit and travel time, as on the Find page.
+-- quests count by level fit, and the summary line says so. Without quest
+-- data there are no hubs or dungeon quests, so dungeons are ranked by level
+-- fit and travel time, as on the Find page.
 --
 -- Quests already in your log count too, at their full XP; only the time left
--- for them is counted. Ones ready to hand in are trips of their own ("Hand in
--- 3 quests in Lakeshire") or ride along with the quest hub where you hand them
--- in; unfinished ones close together are one whole-quest trip ("Finish 2
--- quests near Lakeshire"); a dungeon's quests in your log count toward it.
--- A card whose trip has a quest your trip on now already has, or a dungeon
--- your trip goes to, isn't shown.
+-- for them is counted. Ones ready to hand in are journeys of their own ("Hand
+-- in 3 quests in Lakeshire"); unfinished ones close together are one
+-- whole-quest journey ("Finish 2 quests near Lakeshire"); a dungeon's quests
+-- in your log count toward it. A card whose journey has a quest your journey
+-- already has, or a dungeon your journey goes to, isn't shown.
 
 -- Shown as Adventure Guide style cards (UI/Cards.lua) on a wider panel.
 local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
@@ -40,7 +48,6 @@ ns.ForYou = ForYou
 local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip (until QuestTimes has
                                 -- learned how long yours take: perQuest)
 local MAX_RESULTS = 9           -- cards the page shows (three pages)
-local MAX_NEEDS = 2             -- "Due now" and "Worth a visit" cards
 local REPAIR_SOON = 0.75        -- gear at or under this: repair if a vendor is close
 local REPAIR_NEAR_SECONDS = 120 -- "close" for that
 local TRAIN_LEVELS_STALE = 2    -- levels since your last trainer visit before new spells are likely
@@ -67,6 +74,20 @@ local NOTABLE_SECONDS = 600     -- "Don't miss": travel to the quest's first sto
 local NOTABLE_TRIES = 4         -- notable quests planned before giving up on the card
 local BUDGET_DUNGEON = 60       -- minutes: with less time than this, no dungeon
 local BUDGET_TRIES = 3          -- hand-in or finish trips planned to find one that fits
+local BAGS_NEARLY_FULL = 2      -- free bag slots at or under this: worth knowing
+local VENDOR_NEAR_SECONDS = 120 -- a vendor this close is worth a tile on its own
+local HANDIN_OBSERVATIONS = 2   -- hand-in groups mentioned, nearest first
+local ABILITY_LEVELS_AHEAD = 2  -- new spells at a level this close are worth knowing about
+
+-- Relevance (docs/DESIGN.md "Relevance"): the five parts and their weights.
+local WEIGHTS = { suitability = 0.30, proximity = 0.20, progression = 0.20, novelty = 0.15, intent = 0.15 }
+local PART_NAMES = { "suitability", "proximity", "progression", "novelty", "intent" }
+local NEAR_SECONDS = 120        -- proximity 1.0 up to this
+local MID_SECONDS = 480         -- proximity 0.5 here
+local FAR_SECONDS = 1500        -- proximity 0 from here
+local SHOWN_DECAY = 0.04        -- novelty lost per refresh a card was shown on and never started
+local SHOWN_FLOOR = 0.6         -- never below this share of its novelty
+ForYou.WEIGHTS = WEIGHTS
 
 -- The starting zones (uiMapIDs) and each race's own: Elwynn Forest, Durotar,
 -- Dun Morogh, Teldrassil, Tirisfal Glades, Mulgore.
@@ -80,10 +101,6 @@ local WORKING = "Working out what's next..."
 local GOLD = { r = 1, g = 0.82, b = 0 }
 local GREY = { r = 0.6, g = 0.6, b = 0.6 }
 local NOTABLE = { r = 0.77, g = 0.55, b = 1 }
-
--- Lower comes first among needs; soft ones ("Worth a visit") after all of these.
-local PRIORITY = { repair = 1, train = 2, ammo = 3, food = 4, flight = 5, profession = 6 }
-local SOFT_PRIORITY = 10
 
 ForYou.SECONDS_PER_QUEST = SECONDS_PER_QUEST
 local cache, summary
@@ -107,6 +124,12 @@ end
 
 local function capitalize(text)
   return text:sub(1, 1):upper() .. text:sub(2)
+end
+
+local function clamp(v)
+  if v < 0 then return 0 end
+  if v > 1 then return 1 end
+  return v
 end
 
 -- A provider error leaves its part out of the page instead of blanking it.
@@ -165,6 +188,11 @@ local function zoneName(node)
   return ns.MapName((ns.Geo.ZonePoint(node)))
 end
 
+-- The zone (uiMapID) a node is in, for "the same zone as" comparisons.
+local function zoneOf(node)
+  return node and (ns.Geo.ZonePoint(node)) or nil
+end
+
 -- A notable quest's tag ("Class quest") and its reasons (Notable.lua), or nil.
 local function notableTag(questID)
   if not ns.Quests.NotableTag then return nil end
@@ -179,6 +207,14 @@ local function addQuestLine(details, line, questID)
   if tag then line.text = line.text .. "  ·  " .. tag end
   details[#details + 1] = line
   if tag then details[#details + 1] = { text = "    " .. reasons[1].text, color = NOTABLE, more = true } end
+end
+
+-- A journey planned for a card carries the card's kind, so a start of it
+-- (JOURNEY_STARTED) can be learned as intent (below).
+local function plan(start, def, net, kind)
+  local journey = ns.Journey.Plan(start, def, net)
+  if journey and journey.def then journey.def.kind = journey.def.kind or kind end
+  return journey
 end
 
 ---------------------------------------------------------------- quest XP
@@ -241,7 +277,8 @@ local function questValue(q, ctx)
 end
 
 -- value: XP (or quests) for the option; rate: per minute, trip included. A
--- quest takes perQuest unless it says otherwise (log quests: q.seconds).
+-- quest takes perQuest unless it says otherwise (log quests: q.seconds). The
+-- rate only feeds suitability (XP for the time, against the best on offer).
 local function score(option, ctx)
   option.value, option.estimated = 0, 0
   option.seconds = option.trip
@@ -255,18 +292,12 @@ local function score(option, ctx)
   option.rate = option.value / math.max(option.seconds / 60, 1)
 end
 
-local function rateText(option, ctx)
-  if ctx.xpMode then return string.format("~%s XP/min", formatNumber(option.rate)) end
-  return string.format("~%.1f quests/h", option.rate * 60)
-end
-
--- The rate as a card stat: { label, value }.
-local function rateStat(option, ctx)
-  if ctx.xpMode then return { "XP/min", "~" .. formatNumber(option.rate) } end
-  return { "Quests/h", string.format("~%.1f", option.rate * 60) }
-end
-
 ---------------------------------------------------------------- needs
+
+-- The needs feed the observations (ForYou.Observations): each is { kind,
+-- text, highlights, urgency, goal, route, stop? (a detour), page? (a side
+-- page to show) }. The old card fields (title, zone, why, details) are kept
+-- for OnTheWay (ShoppingNeeds) and the tests.
 
 -- Without a fresh spell list: at an even level (when classes get new ranks),
 -- before your first trainer visit or a couple of levels after the last one.
@@ -279,32 +310,37 @@ local function likelyTraining(ctx, s)
   local since = s and string.format("you're level %d, %d levels since your last visit", ctx.level, ctx.level - s.level)
     or string.format("you're level %d and haven't visited a trainer yet", ctx.level)
   return {
-    kind = "train", soft = true, title = string.format("Visit your trainer in %s", place),
+    kind = "train", soft = true, urgency = 0.35, title = string.format("Visit your trainer in %s", place),
     zone = best.zone, goal = best.goal, route = best.route,
     why = string.format("new spells likely at level %d", ctx.level),
-    rank = string.format("Worth a visit: %s; classes get new spells at even levels.", since),
+    text = string.format("New spells are likely at level %d (%s): your trainer is in %s, %s away.", ctx.level, since,
+      place, ns.FormatDuration(best.route.seconds)),
+    highlights = { string.format("level %d", ctx.level) },
     details = { { text = "Trainer: " .. best.title } },
   }
 end
 
 local function trainingNeed(ctx)
   local s = ns.Trainers.SpellSummary(true)
-  -- Spell data (no trainer visit yet) that has nothing for you: no card.
+  -- Spell data (no trainer visit yet) that has nothing for you: nothing to say.
   if s and s.fromData and s.trainable == 0 then return nil end
-  -- All you could learn you left at the trainer: no card until there's more.
+  -- All you could learn you left at the trainer: nothing until there's more.
   if s and s.trainable == 0 and s.skipped > 0 then return nil end
   if not (s and s.trainable > 0) then return likelyTraining(ctx, s) end
   local spells = plural(s.trainable, "new spell")
   local cost = s.costUnknown and "?" or ns.FormatMoney(s.cost)
   if not s.costUnknown and GetMoney() < s.cost then
-    ctx.notes[#ctx.notes + 1] = string.format("%s to train once you have %s.", capitalize(spells),
-      ns.FormatMoney(s.cost))
-    return nil
+    return {
+      kind = "train", soft = true, urgency = 0.3, title = capitalize(spells) .. " to train",
+      text = string.format("%s to train once you have %s.", capitalize(spells), ns.FormatMoney(s.cost)),
+      highlights = { spells, ns.FormatMoney(s.cost) }, page = "trainers", pageLabel = "Show spells",
+      why = "not affordable yet", spells = s.names,
+    }
   end
   local best = (try(ns.Trainers.Results) or {})[1]
   if not (best and best.route) then return nil end
   local place = placeName(best.goal, best.zone)
-  -- The spells themselves, first thing on the card.
+  -- The spells themselves, first thing in the details.
   local details, level = {}, UnitLevel("player")
   local services, _, cs = ns.Trainers.Services()
   for _, sp in ipairs(services or {}) do
@@ -318,15 +354,16 @@ local function trainingNeed(ctx)
     details[#details + 1] = { text = string.format("Not counted: %s you left at the trainer.",
       plural(s.skipped, "spell")) }
   end
+  local highlights = { spells }
+  if not s.costUnknown then highlights[#highlights + 1] = cost end
   return {
-    kind = "train", only = "Train only",
-    stats = { { "Spells", tostring(s.trainable) }, { "Cost", cost },
-      { "Travel", ns.FormatDuration(best.route.seconds) } },
+    kind = "train", urgency = 0.7,
     title = string.format("Train %s in %s", spells, place),
     zone = best.zone, goal = best.goal, route = best.route,
     why = s.costUnknown and spells or string.format("%s for %s", spells, cost),
-    rank = s.costUnknown and string.format("Needs come first: you can train %s.", spells)
-      or string.format("Needs come first: you can train and afford %s (%s).", spells, cost),
+    text = string.format("%s to train%s at %s in %s, %s away.", capitalize(spells),
+      s.costUnknown and "" or (" for " .. cost), best.title, place, ns.FormatDuration(best.route.seconds)),
+    highlights = highlights,
     details = details, spells = s.names,
     stop = { node = best.goal, text = "Train your new spells at " .. best.title, phrase = "train in " .. place },
   }
@@ -355,6 +392,24 @@ local function bagFoodCount()
   return count
 end
 
+-- Free and total bag slots, or nil when the bag API is missing.
+local function bagSpace()
+  local container = C_Container
+  local numSlots = container and container.GetContainerNumSlots or GetContainerNumSlots
+  local numFree = container and container.GetContainerNumFreeSlots or GetContainerNumFreeSlots
+  if type(numSlots) ~= "function" or type(numFree) ~= "function" then return nil end
+  local free, total = 0, 0
+  for bag = 0, NUM_BAG_SLOTS or 4 do
+    local n = numSlots(bag) or 0
+    if n > 0 then
+      total = total + n
+      free = free + (tonumber((numFree(bag))) or 0)
+    end
+  end
+  if total == 0 then return nil end
+  return free, total
+end
+
 -- Arrows or bullets left; 0 with nothing in the ammo slot.
 local function ammoLeft()
   local ok, slot = pcall(GetInventorySlotInfo or error, "AmmoSlot")
@@ -365,6 +420,7 @@ local function ammoLeft()
 end
 
 local VENDOR_VERB = { repair = "repair", ammo = "buy ammo", food = "buy food & drink" }
+local VENDOR_URGENCY = { repair = 0.9, ammo = 0.7, food = 0.5 }
 
 local function vendorWhy(need, p, left)
   if need == "repair" then
@@ -375,8 +431,14 @@ local function vendorWhy(need, p, left)
   return string.format("%d %s left", left, need == "ammo" and "ammo" or "food & drink")
 end
 
+local function vendorUrgency(need, p, left)
+  if need == "repair" then return (p.durability or 1) <= 0 and 1 or VENDOR_URGENCY.repair end
+  if left == 0 then return VENDOR_URGENCY[need] + 0.25 end
+  return VENDOR_URGENCY[need]
+end
+
 -- Repairs (gear at 50% or lower), ammo and food when running low: the fastest
--- vendor for each; a vendor that covers several gets one row.
+-- vendor for each; a vendor that covers several gets one observation.
 local function vendorNeeds(ctx)
   local p = ns.Vendors.Needs()
   local due = {}
@@ -414,20 +476,24 @@ local function vendorNeeds(ctx)
 
   local out = {}
   for _, row in ipairs(rows) do
-    local r, verbs, whys = row.vendor, {}, {}
+    local r, verbs, whys, highlights, urgency = row.vendor, {}, {}, {}, 0
     local name = r.goal.label or r.title
     for _, need in ipairs(row.needs) do
       verbs[#verbs + 1] = VENDOR_VERB[need]
       whys[#whys + 1] = vendorWhy(need, p, due[need])
+      highlights[#highlights + 1] = whys[#whys]:match("%d+%%") or whys[#whys]:match("^%d+ %S+") or whys[#whys]
+      urgency = math.max(urgency, vendorUrgency(need, p, due[need]))
     end
     local what = table.concat(verbs, " and ")
     local first = row.needs[1]
     out[#out + 1] = {
-      kind = first, only = (#row.needs == 1 and first == "repair") and "Repair only" or "Shop only",
+      kind = first, urgency = urgency,
       title = string.format("%s at %s", capitalize(what), name),
       zone = ns.MapName(r.goal.mapID), goal = r.goal, route = r.route,
       why = table.concat(whys, ", "),
-      rank = "Needs come first: " .. table.concat(whys, ", ") .. ".",
+      text = string.format("%s: %s at %s, %s away.", capitalize(table.concat(whys, ", ")), what, name,
+        ns.FormatDuration(r.route.seconds)),
+      highlights = highlights,
       details = r.details,
       stop = { node = r.goal, text = string.format("%s at %s", capitalize(what), name),
         phrase = string.format("%s at %s", what, name) },
@@ -436,8 +502,8 @@ local function vendorNeeds(ctx)
   return out
 end
 
--- A profession's next rank you can train now: due when you're at your cap
--- (you can't skill up any more), worth a visit before that.
+-- A profession's next rank you can train now, as a journey (a suggestion
+-- card); at your cap (you can't skill up any more) it is an observation too.
 local function professionNeeds(start, net)
   local mine = ns.Professions.Mine()
   if not mine then return {} end
@@ -456,22 +522,26 @@ local function professionNeeds(start, net)
         if not sure then
           details[#details + 1] = { text = "Not every trainer teaches " .. rank.name .. "; if this one doesn't, the Professions tab lists others.", more = true }
         end
-        -- The trip: go there and buy the rank (done when your skill cap goes up).
+        -- The journey: go there and buy the rank (done when your skill cap goes up).
         local title = string.format("Train %s %s in %s", rank.name, p.name, place)
         local stop = { node = trainer.node, npc = trainer.name,
           text = string.format("Train %s %s at %s", rank.name, p.name, trainer.name),
           action = { kind = "train", profession = p.name, cap = have.cap, npc = trainer.name } }
-        local journey = ns.Journey.Plan(start, { title = title, stops = { stop } }, net)
+        local journey = plan(start, { title = title, stops = { stop } }, net, "profession")
         out[#out + 1] = {
-          kind = "profession", soft = not capped, icon = p.icon, journey = journey,
-          title = title,
+          kind = "profession", capped = capped, icon = p.icon, journey = journey, profession = p.name,
+          title = title, urgency = 0.6,
           zone = ns.MapName(trainer.node.mapID), goal = trainer.node, route = route,
+          trip = journey and journey.seconds or route.seconds,
           why = string.format("%s %d/%d%s", p.name, have.rank, have.cap, capped and ", at your cap" or ""),
+          text = string.format("%s is at its cap (%d/%d): %s lets it go up to %d, at %s in %s, %s away.", p.name,
+            have.rank, have.cap, rank.name, rank.cap, trainer.name, place, ns.FormatDuration(route.seconds)),
+          highlights = { string.format("%d/%d", have.rank, have.cap), rank.name },
           stats = { { "Skill", string.format("%d/%d", have.rank, have.cap) }, { "Next", rank.name },
             { "Travel", ns.FormatDuration(route.seconds) } },
-          rank = capped and string.format("Needs come first: %s is at its cap; %s lets it go up to %d.", p.name, rank.name, rank.cap)
-            or string.format("Worth a visit: you can train %s %s (up to %d skill).", rank.name, p.name, rank.cap),
           details = details,
+          stop = copyStop(stop),
+          rankName = rank.name, rankCap = rank.cap, have = have,
         }
       end
     end
@@ -492,12 +562,13 @@ local function repairSoonNeed()
   local name = best.goal.label or best.title
   local percent = math.floor(p.durability * 100 + 0.5)
   return {
-    kind = "repair", soft = true, title = "Repair at " .. name,
+    kind = "repair", soft = true, urgency = 0.4, title = "Repair at " .. name,
     zone = ns.MapName(best.goal.mapID), goal = best.goal, route = best.route,
     why = string.format("gear at %d%%, a repairer close by", percent),
-    rank = string.format("Worth a visit: your gear is at %d%% and a repairer is %s away.", percent,
-      ns.FormatDuration(best.route.seconds)),
+    text = string.format("Gear at %d%%: %s repairs, %s away.", percent, name, ns.FormatDuration(best.route.seconds)),
+    highlights = { string.format("%d%%", percent) },
     details = best.details,
+    stop = { node = best.goal, text = "Repair at " .. name, phrase = "repair at " .. name },
   }
 end
 
@@ -538,15 +609,74 @@ local function flightNeed(ctx, start, net)
   local stopNode = master or best
   if master then route = ns.Router.Plan(start, master, net) or route end
   return {
-    kind = "flight", only = "Flight only",
+    kind = "flight", urgency = 0.5,
     title = string.format("Learn the %s flight path", town),
     zone = ns.MapName(best.mapID), goal = stopNode, route = route,
     why = "not discovered yet",
-    rank = "Needs come first: a flight path you haven't discovered is close by, and later trips get faster.",
+    text = string.format("The %s flight path is %s away and you haven't learned it: later journeys get faster.", town,
+      ns.FormatDuration(route.seconds)),
+    highlights = { town },
     details = {},
     stop = { node = stopNode, text = string.format("Talk to %s to learn %s",
         talkTo and (talkTo .. ", the flight master,") or "the flight master", town),
       phrase = string.format("learn the %s flight path", town) },
+  }
+end
+
+-- New spells at the next level or two (from the trainer's list or the class
+-- spell data), and where your trainer is.
+local function abilitiesNeed(ctx)
+  local s = ns.Trainers.SpellSummary(true)
+  if not (s and s.nextLevel and s.nextCount > 0 and s.nextLevel - ctx.level <= ABILITY_LEVELS_AHEAD) then return nil end
+  local best = (try(ns.Trainers.Results) or {})[1]
+  local where = ""
+  if best and best.goal then
+    where = string.format(": your trainer is %s in %s", best.title, placeName(best.goal, best.zone))
+    if best.route then where = where .. ", " .. ns.FormatDuration(best.route.seconds) .. " away" end
+  end
+  local spells = plural(s.nextCount, "new spell")
+  return {
+    kind = "abilities", urgency = 0.2, title = string.format("%s at level %d", capitalize(spells), s.nextLevel),
+    text = string.format("%s at level %d%s.", capitalize(spells), s.nextLevel, where),
+    highlights = { spells, string.format("level %d", s.nextLevel) },
+    goal = best and best.goal, route = best and best.route, zone = best and best.zone,
+  }
+end
+
+-- Full (or nearly full) bags, and the nearest vendor to sell at.
+local function bagsNeed()
+  local free, total = bagSpace()
+  if not free or free > BAGS_NEARLY_FULL then return nil end
+  local best
+  for _, r in ipairs(try(ns.Vendors.Results) or {}) do
+    if r.goal and r.route and seconds(r.route) < seconds(best and best.route) then best = r end
+  end
+  local name = best and (best.goal.label or best.title)
+  local state = free == 0 and "Bags full" or string.format("Bags nearly full (%d of %d slots free)", free, total)
+  local text = state .. (best and string.format(": the nearest vendor is %s, %s away.", name,
+    ns.FormatDuration(best.route.seconds)) or ".")
+  return {
+    kind = "bags", urgency = free == 0 and 0.85 or 0.45, title = state, text = text,
+    highlights = { free == 0 and "full" or string.format("%d of %d", free, total) },
+    goal = best and best.goal, route = best and best.route, zone = best and ns.MapName(best.goal.mapID),
+    stop = best and { node = best.goal, text = "Sell at " .. name, phrase = "sell at " .. name } or nil,
+  }
+end
+
+-- A vendor a couple of minutes away, when no other tile sends you to one.
+local function vendorNearbyNeed()
+  local best
+  for _, r in ipairs(try(ns.Vendors.Results) or {}) do
+    if r.goal and r.route and seconds(r.route) < seconds(best and best.route) then best = r end
+  end
+  if not (best and seconds(best.route) <= VENDOR_NEAR_SECONDS) then return nil end
+  local name = best.goal.label or best.title
+  return {
+    kind = "vendor", urgency = 0.15, title = "Vendor nearby: " .. name,
+    text = string.format("A vendor nearby: %s, %s away.", name, ns.FormatDuration(best.route.seconds)),
+    highlights = { name },
+    goal = best.goal, route = best.route, zone = ns.MapName(best.goal.mapID),
+    stop = { node = best.goal, text = "Visit " .. name, phrase = "visit " .. name },
   }
 end
 
@@ -604,6 +734,15 @@ local function dungeonQuest(row)
   return area ~= nil and ns.Dungeons.ForArea(area) ~= nil
 end
 
+-- A quest that carries a chain on: it has a prerequisite (which you did,
+-- since you can take it).
+local function continuesChain(questID)
+  local q = ns.Quests.Quest(questID)
+  if not q then return false end
+  return (type(q.preQuestSingle) == "table" and #q.preQuestSingle > 0)
+    or (type(q.preQuestGroup) == "table" and #q.preQuestGroup > 0) or false
+end
+
 -- Quests ready to hand in, grouped by where you hand them in: their
 -- finishers clustered like quest hubs, then merged by place.
 local function handinOptions(ctx, start, net)
@@ -643,12 +782,13 @@ local function handinOptions(ctx, start, net)
 
   local out = {}
   for _, hub in ipairs(named) do
-    local quests, stops = {}, {}
+    local quests, stops, ids = {}, {}, {}
     for _, g in ipairs(hub.givers) do
       for _, e in ipairs(g.quests) do
         local q = logQuest(e)
         q.giver = g.name
         quests[#quests + 1] = q
+        ids[#ids + 1] = e.id
         stops[#stops + 1] = { node = g.node, group = "turnin", action = { kind = "turnin", questID = e.id },
           npc = g.name, text = string.format("Hand in %s to %s", e.name or ("quest " .. e.id), g.name or "the quest giver") }
       end
@@ -658,10 +798,10 @@ local function handinOptions(ctx, start, net)
     if route then
       local where = hub.place and ("in " .. hub.place) or ("to " .. (hub.anchor.name or "the quest giver"))
       out[#out + 1] = {
-        kind = "handin", place = hub.place,
+        kind = "handin", place = hub.place, where = where,
         title = capitalize(string.format("hand in %s %s", plural(#quests, "quest"), where)),
         zone = zoneName(goal), goal = goal, route = route, trip = route.seconds,
-        quests = quests, stops = stops,
+        quests = quests, stops = stops, questIDs = ids,
       }
     end
   end
@@ -783,6 +923,7 @@ local function dungeonOptions(ctx)
       kind = "dungeon", name = name, raid = entry and entry.raid, result = r,
       title = "Run " .. r.title, zone = r.zone, goal = r.goal, route = r.route, trip = seconds(r.route),
       quests = quests, available = available, inLog = inLog, later = later,
+      dungeonLevel = tonumber((r.title or ""):match("level (%d+)$")) or (entry and entry.level),
     }
     -- Not yet when most of its quests are still to come: when they open.
     local total = #quests + #later
@@ -828,7 +969,7 @@ local function dungeonJourney(option, ctx, start, net)
 
   local def = { stops = {}, finish = copyStop(option.finish) }
   for _, s in ipairs(pickups) do def.stops[#def.stops + 1] = copyStop(s) end
-  local journey = ns.Journey.Plan(start, def, net)
+  local journey = plan(start, def, net, "dungeon")
   if not journey then return end
   option.journey = journey
   option.trip = journey.seconds
@@ -836,11 +977,11 @@ local function dungeonJourney(option, ctx, start, net)
 end
 
 -- Hand-ins, unfinished log quests, and a hub with hand-ins: one journey over
--- their stops, ranked again with its real trip time.
+-- their stops, scored again with its real trip time.
 local function questJourney(option, ctx, start, net)
   local def = { title = option.title, stops = copyStops(option.stops),
     finish = option.finish and copyStop(option.finish) }
-  local journey = ns.Journey.Plan(start, def, net)
+  local journey = plan(start, def, net, option.kind)
   if not journey then return end
   option.journey = journey
   option.trip = journey.seconds
@@ -867,7 +1008,7 @@ local function journeyTitle(stops)
 end
 
 -- The quest worth the most XP among the hubs' quests (not dungeon ones), as a
--- whole-quest trip: pick it up, do it (and what it needs first), hand it in.
+-- whole-quest journey: pick it up, do it (and what it needs first), hand it in.
 local function bestQuestOption(hubs, ctx, start, net)
   local best, bestValue, bestHub
   for _, hub in ipairs(hubs) do
@@ -884,12 +1025,13 @@ local function bestQuestOption(hubs, ctx, start, net)
   local stops = ns.Journey.QuestStops(best.id, start)
   if #stops == 0 then return nil end
   local name = best.name or ("quest " .. best.id)
-  local journey = ns.Journey.Plan(start, { title = "Do " .. name, stops = stops }, net)
+  local journey = plan(start, { title = "Do " .. name, stops = stops }, net, "quest")
   if not journey then return nil end
   local option = {
     kind = "quest", title = "Do " .. name, zone = bestHub.zone, place = bestHub.place,
     goal = journey.stops[#journey.stops].node, trip = journey.seconds, journey = journey, stops = stops,
     quests = { { id = best.id, name = best.name, level = best.level, giver = best.giver } },
+    chained = continuesChain(best.id), tag = (notableTag(best.id)),
   }
   score(option, ctx)
   return option
@@ -940,15 +1082,19 @@ local function notableOption(hubs, ctx, start, net, skip)
     local stops = ns.Journey.QuestStops(c.id, start)
     local name = c.name or ("quest " .. c.id)
     local title = (c.complete and "Hand in " or c.inLog and "Finish " or "Do ") .. name
-    local journey = #stops > 0 and ns.Journey.Plan(start, { title = title, stops = stops }, net) or nil
+    local journey = #stops > 0 and plan(start, { title = title, stops = stops }, net, "notable") or nil
     local travel = journey and firstLeg(journey)
     if travel and travel <= NOTABLE_SECONDS then
       local first = journey.stops[1].node
-      return {
+      local option = {
         kind = "notable", title = title, zone = zoneName(first), goal = journey.stops[#journey.stops].node,
         trip = journey.seconds, travel = travel, journey = journey, stops = stops, tag = c.tag, reasons = c.reasons,
-        quests = { { id = c.id, name = c.name, level = c.level, inLog = c.inLog } },
+        notableScore = c.score, chained = continuesChain(c.id),
+        quests = { { id = c.id, name = c.name, level = c.level, inLog = c.inLog, handin = c.complete,
+          seconds = c.complete and HANDIN_SECONDS or nil } },
       }
+      score(option, ctx)
+      return option
     end
   end
   return nil
@@ -967,10 +1113,9 @@ end
 -- Where to quest at your level, anywhere: per zone (Quests.ZoneQuests), the
 -- quests you can take now and those their chains unlock, worth their XP; the
 -- hub to start at is the one with the most quests for you now, and the card's
--- trip picks up all of them there. Zones need
--- ZONE_MIN_QUESTS quests you can take now; the best MAX_ZONES by XP (quest
--- count without XP data) get a route to their first hub. Below HOME_LEVEL
--- your starting zone (homeZone) comes first.
+-- journey picks up all of them there. Zones need ZONE_MIN_QUESTS quests you
+-- can take now; the best MAX_ZONES by XP (quest count without XP data) get a
+-- route to their first hub. Below HOME_LEVEL your starting zone comes first.
 local function zoneOptions(ctx, start, net)
   local zones = {}
   for mapID, z in pairs(ns.Quests.ZoneQuests(start)) do
@@ -1059,7 +1204,7 @@ local function zoneOptions(ctx, start, net)
           leads[#leads + 1] = place
         end
       end
-      -- The trip: pick up every quest you can take at the first hub.
+      -- The journey: pick up every quest you can take at the first hub.
       local title = "Quest in " .. ns.MapName(z.mapID)
       local stops = {}
       for _, g in ipairs(first.givers) do
@@ -1068,7 +1213,7 @@ local function zoneOptions(ctx, start, net)
             text = string.format("Pick up %s from %s", q.name or ("quest " .. q.id), g.name or "the quest giver") }
         end
       end
-      local journey = #stops > 0 and ns.Journey.Plan(start, { title = title, stops = stops }, net) or nil
+      local journey = #stops > 0 and plan(start, { title = title, stops = stops }, net, "zone") or nil
       out[#out + 1] = {
         kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = title,
         goal = goal, route = route, journey = journey, trip = journey and journey.seconds or route.seconds,
@@ -1080,27 +1225,359 @@ local function zoneOptions(ctx, start, net)
   return out
 end
 
----------------------------------------------------------------- rows
+---------------------------------------------------------------- relevance
 
-local function onlyAction(need)
-  return { label = need.only, run = function()
-    ns.Nav.Start(need.title, need.goal, need.route)
-    if ns.Panel.IsShown() then ns.Panel.Toggle() end
-  end }
+-- Each candidate gets five parts, 0..1 (docs/DESIGN.md "Relevance"), and
+-- relevance = their weighted sum. The parts live on the row as
+-- `relevance_parts`, for /ww debug cards and the `why` sentence.
+
+-- How many levels under you a quest turns grey (the vanilla rule, roughly).
+local function greyDelta(level)
+  if level <= 5 then return 5 end
+  if level <= 39 then return 5 + math.floor(level / 10) end
+  return level - math.floor(level * 0.75)
 end
 
-local function needRow(need)
-  local details = { { text = need.rank, color = GOLD } }
-  for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
-  return {
-    id = "need" .. need.kind .. (need.icon or ""), kind = need.kind, professionIcon = need.icon,
-    category = need.soft and "Worth a visit" or "Due now", title = need.title,
-    subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
-    place = capitalize(need.why),
-    stats = need.stats or { { "Where", need.zone }, { "Travel", ns.FormatDuration(need.route.seconds) } },
-    goal = need.goal, route = need.route, journey = need.journey, details = details, spells = need.spells,
+-- 1.0 from level-2 to level+2, falling to 0 at grey and at too hard (5
+-- levels up; 3 on Hardcore, where orange is already a risk).
+local function levelFit(questLevel, level)
+  local d = questLevel - level
+  if d >= -2 and d <= 2 then return 1 end
+  if d < 0 then
+    local grey = greyDelta(level)
+    if -d >= grey then return 0 end
+    return clamp(1 - (-d - 2) / (grey - 2))
+  end
+  local hard = ns.IsHardcore() and 3 or 5
+  if d >= hard then return 0 end
+  return clamp(1 - (d - 2) / (hard - 2))
+end
+ForYou.LevelFit = levelFit
+
+-- Travel time to the first stop: 1.0 within 2 minutes, 0.5 at about 8, 0
+-- past 25. Transports count as time, not distance (the router's seconds).
+local function proximity(travel)
+  if not travel or travel == math.huge then return 0 end
+  if travel <= NEAR_SECONDS then return 1 end
+  if travel <= MID_SECONDS then return 1 - 0.5 * (travel - NEAR_SECONDS) / (MID_SECONDS - NEAR_SECONDS) end
+  if travel >= FAR_SECONDS then return 0 end
+  return 0.5 * (FAR_SECONDS - travel) / (FAR_SECONDS - MID_SECONDS)
+end
+ForYou.Proximity = proximity
+
+-- Seconds to an option's first stop: the journey's first leg, else its route.
+local function travelTo(option)
+  if option.travel then return option.travel end
+  if option.journey then return firstLeg(option.journey) end
+  return option.route and option.route.seconds or option.trip
+end
+
+-- Dungeons and raids count less when you're on your own.
+local function groupFit(option)
+  if option.kind ~= "dungeon" then return 1 end
+  local members = type(GetNumGroupMembers) == "function" and tonumber((GetNumGroupMembers())) or 0
+  if option.raid then return members > 5 and 1 or 0.3 end
+  return members > 1 and 1 or 0.6
+end
+
+-- 1 when a quest's reward is something your class would use (Notable.lua's
+-- armour and weapon reasoning), 0.5 when nothing is known either way.
+local function rewardFit(option)
+  if option.reward then return option.reward end
+  if not ns.Quests.Notable then return 0.5 end
+  for _, q in ipairs(option.quests or option.now or {}) do
+    for _, r in ipairs(try(ns.Quests.Notable, q.id) or {}) do
+      if r.kind == "reward" then return 1 end
+    end
+  end
+  return 0.5
+end
+
+-- Does it fit this character now: level fit (half of it), XP for the time
+-- against the best on offer (a fifth), a reward you'd use, and group content
+-- when you're solo.
+local function suitability(option, ctx)
+  local quests = option.quests or option.now or {}
+  local fit, n = 0, 0
+  for _, q in ipairs(quests) do
+    fit, n = fit + levelFit(q.level or ctx.level, ctx.level), n + 1
+  end
+  if n > 0 then
+    fit = fit / n
+  elseif option.dungeonLevel then
+    fit = levelFit(option.dungeonLevel, ctx.level)
+  else
+    fit = 1
+  end
+  local xp = 0
+  if option.rate and ctx.bestRate and ctx.bestRate > 0 then xp = clamp(option.rate / ctx.bestRate) end
+  option.levelFit, option.xpShare = fit, xp
+  return clamp(0.5 * fit + 0.2 * xp + 0.15 * rewardFit(option) + 0.15 * groupFit(option))
+end
+
+-- Does it continue something under way: quests in the log, a chain's next
+-- step, the zone you're questing in, a dungeon whose quests you hold, a
+-- profession at its cap.
+local function progression(option, ctx)
+  local k = option.kind
+  if k == "handin" then return 1 end
+  if k == "finish" then return 0.95 end
+  if k == "dungeon" then
+    if #(option.inLog or {}) > 0 then return 0.8 end
+    if #(option.quests or {}) > 0 then return 0.4 end
+    return 0.2
+  end
+  if k == "notable" then
+    local q = option.quests[1]
+    if q.handin then return 1 end
+    if q.inLog then return 0.9 end
+    return option.chained and 0.6 or 0.3
+  end
+  if k == "quest" then return option.chained and 0.7 or 0.3 end
+  if k == "zone" then
+    if ctx.journeyMap and option.mapID == ctx.journeyMap then return 1 end
+    if option.mapID == ctx.hereMap then return 0.7 end
+    return #(option.later or {}) > 0 and 0.35 or 0.2
+  end
+  if k == "profession" then return option.capped and 1 or 0.6 end
+  return 0.3
+end
+
+-- Whether the map at a node is explored (the client's map exploration), or
+-- nil when the client can't say.
+local function exploredAt(node)
+  local lookup = C_MapExplorationInfo and C_MapExplorationInfo.GetExploredAreaIDsAtPosition
+  local mapID, x, y = ns.Geo.ZonePoint(node)
+  if not (lookup and mapID and CreateVector2D) then return nil end
+  local ok, areaIDs = pcall(lookup, mapID, CreateVector2D(x, y))
+  if not ok or type(areaIDs) ~= "table" then return nil end
+  return areaIDs[1] ~= nil
+end
+
+local function visitedZone(mapID)
+  local visited = ns.charDB and ns.charDB.visitedZones
+  return visited ~= nil and mapID ~= nil and visited[mapID] == true
+end
+
+-- A dungeon you walked into before (Dungeons.lua records the entrance).
+local function walkedIn(option)
+  local all = ns.db and ns.db.dungeonEntrances
+  if not (all and option.name) then return false end
+  local wanted = option.name:lower()
+  for _, record in pairs(all) do
+    if type(record.name) == "string" and record.name:lower() == wanted then return true end
+  end
+  return false
+end
+
+-- Hook: a transport on the way you haven't used yet (not tracked yet; 0).
+function ForYou.TransportNovelty(option)
+  return 0
+end
+
+-- Is it new or remarkable: a zone or dungeon you haven't explored, a notable
+-- quest, a transport you haven't used.
+local function novelty(option, ctx)
+  local k, n = option.kind, 0.2
+  if k == "zone" then
+    if option.mapID == ctx.hereMap then
+      n = 0.15
+    elseif visitedZone(option.mapID) then
+      n = 0.4
+    elseif exploredAt(option.goal) then
+      n = 0.7
+    else
+      n = 1
+    end
+  elseif k == "dungeon" then
+    n = walkedIn(option) and 0.4 or 0.9
+  elseif k == "notable" then
+    n = 1 -- tagged by Notable.lua: remarkable by definition
+  elseif k == "quest" then
+    n = option.tag and 0.8 or 0.3
+  elseif k == "profession" then
+    n = 0.5
+  elseif k == "handin" or k == "finish" then
+    n = 0.1
+  end
+  return clamp(n + ForYou.TransportNovelty(option))
+end
+
+-- Hook: an explicit preference for a kind of journey (no setting yet).
+function ForYou.Preference()
+  return ns.charDB and ns.charDB.preferKind or nil
+end
+
+-- The kinds of journey this character starts, learned (ns.charDB.startedKinds).
+local function learnedKind(kind)
+  local kinds = ns.charDB and ns.charDB.startedKinds
+  if not kinds then return 0.5, 0 end
+  local most = 0
+  for _, n in pairs(kinds) do most = math.max(most, n) end
+  if most == 0 then return 0.5, 0 end
+  return (kinds[kind] or 0) / most, most
+end
+
+-- What the player has told us: the time budget, the kind of journey they
+-- start most, the zone of the active journey, an explicit preference.
+local function intent(option, ctx)
+  local learned = learnedKind(option.kind)
+  local budget = 0.5
+  if ctx.budget then budget = (option.seconds or option.trip or 0) <= ctx.budget and 1 or 0 end
+  local zone = 0.5
+  if ctx.journeyMap then zone = option.mapID == ctx.journeyMap and 1 or 0.3 end
+  option.intentWhy = (learned >= budget and learned >= zone and learned > 0.5) and "kind"
+    or (zone >= budget and zone > 0.5) and "zone" or (budget > 0.5) and "budget" or nil
+  local i = 0.4 * learned + 0.3 * budget + 0.3 * zone
+  local preference = ForYou.Preference()
+  if preference then
+    i = 0.5 * (preference == option.kind and 1 or 0) + 0.5 * i
+    if preference == option.kind then option.intentWhy = "preference" end
+  end
+  return clamp(i)
+end
+
+local function relevanceOf(parts)
+  local total = 0
+  for _, name in ipairs(PART_NAMES) do total = total + WEIGHTS[name] * (parts[name] or 0) end
+  return total
+end
+
+-- Ties between parts go to the one that says more: what it continues, then
+-- what's new about it, then its fit, then intent, then plain distance.
+local PART_ORDER = { progression = 1, novelty = 2, suitability = 3, intent = 4, proximity = 5 }
+local LEAD_ORDER = { "progression", "novelty", "suitability", "intent", "proximity" }
+
+-- The part with the biggest value (LEAD_ORDER on a tie).
+local function lead(parts)
+  local best, bestValue = nil, -1
+  for _, name in ipairs(LEAD_ORDER) do
+    if (parts[name] or 0) > bestValue then best, bestValue = name, parts[name] or 0 end
+  end
+  return best
+end
+
+-- The phrase for one part of an option, in plain words.
+local function phraseFor(name, option, parts, ctx)
+  local k = option.kind
+  if name == "proximity" then
+    local travel = travelTo(option)
+    if travel and travel <= NEAR_SECONDS then return "right nearby" end
+    return ns.FormatDuration(travel) .. " away"
+  end
+  if name == "progression" then
+    if k == "handin" then return "quests in your log are ready to hand in" end
+    if k == "finish" then return "picks up where your log left off" end
+    if k == "dungeon" then
+      if #(option.inLog or {}) > 0 then return "continues quests in your log" end
+      return "its quests are waiting at their givers"
+    end
+    if k == "notable" or k == "quest" then
+      local q = option.quests[1]
+      if q.handin then return "ready to hand in from your log" end
+      if q.inLog then return "already in your log" end
+      if option.chained then return "continues a chain you started" end
+      return "a quest line to start"
+    end
+    if k == "zone" then
+      if ctx.journeyMap and option.mapID == ctx.journeyMap then return "where your journey already is" end
+      if option.mapID == ctx.hereMap then return "the zone you're in, with quests left" end
+      if #(option.later or {}) > 0 then return "its chains lead on" end
+      return "somewhere new to quest"
+    end
+    if k == "profession" then
+      return option.capped and (option.profession .. " is at its cap") or ("the next rank of " .. option.profession)
+    end
+    return "something to carry on with"
+  end
+  if name == "novelty" then
+    if k == "zone" then
+      if parts.novelty >= 0.9 then return "a zone you haven't seen" end
+      if parts.novelty >= 0.6 then return "a zone you've barely explored" end
+      return "a zone you know"
+    end
+    if k == "dungeon" then return parts.novelty >= 0.8 and "a dungeon you haven't run" or "a dungeon you know" end
+    if k == "notable" then
+      local reason = option.reasons and option.reasons[1] and option.reasons[1].text
+      if reason then return (reason:gsub("%.$", "")) end
+      return "a quest that stands out"
+    end
+    if k == "quest" then return option.tag and ("a quest that stands out: " .. option.tag) or "a quest you haven't done" end
+    if k == "profession" then return "a new rank to learn" end
+    return "something familiar"
+  end
+  if name == "suitability" then
+    local n = #(option.quests or option.now or {})
+    if k == "zone" then return plural(n, "quest") .. " at your level" end
+    if k == "handin" then return "full XP for " .. plural(n, "quest") end
+    if k == "finish" then return plural(n, "quest") .. " at your level, part done" end
+    if k == "dungeon" then return n > 0 and (plural(n, "quest") .. " at your level") or "fits your level" end
+    if k == "profession" then return "something you can train right now" end
+    local reward = rewardFit(option) >= 1 and " with a reward for you" or ""
+    return "a quest at your level" .. reward
+  end
+  if name == "intent" then
+    local w = option.intentWhy
+    if w == "preference" then return "the kind you asked for" end
+    if w == "kind" then return "the kind of journey you start most" end
+    if w == "zone" then return "in your journey's zone" end
+    if w == "budget" then return string.format("fits your %d min", ctx.budget / 60) end
+    return "a change of pace"
+  end
+  return nil
+end
+
+-- One plain sentence naming the two strongest parts: "Picks up where your
+-- log left off, 4 min away".
+local function whyFor(option, parts, ctx)
+  local names = {}
+  for _, name in ipairs(PART_NAMES) do names[#names + 1] = { name = name, value = parts[name] or 0 } end
+  table.sort(names, function(a, b)
+    if a.value ~= b.value then return a.value > b.value end
+    return PART_ORDER[a.name] < PART_ORDER[b.name]
+  end)
+  local top = { names[1], names[2] }
+  table.sort(top, function(a, b) return PART_ORDER[a.name] < PART_ORDER[b.name] end)
+  local first = phraseFor(top[1].name, option, parts, ctx) or ""
+  local second = phraseFor(top[2].name, option, parts, ctx)
+  return capitalize(first) .. (second and (", " .. second) or "")
+end
+
+-- How many refreshes a card has been shown on (CheckNew keeps the count).
+local function shownCount(row)
+  local seen = ns.charDB and ns.charDB.seenCards
+  local n = seen and seen[(row.id or "?") .. "|" .. (row.title or "")]
+  if type(n) == "number" then return n end
+  return n and 1 or 0
+end
+
+-- Scores an option and writes relevance, its parts and `why` onto its row;
+-- the `why` goes first in the details (the tooltip's gold line).
+local function scoreRow(row, option, ctx)
+  option.mapID = option.mapID or zoneOf(option.journey and option.journey.stops[1] and option.journey.stops[1].node
+    or option.goal)
+  local parts = {
+    suitability = suitability(option, ctx),
+    proximity = proximity(travelTo(option)),
+    progression = progression(option, ctx),
+    novelty = novelty(option, ctx),
+    intent = intent(option, ctx),
   }
+  -- Shown on refresh after refresh and never started: a little less new each time.
+  local shown = shownCount(row)
+  if shown > 0 then parts.novelty = parts.novelty * math.max(SHOWN_FLOOR, 1 - SHOWN_DECAY * shown) end
+  for _, name in ipairs(PART_NAMES) do parts[name] = math.floor(clamp(parts[name]) * 100 + 0.5) / 100 end
+  row.relevance_parts = parts
+  row.relevance = math.floor(relevanceOf(parts) * 1000 + 0.5) / 1000
+  row.lead = lead(parts)
+  row.why = whyFor(option, parts, ctx)
+  row.zoneKey = option.mapID or firstPart(option.zone or row.zone or "")
+  row.travel = travelTo(option)
+  table.insert(row.details, 1, { text = row.why .. ".", color = GOLD })
+  return row
 end
+
+---------------------------------------------------------------- rows
 
 local function logText(q)
   if q.handin then return "  (ready to hand in)" end
@@ -1163,15 +1640,14 @@ local function questLines(details, option, ctx)
   end
 end
 
-local function optionRow(option, rank, total, ctx)
+local CATEGORY = { hub = "Quest hub", handin = "Hand in", finish = "Finish", quest = "Best quest" }
+
+local function optionRow(option, ctx)
   local count = #option.quests
   local fresh, logged, handins = questCounts(option)
   local amount = ctx.xpMode and (formatNumber(option.value) .. " XP") or plural(count, "quest")
   local details = { {
-    text = string.format("#%d of %d by %s: ~%s in %s (%s).", rank, total,
-      ctx.xpMode and "XP per minute" or "quests per hour", amount, ns.FormatDuration(option.seconds),
-      timeText(option)),
-    color = GOLD,
+    text = string.format("~%s in %s (%s).", amount, ns.FormatDuration(option.seconds), timeText(option)),
   } }
   if option.fitting then
     details[1].text = string.format("Least travel of %d that fit in %d min: ~%s in %s (%s).", option.fitting,
@@ -1213,7 +1689,6 @@ local function optionRow(option, rank, total, ctx)
   elseif handins > 0 then
     why[1] = string.format("%s + %d to hand in", plural(fresh, "quest"), handins)
   end
-  why[#why + 1] = rateText(option, ctx)
 
   -- For the cards: where, then up to three numbers.
   local place = firstPart(option.zone)
@@ -1229,21 +1704,19 @@ local function optionRow(option, rank, total, ctx)
     stats[#stats + 1] = { "In your log", tostring(logged) }
   elseif option.kind == "quest" then
     local q = option.quests[1]
-    stats[#stats + 1] = ctx.xpMode and { "XP", "~" .. formatNumber(option.value) } or { "Level", tostring(q.level or "?") }
+    if not ctx.xpMode then stats[#stats + 1] = { "Level", tostring(q.level or "?") } end
   else
     stats[#stats + 1] = { "Quests", handins > 0 and string.format("%d + %d ready", fresh, handins) or tostring(fresh) }
   end
-  stats[#stats + 1] = rateStat(option, ctx)
+  if ctx.xpMode then stats[#stats + 1] = { "XP", "~" .. formatNumber(option.value) } end
 
-  local CATEGORY = { hub = "Quest hub", handin = "Hand in", finish = "Finish", quest = "Best quest",
-    dungeon = option.raid and "Raid" or "Dungeon" }
   local row = {
     id = option.kind .. (option.name or option.title), kind = option.kind, raid = option.raid, title = option.title,
-    category = CATEGORY[option.kind],
+    category = CATEGORY[option.kind] or (option.raid and "Raid" or "Dungeon"),
     subtitle = string.format("%s  ·  %s  ·  %s", firstPart(option.zone),
       ns.FormatDuration(option.trip), table.concat(why, ", ")),
-    place = place, stats = stats,
-    goal = option.goal, route = option.route, details = details, rate = option.rate,
+    place = place, stats = stats, zone = option.zone,
+    goal = option.goal, route = option.route, details = details,
   }
   if option.journey then
     row.journey = option.journey
@@ -1257,28 +1730,29 @@ local function optionRow(option, rank, total, ctx)
     option.journey.title = row.title
     option.journey.def.title = row.title
   end
-  return row
+  return scoreRow(row, option, ctx)
 end
 
 -- Dungeons without quests for you (or without quest data): Dungeons' own ranking.
-local function plainRow(option)
+local function plainRow(option, ctx)
   local r = option.result
   local details = { { text = ns.Quests.Available() and "No quests for it: ranked by level fit and travel time."
-    or "Ranked by level fit and travel time. Install " .. ns.Data.ADDON .. " for its quests and XP.", color = GOLD } }
+    or "Ranked by level fit and travel time. Install " .. ns.Data.ADDON .. " for its quests and XP.", color = GREY } }
   for _, line in ipairs(r.details or {}) do details[#details + 1] = line end
   local stats = {}
   local level = option.title and option.title:match("level (%d+)$")
   if level then stats[1] = { "Level", level } end
   stats[#stats + 1] = { "Travel", ns.FormatDuration(option.trip) }
-  return {
+  local row = {
     id = "plain" .. (r.id or option.name), kind = "dungeon", raid = option.raid, title = option.title,
     category = option.raid and "Raid" or "Dungeon",
     subtitle = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone),
       ns.FormatDuration(option.trip)),
     place = string.format("%s  ·  %s  ·  fits your level", firstPart(r.zone), option.raid and "Raid" or "Group"),
-    stats = stats,
+    stats = stats, zone = r.zone,
     goal = r.goal, route = r.route, details = details,
   }
+  return scoreRow(row, option, ctx)
 end
 
 -- "Don't miss": what makes the quest stand out, in plain words; its XP doesn't rank it.
@@ -1288,7 +1762,7 @@ local function notableRow(option, ctx)
   local where = q.inLog and string.format("It's in your log, %s away", ns.FormatDuration(option.travel))
     or string.format("Its quest giver is %s away", ns.FormatDuration(option.travel))
   if option.trip > option.travel then where = where .. string.format(", the whole trip %s", ns.FormatDuration(option.trip)) end
-  local details = { { text = string.format("Don't miss: %s %s.", option.reasons[1].text, where), color = GOLD } }
+  local details = { { text = string.format("Don't miss: %s %s.", option.reasons[1].text, where), color = NOTABLE } }
   for i = 2, #option.reasons do details[#details + 1] = { text = option.reasons[i].text, color = NOTABLE } end
   local line = string.format("[%d] %s%s", q.level or 0, q.name or ("Quest " .. q.id), q.inLog and "  (in your log)" or "")
   if ctx.xpMode then line = line .. string.format("  -  %s XP", formatNumber((questValue(q, ctx)))) end
@@ -1301,12 +1775,13 @@ local function notableRow(option, ctx)
   end
   local stats = { { "Level", tostring(q.level or "?") }, { "Travel", ns.FormatDuration(option.travel) } }
   if option.trip > option.travel then stats[#stats + 1] = { "Trip", ns.FormatDuration(option.trip) } end
-  return {
+  local row = {
     id = "notable" .. q.id, kind = "notable", category = "Don't miss", title = option.title, item = rewardItem,
     subtitle = string.format("%s  ·  %s  ·  %s", option.zone, ns.FormatDuration(option.travel), option.tag),
-    place = string.format("%s  ·  %s", option.tag, option.zone), stats = stats,
+    place = string.format("%s  ·  %s", option.tag, option.zone), stats = stats, zone = option.zone,
     goal = option.goal, journey = option.journey, details = details,
   }
+  return scoreRow(row, option, ctx)
 end
 
 local function zoneRow(z, ctx)
@@ -1315,9 +1790,8 @@ local function zoneRow(z, ctx)
     text = string.format("Questing zone: %s you can take now%s%s.", plural(#z.now, "quest"),
       #z.later > 0 and string.format(", %d more as their chains unlock", #z.later) or "",
       ctx.xpMode and string.format(", ~%s XP in all", formatNumber(z.value)) or ""),
-    color = GOLD,
   } }
-  details[#details + 1] = { text = string.format("Start at %s: the trip picks up its %s.", z.first.place,
+  details[#details + 1] = { text = string.format("Start at %s: the journey picks up its %s.", z.first.place,
     plural(z.first.count, "quest")) }
   local next = {}
   for i = 2, math.min(#z.hubs, ZONE_HUBS + 1) do
@@ -1342,45 +1816,116 @@ local function zoneRow(z, ctx)
   end
   local quests = tostring(#z.now)
   if #z.later > 0 then quests = string.format("%d + %d", #z.now, #z.later) end
-  return {
-    id = "zone" .. z.mapID, kind = "zone", category = "Questing zone", title = z.title,
+  local row = {
+    id = "zone" .. z.mapID, kind = "zone", category = "Questing zone", title = z.title, mapID = z.mapID,
     subtitle = string.format("%s  ·  %s  ·  %s  ·  start at %s", z.zone, levels, ns.FormatDuration(z.trip), z.first.place),
-    place = string.format("%s  ·  start at %s", levels, z.first.place),
+    place = string.format("%s  ·  start at %s", levels, z.first.place), zone = z.zone,
     stats = { { "Quests", quests }, ctx.xpMode and { "XP", "~" .. formatNumber(z.value) } or { "Hubs", tostring(#z.hubs) },
       { z.journey and "Trip" or "Travel", ns.FormatDuration(z.trip) } },
     goal = z.goal, route = z.route, journey = z.journey, details = details,
   }
+  return scoreRow(row, z, ctx)
+end
+
+-- A profession's next rank, as a card (its journey ends with buying the rank).
+local function professionRow(need, ctx)
+  local details = {}
+  for _, line in ipairs(need.details or {}) do details[#details + 1] = line end
+  local row = {
+    id = "profession" .. need.profession, kind = "profession", professionIcon = need.icon,
+    category = "Profession", title = need.title,
+    subtitle = string.format("%s  ·  %s  ·  %s", need.zone, ns.FormatDuration(need.route.seconds), need.why),
+    place = capitalize(need.why), stats = need.stats, zone = need.zone,
+    goal = need.goal, route = need.route, journey = need.journey, details = details,
+  }
+  need.reward = 1
+  return scoreRow(row, need, ctx)
+end
+
+---------------------------------------------------------------- observations
+
+local OBSERVATION_ICONS = {
+  train = "Interface\\Icons\\INV_Misc_Book_09", repair = "Interface\\Icons\\Trade_BlackSmithing",
+  food = "Interface\\Icons\\INV_Misc_Food_15", ammo = "Interface\\Icons\\INV_Ammo_Arrow_01",
+  flight = "Interface\\Icons\\Ability_Hunter_EagleEye", profession = "Interface\\Icons\\INV_Misc_Note_01",
+  handin = "Interface\\Icons\\INV_Letter_15", abilities = "Interface\\Icons\\INV_Misc_Book_09",
+  bags = "Interface\\Icons\\INV_Misc_Bag_08", vendor = "Interface\\Icons\\INV_Misc_Coin_01",
+}
+
+-- A need as an observation: { id, kind, icon, text, highlights, urgency,
+-- action = { label, kind = "detour" | "show" | "go", stop, page, goal, route } }.
+local function observationFor(need)
+  local o = {
+    id = need.id or ("obs:" .. need.kind .. (need.profession or "")), kind = need.kind,
+    icon = need.icon or OBSERVATION_ICONS[need.kind] or "Interface\\Icons\\INV_Misc_Map_01",
+    text = need.text or need.title, highlights = need.highlights or {}, urgency = clamp(need.urgency or 0.5),
+    details = need.details, spells = need.spells,
+  }
+  if need.kind == "train" and not need.icon then
+    local _, class = UnitClass("player")
+    local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
+    if coords then o.icon, o.iconCoords = "Interface\\TargetingFrame\\UI-Classes-Circles", coords end
+  end
+  if need.stop then
+    o.action = { label = "Add detour", kind = "detour", stop = need.stop, stops = need.stops, goal = need.goal,
+      route = need.route, title = need.title }
+  elseif need.page then
+    o.action = { label = need.pageLabel or "Show", kind = "show", page = need.page }
+  elseif need.goal and need.route then
+    o.action = { label = "Go", kind = "go", goal = need.goal, route = need.route, title = need.title }
+  end
+  return o
+end
+
+-- Completed quests ready to hand in: one observation per place, nearest
+-- first, with the hand-in stops (Journey.QuestStops) as a detour.
+local function handinObservations(handins, start)
+  local sorted = {}
+  for _, h in ipairs(handins) do sorted[#sorted + 1] = h end
+  table.sort(sorted, function(a, b) return a.trip < b.trip end)
+  local out = {}
+  for i = 1, math.min(#sorted, HANDIN_OBSERVATIONS) do
+    local h = sorted[i]
+    local stops = {}
+    for _, id in ipairs(h.questIDs or {}) do
+      for _, s in ipairs(ns.Journey.QuestStops(id, start)) do stops[#stops + 1] = s end
+    end
+    if #stops > 0 then
+      local n = #h.quests
+      out[#out + 1] = observationFor({
+        id = "obs:handin" .. i, kind = "handin", urgency = math.min(0.75, 0.5 + 0.05 * n),
+        title = h.title,
+        text = string.format("%s ready to hand in %s, %s away.", plural(n, "quest"), h.where, ns.FormatDuration(h.trip)),
+        highlights = { plural(n, "quest"), ns.FormatDuration(h.trip) },
+        goal = h.goal, route = h.route, stop = stops[1], stops = stops,
+      })
+    end
+  end
+  return out
 end
 
 ---------------------------------------------------------------- page
 
-local function summaryFor(ctx, needs)
+local function summaryFor(ctx, observations)
   local level = UnitLevel("player")
-  local ranking = ctx.xpMode and "the best of each kind, by XP per minute" or "the best of each kind, by quests per hour"
-  local parts = {}
-  if needs > 0 then
-    parts[1] = string.format("Level %d: |cff7fd1ae%s due|r first, then %s.", level, plural(needs, "thing"), ranking)
-  else
-    parts[1] = string.format("Level %d: %s from here.", level, ranking)
-  end
+  local parts = { string.format("Level %d: a few good options from where you are.", level) }
   if ctx.budget then
     local minutes = ctx.budget / 60
     if ctx.nothingFits then
-      parts[1] = string.format("Nothing to quest fits in %d min: the quickest option, a bit over%s.", minutes,
-        needs > 0 and string.format(", after |cff7fd1ae%s due|r", plural(needs, "thing")) or "")
-    elseif needs > 0 then
-      parts[1] = string.format("Fits in %d min: |cff7fd1ae%s due|r first, then %s; hand-ins and finishes by least travel.",
-        minutes, plural(needs, "thing"), ranking)
+      parts[1] = string.format("Nothing to quest fits in %d min: the quickest option, a bit over.", minutes)
     else
-      parts[1] = string.format("Fits in %d min: %s; hand-ins and finishes by least travel.", minutes, ranking)
+      parts[1] = string.format("Fits in %d min: a few good options from where you are.", minutes)
     end
+  end
+  if #observations > 0 then
+    parts[#parts + 1] = string.format("|cff7fd1ae%s|r good to know.", plural(#observations, "thing"))
   end
   if not ctx.quests then
     parts[#parts + 1] = "Install " .. ns.Data.ADDON .. " for quest hubs and XP; dungeons are ranked by level fit and travel time."
   elseif level >= MAX_LEVEL then
-    parts[#parts + 1] = "At the level cap quests give no XP, so options are ranked by quests per hour."
+    parts[#parts + 1] = "At the level cap quests give no XP, so they count by level fit."
   elseif not ctx.db then
-    parts[#parts + 1] = "No quest XP in the data: ranked by quests per hour, weighted by level fit."
+    parts[#parts + 1] = "No quest XP in the data: quests count by level fit."
   end
   local ready, unfinished = 0, 0
   for _, e in ipairs(ctx.log) do
@@ -1390,7 +1935,7 @@ local function summaryFor(ctx, needs)
     local counted = {}
     if ready > 0 then counted[#counted + 1] = string.format("%d ready to hand in", ready) end
     if unfinished > 0 then counted[#counted + 1] = string.format("%d to finish (timed by objectives left)", unfinished) end
-    parts[#parts + 1] = string.format("Quest log counted at full XP: %s.", table.concat(counted, ", "))
+    parts[#parts + 1] = string.format("Quest log: %s.", table.concat(counted, ", "))
     if ctx.unplaced > 0 then
       parts[#parts + 1] = string.format("%s in your log can't be placed on the map%s.", plural(ctx.unplaced, "quest"),
         ctx.quests and "" or " without quest data")
@@ -1410,8 +1955,11 @@ local function timed(name, fn, ...)
   return a, b, c
 end
 
+local builtObservations -- the observations of the build under way (read by finished)
+
 local function build()
   parts = {}
+  builtObservations = {}
   local start = ns.Geo.PlayerNode()
   if not start then
     summary = nil
@@ -1421,8 +1969,11 @@ local function build()
   local level = UnitLevel("player")
   local db = xpTable()
   perQuest = ns.QuestTimes.Seconds() or SECONDS_PER_QUEST
+  local active = ns.Nav and ns.Nav.active
   local ctx = { level = level, db = db, xpMode = db ~= nil and level < MAX_LEVEL,
-    quests = ns.Quests.Available() and true or false, notes = {}, unplaced = 0, overZones = {} }
+    quests = ns.Quests.Available() and true or false, notes = {}, unplaced = 0, overZones = {},
+    hereMap = ns.Geo.ZoneAt(start.instance, start.wx, start.wy),
+    journeyMap = active and active.goal and zoneOf(active.goal) or nil }
   ctx.log = try(readLog) or {}
   -- A time budget (see "time budget" below): what doesn't fit is left out.
   local budget = ForYou.Budget()
@@ -1433,23 +1984,28 @@ local function build()
     for _, item in ipairs(list) do if test(item) then out[#out + 1] = item end end
     return out
   end
-  local function needSeconds(n) return n.journey and n.journey.seconds or seconds(n.route) end
 
+  -- The needs: observations, not cards (professions are cards too, below).
   local needs = {}
   local function addNeed(n) if n then needs[#needs + 1] = n end end
   addNeed(timed("training", trainingNeed, ctx))
   for _, n in ipairs(timed("vendors", vendorNeeds, ctx) or {}) do addNeed(n) end
   addNeed(timed("flight", flightNeed, ctx, start, net))
   addNeed(timed("repair", repairSoonNeed))
-  for _, n in ipairs(timed("professions", professionNeeds, start, net) or {}) do addNeed(n) end
-  local function priority(n) return (n.soft and SOFT_PRIORITY or 0) + PRIORITY[n.kind] end
-  table.sort(needs, function(a, b) return priority(a) < priority(b) end)
-  if ctx.budget then needs = keep(needs, function(n) return fits(needSeconds(n)) end) end
-  while #needs > MAX_NEEDS do table.remove(needs) end
+  local professions = timed("professions", professionNeeds, start, net) or {}
+  for _, n in ipairs(professions) do
+    if n.capped then addNeed(n) end
+  end
+  addNeed(timed("abilities", abilitiesNeed, ctx))
+  addNeed(timed("bags", bagsNeed))
+  local toVendor = false
+  for _, n in ipairs(needs) do
+    if n.kind == "repair" or n.kind == "ammo" or n.kind == "food" or n.kind == "bags" then toVendor = true end
+  end
+  if not toVendor then addNeed(timed("vendor nearby", vendorNearbyNeed)) end
 
-  -- Every option, ranked by XP per minute (the rank shown on each card); then
-  -- the best of each kind. Journeys are planned only for those, and ranked
-  -- again with their real trip time.
+  -- Every option; journeys are planned only for the best of each kind, and
+  -- scored again with their real trip time.
   local hubs = timed("hubs", hubOptions) or {}
   local handins = timed("handins", handinOptions, ctx, start, net) or {}
   local finishes = timed("finish", finishOptions, ctx, start, net) or {}
@@ -1462,14 +2018,11 @@ local function build()
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
     for _, option in ipairs(list) do score(option, ctx) end
   end
-  local function byRate(a, b)
-    if a.rate ~= b.rate then return a.rate > b.rate end
-    return a.seconds < b.seconds
-  end
   -- With a budget, what doesn't fit is kept aside: the quickest of it is
   -- offered when nothing fits. Dungeons need BUDGET_DUNGEON minutes.
   local over = {}
   local questHubs = hubs -- the best quest can come from a hub too big for the budget
+  local allHandins = handins -- observations aren't filtered by the budget
   if ctx.budget then
     local dungeonTime = budget >= BUDGET_DUNGEON
     for _, list in ipairs({ handins, finishes, dungeonTime and dungeons or {} }) do
@@ -1480,26 +2033,34 @@ local function build()
     dungeons = dungeonTime and keep(dungeons, optionFits) or {}
     plain = dungeonTime and keep(plain, function(o) return fits(o.trip) end) or {}
     if not dungeonTime then held = {} end
-    table.sort(over, byRate)
-    for i, option in ipairs(over) do option.overRank = i end
   end
-  local all = {}
+  -- The best XP for the time on offer: suitability's XP share is against it.
+  local bestRate = 0
   for _, list in ipairs({ hubs, handins, finishes, dungeons }) do
-    for _, option in ipairs(list) do all[#all + 1] = option end
+    for _, option in ipairs(list) do bestRate = math.max(bestRate, option.rate or 0) end
   end
-  table.sort(all, byRate)
-  for i, option in ipairs(all) do option.rank = i end
-  local function best(list)
-    table.sort(list, byRate)
-    return list[1]
-  end
+  ctx.bestRate = bestRate
 
+  -- The best of a kind, by relevance from its route (before the journey is planned).
+  local function preScore(option)
+    option.mapID = option.mapID or zoneOf(option.goal)
+    return relevanceOf({ suitability = suitability(option, ctx), proximity = proximity(travelTo(option)),
+      progression = progression(option, ctx), novelty = novelty(option, ctx), intent = intent(option, ctx) })
+  end
+  local function best(list)
+    local top, topScore
+    for _, option in ipairs(list) do
+      local s = preScore(option)
+      if not topScore or s > topScore or (s == topScore and option.seconds < top.seconds) then top, topScore = option, s end
+    end
+    return top
+  end
   local picks = {}
   local function pick(option) if option then picks[#picks + 1] = option end end
   local function journeyFor(option)
-    if #option.stops > 0 then timed("trips", questJourney, option, ctx, start, net) end
+    if #option.stops > 0 then timed("journeys", questJourney, option, ctx, start, net) end
   end
-  -- With a budget: the least travel first, the first whose planned trip still fits.
+  -- With a budget: the least travel first, the first whose planned journey still fits.
   local function quickest(list)
     table.sort(list, function(a, b)
       if a.trip ~= b.trip then return a.trip < b.trip end
@@ -1526,19 +2087,11 @@ local function build()
   pick(finish)
   local dungeon = best(dungeons)
   local quest = timed("best quest", bestQuestOption, questHubs, ctx, start, net)
-  if quest then
-    quest.rank = 1
-    for _, option in ipairs(all) do
-      if option.rate > quest.rate then quest.rank = quest.rank + 1 end
-    end
-    if not fits(quest.seconds) then
-      over[#over + 1] = quest
-      quest.overRank = quest.rank
-      quest = nil
-    end
+  if quest and not fits(quest.seconds) then
+    over[#over + 1] = quest
+    quest = nil
   end
   pick(quest)
-  table.sort(picks, ctx.budget and function(a, b) return a.seconds < b.seconds end or byRate)
   local notable = timed("don't miss", notableOption, hubs, ctx, start, net,
     quest and { [quest.quests[1].id] = true } or {})
 
@@ -1548,8 +2101,8 @@ local function build()
   for _, list in ipairs({ dungeons, plain }) do
     for _, option in ipairs(list) do
       if option ~= dungeon and option ~= (not dungeon and plain[1] or nil) then
-        local name, level = (option.title or ""):match("^Run (.-)%s+·%s+level (%d+)$")
-        others[#others + 1] = name and string.format("%s (%s)", name, level) or option.name
+        local name, lvl = (option.title or ""):match("^Run (.-)%s+·%s+level (%d+)$")
+        others[#others + 1] = name and string.format("%s (%s)", name, lvl) or option.name
       end
     end
   end
@@ -1561,7 +2114,8 @@ local function build()
       h.opensAt and ("at level " .. h.opensAt) or "after earlier quests", #h.later, #h.later == 1 and "" or "s")
   end
 
-  -- Every card is kept: the page shows MAX_RESULTS of those not on your trip (visible, below).
+  -- Every card is kept, scored: the page shows MAX_RESULTS of those not on
+  -- your journey, picked by role (visible, below).
   local results = {}
   -- With a budget each card shows its time (`badge`, UI/Cards.lua).
   local function add(row, seconds)
@@ -1569,45 +2123,40 @@ local function build()
     if ctx.budget and seconds then row.badge = ns.FormatDuration(seconds) end
     results[#results + 1] = row
   end
-  -- What's due, then the quest not to miss, then the rest of the needs.
-  for _, need in ipairs(needs) do
-    if not need.soft then add(needRow(need), needSeconds(need)) end
-  end
   if notable and (not ctx.budget or fits(notable.seconds or notable.trip)) then
     add(notableRow(notable, ctx), notable.seconds or notable.trip)
   end
-  for _, need in ipairs(needs) do
-    if need.soft then add(needRow(need), needSeconds(need)) end
+  for _, need in ipairs(professions) do
+    if fits(need.trip) then add(professionRow(need, ctx), need.trip) end
   end
   local zones = timed("zones", zoneOptions, ctx, start, net) or {}
   for _, zone in ipairs(zones) do add(zoneRow(zone, ctx), zone.seconds) end
   local dungeonRow, dungeonSeconds
   if dungeon then
-    timed("dungeon trip", dungeonJourney, dungeon, ctx, start, net)
+    timed("dungeon journey", dungeonJourney, dungeon, ctx, start, net)
     if fits(dungeon.seconds) then
-      dungeonRow, dungeonSeconds = optionRow(dungeon, dungeon.rank, #all, ctx), dungeon.seconds
+      dungeonRow, dungeonSeconds = optionRow(dungeon, ctx), dungeon.seconds
     else
       over[#over + 1] = dungeon
-      dungeon.overRank = dungeon.rank
     end
   elseif plain[1] then
     -- Without quest data: the best one by level fit and travel time.
-    dungeonRow, dungeonSeconds = plainRow(plain[1]), plain[1].trip
+    dungeonRow, dungeonSeconds = plainRow(plain[1], ctx), plain[1].trip
   end
   if dungeonRow and #others > 0 then
-    table.insert(dungeonRow.details, 2, { text = "Also for your level: " .. table.concat(others, ", ", 1, math.min(#others, 4)) .. "." })
+    table.insert(dungeonRow.details, 3, { text = "Also for your level: " .. table.concat(others, ", ", 1, math.min(#others, 4)) .. "." })
   end
   if #soon > 0 then
     local line = "Dungeons later, once you can take most of their quests: " .. table.concat(soon, ", ") .. "."
     if dungeonRow then
       -- In the dungeon card's tooltip, not on the card.
-      table.insert(dungeonRow.details, 2, { text = line, more = true })
+      table.insert(dungeonRow.details, 3, { text = line, more = true })
     else
       ctx.notes[#ctx.notes + 1] = line
     end
   end
   add(dungeonRow, dungeonSeconds)
-  for _, option in ipairs(picks) do add(optionRow(option, option.rank, #all, ctx), option.seconds) end
+  for _, option in ipairs(picks) do add(optionRow(option, ctx), option.seconds) end
 
   -- Nothing to quest fits the budget: the quickest option anyway, "a bit over".
   if ctx.budget and #zones == 0 and not dungeonRow and #picks == 0 then
@@ -1622,7 +2171,7 @@ local function build()
         row = zoneRow(nearest, ctx)
       else
         if nearest.kind == "handin" or nearest.kind == "finish" then journeyFor(nearest) end
-        row = optionRow(nearest, nearest.overRank or 1, #over, ctx)
+        row = optionRow(nearest, ctx)
       end
       row.category = (row.category or "") .. "  ·  a bit over"
       row.details[1].text = string.format("Nothing fits in %d min; this is the quickest. ", budget) .. row.details[1].text
@@ -1631,10 +2180,24 @@ local function build()
       add(row, nearest.seconds)
     end
   end
+  -- Most relevant first; the roles are picked from this order (visible).
+  table.sort(results, function(a, b)
+    if (a.relevance or 0) ~= (b.relevance or 0) then return (a.relevance or 0) > (b.relevance or 0) end
+    return (a.title or "") < (b.title or "")
+  end)
 
-  local due = 0
-  for _, need in ipairs(needs) do if not need.soft then due = due + 1 end end
-  summary = summaryFor(ctx, due)
+  -- The observations, most urgent first (the order they were found breaks ties).
+  local observations = {}
+  for _, need in ipairs(needs) do observations[#observations + 1] = observationFor(need) end
+  for _, o in ipairs(handinObservations(allHandins, start)) do observations[#observations + 1] = o end
+  for i, o in ipairs(observations) do o.order = i end
+  table.sort(observations, function(a, b)
+    if a.urgency ~= b.urgency then return a.urgency > b.urgency end
+    return a.order < b.order
+  end)
+  builtObservations = observations
+
+  summary = summaryFor(ctx, observations)
   return results, nil, net
 end
 
@@ -1672,7 +2235,7 @@ local function iconFor(r)
   return ICONS[r.kind] or "Interface\\Icons\\INV_Misc_Map_01"
 end
 
--- What the trip on now still has stops for: the quests ({ [questID] = true })
+-- What the journey on now still has stops for: the quests ({ [questID] = true })
 -- and the places (the route's goal, or the journey's open stops and finish).
 local function tripStops()
   local a = ns.Nav and ns.Nav.active
@@ -1690,13 +2253,53 @@ local function tripStops()
   return ids, nodes
 end
 
--- A dungeon's entrance this close to a place the trip still goes is that place.
+-- A dungeon's entrance this close to a place the journey still goes is that place.
 local SAME_PLACE = 5
 
--- The cards shown: at most MAX_RESULTS, none with a quest your trip already
--- has, no dungeon your trip already goes to (a run with its pickups done
--- still has the entrance). Checked on every look, so the cards follow the
--- trip without a rebuild.
+-- Roles for each page of three: `continue` is the most relevant card whose
+-- strongest part is progression; `explore` the most relevant whose strongest
+-- part is novelty and that is in another zone or of another kind; `alternative`
+-- the most relevant of yet another kind. Later pages repeat that over what is
+-- left. The list comes in most-relevant-first.
+local function assignRoles(rows)
+  local left = {}
+  for _, r in ipairs(rows) do left[#left + 1] = r end
+  local function take(test)
+    for i, r in ipairs(left) do
+      if test(r) then
+        table.remove(left, i)
+        return r
+      end
+    end
+  end
+  local function any() return true end
+  local function differs(a, b) return a.zoneKey ~= b.zoneKey or a.kind ~= b.kind end
+  local out = {}
+  while #left > 0 do
+    local cont = take(function(r) return r.lead == "progression" end) or take(any)
+    cont.role = "continue"
+    out[#out + 1] = cont
+    local explore = take(function(r) return r.lead == "novelty" and differs(r, cont) end)
+      or take(function(r) return differs(r, cont) end) or take(any)
+    if explore then
+      explore.role = "explore"
+      out[#out + 1] = explore
+    end
+    local alternative = take(function(r) return r.kind ~= cont.kind and (not explore or r.kind ~= explore.kind) end)
+      or take(any)
+    if alternative then
+      alternative.role = "alternative"
+      out[#out + 1] = alternative
+    end
+  end
+  return out
+end
+ForYou.AssignRoles = assignRoles
+
+-- The cards shown: at most MAX_RESULTS, none with a quest your journey already
+-- has, no dungeon your journey already goes to (a run with its pickups done
+-- still has the entrance), in role order. Checked on every look, so the
+-- cards follow the journey without a rebuild.
 local function visible(results)
   local trip, places = tripStops()
   local out = {}
@@ -1719,10 +2322,10 @@ local function visible(results)
     end
     if not overlap then out[#out + 1] = r end
   end
-  return out
+  return assignRoles(out)
 end
 
--- Which quests and places are on the trip, to refresh the cards when that changes.
+-- Which quests and places are on the journey, to refresh the cards when that changes.
 local function tripKey()
   local trip, places = tripStops()
   local ids = {}
@@ -1738,7 +2341,7 @@ end
 -- job is done; ForYou.WhenReady hands the fresh results to code that waits
 -- for them. A quick build (or one without a clock, in tests) is done at once.
 local job      -- the build under way: { tries, started, stale (invalidated meanwhile) }
-local last     -- the last results built: { results, err, net }
+local last     -- the last results built: { results, err, net, observations }
 local waiters = {}
 local asking = false -- inside ForYou.Results: the caller takes the results itself
 local startJob
@@ -1754,11 +2357,12 @@ local function finished(ok, results, err, net)
     ns.debugTimings.forYou = debugprofilestop() - j.started
     ForYou.lastParts = parts and table.concat(parts, ", ") or nil
   end
-  last = { results = results, err = err, net = net }
+  local observations = ok and builtObservations or {}
+  last = { results = results, err = err, net = net, observations = observations }
   -- Invalidated while it was built: once more (not forever).
   if j.stale and j.tries < 2 then return startJob(j.tries + 1) end
   local now = GetTime and GetTime()
-  cache = now and { at = now, results = results, err = err, net = net } or nil
+  cache = now and { at = now, results = results, err = err, net = net, observations = observations } or nil
   local shown = visible(results)
   pcall(ForYou.CheckNew, shown)
   local list = waiters
@@ -1794,6 +2398,15 @@ function ForYou.Results()
   return {}, WORKING
 end
 
+-- The observations ("Good to know"), most urgent first: built with the cards
+-- and cached and invalidated with them. Empty until the first build is done.
+function ForYou.Observations()
+  local now = GetTime and GetTime()
+  if not (cache and now and now - cache.at < CACHE_SECONDS) then ForYou.Results() end
+  if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
+  return last and last.observations or {}
+end
+
 -- fn(results, err, net) once For you's results are fresh: now, or when the
 -- build under way is done.
 function ForYou.WhenReady(fn)
@@ -1809,7 +2422,7 @@ function ForYou.Invalidate()
 end
 
 -- Vendors you need to visit now (repairs, ammo, food, a repairer close by):
--- { {title, goal, why}, ... }, for suggestions along a trip (OnTheWay.lua).
+-- { {title, goal, why}, ... }, for suggestions along a journey (OnTheWay.lua).
 function ForYou.ShoppingNeeds()
   local ctx = { level = UnitLevel("player"), notes = {} }
   local out = {}
@@ -1818,6 +2431,99 @@ function ForYou.ShoppingNeeds()
   if soon then out[#out + 1] = soon end
   return out
 end
+
+---------------------------------------------------------------- /ww debug cards
+
+-- Each card's role, relevance and parts, and each observation.
+function ForYou.Diagnose()
+  local lines = {}
+  local rows = last and visible(last.results) or {}
+  if #rows == 0 then lines[1] = "For you: no cards built yet" end
+  for i, r in ipairs(rows) do
+    local p = r.relevance_parts or {}
+    lines[#lines + 1] = string.format("card %d [%s] %s: relevance %.2f (suitability %.2f, proximity %.2f, progression %.2f, novelty %.2f, intent %.2f); why: %s",
+      i, r.role or "-", r.title or "?", r.relevance or 0, p.suitability or 0, p.proximity or 0, p.progression or 0,
+      p.novelty or 0, p.intent or 0, r.why or "-")
+  end
+  local observations = last and last.observations or {}
+  if #observations == 0 then lines[#lines + 1] = "observations: none" end
+  for i, o in ipairs(observations) do
+    lines[#lines + 1] = string.format("observation %d [%s] urgency %.2f: %s%s", i, o.kind, o.urgency or 0, o.text or "?",
+      o.action and string.format("  (%s: %s)", o.action.kind, o.action.label) or "")
+  end
+  return lines
+end
+
+-- /ww debug cards (Core.lua) prints Cards.Diagnose; until it calls
+-- ForYou.Diagnose itself, these lines are added whenever the cards shown are
+-- For you's.
+ns.Listen("DB_READY", function()
+  local cards = ns.Cards
+  if not (cards and cards.Diagnose) or cards.forYouDiagnose then return end
+  local original = cards.Diagnose
+  cards.forYouDiagnose = true
+  cards.Diagnose = function(...)
+    local lines = original(...)
+    local mine = {}
+    for _, r in ipairs(last and last.results or {}) do mine[r] = true end
+    local shown = cards.Visible and cards.Visible() or {}
+    local ours = false
+    for _, r in ipairs(shown) do
+      if mine[r] then ours = true break end
+    end
+    if ours then
+      for _, line in ipairs(ForYou.Diagnose()) do lines[#lines + 1] = line end
+    end
+    return lines
+  end
+end)
+
+---------------------------------------------------------------- learned intent
+
+-- The kinds of journey this character starts most, a small weight per kind
+-- (ns.charDB.startedKinds[kind]), for the intent part of relevance.
+local function noteKind(kind)
+  if not (ns.charDB and kind) then return end
+  ns.charDB.startedKinds = ns.charDB.startedKinds or {}
+  ns.charDB.startedKinds[kind] = (ns.charDB.startedKinds[kind] or 0) + 1
+end
+
+local notedJourney -- the journey NoteStarted just counted, so JOURNEY_STARTED doesn't count it again
+
+-- A card's journey (or directions) was started from the card: learn its kind,
+-- and the card is new again next time it is suggested.
+function ForYou.NoteStarted(row)
+  if not row then return end
+  noteKind(row.kind)
+  notedJourney = row.journey
+  local seen = ns.charDB and ns.charDB.seenCards
+  if seen then seen[(row.id or "?") .. "|" .. (row.title or "")] = 1 end
+end
+
+ns.Listen("JOURNEY_STARTED", function()
+  local a = ns.Nav and ns.Nav.active
+  local journey = a and a.journey
+  if not journey then return end
+  if journey == notedJourney then
+    notedJourney = nil
+    return
+  end
+  local def = journey.def or {}
+  noteKind(def.kind or (def.root and def.root.kind))
+end)
+
+-- Zones you've been in (for novelty): recorded as you move about.
+local function noteZone()
+  if not ns.charDB then return end
+  local start = ns.Geo.PlayerNode()
+  local mapID = start and ns.Geo.ZoneAt(start.instance, start.wx, start.wy)
+  if not mapID then return end
+  ns.charDB.visitedZones = ns.charDB.visitedZones or {}
+  ns.charDB.visitedZones[mapID] = true
+end
+
+ns.On("ZONE_CHANGED_NEW_AREA", noteZone)
+ns.On("PLAYER_ENTERING_WORLD", noteZone)
 
 ---------------------------------------------------------------- time budget
 
@@ -1876,26 +2582,28 @@ local function major(r)
     or r.kind == "train" or r.kind == "profession"
 end
 
+-- Counts a look at a card (ns.charDB.seenCards[key]: how many refreshes it
+-- was shown on; older saved variables hold `true`). True when it's the first.
+local function noteShown(seen, key)
+  local n = seen[key]
+  if type(n) ~= "number" then n = n and 1 or 0 end
+  seen[key] = n + 1
+  return n == 0
+end
+
 -- A card is new when its title is. A trainer card's title changes with the
 -- number of spells and the nearest trainer's town, so it's new only for a
 -- spell no card has shown yet (or, without a spell list, at a new level).
 local function isNew(r, seen)
   if r.kind ~= "train" then
-    local key = (r.id or "?") .. "|" .. (r.title or "")
-    local new = not seen[key]
-    seen[key] = true
-    return new
+    return noteShown(seen, (r.id or "?") .. "|" .. (r.title or ""))
   end
   if not (r.spells and #r.spells > 0) then
-    local key = (r.id or "?") .. "|level " .. tostring(UnitLevel("player"))
-    local new = not seen[key]
-    seen[key] = true
-    return new
+    return noteShown(seen, (r.id or "?") .. "|level " .. tostring(UnitLevel("player")))
   end
   local new = false
   for _, name in ipairs(r.spells) do
-    local key = "spell|" .. name
-    if not seen[key] then new, seen[key] = true, true end
+    if noteShown(seen, "spell|" .. name) then new = true end
   end
   return new
 end
@@ -1905,11 +2613,11 @@ function ForYou.CheckNew(results)
   ns.charDB.seenCards = ns.charDB.seenCards or {}
   local seen = ns.charDB.seenCards
   for _, r in ipairs(results or {}) do
-    if major(r) and isNew(r, seen) and not first and ns.Fanfare then ns.Fanfare.NewJourney(r) end
+    if isNew(r, seen) and major(r) and not first and ns.Fanfare then ns.Fanfare.NewJourney(r) end
   end
 end
 
--- After a journey (Navigator.lua): For you's top card that is a trip, not
+-- After a journey (Navigator.lua): For you's top card that is a journey, not
 -- the one just done, as "Up next". Nothing when you've set off on something
 -- else already, are fighting or flying, or For you has nothing to go to.
 function ForYou.SuggestNext(doneTitle)
@@ -1980,7 +2688,7 @@ ns.Listen("DATA_CHANGED", function()
 end)
 ns.Listen("FLIGHTS_CHANGED", ForYou.Invalidate)
 
--- A trip started, grown, done or ended: the cards it hid (or now doesn't) change.
+-- A journey started, grown, done or ended: the cards it hid (or now doesn't) change.
 local shownTrip = ""
 ns.Listen("NAV_CHANGED", function()
   local key = tripKey()

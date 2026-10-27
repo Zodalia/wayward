@@ -241,44 +241,34 @@ button, to close it). The search box filters any list. If the cards ever show no
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
 page is a list in the side panel.
 
-**For you** is the first tab (`/ww next` opens it): a short, curated list of
-things to do next, one card per kind of thing, each labelled with its kind:
+**For you** is the first tab (`/ww next` opens it): a short, curated set of
+suggestions, each a journey on a card labelled with its kind, and a row of
+observations ("Good to know"). The suggestions come from these providers:
 
-- **Due now** (at most two, always first): spells you can train and afford
-  (the card lists them, with rank and cost)
-  (after one trainer visit; spells you could have learned when you last
-  closed the trainer's window and didn't are left out, and only the Class
-  page still lists them), repairs at 50% durability or lower, ammo under
-  200, food and drink under 5 (not mages, from level 6), and an undiscovered
-  flight path within about 3 minutes.
-- **Don't miss** (right after what's due): the quest that stands out most
-  among those you can take nearby or have in your log, with its first stop
-  under 10 minutes away, whatever its XP. The card says why in plain words.
+- **Don't miss**: the quest that stands out most among those you can take
+  nearby or have in your log, with its first stop under 10 minutes away,
+  whatever its XP. The card says why in plain words.
 - **Profession**: the next rank of a profession you can train now
   (Journeyman at 50 skill and level 10, Expert at 125 and 20, Artisan at 200
-  and 35), at the nearest trainer known to teach it; due when you're at your
-  cap, worth a visit before that. Its trip ends with buying the rank: done
-  when the game raises that profession's skill cap, not just on talking.
-- **Worth a visit** (sharing those two slots, after what's due): your class
-  trainer at an even level (when classes get new spells) before your first
-  visit or two levels after the last one, and a repair when your gear is at
-  75% or lower and a repairer is under 2 minutes away.
+  and 35), at the nearest trainer known to teach it. Its journey ends with
+  buying the rank: done when the game raises that profession's skill cap,
+  not just on talking. At your cap it is an observation too.
 - **Hand in**: the best group of quests ready to hand in, grouped by where you
   hand them in (30 seconds each).
 - **Finish**: the best group of unfinished quests in your log whose
-  objectives are close together, as one whole-quest trip, timed at 5 minutes
-  times the share of objectives left (at least a quarter).
+  objectives are close together, as one whole-quest journey, timed at 5
+  minutes times the share of objectives left (at least a quarter).
 - **Best quest**: the single quest worth the most XP that you can pick up
-  nearby, as a whole-quest trip (pick it up, do it, hand it in).
+  nearby, as a whole-quest journey (pick it up, do it, hand it in).
 - **Questing zone** (up to three, anywhere in the world): where to quest at
   your level. Each counts the quests you can take there now and the ones
   their chains unlock (follow-ups whose first step you can take or have in
-  your log), all fitting your level, with their XP. Its trip goes to the hub
-  with the most quests for you and picks all of them up, giver by giver; the
-  card names the next hubs and where the chains lead on to. A zone needs 4 quests you can take now; zones are
-  ranked by XP. Below level 10 your starting zone comes first (the one
-  you're in, else your race's) and no other starting zone is suggested
-  while yours still has quests for you.
+  your log), all fitting your level, with their XP. Its journey goes to the
+  hub with the most quests for you and picks all of them up, giver by giver;
+  the card names the next hubs and where the chains lead on to. A zone needs
+  4 quests you can take now. Below level 10 your starting zone is offered
+  (the one you're in, else your race's) and no other starting zone is
+  suggested while yours still has quests for you.
 - **Dungeon** (or **Raid**): the best one, with its quests picked up on the
   way to the entrance, and the others for your level named on the card.
   Mobs in Forever's dungeons give little XP, so the quests make the run: a
@@ -287,18 +277,55 @@ things to do next, one card per kind of thing, each labelled with its kind:
   named with the level their quests open at ("The Stockade at level 22").
   Without quest data, the best by level fit and travel time.
 
-Due now, Don't miss and Worth a visit come first, then the zones, then the dungeon; hand
-in, finish and best quest follow in order of estimated XP per minute: XP over the
-trip plus 5 minutes per quest (`SECONDS_PER_QUEST` in `ForYou.lua`). XP comes
-from a data source's quest XP table, with the vanilla penalty for quests below your
-level; quests it has no XP for (Forever-only ones) get the average for their
-level. Without that table the ranking falls back to quests per hour weighted
-by level fit, and without quest data to dungeons by level fit and travel time;
-the summary line says which. Quests already in your log count at full XP, with
+**Relevance, not XP per minute.** Every suggestion gets a relevance score
+from five parts, each 0 to 1: *suitability* (30%: level fit, 1.0 within two
+levels of yours and falling to 0 at grey and at too hard, stricter on
+Hardcore; a reward your class would use; dungeons and raids count less when
+you're on your own; and XP for the time, against the best on offer, which is
+the only place XP per minute still counts), *proximity* (20%: travel time to
+the first stop, 1.0 within 2 minutes, 0.5 at about 8, 0 past 25, transports
+counted as time), *progression* (20%: quests in your log, a chain's next
+step, the zone you're in or your journey is in, a dungeon whose quests you
+hold, a profession at its cap), *novelty* (15%: a zone or dungeon you
+haven't been to, a notable quest; a card shown refresh after refresh and
+never started slowly loses a little, down to 60%, and is never hidden for
+it) and *intent* (15%: the time budget, the kind of journey you start most,
+learned per character, and the zone of the journey you're on). Each page of
+three cards is picked by *role* rather than by rank: a **continuation** (the
+most relevant card whose strongest part is progression), an **exploration**
+(the most relevant whose strongest part is novelty, in another zone or of
+another kind) and an **alternative** (the most relevant of a third kind);
+later pages repeat that over what is left. Each card says in one sentence
+what its two strongest parts are ("Picks up where your log left off, right
+nearby"; "A zone you haven't seen, 6 quests at your level"), and the tooltip
+has the estimate underneath (XP, the trip and the time per quest). XP comes
+from a data source's quest XP table, with the vanilla penalty for quests
+below your level; quests it has no XP for (Forever-only ones) get the
+average for their level. Without that table quests count by level fit, and
+without quest data dungeons are ranked by level fit and travel time; the
+summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
-A card with a quest your trip on now already has isn't shown until the trip
-is done. The Quests page has every hub and your whole log. `/ww debug` shows how long a
-refresh took.
+A card with a quest your journey already has isn't shown until the journey
+is done. The Quests page has every hub and your whole log. `/ww debug` shows
+how long a refresh took; `/ww debug cards` prints each card's role,
+relevance and parts, and each observation.
+
+**Good to know.** The needs are observations, not cards: small tiles with a
+fact and at most one action (**Add detour** adds a stop to your journey,
+**Show** opens a side page, **Go** gives directions). Most urgent first:
+some gear broken or at 50% durability or lower (repair at the nearest
+repairer), no ammo or under 200, no food and drink or under 5 (not mages,
+from level 6), full or nearly full bags (the nearest vendor to sell at),
+spells you can train and afford (listed with rank and cost; after one
+trainer visit; spells you could have learned when you last closed the
+trainer's window and didn't are left out, and only the Class page still
+lists them), a profession at its cap, quests ready to hand in (the hand-in
+stops as a detour), an undiscovered flight path within about 3 minutes,
+gear at 75% or lower with a repairer under 2 minutes away, your class
+trainer at an even level before your first visit or two levels after the
+last one, spells you can't afford yet, new spells coming at the next level
+or two (and where your trainer is), and a vendor under 2 minutes away. The
+time budget doesn't filter them.
 
 **Notable quests.** XP isn't everything: Wayward also asks "am I missing
 something cool here?". A quest is notable when it is your class's quest, part
@@ -337,14 +364,13 @@ learned, money in, quests taken, XP across level-ups) and scores more the
 more of it you got, so 4 gold can beat 3 quests taken; nothing you got none
 of is shown. Distance and time only make up the numbers when a trip
 achieved less than two things. When For you has a new major suggestion (a questing
-zone, a dungeon, spells to train, a profession's next rank) a short "New
+zone, a dungeon, a profession's next rank) a short "New
 journey available" toast pops up; click it to start the journey, or to add
 it to the trip you're on (the usual question). Both fade after a few seconds,
 not while the mouse is over them. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
 zones flown over wait for the landing); the first look after this update
-only learns what's there. A trainer card pops up only for a spell no toast
-has shown yet, whichever town's trainer is nearest. `/ww toasts` or the options turn the toasts
+only learns what's there. `/ww toasts` or the options turn the toasts
 off.
 
 **Sounds.** Wayward plays one of the game's own sounds when it asks about a
