@@ -47,6 +47,7 @@ Docks.lua
 Dungeons.lua
 Vendors.lua
 ItemsPage.lua
+Find.lua
 QuestTimes.lua
 ForYou.lua
 UI\Skin.lua

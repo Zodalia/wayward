@@ -4,12 +4,14 @@ local _, ns = ...
 -- <link>`), or type its name, and see where it comes from, each source with
 -- directions: dungeon drops (to the entrance), mobs and objects in the world
 -- (nearest spawn, one row per zone), quests that reward it and the nearest
--- vendor that sells it. Things you can do now come first, then shorter trips.
+-- vendor that sells it. Things you can do now come first, then the nearest.
 --
 -- Sources come from the data sources' item records (npcDrops, objectDrops,
 -- itemDrops, questRewards, vendors; see Sources.lua). Without one, only
 -- vendors you visited that sold the item are known (Vendors.lua records
--- merchant goods).
+-- merchant goods). Name matching is Search.lua's; the quest rules are
+-- Quests.lua's (Quests.RewardStatus, QuestGiver, QuestFinisher) and dungeon
+-- runs QuestsPage's, the same as on the Quests page.
 
 local Items = {}
 ns.Items = Items
@@ -21,7 +23,7 @@ local ZONE_ROWS = 3     -- world-drop rows per kind (mobs, objects)
 local DUNGEON_REACH = 3 -- a dungeon up to this many levels above you counts as "now"
 local MOB_REACH = 4     -- mobs up to this many levels above you count as "now"
 
--- Ranking tiers: every row of a tier comes before the next tier, then by trip time.
+-- Ranking tiers: every row of a tier comes before the next tier, then by travel time.
 local NOW, LATER, INFO = 0, 1, 2
 local TIER_SECONDS = 1e7
 
@@ -34,10 +36,6 @@ local ORANGE = { r = 1, g = 0.5, b = 0.25 }
 local GOLD = { r = 1, g = 0.82, b = 0 }
 
 local summary -- { query, text } from the last Results
-
-local function now()
-  return debugprofilestop and debugprofilestop() or 0
-end
 
 local friendlyTo = ns.Data.FriendlyTo
 
@@ -68,56 +66,34 @@ local function field(kind, id, key)
   return r and r[key]
 end
 
-local dungeonByArea -- [AreaID] = dungeon from ns.Dungeons.Catalogue()
-
-local function dungeonAreas()
-  if not dungeonByArea then
-    dungeonByArea = {}
-    for _, entry in ipairs(ns.Dungeons.Catalogue()) do
-      for areaID in pairs(entry.areaIDs) do dungeonByArea[areaID] = entry end
-    end
-  end
-  return dungeonByArea
-end
-
-local entityCache = {}
-
 -- A mob, object or vendor and where it is: route nodes per world map
--- (byMap, and all of them in nodes), and the dungeons it is inside (spawns
--- in a dungeon's AreaID). Spawns don't change, so this is kept for the session.
+-- (byMap, and all of them in nodes; Data.Nodes keeps them per record), and
+-- the dungeons it is inside (spawns in a dungeon's AreaID, Dungeons.ForArea).
 local function entity(kind, id)
-  local key = kind .. id
-  if entityCache[key] == nil then
-    local name = field(kind, id, "name")
-    local e = false
-    if type(name) == "string" then
-      e = { id = id, kind = kind, name = name, byMap = {}, nodes = {}, dungeons = {} }
-      if kind == "npc" then
-        e.rank = field(kind, id, "rank")
-        e.minLevel, e.maxLevel = field(kind, id, "minLevel"), field(kind, id, "maxLevel")
-        e.friendly = field(kind, id, "faction")
-      end
-      local inside = {}
-      for _, p in ipairs(list(field(kind, id, "positions"))) do
-        local dungeon = p.areaID and dungeonAreas()[p.areaID]
-        if dungeon then
-          if not inside[dungeon] then
-            inside[dungeon] = true
-            e.dungeons[#e.dungeons + 1] = dungeon
-          end
-        else
-          local node = p.mapID and ns.Geo.Node(p.mapID, p.x, p.y, name)
-          if node then
-            e.byMap[node.mapID] = e.byMap[node.mapID] or {}
-            table.insert(e.byMap[node.mapID], node)
-            e.nodes[#e.nodes + 1] = node
-          end
-        end
-      end
-    end
-    entityCache[key] = e
+  local name = field(kind, id, "name")
+  if type(name) ~= "string" then return nil end
+  local e = { id = id, kind = kind, name = name, byMap = {}, nodes = {}, dungeons = {} }
+  if kind == "npc" then
+    e.rank = field(kind, id, "rank")
+    e.minLevel, e.maxLevel = field(kind, id, "minLevel"), field(kind, id, "maxLevel")
+    e.friendly = field(kind, id, "faction")
   end
-  return entityCache[key] or nil
+  local positions = list(field(kind, id, "positions"))
+  local inside = {}
+  for _, p in ipairs(positions) do
+    local dungeon = p.areaID and ns.Dungeons.ForArea(p.areaID)
+    if dungeon and not inside[dungeon] then
+      inside[dungeon] = true
+      e.dungeons[#e.dungeons + 1] = dungeon
+    end
+  end
+  -- Spawns inside a dungeon have no world map, so Data.Nodes leaves them out.
+  for _, node in ipairs(ns.Data.Nodes(positions, name)) do
+    e.byMap[node.mapID] = e.byMap[node.mapID] or {}
+    table.insert(e.byMap[node.mapID], node)
+    e.nodes[#e.nodes + 1] = node
+  end
+  return e
 end
 
 local function bossFirst(a, b)
@@ -127,6 +103,7 @@ local function bossFirst(a, b)
 end
 
 local sourceCache = {}
+ns.Listen("SOURCES_CHANGED", function() sourceCache = {} end)
 
 -- What the data knows about an item, grouped into rows:
 --   dungeons = { {entry, members = {entity, ...}}, ... }
@@ -175,11 +152,12 @@ end
 
 ---------------------------------------------------------------- item info
 
--- Item ID from a link ("|Hitem:2589:..."), "item:2589" or a bare number.
+-- Item ID from a link ("|Hitem:2589:..."), "item:2589" or a bare number
+-- (Search.Parse; a quest or spell link is not an item).
 function Items.ParseID(text)
-  text = trim(text)
-  local id = text:match("|Hitem:(%d+)") or text:match("^item:(%d+)") or text:match("^#?(%d+)$")
-  return tonumber(id)
+  local kind, id = ns.Search.Parse(text)
+  if kind and kind ~= "item" then return nil end
+  return id
 end
 
 local pending = {} -- item IDs the client is still loading
@@ -221,7 +199,8 @@ function Items.Info(id)
 end
 
 -- What goes in the search box to look an item up.
-local function searchText(info)
+function Items.SearchText(id)
+  local info = Items.Info(id)
   return info.link or ("item:" .. info.id)
 end
 
@@ -230,6 +209,14 @@ local function levelText(info)
   if (info.itemLevel or 0) > 0 then parts[#parts + 1] = "item level " .. info.itemLevel end
   if (info.requiredLevel or 0) > 1 then parts[#parts + 1] = "requires level " .. info.requiredLevel end
   return table.concat(parts, "  ·  ")
+end
+
+-- Opens an item's sources: on the Items tab when that's where you are, else
+-- on Find's Items view.
+local function open(id)
+  local text = Items.SearchText(id)
+  if ns.Find and ns.Panel.SelectedTab() ~= "items" then return ns.Find.Open("items", text) end
+  ns.Panel.Search("items", text)
 end
 
 -- [itemID] = { {id, npc}, ... }: vendors of your faction you visited, by what they sold.
@@ -252,55 +239,6 @@ local function visitedGoods()
 end
 ns.Listen("DATA_CHANGED", function() goodsCache = nil end)
 ns.Listen("SOURCES_CHANGED", function() goodsCache = nil end)
-
----------------------------------------------------------------- name search
-
-local nameIndex -- { {id, name, key = lower-case name}, ... } over the item data, built on the first search
-
-local function buildNameIndex()
-  nameIndex = {}
-  local started = now()
-  for _, id in ipairs(ns.Data.ItemIDs()) do
-    local name = field("item", id, "name")
-    if type(name) == "string" and name ~= "" then
-      nameIndex[#nameIndex + 1] = { id = id, name = name, key = name:lower() }
-    end
-  end
-  ns.debugTimings = ns.debugTimings or {}
-  ns.debugTimings.items = now() - started
-end
-
--- Items whose name contains `text` (any case): the exact name first, then
--- names starting with it, then shorter names. Up to MAX_MATCHES, and the total.
--- Without item data only the goods of vendors you visited are searched.
-local function searchNames(text)
-  local candidates = {}
-  if ns.Data.Has("Item") then
-    if not nameIndex then buildNameIndex() end
-    candidates = nameIndex
-  else
-    for itemID in pairs(visitedGoods()) do
-      local info = clientInfo(itemID)
-      if info then candidates[#candidates + 1] = { id = itemID, name = info.name, key = info.name:lower() } end
-    end
-  end
-  local key, found = text:lower(), {}
-  for _, e in ipairs(candidates) do
-    local at = e.key:find(key, 1, true)
-    if at then
-      found[#found + 1] = { id = e.id, name = e.name, rank = e.key == key and 0 or (at == 1 and 1 or 2) }
-    end
-  end
-  table.sort(found, function(a, b)
-    if a.rank ~= b.rank then return a.rank < b.rank end
-    if #a.name ~= #b.name then return #a.name < #b.name end
-    if a.name ~= b.name then return a.name < b.name end
-    return a.id < b.id
-  end)
-  local total = #found
-  for i = total, MAX_MATCHES + 1, -1 do found[i] = nil end
-  return found, total
-end
 
 ---------------------------------------------------------------- routes
 
@@ -344,24 +282,6 @@ local function dungeonLevel(entry, level)
     if l.level and (not best or math.abs(l.level - level) < math.abs(best - level)) then best = l.level end
   end
   return best or entry.dataLevel, best ~= nil
-end
-
--- Pick up the dungeon's quests on the way, then go in.
-local function dungeonJourney(entry, quests, entrance)
-  local here = ns.Geo.PlayerNode()
-  if not (here and entrance) then return nil end
-  local stops = {}
-  for _, quest in ipairs(quests) do
-    local giver, node = ns.Quests.QuestGiver(quest.id, here)
-    if node then
-      stops[#stops + 1] = { node = node,
-        text = string.format("Pick up %s from %s", quest.name or ("quest " .. quest.id), giver or "the quest giver"),
-        action = { kind = "pickup", questID = quest.id } }
-    end
-  end
-  if #stops == 0 then return nil end
-  return ns.Journey.Plan(here, { title = entry.name .. " with its quests", stops = stops,
-    finish = { node = entrance, text = "Enter " .. entry.name } })
 end
 
 local function npcLevels(e)
@@ -409,11 +329,15 @@ local function dungeonRows(s, ctx, out)
       line(string.format("Dungeon quests you can take (the %s button picks them up on the way):",
         "+" .. plural(#quests, "quest")), GOLD)
       for _, quest in ipairs(quests) do line(string.format("[%d] %s", quest.level, quest.name or quest.id)) end
+      -- Pick up the dungeon's quests on the way, then go in (the Quests page's journey).
       row.actions = { { label = "+" .. plural(#quests, "quest"), run = function()
-        local journey = dungeonJourney(entry, quests, goal)
+        local here = ns.Geo.PlayerNode()
+        local journey = here and ns.QuestsPage.DungeonJourney(entry.name, goal, quests, here)
         if journey then
           ns.Nav.StartJourney(journey)
           if ns.Panel.IsShown() then ns.Panel.Toggle() end
+        else
+          ns.print("no quest giver for " .. entry.name .. " can be reached from here.")
         end
       end } }
     end
@@ -478,103 +402,17 @@ local function containerRows(s, out)
       title = "Comes in " .. info.name,
       subtitle = "Open one to get it. Look up shows where it comes from.",
       tier = INFO,
-      actions = { { label = "Look up", run = function() ns.Panel.Search("items", searchText(Items.Info(containerID))) end } },
+      actions = { { label = "Look up", run = function() open(containerID) end } },
     }
   end
 end
 
 ---------------------------------------------------------------- quests
 
-local function anyDone(ids, done)
-  for _, id in ipairs(ids or {}) do
-    if done[id] then return true end
-  end
-  return false
-end
-
-local function allDone(ids, done)
-  for _, id in ipairs(ids or {}) do
-    if not done[id] then return false end
-  end
-  return true
-end
-
--- Grey quests, with the thresholds Quests.lua uses. Quest hubs hide
--- them, but for a reward they are still worth it.
-local function isGrey(questLevel, level)
-  if UnitQuestTrivialLevelRange then
-    local range = UnitQuestTrivialLevelRange("player")
-    if type(range) == "number" then return level - questLevel > range end
-  end
-  local gray
-  if level <= 5 then gray = 0
-  elseif level <= 39 then gray = level - 5 - math.floor(level / 10)
-  elseif level <= 59 then gray = level - 1 - math.floor(level / 5)
-  else gray = level - 9 end
-  return questLevel <= gray
-end
-
--- Level <= 0 means "scales with you" in quest data.
-local function questLevel(q, level)
-  local l = (q.questLevel or 0) ~= 0 and q.questLevel or q.requiredLevel or 0
-  return l > 0 and l or level
-end
-
-local function profile(level)
-  local _, class = UnitClass("player")
-  local _, _, raceID = UnitRace("player")
-  return { level = level, raceID = raceID, class = class, tooHard = ns.TooHardLevels() }
-end
-
--- Where you stand with a reward quest: "available", "low" (grey, you can
--- still take it), "inLog", "done", "level" (you are too low), "hard" (red; ns.TooHardLevels),
--- "chain" (needs earlier quests), or nil (never for you, or not any more).
-local function questStatus(q, p, done, inLog)
-  if done[q.id] then return "done" end
-  if inLog[q.id] then return "inLog" end
-  if q.races and not q.races[p.raceID] then return nil end
-  if q.classes and not q.classes[p.class] then return nil end
-  if anyDone(q.exclusiveTo, done) then return nil end
-  if (q.requiredMaxLevel or 0) ~= 0 and p.level > q.requiredMaxLevel then return nil end
-  if (q.availableUntilCompleted or 0) ~= 0 and done[q.availableUntilCompleted] then return nil end
-  local following = q.nextQuestInChain or 0
-  if following ~= 0 and (done[following] or inLog[following]) then return nil end
-  if ns.Quests.IsQuestAvailable(q.id, done, inLog) then return "available" end
-  if (q.requiredLevel or 0) > p.level then return "level" end
-  if (q.preQuestSingle and #q.preQuestSingle > 0 and not anyDone(q.preQuestSingle, done))
-    or (q.preQuestGroup and not allDone(q.preQuestGroup, done)) then
-    return "chain"
-  end
-  local l = questLevel(q, p.level)
-  if l - p.level >= (p.tooHard or ns.TooHardLevels()) then return "hard" end
-  if isGrey(l, p.level) then return "low" end
-  -- What is left in the hub rules is mostly chains: a predecessor recorded
-  -- only on the earlier quest, a breadcrumb or a parent quest.
-  return "chain"
-end
-
--- Nearest NPC or object that takes a quest in: name, node.
-local function questFinisher(questID, ctx)
-  local finishers = list(field("quest", questID, "finishedBy"))
-  local bestName, bestNode, bestDistance
-  for i, kind in ipairs({ "npc", "object" }) do
-    for _, id in ipairs(list(finishers[i])) do
-      local e = entity(kind, id)
-      if e and (kind ~= "npc" or friendlyTo(e.friendly, ctx.faction)) then
-        local node, distance = ns.Data.Nearest(e.nodes, ctx.start)
-        if node and (not bestDistance or distance < bestDistance) then
-          bestName, bestNode, bestDistance = e.name, node, distance
-        end
-      end
-    end
-  end
-  return bestName, bestNode
-end
-
 local function questRow(q, status, ctx)
   local name = q.name or ("Quest " .. q.id)
-  local level = questLevel(q, ctx.level)
-  local row = { title = "Reward from " .. name, details = {}, tier = NOW }
+  local level = ns.Quests.QuestLevel(q.id) or ctx.level
+  local row = { title = "Reward from " .. name, details = {}, tier = NOW, kind = "quest", questID = q.id }
   local function line(text, color) row.details[#row.details + 1] = { text = text, color = color } end
   line(string.format("[%d] %s", level, name), GetQuestDifficultyColor and GetQuestDifficultyColor(level))
 
@@ -583,7 +421,7 @@ local function questRow(q, status, ctx)
     return row
   end
   if status == "inLog" then
-    local who, node = questFinisher(q.id, ctx)
+    local who, node = ns.Quests.QuestFinisher(q.id, ctx.start)
     row.title = row.title .. "  ·  in your log"
     line(who and ("In your quest log. Directions go to where you hand it in: " .. who .. ".")
       or "In your quest log.", GREEN)
@@ -615,7 +453,7 @@ local function questRow(q, status, ctx)
     track = stepID
     if stepState == "inLog" then
       local finisher
-      finisher, node = questFinisher(stepID, ctx)
+      finisher, node = ns.Quests.QuestFinisher(stepID, ctx.start)
       line(string.format("Needs earlier quests first. Finish %s: hand it in to %s.", stepName,
         finisher or "its quest giver"), ORANGE)
     elseif stepID then
@@ -637,10 +475,9 @@ end
 local function questRows(s, ctx, out)
   if #s.quests == 0 then return end
   local done, inLog = ns.Quests.PlayerQuestState()
-  local p = profile(ctx.level)
   for _, questID in ipairs(s.quests) do
     local q = ns.Quests.Quest(questID)
-    local status = q and questStatus(q, p, done, inLog)
+    local status = q and ns.Quests.RewardStatus(questID, done, inLog)
     if status then out[#out + 1] = questRow(q, status, ctx) end
   end
 end
@@ -669,6 +506,7 @@ local function vendorRow(itemID, s, ctx, out)
   if #nodes == 0 then return end
   local goal, route = quickest(ctx.start, nodes, ctx.net)
   local seller = byNode[goal]
+  goal.npc = seller.name
   local row = { title = "Sold by " .. seller.name, zone = ns.MapName(goal.mapID), goal = goal, route = route,
     tier = NOW, details = {} }
   row.details[1] = seller.visited and { text = "Sold here when you last visited.", color = GREEN }
@@ -683,11 +521,13 @@ end
 ---------------------------------------------------------------- page
 
 local function score(r)
-  local trip = (r.route and r.route.seconds) or (r.journey and r.journey.seconds)
-  return r.tier * TIER_SECONDS + (trip or TIER_SECONDS - 1)
+  local seconds = (r.route and r.route.seconds) or (r.journey and r.journey.seconds)
+  return r.tier * TIER_SECONDS + (seconds or TIER_SECONDS - 1)
 end
 
-local function sourcesFor(id, query, alsoMatching)
+-- Every source of one item as rows, best first. `alsoMatching`: other items
+-- the typed name matched (named in the summary).
+function Items.SourcesFor(id, query, alsoMatching)
   local info = Items.Info(id)
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
@@ -709,6 +549,11 @@ local function sourcesFor(id, query, alsoMatching)
     if sa ~= sb then return sa < sb end
     return a.title < b.title
   end)
+  for i, row in ipairs(out) do
+    row.id = row.id or ("item" .. id .. "/" .. i)
+    row.itemID = id
+    ns.Search.WithDetour(row)
+  end
 
   local parts = { info.link or info.name }
   local levels = levelText(info)
@@ -724,22 +569,36 @@ local function sourcesFor(id, query, alsoMatching)
   return out, nil, ctx.net
 end
 
+-- A row for an item a name search matched: pick it to see its sources.
+function Items.MatchRow(id, name)
+  local info = Items.Info(id)
+  local levels = levelText(info)
+  return {
+    id = "pick" .. id, kind = "item", itemID = id,
+    title = name or info.name,
+    subtitle = levels ~= "" and levels or ("item " .. id),
+    actions = { { label = "Show", run = function() open(id) end } },
+  }
+end
+
 local function matchRows(matches, total, query)
   local out = {}
-  for _, m in ipairs(matches) do
-    local info = Items.Info(m.id)
-    local levels = levelText(info)
-    out[#out + 1] = {
-      title = m.name,
-      subtitle = levels ~= "" and levels or ("item " .. m.id),
-      actions = { { label = "Show", run = function() ns.Panel.Search("items", searchText(Items.Info(m.id))) end } },
-    }
-  end
+  for _, m in ipairs(matches) do out[#out + 1] = Items.MatchRow(m.id, m.name) end
   local text = total > #matches
     and string.format("%d items match; the first %d are shown. Type more of the name, or pick one.", total, #matches)
     or string.format("%s match. Pick one to see where it comes from.", plural(total, "item"))
   summary = { query = query, text = text }
   return out
+end
+
+-- Items whose name matches `text` (Search.lua: the exact name first, then
+-- names starting with it, then shorter names): up to MAX_MATCHES, and the
+-- total. Without item data only the goods of vendors you visited are searched.
+local function searchNames(text)
+  local found = ns.Search.Find(text, "item")
+  local total = #found
+  for i = total, MAX_MATCHES + 1, -1 do found[i] = nil end
+  return found, total
 end
 
 function Items.Results(query)
@@ -751,11 +610,11 @@ function Items.Results(query)
     if #q < MIN_QUERY then return {} end
     local matches, total = searchNames(q)
     if total == 0 then return {} end
-    local exact = matches[1].rank == 0 and not (matches[2] and matches[2].rank == 0)
+    local exact = matches[1].score >= 400 and not (matches[2] and matches[2].score >= 400)
     if total > 1 and not exact then return matchRows(matches, total, query) end
     id, alsoMatching = matches[1].id, total - 1
   end
-  return sourcesFor(id, query, alsoMatching)
+  return Items.SourcesFor(id, query, alsoMatching)
 end
 
 function Items.SummaryText(query)
@@ -790,8 +649,11 @@ ns.RegisterPage({
   Results = function(q) return Items.Results(q) end,
 })
 
+-- /ww item opens Find on its Items view (Find.lua), which shows these rows.
 ns.RegisterCommand("item", "/ww item <item link or name> - where an item comes from, with directions",
-  function(rest) ns.Panel.Search("items", rest) end)
+  function(rest)
+    if ns.Find then ns.Find.Open("items", rest) else ns.Panel.Search("items", rest) end
+  end)
 
 ---------------------------------------------------------------- tooltip
 
@@ -811,7 +673,7 @@ function Items.TooltipLine(itemID)
   if InCombatLockdown and InCombatLockdown() then return nil end
   if type(issecretvalue) == "function" and issecretvalue(itemID) then return nil end
   if type(itemID) ~= "number" or not Items.HasSources(itemID) then return nil end
-  return "Wayward: /ww item for directions"
+  return "Wayward: /ww find for directions"
 end
 
 if type(TooltipDataProcessor) == "table" and type(TooltipDataProcessor.AddTooltipPostCall) == "function"

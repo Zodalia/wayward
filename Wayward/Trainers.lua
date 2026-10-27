@@ -298,8 +298,43 @@ local function collect(kind, fits, fromSources)
   return trainers
 end
 
--- Results: { title, zone, goal (route node), route, details } sorted by travel time.
--- Sources: trainers you visited, Data/Seed.lua, and the data sources (Sources.lua).
+-- The spells you can learn right now, in the trainer's order:
+-- { {name, rank, cost, spellID, skipped}, ... }, and the next level with new spells.
+function Trainers.Learnable()
+  local services, _, cs = Trainers.Services()
+  if not services then return {}, nil end
+  local level, readAt = UnitLevel("player"), cs and cs.level
+  local out, nextLevel = {}, nil
+  for _, s in ipairs(services) do
+    if Trainers.CanTrain(s, level, readAt) then
+      out[#out + 1] = { name = s.name, rank = s.rank, cost = s.cost, spellID = s.spellID, skipped = Trainers.Skipped(s) }
+    elseif s.type ~= "used" and s.levelReq and s.levelReq > level and (not nextLevel or s.levelReq < nextLevel) then
+      nextLevel = s.levelReq
+    end
+  end
+  return out, nextLevel
+end
+
+-- The stop a trainer journey ends with: learning the spells there. A `learn`
+-- stop (done when they are learned) where the journey model has one; else a
+-- `talk` stop (done when you talk to them) that says what to learn.
+local function learnStop(goal, name, spells)
+  local kinds = ns.Journey.STOP_KINDS
+  local kind = type(kinds) == "table" and kinds.learn and "learn" or "talk"
+  local action = { kind = kind, npc = name }
+  if kind == "learn" then
+    action.spells = {}
+    for _, s in ipairs(spells) do action.spells[#action.spells + 1] = s.spellID or s.name end
+  end
+  local text = #spells > 0 and string.format("Learn %d new spell%s from %s", #spells, #spells == 1 and "" or "s", name)
+    or ("Talk to " .. name)
+  return { node = goal, npc = name, text = text, action = action }
+end
+
+-- Results: { title, zone, goal (route node), route, journey, details } sorted
+-- by travel time. The tooltip lists the spells you can learn there; the
+-- journey ends with learning them. Sources: trainers you visited,
+-- Data/Seed.lua, and the data sources (Sources.lua).
 function Trainers.Results()
   local className, class = UnitClass("player")
   local start = ns.Geo.PlayerNode()
@@ -307,7 +342,27 @@ function Trainers.Results()
   local net = ns.Network.Build()
   local trainers = collect("classTrainer", function(npc) return npc.class == class end,
     ns.Data.NearestOfKind("classTrainer", UnitFactionGroup("player"), start, function(t) return t.class == class end))
-  return results(trainers, (className or class):lower() .. " trainers", start, net), nil, net
+  local rows = results(trainers, (className or class):lower() .. " trainers", start, net)
+  local spells, nextLevel = Trainers.Learnable()
+  for _, row in ipairs(rows) do
+    row.kind = "trainer"
+    local details = row.details or {}
+    for _, s in ipairs(spells) do
+      details[#details + 1] = { text = string.format("%s%s%s%s", s.name, s.rank and (" (" .. s.rank .. ")") or "",
+        s.cost and ("  -  " .. ns.FormatMoney(s.cost)) or "", s.skipped and "  (left last time)" or ""),
+        color = { r = 0.5, g = 0.82, b = 0.68 } }
+    end
+    if nextLevel then
+      details[#details + 1] = { text = "More at level " .. nextLevel .. ".", color = { r = 0.7, g = 0.7, b = 0.7 } }
+    end
+    if #details > 0 then row.details = details end
+    if row.route then
+      row.journey = ns.Journey.Plan(start, { title = "Train at " .. row.goal.npc, kind = "train",
+        stops = { learnStop(row.goal, row.goal.npc, spells) } }, net)
+    end
+    ns.Search.WithDetour(row)
+  end
+  return rows, nil, net
 end
 
 ---------------------------------------------------------------- weapon masters
@@ -474,5 +529,9 @@ function WeaponMasters.Results()
     if a.seconds ~= b.seconds then return a.seconds < b.seconds end
     return a.title < b.title
   end)
+  for _, row in ipairs(rows) do
+    row.kind = "weaponMaster"
+    ns.Search.WithDetour(row)
+  end
   return rows, nil, net
 end
