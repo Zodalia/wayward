@@ -59,6 +59,8 @@ UI\ChainPicker.lua
 UI\ErrandPicker.lua
 UI\RouteMap.lua
 UI\Cards.lua
+UI\JourneyBox.lua
+UI\Observations.lua
 UI\Profile.lua
 UI\Panel.lua
 UI\MinimapButton.lua
