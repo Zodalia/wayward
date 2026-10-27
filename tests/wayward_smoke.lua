@@ -2879,6 +2879,38 @@ do
   fire("QUEST_ACCEPTED", 40)
   runTimers()
   check(shown == nil, "a quest already in the trip isn't asked about")
+
+  -- Progress on a logged quest outside the journey: asked once, out of combat.
+  QUESTS[46] = { name = "Murloc Hunt", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
+  refreshData()
+  local savedObjectives = C_QuestLog.GetQuestObjectives
+  local hunt = { { numFulfilled = 0, text = "Murlocs slain: 0/8" } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 46 and hunt or {} end
+  log[3] = 46
+  fire("QUEST_LOG_UPDATE")
+  runTimers()
+  check(shown == nil, "a quest just seen in the log isn't asked about")
+  hunt[1].numFulfilled = 1
+  InCombatLockdown = function() return true end
+  fire("QUEST_LOG_UPDATE")
+  runTimers()
+  check(shown == nil, "progress isn't asked about in combat")
+  InCombatLockdown = nil
+  fire("PLAYER_REGEN_ENABLED")
+  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("You made progress on Murloc Hunt", 1, true),
+    "progress on a quest outside the journey asks to add it, once out of combat: " .. tostring(shown and shown.text))
+  shown = nil
+  hunt[1].numFulfilled = 2
+  fire("QUEST_LOG_UPDATE")
+  runTimers()
+  check(shown == nil, "Not now: more progress on it isn't asked about again")
+  log[3] = nil
+  C_QuestLog.GetQuestObjectives = savedObjectives
+  QUESTS[46] = nil
+  ns.charDB.askedProgress = nil
+  refreshData()
+
   ns.db.settings.askOnPickup = false
   ns.Nav.Stop()
   fire("QUEST_ACCEPTED", 45)

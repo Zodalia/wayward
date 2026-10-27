@@ -563,15 +563,9 @@ local function askPlayer(which, text, data)
   return true
 end
 
-local function askPickups()
-  if stillPicking() then
-    ns.After(PICKUP_WAIT, askPickups)
-    return
-  end
-  waiting = false
-  local ids = picked
-  picked = {}
-  if ns.db.settings.askOnPickup == false then return end
+-- Asks about quests that aren't in the journey; `what` says how you came by
+-- them ("picked up", "made progress on").
+local function askAbout(ids, what)
   local offer = Nav.PickupOffer(ids)
   if not offer then return end
   Nav.lastPickupOffer = offer
@@ -598,13 +592,28 @@ local function askPickups()
   local note = chainNote(offer)
   if Nav.active and offer.extra then
     askPlayer("WAYWARD_PICKUP_ADD", string.format(
-      "You picked up %s.%s\n\nAdd it to your journey (about %s more), or start a new journey for it (%s)? "
+      "You %s %s.%s\n\nAdd it to your journey (about %s more), or start a new journey for it (%s)? "
       .. "A new journey sets the one on now aside, to resume later.",
-      offer.label, note, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
+      what, offer.label, note, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
   else
-    askPlayer("WAYWARD_PICKUP_NEW", string.format("You picked up %s.%s\n\nStart a journey for it (%s)?",
-      offer.label, note, ns.FormatDuration(offer.alone)), offer)
+    askPlayer("WAYWARD_PICKUP_NEW", string.format("You %s %s.%s\n\nStart a journey for it (%s)?",
+      what, offer.label, note, ns.FormatDuration(offer.alone)), offer)
   end
+end
+
+local function askPickups()
+  if stillPicking() then
+    ns.After(PICKUP_WAIT, askPickups)
+    return
+  end
+  waiting = false
+  local ids = picked
+  picked = {}
+  if ns.db.settings.askOnPickup == false then return end
+  -- Asked once: progress on it later isn't asked about again.
+  ns.charDB.askedProgress = ns.charDB.askedProgress or {}
+  for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
+  askAbout(ids, "picked up")
 end
 
 ns.On("QUEST_ACCEPTED", function(...)
@@ -1680,6 +1689,55 @@ local function doingLater()
 end
 
 ns.On("QUEST_LOG_UPDATE", doingLater)
+
+-- Progress on a quest in your log that isn't in the journey on now: asked
+-- about like a pickup, once per quest ("Not now" is remembered until it
+-- leaves your log), never in combat, and only with a journey on.
+local seenProgress, progressed, progressWaiting = {}, {}, false
+
+local function askProgress()
+  if InCombatLockdown and InCombatLockdown() then return end -- PLAYER_REGEN_ENABLED asks
+  progressWaiting = false
+  local ids, seen = {}, {}
+  for _, id in ipairs(progressed) do
+    if not seen[id] and not Nav.TripHasQuest(id) and not ns.charDB.askedProgress[id] then ids[#ids + 1] = id end
+    seen[id] = true
+  end
+  progressed = {}
+  if #ids == 0 or not Nav.active or ns.db.settings.askOnPickup == false then return end
+  for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
+  askAbout(ids, "made progress on")
+end
+
+local function untrackedProgress()
+  if not ns.charDB then return end
+  ns.charDB.askedProgress = ns.charDB.askedProgress or {}
+  local picking = {}
+  for _, id in ipairs(picked) do picking[id] = true end
+  local now = {}
+  for _, info in ns.QuestLog.Entries() do
+    local id = info.questID
+    if id and not info.isHeader then
+      now[id] = progressOf(id)
+      local before = seenProgress[id]
+      if before and before ~= now[id] and Nav.active and not Nav.TripHasQuest(id)
+        and not picking[id] and not ns.charDB.askedProgress[id] then
+        progressed[#progressed + 1] = id
+      end
+    end
+  end
+  seenProgress = now
+  if #progressed > 0 and not progressWaiting then
+    progressWaiting = true
+    ns.After(PICKUP_WAIT, askProgress)
+  end
+end
+
+ns.On("QUEST_LOG_UPDATE", untrackedProgress)
+ns.On("PLAYER_REGEN_ENABLED", function() if #progressed > 0 then askProgress() end end)
+ns.On("QUEST_REMOVED", function(questID)
+  if questID and ns.charDB.askedProgress then ns.charDB.askedProgress[questID] = nil end
+end)
 
 -- Abandoning a quest (Quests.lua): it isn't asked about if just picked up,
 -- an open follow-up question about its chain closes, and its open stops
