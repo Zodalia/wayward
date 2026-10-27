@@ -17,7 +17,7 @@ local ICON = 36
 local PAD = 8
 local GOLD = "|cffffd200"
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Note_01"
-local LABELS = { detour = "Add detour", show = "Show", go = "Go" }
+local LABELS = { detour = "Add detour", show = "Show", go = "Go", resume = "Resume" }
 local NONE_TEXT = "Nothing to flag right now."
 
 local frame
@@ -52,9 +52,14 @@ function Obs.Run(o)
   -- What the journey or the directions are called: the action's own title,
   -- else the observation's text.
   local name = action.title or o.text or action.label or "detour"
-  if action.kind == "detour" and action.stop then
-    local stops = type(action.stop[1]) == "table" and action.stop or { action.stop }
+  if action.kind == "detour" and (action.stops or action.stop) then
+    -- Every stop it brings (all the hand-ins of a group), not just the first.
+    local stops = action.stops or (type(action.stop[1]) == "table" and action.stop or { action.stop })
     ns.Nav.AddToTrip(stops, name)
+    ns.Panel.Refresh()
+    return true
+  elseif action.kind == "resume" then
+    ns.Nav.ResumeSetAside(action.index or 1)
     ns.Panel.Refresh()
     return true
   elseif action.kind == "show" and action.page then

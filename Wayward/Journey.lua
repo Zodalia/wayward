@@ -798,7 +798,7 @@ end
 -- A journey's open stops as plain stops to add elsewhere (a dungeon entrance
 -- keeps its `after`, so it still comes after the stops planned with it).
 function Journey.OpenStops(journey)
-  local root = journey.root or journey.def
+  local root = journey.root or journey.def or journey
   local out = {}
   for _, stop in ipairs(root.stops or {}) do
     if open(stop) then out[#out + 1] = stop end

@@ -2318,12 +2318,16 @@ ForYou.AssignRoles = assignRoles
 -- cards follow the journey without a rebuild.
 local function visible(results)
   local trip, places = tripStops()
+  -- A journey you set aside isn't suggested again piece by piece: the Good to
+  -- know tile offers to resume it instead.
+  local setAside = ns.Nav.SetAsideQuests and ns.Nav.SetAsideQuests() or {}
   local out = {}
   for _, r in ipairs(results or {}) do
     if #out >= MAX_RESULTS then break end
     local overlap = false
     for _, stop in ipairs(r.journey and r.journey.stops or {}) do
-      if stop.action and trip[stop.action.questID] then
+      local id = stop.action and stop.action.questID
+      if id and (trip[id] or setAside[id]) then
         overlap = true
         break
       end
@@ -2418,15 +2422,49 @@ end
 
 -- The observations ("Good to know"), most urgent first: built with the cards
 -- and cached and invalidated with them. Empty until the first build is done.
+-- The newest journey set aside, as a tile that resumes it.
+local function setAsideObservation()
+  local entry = ns.charDB.journeys and ns.charDB.journeys[1]
+  if not entry or (entry.stops or 0) == 0 then return nil end
+  local left = plural(entry.stops, "stop")
+  return {
+    id = "obs:setaside", kind = "setaside", icon = entry.icon or "Interface\\Icons\\INV_Misc_Map_01",
+    text = string.format("You set aside %s, %s left.", entry.title or "a journey", left),
+    highlights = { left }, urgency = 0.6,
+    action = { label = "Resume", kind = "resume", index = 1 },
+  }
+end
+
+-- What the tiles show: nothing the journey on now already does (a hand-in
+-- that is one of its stops, a repairer it already visits), and the newest
+-- set-aside journey first among the rest of its urgency.
+local function shownObservations(list)
+  local out = {}
+  local resume = setAsideObservation()
+  for _, o in ipairs(list or {}) do
+    local a = o.action
+    local stops = a and a.kind == "detour" and (a.stops or { a.stop })
+    if not (stops and ns.Nav.JourneyHas and ns.Nav.JourneyHas(stops)) then out[#out + 1] = o end
+  end
+  if resume then
+    local at = #out + 1
+    for i, o in ipairs(out) do
+      if (o.urgency or 0) < resume.urgency then at = i break end
+    end
+    table.insert(out, at, resume)
+  end
+  return out
+end
+
 function ForYou.Observations()
   local now = GetTime and GetTime()
-  if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
+  if cache and now and now - cache.at < CACHE_SECONDS then return shownObservations(cache.observations) end
   -- The panel asks for the cards first, which starts the build; only when
   -- nothing was ever built (and no build is under way) is one started here,
   -- so a refresh never builds twice.
   if dirty and not job then ForYou.Results() end
-  if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
-  return last and last.observations or {}
+  if cache and now and now - cache.at < CACHE_SECONDS then return shownObservations(cache.observations) end
+  return shownObservations(last and last.observations)
 end
 
 -- fn(results, err, net) once For you's results are fresh: now, or when the

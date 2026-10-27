@@ -1100,6 +1100,53 @@ function Nav.TripHasQuest(questID)
   return false
 end
 
+-- Whether the journey on now already has every one of these stops open: the
+-- same step of the same quest, a stop with the same NPC, or a stop in the
+-- same place (a few yards). False with no journey, or no stops to ask about.
+local SAME_SPOT = 5
+local function openStops()
+  local a = Nav.active
+  local root = a and a.journey and (a.journey.root or a.journey.def)
+  local out = {}
+  for _, stop in ipairs(root and root.stops or {}) do
+    if not stop.done and not stop.skipped then out[#out + 1] = stop end
+  end
+  if a and not a.journey and a.goal then out[#out + 1] = { node = a.goal, npc = a.goal.npc } end
+  return out
+end
+
+local function sameStop(a, b)
+  local qa, qb = a.action and a.action.questID, b.action and b.action.questID
+  if qa or qb then return qa == qb and a.action.kind == b.action.kind end
+  if a.npc or b.npc then return a.npc ~= nil and a.npc == b.npc end
+  return a.node and b.node and a.node.mapID == b.node.mapID and ns.Geo.Distance(a.node, b.node) <= SAME_SPOT
+end
+
+function Nav.JourneyHas(stops)
+  if not (Nav.active and stops and #stops > 0) then return false end
+  local open = openStops()
+  for _, s in ipairs(stops) do
+    local found = false
+    for _, o in ipairs(open) do
+      if sameStop(s, o) then found = true break end
+    end
+    if not found then return false end
+  end
+  return true
+end
+
+-- The quests still open on set-aside journeys: { [questID] = index in the list }.
+function Nav.SetAsideQuests()
+  local out = {}
+  for i, entry in ipairs(ns.charDB.journeys or {}) do
+    for _, stop in ipairs(entry.journey and entry.journey.stops or {}) do
+      local id = stop.action and stop.action.questID
+      if id and not (stop.done or stop.skipped) and not out[id] then out[id] = i end
+    end
+  end
+  return out
+end
+
 -- Takes a quest's open stops out of the journey.
 function Nav.RemoveQuest(questID)
   local a = Nav.active

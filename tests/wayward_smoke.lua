@@ -6229,10 +6229,17 @@ do
   GetTime = function() return clock end
   F.Invalidate()
   obs = F.Observations()
-  check(F.Observations() == obs and F.Results() and F.Observations() == obs, "observations are cached with the cards")
+  local function ids(list)
+    local out = {}
+    for _, o in ipairs(list) do out[#out + 1] = o.id end
+    return table.concat(out, ",")
+  end
   local runs = F.runs
+  check(ids(F.Observations()) == ids(obs) and F.Results() and ids(F.Observations()) == ids(obs) and F.runs == runs,
+    "observations are cached with the cards")
   F.Invalidate()
-  check(F.Observations() ~= obs and F.runs == runs + 1, "and rebuilt with them")
+  F.Observations()
+  check(F.runs == runs + 1, "and rebuilt with them")
   local vendor = obsFind(F.Observations(), "vendor")
   check(vendor and vendor.urgency < 0.2 and vendor.action.kind == "detour" and vendor.text:find("^A vendor nearby: "),
     "a vendor a couple of minutes away is worth a quiet tile: " .. tostring(vendor and vendor.text))
@@ -6301,6 +6308,32 @@ do
   list = F.Results()
   local held = #list >= 3 and not find(list, "Hand in 1 quest to Watcher Dodds") and honest(list)
   check(held, "with the hand-in on your journey, the cards left keep honest tags: " .. titles(list))
+  -- Nothing the journey already does: the hand-in tile goes, and Find offers no detour to it.
+  check(not obsFind(F.Observations(), "handin"), "a hand-in on your journey gets no tile of its own: " .. kinds(F.Observations()))
+  local onJourney = ns.Search.WithDetour({ title = "Watcher Dodds",
+    journey = ns.Journey.Plan(here, { title = "Watcher Dodds", stops = ns.Journey.QuestStops(50, here) }) })
+  check(not onJourney.actions, "Find offers no detour to what the journey already has")
+  local elsewhere = ns.Search.WithDetour({ title = "Elsewhere", goal = ns.Geo.Node(1433, 0.7, 0.7, "Elsewhere"),
+    route = { steps = {}, seconds = 60 } })
+  check(elsewhere.actions and elsewhere.actions[1].label == "Add detour", "but does to somewhere new")
+  -- Set aside: its quests aren't suggested again; a tile offers to resume it.
+  ns.Nav.SetAside()
+  list = F.Results()
+  check(not find(list, "Hand in 1 quest to Watcher Dodds"), "a set-aside journey's quests get no card: " .. titles(list))
+  local resume = obsFind(F.Observations(), "setaside")
+  check(resume and resume.text == "You set aside Just the hand-in, 1 stop left." and resume.action.kind == "resume",
+    "a tile offers to resume it: " .. tostring(resume and resume.text))
+  check(ns.Observations.Run(resume) and ns.Nav.active and ns.Nav.active.title == "Just the hand-in"
+    and #ns.Nav.SetAsideList() == 0 and not obsFind(F.Observations(), "setaside"),
+    "Resume starts it again, and the tile goes")
+  ns.Nav.Stop()
+  runTimers()
+  -- A detour tile brings every stop it has, not only the first.
+  local two = { { node = ns.Geo.Node(1433, 0.52, 0.5, "One"), text = "One" },
+    { node = ns.Geo.Node(1433, 0.56, 0.5, "Two"), text = "Two" } }
+  ns.Observations.Run({ text = "Two hand-ins", action = { kind = "detour", stop = two[1], stops = two } })
+  local root = ns.Nav.active and ns.Nav.active.journey and (ns.Nav.active.journey.root or ns.Nav.active.journey.def)
+  check(root and #root.stops == 2, "a detour tile adds all its stops: " .. tostring(root and #root.stops))
   ns.Nav.Stop()
   runTimers()
 
