@@ -2722,7 +2722,19 @@ do
   local kinds = {}
   for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind .. st.action.questID end
   check(table.concat(kinds, ",") == "turnin14,pickup13", "Confirm puts it after the hand-in: " .. table.concat(kinds, ","))
+  -- Talking to the giver before handing in: the follow-up isn't offered yet, and that's expected.
+  local turnin, pickup = ns.Nav.active.journey.stops[1], ns.Nav.active.journey.stops[2]
+  player.x, player.y = pickup.node.x, pickup.node.y
+  ns.Fire("QUESTS_OFFERED", pickup.giver, {})
+  check(ns.Nav.active and ns.Nav.TripHasQuest(13) and not (ns.charDB.notOffered and ns.charDB.notOffered[13]),
+    "a follow-up still waiting on the hand-in isn't dropped as not offered")
+  player.x, player.y = turnin.node.x, turnin.node.y
+  fire("QUEST_TURNED_IN", 14)
+  check(ns.Nav.active and turnin.done and ns.Nav.TripHasQuest(13), "handing in moves on to the follow-up, not the end")
+  fire("QUEST_REMOVED", 14)
+  runTimers()
   ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
 
   -- A chain: ticking a later quest ticks the ones it needs; unticking one unticks those after it.
   local chain = { quests = {

@@ -627,7 +627,16 @@ end)
 -- Talking to a quest giver: pickups on the journey that they don't offer you
 -- are locked (the data missed an earlier quest). They're dropped, with what
 -- needs them, and treated as locked everywhere until you hand something in.
+-- A pickup still waiting on a stop of the journey (a follow-up picked up
+-- where you hand in the quest before it) isn't offered yet by design.
 local OFFER_RADIUS = 25 -- yards from a pickup stop that count as "at its giver"
+
+local function waitsOnJourney(stop)
+  for _, before in ipairs(stop.after or {}) do
+    if not before.done and not before.skipped then return true end
+  end
+  return false
+end
 
 ns.Listen("QUESTS_OFFERED", function(npcName, ids)
   local a = Nav.active
@@ -637,7 +646,7 @@ ns.Listen("QUESTS_OFFERED", function(npcName, ids)
   for k = a.index, #a.route.steps do
     local stop = ns.Journey.PendingAction(a.route.steps[k])
     local action = stop and stop.action
-    if action and action.kind == "pickup" and not ids[action.questID]
+    if action and action.kind == "pickup" and not ids[action.questID] and not waitsOnJourney(stop)
       and ns.Geo.Distance(here, stop.node) <= OFFER_RADIUS and (not stop.giver or stop.giver == npcName) then
       missing[#missing + 1] = stop
     end
