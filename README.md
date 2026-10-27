@@ -353,7 +353,7 @@ another kind) and an **alternative** (the most relevant of a third kind);
 later pages repeat that over what is left. Each card says in one sentence
 what its two strongest parts are ("Picks up where your log left off, right
 nearby"; "A zone you haven't seen, 6 quests at your level"), and the tooltip
-has the estimate underneath (XP, the trip and the time per quest). XP comes
+has the estimate underneath (XP, the travel and the time per quest). XP comes
 from a data source's quest XP table, with the vanilla penalty for quests
 below your level; quests it has no XP for (Forever-only ones) get the
 average for their level. Without that table quests count by level fit, and
@@ -401,9 +401,9 @@ prints a quest's sort, flags, reward items and reasons
 
 **Only have 20 minutes?** The buttons at the right of the summary line (15,
 30, 60, Any), or `/ww time 20` and `/ww time off`, set how long you have,
-per character. For you then shows only what its estimate (trip plus quest
+per character. For you then shows only what its estimate (travel plus quest
 time) says fits, with each card's time in its corner: hand-ins and finishes
-by least travel rather than XP per minute, a questing zone only when the trip
+by least travel rather than XP per minute, a questing zone only when the journey
 to its first hub plus one quest fits, and no dungeon under an hour. When
 nothing fits it says so and offers the quickest option anyway, "a bit over".
 The estimates are rough, so Wayward learns yours: each quest you accept
@@ -412,16 +412,16 @@ last hand-in, so quests done side by side share the time; at most an hour),
 and once 5 are timed the average of your last 20 replaces the 5 minutes per
 quest. `/ww debug` shows it.
 
-**Fanfare.** When a trip is done, a frame near the top of the screen says
+**Fanfare.** When a journey is done, a frame near the top of the screen says
 what it came to: the 2 to 4 stats that stand out most. Each kind has a
 priority (levels, quests handed in, profession ranks trained, flight paths
 learned, money in, quests taken, XP across level-ups) and scores more the
 more of it you got, so 4 gold can beat 3 quests taken; nothing you got none
-of is shown. Distance and time only make up the numbers when a trip
+of is shown. Distance and time only make up the numbers when a journey
 achieved less than two things. When For you has a new major suggestion (a questing
 zone, a dungeon, a profession's next rank) a short "New
 journey available" toast pops up; click it to start the journey, or to add
-it to the trip you're on (the usual question). Both fade after a few seconds,
+it to the journey you're on (the usual question). Both fade after a few seconds,
 not while the mouse is over them. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
 zones flown over wait for the landing); the first look after this update
@@ -430,7 +430,7 @@ off.
 
 **Sounds.** Wayward plays one of the game's own sounds when it asks about a
 quest you picked up (or one that continues a chain), when a stop is added to
-your trip, when a trip starts, when it's done, and for the toast. When a trip
+your journey, when a journey starts, when it's done, and for the toast. When a journey
 starts or grows and asks about a follow-up quest, you hear the question's
 sound alone. `/ww sounds` lists each moment's shortlist;
 `/ww sounds <moment> <n|next>` plays one to compare,
@@ -516,9 +516,9 @@ can take it: available (grey and red quests say so), in your log, done, needs
 earlier quests (naming the first one you can take, or the one in your log to
 finish), too low, not for your race or class, or not available (closed by a
 quest you did, outlevelled, needs a profession). Click a quest to go to its
-quest giver, to where you hand it in, or to the start of its chain; the trip
+quest giver, to where you hand it in, or to the start of its chain; the journey
 waits there until you accept or hand in the quest. When a search matches
-dungeon quests, and on the Dungeons tab ("Quests" button), one trip picks up
+dungeon quests, and on the Dungeons tab ("Quests" button), one journey picks up
 every quest you can take for that dungeon and ends at the entrance. The rules
 are the Quest hubs rules (`ns.Quests.QuestStatus(id)` and
 `ns.Quests.ChainStart(id)` give the status, reason and first chain step).
@@ -533,8 +533,8 @@ quest in its own order (pick up, objectives, hand in) but interleaved by
 travel time. "Hand in N completed quests" visits every finisher in one
 journey, and can be added to the current journey too. Quest matching and
 the rows are Find's (`ns.Search.Find(text, "quest")`,
-`ns.QuestsPage.RowFor(id, start, net)`). Adding or starting a trip for one quest that has a chain
-asks which of its next steps to add as well (ticked when on the way); a trip
+`ns.QuestsPage.RowFor(id, start, net)`). Adding or starting a journey for one quest that has a chain
+asks which of its next steps to add as well (ticked when on the way); a journey
 of several quests only asks about follow-ups on the way. Without quest data
 the log still lists, but without directions.
 
@@ -543,7 +543,7 @@ cards, the journey overview's quest stops) has a tooltip line on what follows
 the quest: "Chain: 4 more quests (levels 18-24), ends in The Deadmines" or
 "Leads to a Shadowfang Keep quest". A quest whose chain reaches a dungeon
 quest says so on its row too, and picking up a quest that starts a long chain
-(3+ quests) or leads to a dungeon quest says so in the "start a trip?"
+(3+ quests) or leads to a dungeon quest says so in the "start a journey?"
 question. The chain is walked forward from the data (next quest, quests that
 need it, inferred Forever links), up to 12 steps; quests that close each other
 count as one step, and only quests your race, class and level can do count.

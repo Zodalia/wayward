@@ -1717,7 +1717,7 @@ do
     for _, st in ipairs(r and r.stats or {}) do out[#out + 1] = st[1] .. "=" .. st[2] end
     return table.concat(out, ",")
   end
-  check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Trip="),
+  check(statText(redridge):find("^Quests=4 %+ 1,XP=~7,300,Journey="),
     "a zone's card numbers: quests now + later, XP, travel: " .. statText(redridge))
   check(train and train.highlights[1] == "1 new spell" and train.highlights[2] == ns.FormatMoney(1000),
     "the training observation highlights the spells and the cost: " .. table.concat(train and train.highlights or {}, ","))

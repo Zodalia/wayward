@@ -1761,7 +1761,7 @@ local function notableRow(option, ctx)
   local q = option.quests[1]
   local where = q.inLog and string.format("It's in your log, %s away", ns.FormatDuration(option.travel))
     or string.format("Its quest giver is %s away", ns.FormatDuration(option.travel))
-  if option.trip > option.travel then where = where .. string.format(", the whole trip %s", ns.FormatDuration(option.trip)) end
+  if option.trip > option.travel then where = where .. string.format(", the whole journey %s", ns.FormatDuration(option.trip)) end
   local details = { { text = string.format("Don't miss: %s %s.", option.reasons[1].text, where), color = NOTABLE } }
   for i = 2, #option.reasons do details[#details + 1] = { text = option.reasons[i].text, color = NOTABLE } end
   local line = string.format("[%d] %s%s", q.level or 0, q.name or ("Quest " .. q.id), q.inLog and "  (in your log)" or "")
@@ -1774,7 +1774,7 @@ local function notableRow(option, ctx)
     if reason.itemID then rewardItem = reason.itemID break end
   end
   local stats = { { "Level", tostring(q.level or "?") }, { "Travel", ns.FormatDuration(option.travel) } }
-  if option.trip > option.travel then stats[#stats + 1] = { "Trip", ns.FormatDuration(option.trip) } end
+  if option.trip > option.travel then stats[#stats + 1] = { "Journey", ns.FormatDuration(option.trip) } end
   local row = {
     id = "notable" .. q.id, kind = "notable", category = "Don't miss", title = option.title, item = rewardItem,
     subtitle = string.format("%s  ·  %s  ·  %s", option.zone, ns.FormatDuration(option.travel), option.tag),
@@ -1821,7 +1821,7 @@ local function zoneRow(z, ctx)
     subtitle = string.format("%s  ·  %s  ·  %s  ·  start at %s", z.zone, levels, ns.FormatDuration(z.trip), z.first.place),
     place = string.format("%s  ·  start at %s", levels, z.first.place), zone = z.zone,
     stats = { { "Quests", quests }, ctx.xpMode and { "XP", "~" .. formatNumber(z.value) } or { "Hubs", tostring(#z.hubs) },
-      { z.journey and "Trip" or "Travel", ns.FormatDuration(z.trip) } },
+      { z.journey and "Journey" or "Travel", ns.FormatDuration(z.trip) } },
     goal = z.goal, route = z.route, journey = z.journey, details = details,
   }
   return scoreRow(row, z, ctx)

@@ -41,7 +41,7 @@ local ROLE_TAGS = { explore = "EXPLORE", alternative = "ALTERNATIVE" }
 local FACT_ICONS = {
   { "level", "Interface\\Icons\\Achievement_Level_10" },
   { "travel", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
-  { "trip", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
+  { "journey", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
   { "time", "Interface\\Icons\\INV_Misc_PocketWatch_01" },
   { "where", "Interface\\Icons\\INV_Misc_Spyglass_03" },
   { "nearby", "Interface\\Icons\\INV_Misc_Spyglass_03" },
