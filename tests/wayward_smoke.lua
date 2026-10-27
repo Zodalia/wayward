@@ -4071,20 +4071,20 @@ end
 do
   io.write("panel scrolling\n")
   local many = {}
-  for i = 1, 12 do many[i] = { title = "R" .. i, subtitle = "row " .. i } end
+  for i = 1, 20 do many[i] = { title = "R" .. i, subtitle = "row " .. i } end
   ns.RegisterPage({ id = "many", label = "Many", order = 99, searchable = true,
     SummaryText = function() return "" end, EmptyText = function() return "" end,
     Results = function(q) return q == "" and many or { many[1] } end })
   ns.Panel.Search("many", "")
   local function first() local v = ns.Panel.VisibleResults() return v[1] and v[1].title, #v end
   local top, count = first()
-  check(top == "R1" and count == 7, "seven results show, starting at the first")
+  check(top == "R1" and count == 11, "eleven results show (the taller window), starting at the first: " .. count)
   ns.Panel.Scroll(-3)
   check(first() == "R4", "scrolling down moves the list")
   ns.Panel.Scroll(-50)
-  check(first() == "R6", "scrolling stops at the last page")
+  check(first() == "R10", "scrolling stops at the last page")
   ns.Panel.Refresh()
-  check(first() == "R6", "a data refresh keeps your place")
+  check(first() == "R10", "a data refresh keeps your place")
   ns.Panel.Scroll(50)
   check(first() == "R1", "scrolling up returns to the top")
   ns.Panel.Scroll(-2)
@@ -4615,6 +4615,8 @@ do
   local forYou
   for _, page in ipairs(ns.pages) do if page.id == "foryou" then forYou = page end end
   check(forYou.layout == "cards" and forYou.width and forYou.width > 384, "For you uses the card layout on a wider panel")
+  local w, h = ns.Panel.Size()
+  check(w >= 840 and h == 672 and w <= 1365 - 384, string.format("the window holds the three regions and fits 1080p: %dx%d", w, h))
 
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   local goal = ns.Geo.Node(1433, 0.6, 0.5, "Camp")
@@ -4637,13 +4639,13 @@ do
     for _, r in ipairs(ns.Cards.Visible()) do out[#out + 1] = r.title end
     return table.concat(out, ",")
   end
-  check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "one large and two small cards: " .. titles())
-  check(table.concat(ns.Cards.Drawn(), ",") == "Suggestion 1|Go,Suggestion 2|Go,Suggestion 3|Go",
+  check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "three cards per page: " .. titles())
+  check(table.concat(ns.Cards.Drawn(), ",") == "Suggestion 1|Directions,Suggestion 2|Directions,Suggestion 3|Directions",
     "every card shows its title and button text: " .. table.concat(ns.Cards.Drawn(), ","))
   local said = #chat
   SlashCmdList.WAYWARD("debug cards")
   check(chat[said + 1]:find("version " .. ns.VERSION, 1, true) and #chat == said + 4
-    and chat[said + 2]:find('large: shown=true', 1, true) and chat[said + 2]:find('title="Suggestion 1"', 1, true),
+    and chat[said + 2]:find('card 1: shown=true', 1, true) and chat[said + 2]:find('title="Suggestion 1"', 1, true),
     "/ww debug cards reports the version and what each card shows")
   ns.Cards.Step(-1)
   check(titles() == "Suggestion 4,Suggestion 5", "the arrows page through the suggestions, none twice")
@@ -4662,18 +4664,19 @@ do
 
   -- The card button and shift-click work like a row.
   ns.Panel.Activate(suggestions[1])
-  check(ns.Nav.active and ns.Nav.active.title == "Suggestion 1", "a card's Go starts its directions")
+  check(ns.Nav.active and ns.Nav.active.title == "Suggestion 1", "a card's Directions starts its directions")
   IsShiftKeyDown = function() return true end
   ns.Panel.Search("cardtest", "")
   ns.Panel.Activate(suggestions[2])
-  check(ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2, "shift-click on a card adds it to the trip")
+  check(ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2, "shift-click on a card adds it to the journey")
   IsShiftKeyDown = nil
   ns.Nav.Stop()
 
-  -- Details marked `more` stay off the cards (the tooltip has them).
-  ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "rank" },
+  -- The card's one line of why: the row's, else its first detail (the
+  -- ranking line, today); the rest is in the tooltip.
+  ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "|cffffd200rank|r" },
     { text = "Quests in your log count at full XP; ...", more = true }, { text = "shown" } } } }, "", true)
-  check(ns.Cards.Detail(1) == "shown", "a card leaves out details marked more: " .. tostring(ns.Cards.Detail(1)))
+  check(ns.Cards.Detail(1) == "rank", "without a why, a card shows its first detail: " .. tostring(ns.Cards.Detail(1)))
   ns.Cards.Show(suggestions, "", true)
 
   ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City  ·  ~5 min  ·  1 quest",
@@ -4681,8 +4684,8 @@ do
     route = { steps = {} } } }, "", true)
   check(ns.Cards.Tag(1) == "DUNGEON", "a card says what kind of suggestion it is: " .. tostring(ns.Cards.Tag(1)))
   check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=23,TRAVEL=~5 min,XP/MIN=~281",
-    "a card shows its numbers as labelled blocks: " .. table.concat(ns.Cards.Stats(1), ","))
-  check(ns.Cards.Drawn()[1] == "Run The Stockade|Go", "a dungeon's level moves from the card title to the subtitle")
+    "a card shows up to three facts in its meta row: " .. table.concat(ns.Cards.Stats(1), ","))
+  check(ns.Cards.Drawn()[1] == "Run The Stockade|Directions", "a dungeon's level moves from the card title to the facts")
 
   -- Other pages keep rows at the normal width.
   ns.Panel.SelectPage("trainers", 1)
@@ -5578,6 +5581,214 @@ do
   refreshData()
 end
 ---------------------------------------------------------------- game and season (end)
+---------------------------------------------------------------- stream B: home screen (begin)
+-- ===== stream B: home screen =====
+do
+  io.write("stream B: home screen\n")
+  local Box, Obs = ns.JourneyBox, ns.Observations
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  if not ns.Panel.IsShown() then ns.Panel.Toggle() end
+  ns.Panel.Search("foryou", "")
+  local here = ns.Geo.PlayerNode()
+  local goal = ns.Geo.Node(1433, 0.6, 0.5, "Camp")
+  local route = ns.Router.Plan(here, goal, ns.Network.Build())
+  local function stopTexts()
+    local out = {}
+    for _, stop in ipairs(ns.Nav.active and ns.Nav.active.journey and ns.Nav.active.journey.stops or {}) do
+      out[#out + 1] = stop.text
+    end
+    return table.concat(out, ",")
+  end
+
+  -- The header: your level and zone.
+  check(ns.Panel.Headline() == string.format("Level %d  ·  Redridge Mountains", UnitLevel("player")),
+    "the header says your level and zone: " .. tostring(ns.Panel.Headline()))
+
+  -- Your journey, with nothing on: one line, and the regions below move up.
+  check(Box.State() == "none" and Box.Lines()[1] == "No journey on the go. Pick something below.",
+    "no journey: one line (" .. tostring(Box.Lines()[1]) .. ")")
+  local collapsed = Box.Frame().height
+
+  -- Plain directions: the destination, "Directions", Continue.
+  ns.Nav.Start("Camp", goal, route)
+  local lines = Box.Lines()
+  check(Box.State() == "directions" and lines[1] == "Camp" and lines[2]:find("^Directions") and lines[3]:find("remaining$"),
+    "plain directions: the destination and Directions (" .. table.concat(lines, " / ") .. ")")
+  local continue, details = Box.Buttons()
+  check(continue == "Continue" and details == nil, "with Continue and no View details")
+  check(Box.Frame().height > collapsed, "the box opens up for it")
+  ns.Nav.Stop()
+  check(Box.State() == "none", "ending the directions collapses it again")
+
+  -- A journey: icon, title, the current stop, stops done, time remaining, the map.
+  local def = { title = "The Perfect Stout", kind = "quest", icon = "Interface\\Icons\\INV_Drink_05", stops = {
+    { node = ns.Geo.Node(1433, 0.52, 0.5, "Lakeshire"), text = "Talk to the innkeeper" },
+    { node = ns.Geo.Node(1433, 0.6, 0.5, "Camp"), text = "Find Shimmerweed" },
+    { node = ns.Geo.Node(1433, 0.7, 0.5, "Tower"), text = "Hand in the stout" } } }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, def))
+  if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
+  lines = Box.Lines()
+  check(Box.State() == "journey" and lines[1] == "The Perfect Stout" and lines[2] == "Stop 1 of 3  ·  Talk to the innkeeper"
+    and lines[3]:find("^0 of 3 stops complete  ·  .* remaining$") and lines[4] ~= "",
+    "a journey: title, the current stop, stops done and time left, a description (" .. table.concat(lines, " / ") .. ")")
+  continue, details = Box.Buttons()
+  check(continue == "Continue journey" and details == "View details", "with Continue journey and View details")
+  local a = ns.Nav.active
+  check(Box.Progress().stopIndex == 1 and Box.Progress().total == 3 and Box.Progress().done == 0,
+    "the local progress helper counts the stops")
+  -- The first stop done, the journey moved on: the box follows on NAV_CHANGED.
+  a.journey.stops[1].done = true
+  for k, step in ipairs(a.route.steps) do
+    if step.stop == a.journey.stops[1] then a.index = k + 1 end
+  end
+  ns.Fire("NAV_CHANGED")
+  lines = Box.Lines()
+  check(lines[2] == "Stop 2 of 3  ·  Find Shimmerweed" and lines[3]:find("^1 of 3 stops complete"),
+    "a stop done: the box moves on (" .. lines[2] .. " / " .. lines[3] .. ")")
+  -- The navigator's own Nav.Progress wins when it exists.
+  local hadProgress = ns.Nav.Progress
+  ns.Nav.Progress = function()
+    return { done = 2, total = 5, seconds = 360, stopIndex = 3, stopText = "Find Shimmerweed in Dun Morogh" }
+  end
+  ns.Panel.Layout()
+  lines = Box.Lines()
+  check(lines[2] == "Stop 3 of 5  ·  Find Shimmerweed in Dun Morogh" and lines[3] == "2 of 5 stops complete  ·  ~6 min remaining",
+    "with Nav.Progress, its numbers (" .. lines[2] .. " / " .. lines[3] .. ")")
+  ns.Nav.Progress = hadProgress
+  -- Continue journey closes the window and brings up the directions box.
+  Box.Continue()
+  check(not ns.Panel.IsShown() and ns.HUD.Frame() ~= nil and ns.HUD.Frame():IsShown(),
+    "Continue journey closes the window and shows the directions box")
+  ns.Panel.Toggle()
+  Box.Frame().details.scripts.OnClick()
+  check(ns.JourneyOverview.IsShown(), "View details opens the journey overview")
+  ns.JourneyOverview.Toggle()
+
+  -- Something to do next: the role tags, the why line, the facts, the button.
+  local rows = {
+    { title = "Continue questing in Redridge", kind = "zone", role = "continue", why = "Picks up where your log left off, 4 min away",
+      goal = goal, route = route, journey = ns.Journey.Plan(here, { title = "Redridge", stops = { { node = goal, text = "Visit Camp" } } }),
+      stats = { { "Where", "Nearby" }, { "Level", "8-10" }, { "Travel", "~4 min away" } }, details = { { text = "rank" } } },
+    { title = "Explore Loch Modan", kind = "zone", role = "explore", why = "A zone you haven't seen, with 6 quests at your level",
+      goal = goal, route = route, category = "Questing zone" },
+    { title = "Run The Stockade  ·  level 23", kind = "dungeon", role = "alternative", goal = goal, route = route,
+      details = { { text = "|cffffd200#3 of 5 by XP per minute|r" } } },
+    { title = "Train new spells", kind = "train", role = "continue", category = "Due now", goal = goal, route = route },
+    { title = "No role", category = "Questing zone", goal = goal, route = route },
+    { title = "Nothing known", goal = goal, route = route },
+  }
+  ns.Cards.Show(rows, "", true)
+  check(ns.Cards.Tag(1) == "QUESTING" and ns.Cards.Tag(2) == "EXPLORE" and ns.Cards.Tag(3) == "ALTERNATIVE",
+    "the role tags: QUESTING, EXPLORE, ALTERNATIVE (" .. ns.Cards.Tag(1) .. ", " .. ns.Cards.Tag(2) .. ", " .. ns.Cards.Tag(3) .. ")")
+  check(ns.Cards.Why(1) == rows[1].why and ns.Cards.Why(3) == "#3 of 5 by XP per minute",
+    "the why line, or the first detail without one: " .. tostring(ns.Cards.Why(3)))
+  check(table.concat(ns.Cards.Stats(1), ",") == "WHERE=Nearby,LEVEL=8-10,TRAVEL=~4 min away",
+    "the facts row: " .. table.concat(ns.Cards.Stats(1), ","))
+  check(ns.Cards.Drawn()[1] == "Continue questing in Redridge|Start journey" and ns.Cards.Drawn()[2] == "Explore Loch Modan|Directions",
+    "Start journey for a journey, Directions for a route: " .. table.concat(ns.Cards.Drawn(), ","))
+  ns.Cards.Step(-1)
+  check(ns.Cards.Tag(1) == "DUE NOW" and ns.Cards.Tag(2) == "QUESTING ZONE" and ns.Cards.Tag(3) == "ALTERNATIVE",
+    "continue on a non-quest kind, or no role: today's category; nothing at all: ALTERNATIVE ("
+    .. ns.Cards.Tag(1) .. ", " .. ns.Cards.Tag(2) .. ", " .. ns.Cards.Tag(3) .. ")")
+  check(ns.Cards.Stats(3)[1] ~= nil and (ns.Cards.Stats(3)[1]:find("^TRAVEL=") or ns.Cards.Stats(3)[1] == "NEARBY=Nearby"),
+    "without stats, the facts come from the route: " .. table.concat(ns.Cards.Stats(3), ","))
+  ns.Cards.Step(10)
+
+  -- Start journey while a journey is on: Add as detour / Switch journey / Cancel.
+  local shown
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, now, label, data) shown = { which = which, now = now, label = label, data = data } end
+  local hadNote, noted = ns.ForYou.NoteStarted, nil
+  ns.ForYou.NoteStarted = function(r) noted = r.title end
+  local function journeyRow(title, x, text)
+    return { title = title, journey = ns.Journey.Plan(ns.Geo.PlayerNode(),
+      { title = title, stops = { { node = ns.Geo.Node(1433, x, 0.52, text), text = text } } }) }
+  end
+  local shore = journeyRow("Shore camp", 0.55, "Visit Shore")
+  ns.Panel.Activate(shore)
+  check(shown and shown.which == "WAYWARD_SWITCH" and shown.now:find("The Perfect Stout", 1, true) and shown.label == "Shore camp"
+    and ns.Nav.active.title == "The Perfect Stout" and noted == nil,
+    "Start journey during a journey asks: detour, switch or cancel; nothing changes until you answer")
+  StaticPopupDialogs.WAYWARD_SWITCH.OnAccept(nil, shown.data)
+  check(stopTexts():find("Visit Shore", 1, true) and stopTexts():find("Find Shimmerweed", 1, true) and noted == nil,
+    "Add as detour merges it into the journey on now: " .. stopTexts())
+  local setAside = 0
+  local hadSetAside = ns.Nav.SetAside
+  ns.Nav.SetAside = function() setAside = setAside + 1; ns.Nav.Stop() end
+  shown = nil
+  local hill = journeyRow("Over the hill", 0.58, "Visit the hill")
+  ns.Panel.Activate(hill)
+  StaticPopupDialogs.WAYWARD_SWITCH.OnAlt(nil, shown.data)
+  check(setAside == 1 and ns.Nav.active.title == "Over the hill" and noted == "Over the hill",
+    "Switch journey sets the journey aside, starts the new one and tells For you: " .. tostring(ns.Nav.active.title))
+  ns.Nav.SetAside = hadSetAside
+  shown = nil
+  local lake = journeyRow("Lake run", 0.61, "Visit the lake")
+  ns.Panel.Activate(lake)
+  StaticPopupDialogs.WAYWARD_SWITCH.OnAlt(nil, shown.data)
+  check(ns.Nav.active.title == "Lake run" and stopTexts() == "Visit the lake",
+    "without Nav.SetAside, Switch journey ends the old one: " .. stopTexts())
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  ns.Panel.Activate(hill)
+  check(ns.Nav.active.title == "Over the hill", "without the game's dialogs it switches straight away")
+  if not ns.Panel.IsShown() then ns.Panel.Toggle() end
+  ns.Panel.Search("foryou", "")
+
+  -- Good to know: up to four tiles, highlights in gold, one action each.
+  local repairStop = { node = ns.Geo.Node(1433, 0.51, 0.5, "Blacksmith"), text = "Repair at the blacksmith" }
+  local handinStop = { node = ns.Geo.Node(1433, 0.53, 0.5, "Lakeshire"), text = "Hand in Wanted: Bellygrub" }
+  local observations = {
+    { id = "train", kind = "train", icon = "Interface\\Icons\\INV_Misc_Book_09", urgency = 0.5,
+      text = "New class abilities become available at level 10 in Ironforge.", highlights = { "level 10" },
+      action = { label = "Show trainers", kind = "show", page = "trainers" } },
+    { id = "repair", kind = "repair", urgency = 0.9, text = "Your gear is at 81% durability. A repair vendor is <1 min away.",
+      highlights = { "81%" }, action = { label = "Add detour", kind = "detour", stop = repairStop, title = "Repair" } },
+    { id = "handin", kind = "handin", text = "You have 1 completed quest ready to hand in.", highlights = { "1 completed" },
+      action = { kind = "detour", stop = handinStop } },
+    { id = "vendors", kind = "vendor", text = "Food, drink and ammo vendors are nearby.",
+      action = { kind = "go", goal = goal, route = route, title = "Vendors" } },
+    { id = "fifth", kind = "other", text = "A fifth one that doesn't fit." },
+  }
+  local hadObservations = ns.ForYou.Observations
+  ns.ForYou.Observations = function() return observations end
+  ns.Panel.Refresh()
+  local tiles = Obs.Tiles()
+  check(#tiles == 4 and tiles[1].text == "New class abilities become available at |cffffd200level 10|r in Ironforge."
+    and tiles[1].label == "Show trainers",
+    "up to four tiles, the highlights in gold, the action as a button: " .. tostring(tiles[1] and tiles[1].text))
+  check(tiles[2].text:find("|cffffd20081%|r", 1, true) ~= nil and tiles[2].label == "Add detour" and tiles[3].label == "Add detour"
+    and tiles[4].label == "Go", "a button per action kind, named by the kind when the action has no label")
+  local tile = Obs.Frame().tiles[1]
+  tile.scripts.OnEnter(tile)
+  check(GameTooltip:GetText() == tiles[1].text, "hovering a tile shows its full text")
+  tile.scripts.OnLeave(tile)
+  Obs.Act(1)
+  check(ns.Panel.SideShown() and ns.Panel.SelectedTab() == "trainers", "Show opens the side page")
+  ns.Panel.CloseSide()
+  Obs.Act(2)
+  check(stopTexts():find("Repair at the blacksmith", 1, true) and stopTexts():find("Visit the hill", 1, true),
+    "Add detour puts the observation's stop into the journey on now: " .. stopTexts())
+  ns.Nav.Stop()
+  Obs.Act(3)
+  check(ns.Nav.active and ns.Nav.active.journey and stopTexts() == "Hand in Wanted: Bellygrub",
+    "with no journey on, Add detour starts one: " .. stopTexts())
+  ns.Nav.Stop()
+  Obs.Act(4)
+  check(ns.Nav.active and not ns.Nav.active.journey and ns.Nav.active.title == "Vendors" and not ns.Panel.IsShown(),
+    "Go starts plain directions and closes the window")
+  ns.Nav.Stop()
+  ns.ForYou.Observations = hadObservations
+  ns.ForYou.NoteStarted = hadNote
+  ns.Panel.Toggle()
+  ns.Panel.Search("foryou", "")
+  if hadObservations == nil then
+    check(#Obs.Tiles() == 0 and Obs.Frame().none:IsShown(), "without ForYou.Observations the region says there's nothing")
+  end
+  check(Box.State() == "none", "and the journey box is back to its one line")
+  ns.Panel.Toggle()
+end
+---------------------------------------------------------------- stream B: home screen (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
