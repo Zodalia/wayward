@@ -3649,7 +3649,8 @@ do
   check(#stops == 5 and order.pickup53 < order.complete53 and order.complete53 < order.turnin53
     and order.complete50 < order.turnin50 and not order.pickup50,
     "added quests keep their own order inside the one trip: " .. kinds(stops))
-  check(ns.Nav.active.title == "Your journey", "the journey is called Your journey once it holds more")
+  check(ns.Nav.active.title:find(" and 1 more quest$") ~= nil,
+    "a journey you put together is named after its quests: " .. ns.Nav.active.title)
 
   -- In journey takes it out; the hand-in row can join too.
   byID(ns.QuestsPage.Results(""), "log50").actions[1].run()
@@ -4465,7 +4466,7 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
   ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
   check(labels() == "Shore camp,Bank", "an added stop goes where it fits best, here first: " .. labels())
-  check(ns.Nav.active.title == "Your journey", "the journey is renamed: " .. ns.Nav.active.title)
+  check(ns.Nav.active.title == "Stormwind errands", "a detour keeps the journey's name: " .. ns.Nav.active.title)
   check(not ns.JourneyOverview.IsShown() and ns.HUD.Flashing(),
     "adding to a trip doesn't open the overview; the book button flashes instead")
   local hud = ns.HUD.Frame()
@@ -4497,8 +4498,9 @@ do
   check(shown and shown.label == trainer.title, "plain directions ask too")
   shown.data.switch()
   check(ns.Nav.active.title == trainer.title and not ns.Nav.active.journey, "Switch journey starts the new directions instead")
-  check(#ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "Your journey"
-    and ns.Nav.SetAsideList()[1].stops == 2, "and sets the journey aside, with its 2 stops left")
+  check(#ns.Nav.SetAsideList() == 1 and not ns.Journey.IsGenericTitle(ns.Nav.SetAsideList()[1].title)
+    and ns.Nav.SetAsideList()[1].stops == 2,
+    "and sets the journey aside, with its 2 stops left: " .. tostring(ns.Nav.SetAsideList()[1] and ns.Nav.SetAsideList()[1].title))
   ns.charDB.journeys = nil
 
   -- Plain directions become a journey when something is added.
@@ -5855,7 +5857,7 @@ do
     "Extend and Replan keep them")
   ns.Nav.StartJourney(replanned)
   ns.Nav.AddToTrip({ visit(0.62, "D") }, "D")
-  check(ns.Nav.active.journey.kind == "zone" and ns.Nav.active.title == "Your journey", "a detour keeps the journey's kind")
+  check(ns.Nav.active.journey.kind == "zone" and ns.Nav.active.title == "Zone", "a detour keeps the journey's kind and name")
   ns.Nav.Stop()
   ns.Nav.AddToTrip({ visit(0.53, "Alone") }, "Alone")
   check(ns.Nav.active and ns.Nav.active.journey.kind == "custom", "a detour with nothing on starts a custom journey")
@@ -5944,7 +5946,7 @@ do
   shown = nil
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "A detour", stops = { visit(0.6, "Y") } }))
   shown.data.add()
-  check(ns.Nav.active.title == "Your journey" and labels():find("Y", 1, true) and #ns.Nav.SetAsideList() == 1,
+  check(ns.Nav.active.title == "Something new" and labels():find("Y", 1, true) and #ns.Nav.SetAsideList() == 1,
     "Add as detour: merged, nothing set aside: " .. labels())
   -- The overview lists them under the journey, with Resume and Forget.
   ns.JourneyOverview.Show()
@@ -5953,7 +5955,7 @@ do
     "the overview lists the set-aside journey: " .. tostring(rows[1]))
   local frame = ns.JourneyOverview.EnsureFrame()
   frame.aside[1].resume.scripts.OnClick(frame.aside[1].resume)
-  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Your journey", "Resume swaps them")
+  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Something new", "Resume swaps them")
   frame.aside[1].forget.scripts.OnClick(frame.aside[1].forget)
   check(#ns.Nav.SetAsideList() == 0 and #ns.JourneyOverview.SetAsideRows() == 0, "Forget takes it off")
   -- The pickup question's New journey sets the one on aside too.
@@ -6869,6 +6871,52 @@ do
   LibQuestieDB.Enum.npcFlags.INNKEEPER = nil
   refreshData()
 end
+---------------------------------------------------------------- screenshot review (begin)
+-- ===== screenshot review: fixes from the first in-game pass =====
+do
+  io.write("screenshot review\n")
+  ns.Nav.Stop()
+  runTimers()
+  local here = ns.Geo.PlayerNode()
+
+  -- Journey names: an older save called "Your journey" is named after what it holds.
+  local plain = ns.Journey.Plan(here, { title = "Your journey", stops = { { node = ns.Geo.Node(1433, 0.55, 0.5, "Camp"),
+    text = "Grab the thing" } } })
+  local saved = ns.Journey.Save(plain)
+  saved.title = "Your journey"
+  check(ns.Journey.Load(saved).title == "Grab the thing", "an old generic save is named after its first stop")
+  local q6 = ns.Quests.Quest(6)
+  if q6 and q6.name then
+    check(ns.Journey.NameFor({ stops = { { action = { kind = "pickup", questID = 6 } }, { action = { kind = "turnin", questID = 6 } } } })
+      == q6.name, "one quest: its name")
+    check(ns.Journey.NameFor({ stops = { { action = { kind = "pickup", questID = 6 } }, { action = { kind = "pickup", questID = 999901 } },
+      { action = { kind = "pickup", questID = 999902 } } } }) == q6.name, "quests without a name don't count")
+  end
+  check(ns.Journey.NameFor({ stops = { { text = "Done already", done = true }, { text = "Repair at Thrawn Boltar" } } })
+    == "Repair at Thrawn Boltar", "no quests: the first stop still to do")
+
+  -- Remaining time counts the quest work left, not only the travel.
+  local savedObjectives = C_QuestLog.GetQuestObjectives
+  C_QuestLog.GetQuestObjectives = function(id)
+    if id == 777 then return { { numRequired = 6, numFulfilled = 3 } } end
+    return {}
+  end
+  local work = ns.Nav.WorkSeconds({ stops = {
+    { action = { kind = "complete", questID = 777 } }, { action = { kind = "complete", questID = 777 } },
+    { action = { kind = "turnin", questID = 777 } }, { action = { kind = "complete", questID = 778 }, done = true } } })
+  local perQuest = ns.QuestTimes.Seconds() or ns.ForYou.SECONDS_PER_QUEST
+  check(math.abs(work - perQuest / 2) < 1, "half the objectives left: half your time per quest, once per quest: " .. work)
+  C_QuestLog.GetQuestObjectives = function() return { { numRequired = 8, numFulfilled = 8, finished = true } } end
+  check(math.abs(ns.Nav.WorkSeconds({ stops = { { action = { kind = "complete", questID = 779 } } } }) - perQuest / 4) < 1,
+    "a quest all but done still counts a quarter")
+  C_QuestLog.GetQuestObjectives = savedObjectives
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Walk", stops = { { node = ns.Geo.Node(1433, 0.56, 0.5, "Far"), text = "Far" } } }), true)
+  local p = ns.Nav.Progress()
+  check(p and p.seconds == p.travel, "with nothing to do but get there, remaining is the travel")
+  ns.Nav.Stop()
+  runTimers()
+end
+---------------------------------------------------------------- screenshot review (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

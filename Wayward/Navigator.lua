@@ -887,8 +887,6 @@ end
 -- where you are; plain directions become a journey ("custom") with their
 -- destination as a stop. With no journey on, this starts one. Returns true
 -- when the journey changed.
-local TRIP_TITLE = "Your journey"
-
 function Nav.AddToTrip(stops, label)
   local here = ns.Geo.PlayerNode()
   if not here or #stops == 0 then return false end
@@ -907,8 +905,13 @@ function Nav.AddToTrip(stops, label)
     ns.print(label .. " is already in your journey.")
     return false
   end
+  -- A detour doesn't change what the journey is: one from a suggestion (a
+  -- zone, a dungeon, a quest) keeps its name. One you put together yourself
+  -- is named after what it holds now.
   local root = journey.root or journey.def
-  root.title = TRIP_TITLE
+  if root.kind == "custom" or ns.Journey.IsGenericTitle(root.title) then
+    root.title = ns.Journey.NameFor(root)
+  end
   local planned = ns.Journey.Replan(journey, here)
   if not planned then
     ns.print("no route for the journey from here.")
@@ -1415,11 +1418,48 @@ end)
 -- { title, kind, icon, done, total (stops), seconds (left), stopIndex,
 --   stopText (the stop you're heading for), directions (true with plain
 --   directions: one stop, the destination) }, or nil with nothing on.
+-- The time the open quest objectives still need, on top of the travel: your
+-- time per quest (QuestTimes, else For you's 5 minutes) for each quest still
+-- to do, times the share of its objectives left (at least a quarter, as For
+-- you counts them).
+local MIN_SHARE_LEFT = 0.25
+local function shareLeft(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  if not objectives or #objectives == 0 then return 1 end
+  local need, have = 0, 0
+  for _, o in ipairs(objectives) do
+    local required = o.numRequired and o.numRequired > 0 and o.numRequired or 1
+    need = need + required
+    have = have + (o.finished and required or math.min(o.numFulfilled or 0, required))
+  end
+  return math.max(MIN_SHARE_LEFT, 1 - have / need)
+end
+
+function Nav.WorkSeconds(journey)
+  local total, seen = 0, {}
+  for _, s in ipairs(journey and journey.stops or {}) do
+    local id = s.action and s.action.kind == "complete" and s.action.questID
+    if id and not seen[id] and not (s.done or s.skipped or s.passed) then
+      seen[id] = true
+      total = total + questSeconds() * shareLeft(id)
+    end
+  end
+  return total
+end
+
+-- Travel left plus the quest work left: what "remaining" means on screen.
+function Nav.TimeLeft(here)
+  local travel = Nav.RemainingSeconds(here)
+  if not travel then return nil end
+  return travel + (Nav.active.journey and Nav.WorkSeconds(Nav.active.journey) or 0)
+end
+
 function Nav.Progress()
   local a = Nav.active
   if not a then return nil end
   local here = ns.Geo.PlayerNode()
-  local out = { title = a.title, seconds = Nav.RemainingSeconds(here), done = 0, total = 1, stopIndex = 1,
+  local out = { title = a.title, seconds = Nav.TimeLeft(here), travel = Nav.RemainingSeconds(here),
+    done = 0, total = 1, stopIndex = 1,
     stopText = a.title, directions = a.journey == nil }
   if a.journey then
     out.kind, out.icon = a.journey.kind, a.journey.icon
