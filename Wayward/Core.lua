@@ -491,11 +491,17 @@ SlashCmdList.WAYWARD = function(msg)
     ns.print("version " .. ns.VERSION .. " (" .. ns.GameName() .. ")")
     if rest == "cards" then
       for _, line in ipairs(ns.Cards.Diagnose()) do ns.print(line) end
+      -- For you's cards carry a relevance; then its roles, parts and observations too.
+      local shown = ns.Cards.Visible and ns.Cards.Visible() or {}
+      if shown[1] and shown[1].relevance and ns.ForYou.Diagnose then
+        for _, line in ipairs(ns.ForYou.Diagnose()) do ns.print(line) end
+      end
       return
     end
     local questQuery = rest:match("^quest%s+(.+)$")
     if questQuery then
-      local id = tonumber(questQuery) or tonumber(questQuery:match("quest:(%d+)"))
+      local kind, id = ns.Search.Parse(questQuery)
+      if kind and kind ~= "quest" then id = nil end
       local matches = id and { { id = id } } or ns.Quests.FindQuests(questQuery)
       if #matches == 0 then ns.print("no quest called " .. questQuery) end
       for i = 1, math.min(#matches, 3) do

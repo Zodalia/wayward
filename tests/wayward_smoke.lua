@@ -1455,10 +1455,12 @@ do
 
   local page
   for _, p in ipairs(ns.pages) do if p.id == "items" then page = p end end
+  -- /ww item and the Show / Look up actions open Find's Items view, which
+  -- shows Items.Results; the wrapper sees what it was asked.
   local seen
-  local realResults = page.Results
-  page.Results = function(q) seen = q; return realResults(q) end
-  local function rows(q) return (ns.Items.Results(q)) end
+  local realResults = ns.Items.Results
+  ns.Items.Results = function(q) seen = q; return realResults(q) end
+  local function rows(q) return (realResults(q)) end
   local function names(list)
     local t = {}
     for _, r in ipairs(list) do t[#t + 1] = r.title end
@@ -1476,7 +1478,8 @@ do
 
   local link = "|cffa335ee|Hitem:9001::::::::20:::::|h[Cruel Barb]|h|r"
   SlashCmdList.WAYWARD("item " .. link)
-  check(ns.Panel.IsShown() and seen == link, "/ww item <link> opens the Items page with the link")
+  check(ns.Panel.IsShown() and seen == link and ns.Panel.SelectedTab() == "find",
+    "/ww item <link> opens Find's Items view with the link")
   check(ns.Items.SummaryText(link):find("Cruel Barb  ·  item level 24  ·  requires level 19", 1, true),
     "summary names the item and its levels: " .. ns.Items.SummaryText(link))
 
@@ -1593,7 +1596,7 @@ do
 
   ns.Panel.Search("items", "fin")
   check(ns.Panel.IsShown(), "panel shows the Items page with QuestieDB")
-  page.Results = realResults
+  ns.Items.Results = realResults
 end
 ---------------------------------------------------------------- items page (end)
 ---------------------------------------------------------------- for you (begin)
@@ -1631,12 +1634,13 @@ do
     return table.concat(out, " | ")
   end
 
+  -- (Find is the first side tab, order 5; For you is the first card page.)
   local lowest
   for _, page in ipairs(ns.pages) do
-    if page.id ~= "test" and (not lowest or page.order < lowest.order) then lowest = page end
+    if page.id ~= "test" and page.layout == "cards" and (not lowest or page.order < lowest.order) then lowest = page end
   end
   check(lowest and lowest.id == "foryou" and ns.ForYou.runs >= 1,
-    "For you has the lowest order and was computed when /ww first opened")
+    "For you has the lowest order of the card pages and was computed when /ww first opened")
 
   -- QuestieDB quest XP: [questID] = { questLevel, xp }. Quest 21 has none.
   local zoneSupport = LibQuestieDB.Support.Get
@@ -3616,18 +3620,18 @@ do
     and handin.journey.stops[2].action.kind == "turnin", "one row hands in every completed quest")
   check(rows[1] == handin, "trip rows come before the log")
 
-  -- Add puts a quest into the trip you're on, or starts one.
+  -- Add detour puts a quest into the journey you're on, or starts one.
   ns.Nav.Stop()
-  check(cull.actions and cull.actions[1].label == "Add", "log rows have an Add action")
+  check(cull.actions and cull.actions[1].label == "Add detour", "log rows have an Add detour action")
   cull.actions[1].run(cull)
-  check(ns.Nav.active and ns.Nav.TripHasQuest(50), "with no trip on, Add starts one with that quest")
+  check(ns.Nav.active and ns.Nav.TripHasQuest(50), "with no journey on, Add detour starts one with that quest")
   rows = ns.QuestsPage.Results("")
-  check(byID(rows, "log50").actions[1].label == "In trip" and not byID(rows, "picked"),
-    "a quest in the trip says In trip; no separate pile of picks")
+  check(byID(rows, "log50").actions[1].label == "In journey" and not byID(rows, "picked"),
+    "a quest in the journey says In journey; no separate pile of picks")
 
-  -- Adding from a search joins the same trip, re-ordered from here.
+  -- Adding from a search joins the same journey, re-ordered from here.
   local found = byID(ns.QuestsPage.Results("gnoll patrol"), "quest53")
-  check(found and found.actions and found.actions[1].label == "Add", "search results have the Add action too")
+  check(found and found.actions and found.actions[1].label == "Add detour", "search results have the Add detour action too")
   found.actions[1].run(found)
   local done = byID(ns.QuestsPage.Results("already done"), "quest2")
   check(done and not done.actions, "no Add on a quest you have done")
@@ -3639,11 +3643,12 @@ do
     "added quests keep their own order inside the one trip: " .. kinds(stops))
   check(ns.Nav.active.title == "Your journey", "the journey is called Your journey once it holds more")
 
-  -- In trip takes it out; the hand-in row can join too.
+  -- In journey takes it out; the hand-in row can join too.
   byID(ns.QuestsPage.Results(""), "log50").actions[1].run()
-  check(not ns.Nav.TripHasQuest(50) and ns.Nav.TripHasQuest(53), "In trip takes the quest out again")
+  check(not ns.Nav.TripHasQuest(50) and ns.Nav.TripHasQuest(53), "In journey takes the quest out again")
   local handinRow = byID(ns.QuestsPage.Results(""), "handin")
-  check(handinRow.actions and handinRow.actions[1].label == "Add", "with a trip on, the hand-in row can be added")
+  check(handinRow.actions and handinRow.actions[1].label == "Add detour",
+    "with a journey on, the hand-in row can be added as a detour")
   handinRow.actions[1].run()
   check(ns.Nav.TripHasQuest(51) and ns.Nav.TripHasQuest(52) and ns.Nav.TripHasQuest(53), "its hand-ins join the trip")
   ns.Nav.Stop()
@@ -4227,8 +4232,10 @@ do
   for _, r in ipairs(ns.Trainers.Results()) do
     if r.title:find("warlock trainers", 1, true) then grouped = r end
   end
-  check(grouped and grouped.title:find("^2 warlock trainers in ") and #grouped.details == 2,
-    "trainers in the same room are one row: " .. tostring(grouped and grouped.title))
+  -- (The rows' details name the trainers first, then the spells to learn there: Find.)
+  local named = grouped and #grouped.details >= 2 and (grouped.details[1].text .. grouped.details[2].text) or ""
+  check(grouped and grouped.title:find("^2 warlock trainers in ") and named:find("Cloyce", 1, true)
+    and named:find("Gakin", 1, true), "trainers in the same room are one row: " .. tostring(grouped and grouped.title))
   NPCS[5003] = nil
 
   -- Walking into another zone is its own step.
@@ -4705,7 +4712,7 @@ do
   ns.Nav.Stop()
   local forYou
   for _, page in ipairs(ns.pages) do if page.id == "foryou" then forYou = page end end
-  check(forYou.layout == "cards" and forYou.width and forYou.width > 384, "For you uses the card layout on a wider panel")
+  check(forYou.layout == "cards" and select(1, ns.Panel.Size()) > 384, "For you uses the card layout on a wider panel")
   local w, h = ns.Panel.Size()
   check(w >= 840 and h == 672 and w <= 1365 - 384, string.format("the window holds the three regions and fits 1080p: %dx%d", w, h))
 
@@ -6505,6 +6512,321 @@ do
   ns.Panel.Toggle()
 end
 ---------------------------------------------------------------- stream B: home screen (end)
+-- ===== stream D: find =====
+do
+  io.write("stream D: find\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local Search = ns.Search
+
+  -- Fixtures: items to rank, an innkeeper flag, zones for C_Map, a flight
+  -- master you met, a trainer reading with one spell to learn.
+  ITEMS[9010] = { name = "Fin" }
+  ITEMS[9011] = { name = "Fine Axe" }
+  ITEMS[9002] = ITEMS[9002] or { name = "Murloc Fin", itemLevel = 15, npcDrops = { 9101, 9102, 9103 } }
+  ITEMS[9005] = ITEMS[9005] or { name = "Fine Longbow", vendors = { 7004, 7001 }, npcDrops = { 9105 } }
+  LibQuestieDB.Enum.npcFlags.INNKEEPER = 128
+  QUESTS[10].finishedBy = { { 345 } }
+  refreshData()
+  local savedChildren = C_Map.GetMapChildrenInfo
+  C_Map.GetMapChildrenInfo = function(mapID, mapType)
+    if mapType ~= Enum.UIMapType.Zone then return savedChildren(mapID, mapType) end
+    local out = {}
+    for id, z in pairs(ZONES) do
+      if z.cont == mapID then out[#out + 1] = { mapID = id, name = z.name } end
+    end
+    table.sort(out, function(a, b) return a.mapID < b.mapID end)
+    return out
+  end
+  ns.db.npcs[990003] = { name = "Ariena Stormfeather", kinds = { flightMaster = true }, mapID = 1433, x = 0.515, y = 0.69 }
+  local savedClassSpells = ns.charDB.classSpells
+  ns.charDB.classSpells = { updated = 0, level = 20, services = {
+    { name = "Life Tap", type = "available", levelReq = 20, cost = 1000, spellID = 1454 },
+    { name = "Corruption", type = "unavailable", levelReq = 24, cost = 2700, spellID = 172 } } }
+  ns.charDB.skippedSpells = nil
+  fire("SPELLS_CHANGED")
+  ns.Fire("DATA_CHANGED")
+
+  -- Parsing.
+  local function parse(text)
+    local kind, id, name = Search.Parse(text)
+    return tostring(kind) .. ":" .. tostring(id) .. ":" .. tostring(name)
+  end
+  check(parse("|cffffff00|Hquest:1:18|h[Redridge Goulash]|h|r") == "quest:1:Redridge Goulash", "Parse: a quest link")
+  check(parse("|cffa335ee|Hitem:9001::::::::20:::::|h[Cruel Barb]|h|r") == "item:9001:Cruel Barb", "Parse: an item link")
+  check(parse("|cff71d5ff|Hspell:1454:0|h[Life Tap]|h|r") == "spell:1454:Life Tap", "Parse: a spell link")
+  check(parse("item:9002") == "item:9002:nil" and parse(" #12 ") == "nil:12:nil" and parse("12") == "nil:12:nil"
+    and parse("Cruel Barb") == "nil:nil:nil", "Parse: item:N, #N, a bare number, plain text")
+  check(parse("|cffffff00|hquest:1:18|h[redridge goulash]|h|r") == "quest:1:redridge goulash",
+    "Parse: a lower-cased link (a command's text) still parses")
+
+  -- Ranking and kinds.
+  local function names(list)
+    local t = {}
+    for _, m in ipairs(list) do t[#t + 1] = m.name end
+    return table.concat(t, " | ")
+  end
+  local found = Search.Find("fin", "item")
+  check(names(found) == "Fin | Fine Axe | Fine Longbow | Murloc Fin" and found[1].score == 400 and found[2].score == 300
+    and found[3].score == 300 and found[4].score == 200,
+    "items ranked exact, prefix (shorter first), substring: " .. names(found))
+  check(names(Search.Find("FIN", { "item" })) == names(found), "case doesn't matter, and kinds can be a list")
+  found = Search.Find("warlock trainer", "npc")
+  check(names(found):find("Demisette Cloyce", 1, true) and names(found):find("Ursula Deline", 1, true)
+    and found[1].score == 100 and found[1].kind == "npc", "people by role: " .. names(found))
+  found = Search.Find("demisette", "npc")
+  check(#found == 1 and found[1].id == 461 and found[1].score == 300 and found[1].roles.classTrainer
+    and found[1].class == "WARLOCK", "people by name, with their roles")
+  found = Search.Find("armorer")
+  check(found[1] and found[1].kind == "npc" and found[1].name == "Stormwind Armorer" and found[1].roles.vendor
+    and found[1].roles.repair, "a vendor by its subtitle, with the repair flag: " .. names(found))
+  found = Search.Find("lakeshire", "place")
+  check(found[1] and found[1].name == "Lakeshire" and found[1].node, "flight-path towns are places")
+  found = Search.Find("wetlands", "zone")
+  check(#found == 1 and found[1].id == 1437 and found[1].kind == "zone", "zones from the continents' maps")
+  found = Search.Find("deadmines", "dungeon")
+  check(found[1] and found[1].name == "The Deadmines" and found[1].dungeon and found[1].dungeon.entrances[1],
+    "dungeons from the catalogue")
+  found = Search.Find("tailor", "profession")
+  check(found[1] and found[1].name == "Tailoring" and found[1].score == 300, "professions: " .. names(found))
+  found = Search.Find("life tap", "spell")
+  check(found[1] and found[1].name == "Life Tap" and found[1].score == 400 and found[1].service,
+    "your class's spells, from your trainer visit")
+  found = Search.Find("chain part", "quest")
+  check(#found == 2 and found[1].quest and found[1].kind == "quest", "quests: " .. names(found))
+  found = Search.Find("fin")
+  check(found[1] and found[1].name == "Fin" and found[1].kind == "item", "with no kinds, everything is searched")
+  check(#Search.Find("") == 0 and #Search.Find("   ") == 0, "nothing for nothing")
+  found = Search.Find("item:9002")
+  check(#found == 1 and found[1].kind == "item" and found[1].id == 9002 and found[1].score == 400, "an ID finds that one thing")
+  found = Search.Find("#1", { "quest", "item" })
+  check(#found == 1 and found[1].kind == "quest" and found[1].id == 1, "#N takes the first kind that has it")
+  local wrapped = ns.Quests.FindQuests("chain part")
+  check(#wrapped == 2 and wrapped[1].id and wrapped[1].name:find("Chain part", 1, true),
+    "Quests.FindQuests still answers quest rows, through Search")
+  ITEMS[9012] = { name = "Finch Feather" }
+  check(#Search.Find("finch", "item") == 0, "an index is kept until the data changes")
+  refreshData()
+  check(names(Search.Find("finch", "item")) == "Finch Feather", "and rebuilt after SOURCES_CHANGED / DATA_CHANGED")
+
+  local here, net = ns.Geo.PlayerNode(), ns.Network.Build()
+  local repair = Search.NearestNPC("repair", here, net)
+  check(repair and repair.name == "Redridge Smith" and repair.route, "NearestNPC: the nearest repairer by travel time")
+  local fm = Search.NearestNPC("flightMaster", here, net)
+  check(fm and fm.name == "Ariena Stormfeather", "NearestNPC: a flight master you met")
+  check(Search.RoleText(Search.Get("npc", 7002)) == "Armorer"
+    and Search.RoleText({ roles = { vendor = true, repair = true } }) == "Vendor, Repairs", "RoleText")
+
+  -- The Find page.
+  local page, quests
+  for _, p in ipairs(ns.pages) do
+    if p.id == "find" then page = p end
+    if p.id == "quests" then quests = p end
+  end
+  local labels = {}
+  for _, c in ipairs(page.categories) do labels[#labels + 1] = c.label end
+  check(page.order == 5 and page.searchable and page.icon:find("QuestionMark") and table.concat(labels, ",") == "All,Quests,Items,People,Places",
+    "Find page: order 5, searchable, the ? icon, five views")
+  check(quests and not quests.icon, "the Quests tab's icon comes from the panel (Find took the question mark)")
+  local function visible()
+    local t = {}
+    for _, r in ipairs(ns.Panel.VisibleResults()) do t[#t + 1] = r.title end
+    return table.concat(t, " | ")
+  end
+  local function byID(list, id)
+    for _, r in ipairs(list) do if r.id == id then return r end end
+  end
+  ns.Panel.Search("find", "fin")
+  check(ns.Panel.SideShown() and ns.Panel.SelectedTab() == "find" and visible():find("^Fin | Fine Axe | Fine Longbow"),
+    "All: item matches as rows to pick: " .. visible())
+  check(ns.Panel.VisibleResults()[1].actions[1].label == "Show" and page.SummaryText("fin"):find("matching \"fin\"", 1, true),
+    "with a Show action and a summary: " .. page.SummaryText("fin"))
+  ns.Find.Open("quests", "chain")
+  check(ns.Panel.SelectedTab() == "find" and page.selected == 2 and visible():find("Chain part 1", 1, true),
+    "Quests view: the Quests page's rows: " .. visible())
+  SlashCmdList.WAYWARD("quest chain")
+  check(page.selected == 2 and visible():find("Chain part 1", 1, true), "/ww quest opens Find on Quests")
+  SlashCmdList.WAYWARD("item item:9002")
+  check(page.selected == 3 and visible():find("Drops from Murloc Forager", 1, true), "/ww item opens Find on Items: " .. visible())
+  SlashCmdList.WAYWARD("find murloc")
+  check(page.selected == 1 and visible():find("Murloc Fin", 1, true), "/ww find searches everything: " .. visible())
+  ns.Panel.Search("find", "|cffffff00|Hquest:1:18|h[Redridge Goulash]|h|r")
+  check(visible():find("[18] Redridge Goulash", 1, true), "a quest link in All shows the quest's row: " .. visible())
+  ns.Panel.Search("find", "x")
+  check(#ns.Panel.VisibleResults() == 0 and page.EmptyText("x"):find("at least 2"), "one letter is too short")
+  check(page.EmptyText("zzzz"):find("Nothing called \"zzzz\"", 1, true), "no match says so")
+
+  -- People: your own trainer gets the Trainers row with its spells and a learn stop.
+  ns.Find.Open("people", "warlock trainer")
+  local rows = ns.Panel.VisibleResults()
+  local v = visible()
+  check(v:find("Demisette Cloyce", 1, true) and v:find("Ursula Deline", 1, true) and not v:find("Horde Warlock", 1, true),
+    "People: trainers by role, the other faction's left out: " .. v)
+  local demisette = byID(rows, 461)
+  local stop = demisette and demisette.journey and demisette.journey.stops[1]
+  check(demisette and demisette.route and stop and stop.action.kind == "learn" and stop.npc == "Demisette Cloyce"
+    and stop.text == "Learn 1 new spell from Demisette Cloyce" and #stop.action.spells == 1,
+    "your own trainer: the Trainers row, a journey ending in a learn stop: "
+    .. tostring(stop and stop.text))
+  local detail = {}
+  for _, d in ipairs(demisette and demisette.details or {}) do detail[#detail + 1] = d.text end
+  detail = table.concat(detail, " / ")
+  check(detail:find("Life Tap  -  10s", 1, true) and detail:find("More at level 24", 1, true),
+    "with the spells to learn in the details: " .. detail)
+  ns.Journey.STOP_KINDS = { learn = true }
+  local learn
+  for _, r in ipairs(ns.Trainers.Results()) do
+    if r.id == 461 then learn = r.journey and r.journey.stops[1] end
+  end
+  check(learn and learn.action.kind == "learn" and learn.action.spells[1] == 1454 and learn.action.npc == "Demisette Cloyce",
+    "with Journey.STOP_KINDS.learn, a learn stop with the spells")
+  ns.Journey.STOP_KINDS = nil
+  ns.Find.Open("people", "life tap")
+  local spell = ns.Panel.VisibleResults()[1]
+  check(spell and spell.kind == "spell" and spell.title == "Life Tap" and spell.journey and spell.subtitle:find("^Learn it from"),
+    "a spell: where to learn it: " .. tostring(spell and spell.subtitle))
+
+  -- Places: a zone goes to its flight-path town, or to where the way crosses in; towns and dungeons.
+  ns.Find.Open("places", "wetlands")
+  local zone = ns.Panel.VisibleResults()[1]
+  check(zone and zone.title == "Wetlands" and zone.kind == "zone" and zone.route
+    and zone.goal.label == "Wetlands (Menethil Harbor)" and zone.subtitle:find("^Zone"),
+    "a zone: directions to its flight-path town: " .. tostring(zone and zone.goal and zone.goal.label))
+  ns.Find.Open("places", "elwynn")
+  zone = ns.Panel.VisibleResults()[1]
+  check(zone and zone.title == "Elwynn Forest" and zone.route and zone.goal.label == "Elwynn Forest"
+    and zone.details[1].text:find("crosses into it", 1, true),
+    "a zone without a flight path: to where the way crosses its border: " .. tostring(zone and zone.details[1].text))
+  ns.Find.Open("places", "lakeshire")
+  local town = ns.Panel.VisibleResults()[1]
+  check(town and town.kind == "place" and town.title == "Lakeshire" and town.route and town.subtitle:find("^Town"),
+    "a town: directions to its flight master")
+  ns.Find.Open("places", "deadmines")
+  local dungeon = ns.Panel.VisibleResults()[1]
+  check(dungeon and dungeon.kind == "dungeon" and dungeon.title:find("^The Deadmines") and dungeon.goal and dungeon.dungeon,
+    "a dungeon: the Dungeons page's row: " .. tostring(dungeon and dungeon.title))
+
+  -- Where am I stuck? (no text)
+  C_QuestLog.GetQuestObjectives = function(id)
+    if id == 10 then return { { text = "Murloc Fin: 3/8", finished = false } } end
+    return {}
+  end
+  ns.Find.Open("all", "")
+  rows = ns.Panel.VisibleResults()
+  v = visible()
+  local objective = byID(rows, "objective10")
+  check(objective and objective.title == "Where do I find Murloc Fin?" and objective.journey
+    and objective.journey.stops[#objective.journey.stops].action.kind == "turnin"
+    -- (Classic Era's log stub has no title: "Quest 10".)
+    and (objective.subtitle:find("Already in log", 1, true) or objective.subtitle:find("Quest 10", 1, true)),
+    "no text: a log quest with something left, as a journey for what's left: " .. v)
+  local trainer = byID(rows, "trainer")
+  check(trainer and trainer.title == "Where is my class trainer?" and trainer.journey and trainer.route
+    and (trainer.subtitle:find("Cloyce", 1, true) or trainer.subtitle:find("Deline", 1, true)),
+    "'Where is my class trainer?': " .. tostring(trainer and trainer.subtitle))
+  local repairRow = byID(rows, "repair")
+  check(repairRow and repairRow.title == "Nearest repair" and repairRow.subtitle:find("Redridge Smith", 1, true) and repairRow.route,
+    "'Nearest repair': " .. tostring(repairRow and repairRow.subtitle))
+  local flight = byID(rows, "flight")
+  check(flight and flight.title == "Nearest flight master" and flight.goal.npc == "Ariena Stormfeather" and flight.route,
+    "'Nearest flight master': " .. tostring(flight and flight.subtitle))
+  check(not byID(rows, "stop") and page.SummaryText(""):find("Likely questions", 1, true),
+    "no journey: no current-stop row; the summary says what the list is")
+  ns.Find.Open("quests", "")
+  check(byID(ns.Panel.VisibleResults(), "log10") and page.SummaryText(""):find("Your quest log", 1, true),
+    "Quests with no text: the Journal (your log)")
+  ns.Find.Open("items", "")
+  check(#ns.Panel.VisibleResults() == 0 and page.EmptyText(""):find("dungeon drop", 1, true), "Items with no text: the Items hint")
+
+  -- On a journey: the current stop comes first.
+  local goulash
+  for _, r in ipairs(ns.QuestsPage.Results("redridge goulash")) do
+    if r.id == "quest1" then goulash = r end
+  end
+  ns.Nav.StartJourney(goulash.journey)
+  ns.Find.Open("all", "")
+  rows = ns.Panel.VisibleResults()
+  check(rows[1] and rows[1].id == "stop" and rows[1].title == "Where is Magistrate Solomon?" and rows[1].route
+    and rows[1].subtitle:find("Pick up Redridge Goulash from Magistrate Solomon", 1, true),
+    "on a journey: the current stop comes first: " .. tostring(rows[1] and rows[1].title))
+  ns.Find.Open("people", "")
+  rows = ns.Panel.VisibleResults()
+  check(rows[1] and rows[1].id == "stop" and byID(rows, "trainer") and byID(rows, "repair") and byID(rows, "flight")
+    and not byID(rows, "objective10"), "People with no text: the stop (someone to talk to), trainer, repair, flight master")
+  ns.Find.Open("places", "")
+  rows = ns.Panel.VisibleResults()
+  local inn = byID(rows, "inn")
+  check(byID(rows, "flight") and inn and inn.subtitle:find("Innkeeper Farley", 1, true) and not byID(rows, "stop"),
+    "Places with no text: the nearest flight master and inn: " .. tostring(inn and inn.subtitle))
+
+  -- Add detour on every row kind while a journey is on.
+  local function detourLabel(r) return r and r.actions and r.actions[1] and r.actions[1].label end
+  check(detourLabel(byID(ns.QuestsPage.Results("lakeshire logs"), "quest7")) == "Add detour", "quest rows: Add detour")
+  check(detourLabel(ns.Items.Results("item:9002")[1]) == "Add detour", "item source rows: Add detour")
+  check(detourLabel(ns.Trainers.Results()[1]) == "Add detour", "trainer rows: Add detour")
+  check(detourLabel(ns.Vendors.Results()[1]) == "Add detour", "vendor rows: Add detour")
+  check(detourLabel(ns.QuestHubs.Results()[1]) == "Add detour", "hub rows: Add detour")
+  local dm
+  for _, d in ipairs(ns.Dungeons.Results()) do
+    if d.title:find("^The Deadmines") then dm = d end
+  end
+  check(detourLabel(dm) == "Add detour" and dm.actions[2] and dm.actions[2].label == "Quests",
+    "dungeon rows: Add detour first, Quests after")
+  local itemDm = ns.Items.Results("item:9001")[1]
+  check(detourLabel(itemDm) == "Add detour" and (not itemDm.actions[2] or itemDm.actions[2].label:find("^%+")),
+    "an item's dungeon row keeps its +N quests action after")
+  ns.Find.Open("people", "armorer")
+  local armorer = ns.Panel.VisibleResults()[1]
+  check(armorer and armorer.title == "Stormwind Armorer" and armorer.goal.npc == "Stormwind Armorer"
+    and detourLabel(armorer) == "Add detour" and armorer.subtitle:find("^Armorer  ·  Stormwind City"),
+    "an NPC row: directions to them, Add detour: " .. tostring(armorer and armorer.subtitle))
+  ns.Find.Open("places", "wetlands")
+  check(detourLabel(ns.Panel.VisibleResults()[1]) == "Add detour", "zone rows: Add detour")
+  local before = #ns.Journey.OpenStops(ns.Nav.active.journey)
+  armorer.actions[1].run(armorer)
+  local talk
+  for _, s in ipairs(ns.Journey.OpenStops(ns.Nav.active.journey)) do
+    if s.npc == "Stormwind Armorer" then talk = s end
+  end
+  check(talk and talk.action.kind == "talk" and #ns.Journey.OpenStops(ns.Nav.active.journey) == before + 1,
+    "Add detour on a person adds a talk stop to the journey")
+  ns.Nav.Stop()
+  for _, d in ipairs(ns.Dungeons.Results()) do
+    if d.title:find("^The Deadmines") then dm = d end
+  end
+  check(detourLabel(ns.Vendors.Results()[1]) == nil and detourLabel(ns.QuestHubs.Results()[1]) == nil
+    and detourLabel(dm) == "Quests", "with no journey: no Add detour on directions rows")
+  check(detourLabel(byID(ns.QuestsPage.Results("lakeshire logs"), "quest7")) == "Add detour",
+    "quest rows keep Add detour, which starts a journey")
+
+  -- The Items page's quest rules now live in Quests.lua.
+  local codes = {}
+  for _, id in ipairs({ 1, 10, 2, 3, 9, 4, 13, 12, 5 }) do codes[#codes + 1] = tostring(ns.Quests.RewardStatus(id)) end
+  check(table.concat(codes, ",") == "available,inLog,done,nil,level,chain,chain,hard,low",
+    "Quests.RewardStatus (the Items page's words for QuestStatus): " .. table.concat(codes, ","))
+  local rewards = ns.Items.Results("item:9004")
+  check(rewards[1] and rewards[1].title == "Reward from Redridge Goulash" and rewards[#rewards].title:find("done", 1, true),
+    "the Items page's quest rows come out the same from the shared rules")
+
+  -- Tooltips and help.
+  check(ns.Items.TooltipLine(9002) == "Wayward: /ww find for directions"
+    and ns.QuestsPage.TooltipLine(1) == "Wayward: /ww find for directions" and ns.QuestsPage.TooltipLine(424242) == nil,
+    "item and quest tooltip lines point at /ww find")
+  InCombatLockdown = function() return true end
+  check(ns.QuestsPage.TooltipLine(1) == nil, "no quest tooltip line in combat")
+  InCombatLockdown = nil
+  local chatBefore = #chat
+  SlashCmdList.WAYWARD("help")
+  check(table.concat(chat, "\n", chatBefore + 1):find("/ww find <text>", 1, true), "/ww help lists /ww find")
+
+  ns.Panel.Search("foryou", "")
+  C_Map.GetMapChildrenInfo = savedChildren
+  ns.db.npcs[990003] = nil
+  ns.charDB.classSpells = savedClassSpells
+  ITEMS[9010], ITEMS[9011], ITEMS[9012] = nil, nil, nil
+  LibQuestieDB.Enum.npcFlags.INNKEEPER = nil
+  refreshData()
+end
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

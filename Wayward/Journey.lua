@@ -511,6 +511,11 @@ end
 -- Stop kinds that wait for something at the stop (besides a quest's own).
 local WAITS = { talk = true, train = true, explore = true, enter = true, learn = true }
 
+-- Every stop kind a journey can hold, for code that builds stops (Trainers
+-- falls back to a talk stop where `learn` is missing).
+Journey.STOP_KINDS = { pickup = true, complete = true, turnin = true, item = true, manual = true,
+  talk = true, train = true, explore = true, enter = true, learn = true }
+
 -- What a stop says when its definition gives no text.
 function Journey.DefaultText(stop)
   local action, label = stop.action, stop.node and stop.node.label

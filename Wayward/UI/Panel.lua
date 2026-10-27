@@ -57,13 +57,14 @@ local SIDE_TAB_SIZE = 32
 -- The tab column inside the main window's right edge.
 local TAB_COLUMN = SIDE_TAB_SIZE + 16
 local TAB_ICONS = {
-  quests = "Interface\\Icons\\INV_Misc_QuestionMark",
+  find = "Interface\\Icons\\INV_Misc_QuestionMark",
+  quests = "Interface\\Icons\\INV_Misc_Note_01",
   vendors = "Interface\\Icons\\INV_Misc_Coin_02",
   trainers = "Interface\\Icons\\INV_Misc_Book_11",
   dungeons = "Interface\\Icons\\INV_Misc_Key_14",
   items = "Interface\\Icons\\INV_Misc_Bag_08",
 }
-local MAX_CATEGORIES = 4
+local MAX_CATEGORIES = 5
 local CONTROL_WIDTH, CONTROL_GAP = 36, 2
 
 local frame, side

@@ -198,19 +198,48 @@ repair flag and English subtitles ("Food & Drink", "Bowyer"); without one, only
 vendors you visited are listed. Food, ammo and reagent tiers in
 `Data/VendorGoods.lua` are vanilla item IDs, not yet checked in Forever.
 
+### Find
+
+**Find** (the "?" tab, first on the right edge; `/ww find <text>` in chat)
+is the one place to ask "where is...?". Its search box looks through
+everything Wayward knows: quests, items, people by name or by role ("warlock
+trainer", "innkeeper", "repair"), dungeons, zones, flight-path towns, your
+class's spells and the professions. An exact name comes first, then names
+starting with what you typed, then names containing it, then matches on a
+role; shorter names first. The buttons under the box narrow it to **All**,
+**Quests**, **Items**, **People** or **Places**; `/ww quest <name>` and `/ww
+item <link>` open Find on Quests or Items. Every result is a row like any
+other: click it for directions or a journey, hover for the details and the
+route map, **Add detour** (or shift-click) while a journey is on. A person
+gets directions to where they stand (a talk stop when added); your own class
+trainer gets the Trainers row with the spells you can learn there; a zone
+gets directions to its nearest flight-path town, or to where the way crosses
+its border; a dungeon to its entrance; a spell to the trainer who teaches it.
+
+With nothing typed, Find lists likely questions for right now, each a row
+with directions: the stop you're heading for ("Where is Magistrate
+Solomon?"), every quest in your log with something left to do ("Where do I
+find Murloc Fin?", to where the game or the quest data places the
+objective), "Where is my class trainer?", "Nearest repair" and "Nearest
+flight master" (Places: the nearest flight master and inn).
+
+Item tooltips and quest tooltips get a "Wayward: /ww find for directions"
+line when Wayward knows the item's sources or the quest (never in combat).
+
 ### Items
 
-**Items** tells you where an item comes from, with directions. Shift-click an
-item into its search box, type `/ww item <link>` in chat, or type part of the
-name. Each source is a row: dungeon drops ("Drops from Edwin VanCleef in The
-Deadmines", routed to the entrance, with a **+N quests** button that picks up
-the dungeon's quests on the way), mobs and objects in the world (nearest spawn,
-one row per zone), quests that reward it (can take now, in your log, needs
-earlier quests or a higher level) and the nearest vendor that sells it. Things
-you can do now come first, then shorter trips. Drops and quest rewards need
-item data from a data source; without it only vendors you visited that sold the item are
-known. Item tooltips get a "Wayward: /ww item for directions" line when an
-item has known sources (never in combat).
+**Items** (also Find's Items view) tells you where an item comes from, with
+directions. Shift-click an item into its search box, type `/ww item <link>`
+in chat, or type part of the name. Each source is a row: dungeon drops
+("Drops from Edwin VanCleef in The Deadmines", routed to the entrance, with a
+**+N quests** button that picks up the dungeon's quests on the way), mobs and
+objects in the world (nearest spawn, one row per zone), quests that reward it
+(can take now, in your log, needs earlier quests or a higher level) and the
+nearest vendor that sells it. Things you can do now come first, then the
+nearest. Drops and quest rewards need item data from a data source; without
+it only vendors you visited that sold the item are known. The quest rules
+are the Quests page's (`ns.Quests.RewardStatus(id)`), the name matching
+Find's (`ns.Search.Find(text, "item")`).
 
 ### For you
 
@@ -247,9 +276,13 @@ with their own jobs:
   (plain directions). Hover one for the full text.
 
 The window keeps one size (roughly 4:3, so it fits a 1080p screen at UI
-scale 1): the home screen is the main window, and **Quests**
+scale 1): the home screen is the main window, and **Find** (the
+"?": search everything, or the likely questions for right now; see
+[Find](#find)), **Quests**
 (Journal: your quest log and quest search; Hubs), **Vendors**, **Trainers**
-(Class; Weapons: one row per weapon your class can learn and you don't know,
+(Class: the nearest trainers for your class, each with the spells you can
+learn there and a journey that ends with learning them; Weapons: one row per
+weapon your class can learn and you don't know,
 "Polearms (Woo Ping)", with the nearest weapon master who teaches it to your
 class and the cost against your purse; weapon masters list what they teach
 when you visit, so ones not seen yet point to a master you haven't visited;
@@ -257,7 +290,9 @@ Professions: each of your professions with its skill, the next rank and the
 nearest trainer for it, then the ones you could still learn),
 **Dungeons** and **Items** are icon tabs inside its right edge that open a
 list panel docked beside them (click the tab again, or the panel's close
-button, to close it). The search box filters any list. If the cards ever show no text, `/ww debug cards` reports what
+button, to close it). The search box filters any list; the Quests, Vendors,
+Trainers, Dungeons and Items tabs are browse views of the same Find system,
+with the same rows and actions. If the cards ever show no text, `/ww debug cards` reports what
 each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
 page is a list in the side panel.
 
@@ -490,13 +525,15 @@ are the Quest hubs rules (`ns.Quests.QuestStatus(id)` and
 Needs quest data.
 
 With an empty search the tab lists your quest log: level, zone and the first
-objective not done yet (or "ready to hand in"). Click a quest for a trip for
-what is left of it. "Add" (on log quests and search results) puts the quest
-into the trip you're on, or starts one; "In trip" takes it out again. The
-trip is re-ordered from where you are each time, each quest in its own order
-(pick up, objectives, hand in) but interleaved by travel time. "Hand in N
-completed quests" visits every finisher in one trip, and can be added to the
-current trip too. Adding or starting a trip for one quest that has a chain
+objective not done yet (or "ready to hand in"). Click a quest for a journey
+for what is left of it. "Add detour" (on log quests and search results) puts
+the quest into the journey you're on, or starts one; "In journey" takes it
+out again. The journey is re-ordered from where you are each time, each
+quest in its own order (pick up, objectives, hand in) but interleaved by
+travel time. "Hand in N completed quests" visits every finisher in one
+journey, and can be added to the current journey too. Quest matching and
+the rows are Find's (`ns.Search.Find(text, "quest")`,
+`ns.QuestsPage.RowFor(id, start, net)`). Adding or starting a trip for one quest that has a chain
 asks which of its next steps to add as well (ticked when on the way); a trip
 of several quests only asks about follow-ups on the way. Without quest data
 the log still lists, but without directions.
@@ -516,8 +553,8 @@ count as one step, and only quests your race, class and level can do count.
 **Journeys are flexible:** starting new directions while a journey is on
 asks whether to add them to it as a detour or switch to them; switching sets
 the journey on now aside, to resume later (see the journey overview, or
-`/ww journeys`). Shift-click any row in the panel to add it to the journey
-you're on.
+`/ww journeys`). Shift-click any row in the panel, or its **Add detour**
+button, to add it to the journey you're on.
 
 ### Building on Wayward: pages and journeys
 

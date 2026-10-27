@@ -42,7 +42,7 @@ local _, ns = ...
 -- already has, or a dungeon your journey goes to, isn't shown.
 
 -- Shown as Adventure Guide style cards (UI/Cards.lua) on a wider panel.
-local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards", width = 730 }
+local ForYou = { id = "foryou", label = "For you", order = 10, searchable = false, layout = "cards" }
 ns.ForYou = ForYou
 
 local SECONDS_PER_QUEST = 300   -- time to do one quest, on top of the trip (until QuestTimes has
@@ -2461,29 +2461,6 @@ function ForYou.Diagnose()
   return lines
 end
 
--- /ww debug cards (Core.lua) prints Cards.Diagnose; until it calls
--- ForYou.Diagnose itself, these lines are added whenever the cards shown are
--- For you's.
-ns.Listen("DB_READY", function()
-  local cards = ns.Cards
-  if not (cards and cards.Diagnose) or cards.forYouDiagnose then return end
-  local original = cards.Diagnose
-  cards.forYouDiagnose = true
-  cards.Diagnose = function(...)
-    local lines = original(...)
-    local mine = {}
-    for _, r in ipairs(last and last.results or {}) do mine[r] = true end
-    local shown = cards.Visible and cards.Visible() or {}
-    local ours = false
-    for _, r in ipairs(shown) do
-      if mine[r] then ours = true break end
-    end
-    if ours then
-      for _, line in ipairs(ForYou.Diagnose()) do lines[#lines + 1] = line end
-    end
-    return lines
-  end
-end)
 
 ---------------------------------------------------------------- learned intent
 
