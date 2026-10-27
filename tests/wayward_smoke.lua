@@ -4791,6 +4791,11 @@ do
   ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "|cffffd200rank|r" },
     { text = "Quests in your log count at full XP; ...", more = true }, { text = "shown" } } } }, "", true)
   check(ns.Cards.Detail(1) == "rank", "without a why, a card shows its first detail: " .. tostring(ns.Cards.Detail(1)))
+  check(ns.Cards.More(1) == "shown", "under it, the next detail that isn't held for the tooltip: " .. tostring(ns.Cards.More(1)))
+  ns.Cards.Show({ { title = "Facts", route = route, why = "A zone you haven't seen", stats = { { "XP", "~900" } },
+    facts = { { "Level", "Level 8-10" }, { "Nearby", "Nearby" }, { "Quests", "11 quests" } } } }, "", true)
+  check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=Level 8-10,NEARBY=Nearby,QUESTS=11 quests" and ns.Cards.More(1) == "",
+    "a row's facts come before its stats: " .. table.concat(ns.Cards.Stats(1), ","))
   ns.Cards.Show(suggestions, "", true)
 
   ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City  ·  ~5 min  ·  1 quest",
@@ -6130,6 +6135,24 @@ do
     return #cards > 0
   end
   check(#list >= 4 and honest(list), "every card is tagged by its strongest reason, never by distance: " .. titles(list))
+  -- Facts: one order on every card (level, how far, what it holds), each saying what it is; no XP.
+  local factsOK, seen = true, {}
+  for _, r in ipairs(list) do
+    local f = r.facts or {}
+    local texts = {}
+    for _, fact in ipairs(f) do texts[#texts + 1] = fact[2] end
+    seen[#seen + 1] = table.concat(texts, ", ")
+    if #f == 0 or #f > 3 or f[1][1] ~= "Level" or not f[1][2]:find("^Level %d") then factsOK = false end
+    for _, fact in ipairs(f) do
+      if fact[1] == "XP" or fact[2]:find("XP") then factsOK = false end
+      if not fact[2]:find("%a") then factsOK = false end -- never a bare number
+    end
+  end
+  check(factsOK, "every card's facts start with its level and say what each number is: " .. table.concat(seen, " | "))
+  local zoneCard = find(list, "Quest in Redridge Mountains")
+  local zf = zoneCard and zoneCard.facts or {}
+  check(#zf == 3 and zf[1][2]:find("^Level %d+") and (zf[2][2] == "Nearby" or zf[2][2]:find(" away$")) and zf[3][2]:find("^%d+ quests?$"),
+    "a zone card: its levels, how far, its quests")
   local first, second, third = list[1], list[2], list[3]
   check(first and second and (first.zoneKey ~= second.zoneKey or first.kind ~= second.kind),
     "the exploration is in another zone or of another kind than the continuation")

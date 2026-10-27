@@ -23,11 +23,16 @@ local CARD_H = 180
 local NAV_HEIGHT = 28      -- the arrows under the cards
 local ICON = 48
 local PAD = 12
+-- Text keeps this far from the card's edge: the parchment art is stretched
+-- to the card, and its torn border is wider than PAD.
+local INSET = 22
+local TAG_TOP = PAD + 6     -- the tag clear of the art's darker top edge
+local FACT_GAP = 12          -- between one fact and the next
 -- Ink on parchment, darkest for titles.
 local TITLE_COLOR = { 0.20, 0.10, 0.02 }
 local TEXT_COLOR = { 0.22, 0.14, 0.06 }
 local DETAIL_COLOR = { 0.28, 0.19, 0.09 }
-local TAG_COLOR = { 0.45, 0.06, 0.02 } -- the role tag, a deep red
+local TAG_COLOR = { 0.62, 0.12, 0.03 } -- the role tag, a red that reads on parchment
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local RULE = { 0.35, 0.22, 0.08, 0.35 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
@@ -174,9 +179,13 @@ local function factIcon(label)
   return DEFAULT_FACT_ICON
 end
 
+-- Facts one after the other, each as wide as its text ("Level 8-10",
+-- "Nearby", "11 quests"), so a short one leaves room for a longer one; an
+-- equal share each where the text can't be measured.
 local function fillFacts(row, stats)
   local count = math.min(#stats, MAX_FACTS)
-  local width = row.width / math.max(count, 1)
+  local share = row.width / math.max(count, 1)
+  local x = 0
   for i, fact in ipairs(row.facts) do
     local stat = stats[i]
     local shown = stat ~= nil and i <= count
@@ -184,13 +193,18 @@ local function fillFacts(row, stats)
     fact.value:SetShown(shown)
     if shown then
       fact.icon:ClearAllPoints()
-      fact.icon:SetPoint("LEFT", row, "LEFT", (i - 1) * width, 0)
+      fact.icon:SetPoint("LEFT", row, "LEFT", x, 0)
       fact.icon:SetTexture(factIcon(stat[1]))
       fact.value:ClearAllPoints()
       fact.value:SetPoint("LEFT", fact.icon, "RIGHT", 4, 0)
-      fact.value:SetWidth(width - 20)
+      fact.value:SetWidth(0)
       fact.value:SetText(stat[2])
       fact.label = stat[1]
+      local measured = fact.value.GetStringWidth and fact.value:GetStringWidth()
+      local textWidth = type(measured) == "number" and measured > 0 and measured or (share - 18 - FACT_GAP)
+      textWidth = math.min(textWidth, math.max(row.width - x - 18, 20))
+      fact.value:SetWidth(textWidth)
+      x = x + 18 + textWidth + FACT_GAP
     end
   end
 end
@@ -210,8 +224,8 @@ local function makeCard(parent, width)
   card.badge:SetPoint("TOPRIGHT", -PAD - 2, -PAD)
   card.badge:SetJustifyH("RIGHT")
 
-  card.tag = text(card, "GameFontHighlightSmall", 10, TAG_COLOR)
-  card.tag:SetPoint("TOPLEFT", left, -PAD - 2)
+  card.tag = text(card, "GameFontNormalSmall", 11, TAG_COLOR)
+  card.tag:SetPoint("TOPLEFT", left, -TAG_TOP)
   card.tag:SetWidth(textWidth)
   card.tag:SetJustifyH("LEFT")
   card.tag:SetWordWrap(false)
@@ -223,20 +237,28 @@ local function makeCard(parent, width)
   card.title:SetSpacing(1)
   if card.title.SetMaxLines then card.title:SetMaxLines(2) end
 
-  -- The why, under the icon too: the card's full width.
+  -- The why, under the icon too: the card's width, clear of the art's border.
   card.detail = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
-  card.detail:SetPoint("TOPLEFT", PAD, -PAD - ICON - 16)
-  card.detail:SetWidth(width - 2 * PAD)
+  card.detail:SetPoint("TOPLEFT", INSET, -PAD - ICON - 16)
+  card.detail:SetWidth(width - 2 * INSET)
   card.detail:SetJustifyH("LEFT")
   card.detail:SetSpacing(2)
-  if card.detail.SetMaxLines then card.detail:SetMaxLines(3) end
+  if card.detail.SetMaxLines then card.detail:SetMaxLines(2) end
+
+  -- Under the why, what starting it does ("Start at Kharanos: the journey
+  -- picks up its 4 quests."): the row's next detail, lighter.
+  card.more = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
+  card.more:SetPoint("TOPLEFT", card.detail, "BOTTOMLEFT", 0, -4)
+  card.more:SetWidth(width - 2 * INSET)
+  card.more:SetJustifyH("LEFT")
+  if card.more.SetMaxLines then card.more:SetMaxLines(2) end
 
   card.rule = card:CreateTexture(nil, "ARTWORK")
   card.rule:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
-  card.rule:SetSize(width - 2 * PAD, 1)
-  card.rule:SetPoint("BOTTOMLEFT", PAD, 54)
+  card.rule:SetSize(width - 2 * INSET, 1)
+  card.rule:SetPoint("BOTTOMLEFT", INSET, 54)
 
-  card.stats = factRow(card, width - 2 * PAD)
+  card.stats = factRow(card, width - 2 * INSET)
   card.stats:SetPoint("TOPLEFT", card.rule, "BOTTOMLEFT", 0, -6)
 
   card.button = button(card, 120, 22)
@@ -319,9 +341,23 @@ function Cards.WhyFor(r)
   return first and plain(first.text) or ""
 end
 
--- Up to three facts for the row: its stats, else what the row itself tells
--- (level from the title, travel time from the route, "Nearby" when close).
+-- The line under the why: the first detail after it that isn't held back
+-- for the tooltip (`more`), without colour codes; "" when there is none.
+function Cards.MoreFor(r)
+  local why = Cards.WhyFor(r)
+  for i, d in ipairs(r.details or {}) do
+    local line = plain(d.text)
+    if i > 1 and not d.more and line ~= "" and line ~= why and line ~= why .. "." then return line end
+  end
+  return ""
+end
+
+-- Up to three facts for the row, each a label and a text that says what it
+-- is ("Level 8-10", "~4 min away", "11 quests"): the row's facts, else its
+-- stats, else what the row itself tells (level from the title, travel time
+-- from the route, "Nearby" when close).
 function Cards.FactsFor(r)
+  if r.facts and #r.facts > 0 then return r.facts end
   if r.stats and #r.stats > 0 then return r.stats end
   local facts = {}
   local level = (r.title or ""):match("level (%d+)$")
@@ -368,6 +404,7 @@ local function fill(card, r)
   local ink = r.over and TAG_COLOR or TITLE_COLOR
   card.badge:SetTextColor(ink[1], ink[2], ink[3])
   card.detail:SetText(Cards.WhyFor(r))
+  card.more:SetText(Cards.MoreFor(r))
   local facts = Cards.FactsFor(r)
   fillFacts(card.stats, facts)
   card.stats:SetShown(#facts > 0)
@@ -463,6 +500,12 @@ end
 function Cards.Badge(index)
   local c = card(index)
   return c and c.badge:IsShown() and c.badge:GetText() or nil
+end
+
+-- The line under a card's why, as drawn (1 = leftmost), for tests.
+function Cards.More(index)
+  local c = card(index)
+  return c and c.more:GetText()
 end
 
 -- A card's facts as drawn, "LABEL=value" (1 = leftmost), for tests.

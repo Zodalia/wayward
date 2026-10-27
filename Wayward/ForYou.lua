@@ -1659,6 +1659,46 @@ end
 
 local CATEGORY = { hub = "Quest hub", handin = "Hand in", finish = "Finish", quest = "Best quest" }
 
+-- Facts for the cards, one order on every card: its level, how far, then
+-- what it holds. Each text says what it is ("Level 8-10", "Nearby", "~4 min
+-- away", "11 quests"); XP stays in the tooltip, not the headline.
+local function levelFact(lo, hi)
+  if not lo then return nil end
+  hi = hi or lo
+  return { "Level", lo == hi and ("Level " .. lo) or string.format("Level %d-%d", lo, hi) }
+end
+
+local function awayFact(seconds)
+  if not seconds then return nil end
+  if seconds <= NEAR_SECONDS then return { "Nearby", "Nearby" } end
+  return { "Travel", ns.FormatDuration(seconds) .. " away" }
+end
+
+-- "~16 min in all": the whole journey's time.
+local function allFact(seconds)
+  if not seconds then return nil end
+  return { "Time", ns.FormatDuration(seconds) .. " in all" }
+end
+
+local function questLevels(quests)
+  local lo, hi
+  for _, q in ipairs(quests or {}) do
+    if q.level then
+      lo, hi = math.min(lo or q.level, q.level), math.max(hi or q.level, q.level)
+    end
+  end
+  return lo, hi
+end
+
+local function factList(...)
+  local out = {}
+  for i = 1, select("#", ...) do
+    local f = select(i, ...)
+    if f and #out < 3 then out[#out + 1] = f end
+  end
+  return out
+end
+
 local function optionRow(option, ctx)
   local count = #option.quests
   local fresh, logged, handins = questCounts(option)
@@ -1727,9 +1767,17 @@ local function optionRow(option, ctx)
   end
   if ctx.xpMode then stats[#stats + 1] = { "XP", "~" .. formatNumber(option.value) } end
 
+  local lo, hi = questLevels(option.quests)
+  if level then lo, hi = tonumber(level), tonumber(level) end
+  local holds
+  if option.kind == "handin" then holds = { "Ready", string.format("%d to hand in", handins) }
+  elseif option.kind == "finish" then holds = { "Quests", plural(logged, "quest") }
+  elseif option.kind == "quest" then holds = allFact(option.seconds or option.trip)
+  else holds = { "Quests", plural(fresh + handins, "quest") } end
   local row = {
     id = option.kind .. (option.name or option.title), kind = option.kind, raid = option.raid, title = option.title,
     category = CATEGORY[option.kind] or (option.raid and "Raid" or "Dungeon"),
+    facts = factList(levelFact(lo, hi), awayFact(travelTo(option)), holds),
     subtitle = string.format("%s  ·  %s  ·  %s", firstPart(option.zone),
       ns.FormatDuration(option.trip), table.concat(why, ", ")),
     place = place, stats = stats, zone = option.zone,
@@ -1797,6 +1845,7 @@ local function notableRow(option, ctx)
     subtitle = string.format("%s  ·  %s  ·  %s", option.zone, ns.FormatDuration(option.travel), option.tag),
     place = string.format("%s  ·  %s", option.tag, option.zone), stats = stats, zone = option.zone,
     goal = option.goal, journey = option.journey, details = details,
+    facts = factList(levelFact(q.level), awayFact(option.travel), option.trip > option.travel and allFact(option.trip) or nil),
   }
   return scoreRow(row, option, ctx)
 end
@@ -1839,6 +1888,7 @@ local function zoneRow(z, ctx)
     place = string.format("%s  ·  start at %s", levels, z.first.place), zone = z.zone,
     stats = { { "Quests", quests }, ctx.xpMode and { "XP", "~" .. formatNumber(z.value) } or { "Hubs", tostring(#z.hubs) },
       { z.journey and "Journey" or "Travel", ns.FormatDuration(z.trip) } },
+    facts = factList(levelFact(z.lowest, z.highest), awayFact(z.trip), { "Quests", plural(#z.now, "quest") }),
     goal = z.goal, route = z.route, journey = z.journey, details = details,
   }
   return scoreRow(row, z, ctx)
