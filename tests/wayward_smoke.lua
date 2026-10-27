@@ -81,6 +81,10 @@ local function newObj()
           return fs
         elseif k == "CreateTexture" then return newObj()
         elseif k == "GetPoint" then return "CENTER", nil, "CENTER", 0, 0
+        elseif k == "SetFrameStrata" then rawset(self, "strata", (...))
+        elseif k == "GetFrameStrata" then return rawget(self, "strata")
+        elseif k == "SetFrameLevel" then rawset(self, "level", (...))
+        elseif k == "GetFrameLevel" then return rawget(self, "level")
         end
       end
     end
@@ -457,6 +461,8 @@ rawset(hud, "GetRight", function() return 600 end)
 rawset(hud, "GetTop", function() return 700 end)
 ns.TargetButton.Sync()
 check(ns.TargetButton.Macro() == "/target " .. r.goal.npc, "the target button targets them: " .. tostring(ns.TargetButton.Macro()))
+check(ns.TargetButton.Frame():GetFrameStrata() == (ns.HUD.Frame():GetFrameStrata() or "MEDIUM"),
+  "on the directions box's layer, so the Wayward window covers it: " .. tostring(ns.TargetButton.Frame():GetFrameStrata()))
 InCombatLockdown = function() return true end
 ns.Nav.Stop()
 ns.TargetButton.Sync()
@@ -6280,9 +6286,10 @@ do
   obs = F.Observations()
   local abilities = obsFind(obs, "abilities")
   check(abilities and abilities.text:find("^2 new spells at level 22: your trainer is ") and abilities.text:find("in Stormwind", 1, true)
-    and abilities.action.kind == "go" and abilities.action.route and abilities.highlights[2] == "level 22"
+    and abilities.action.kind == "show" and abilities.action.page == "trainers" and abilities.highlights[2] == "level 22"
     and not obsFind(obs, "train"),
-    "two levels ahead: new spells at level 22, with directions to the trainer: " .. tostring(abilities and abilities.text))
+    "two levels ahead: new spells at level 22, naming the trainer, with the Trainers page to look at: "
+    .. tostring(abilities and abilities.text))
   ns.charDB.classSpells.services[2].levelReq, ns.charDB.classSpells.services[3].levelReq = 24, 24
   F.Invalidate()
   check(not obsFind(F.Observations(), "abilities"), "four levels ahead: not yet")

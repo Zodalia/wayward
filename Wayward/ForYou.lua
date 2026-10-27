@@ -639,7 +639,9 @@ local function abilitiesNeed(ctx)
     kind = "abilities", urgency = 0.2, title = string.format("%s at level %d", capitalize(spells), s.nextLevel),
     text = string.format("%s at level %d%s.", capitalize(spells), s.nextLevel, where),
     highlights = { spells, string.format("level %d", s.nextLevel) },
-    goal = best and best.goal, route = best and best.route, zone = best and best.zone,
+    -- Nothing to learn there yet: the trainer and the spells on the Trainers
+    -- page, not directions to someone who can't teach you today.
+    page = "trainers", pageLabel = "Show trainer",
   }
 end
 
