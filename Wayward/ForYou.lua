@@ -2342,6 +2342,7 @@ end
 -- for them. A quick build (or one without a clock, in tests) is done at once.
 local job      -- the build under way: { tries, started, stale (invalidated meanwhile) }
 local last     -- the last results built: { results, err, net, observations }
+local dirty = true -- nothing built since the last invalidation (or ever)
 local waiters = {}
 local asking = false -- inside ForYou.Results: the caller takes the results itself
 local startJob
@@ -2349,6 +2350,7 @@ local startJob
 local function finished(ok, results, err, net)
   local j = job
   job = nil
+  dirty = false
   if not ok then results, err = {}, "Couldn't work this out (the error has the details)." end
   for _, r in ipairs(results or {}) do r.icon, r.iconCoords = iconFor(r) end
   ForYou.runs = ForYou.runs + 1
@@ -2402,7 +2404,11 @@ end
 -- and cached and invalidated with them. Empty until the first build is done.
 function ForYou.Observations()
   local now = GetTime and GetTime()
-  if not (cache and now and now - cache.at < CACHE_SECONDS) then ForYou.Results() end
+  if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
+  -- The panel asks for the cards first, which starts the build; only when
+  -- nothing was ever built (and no build is under way) is one started here,
+  -- so a refresh never builds twice.
+  if dirty and not job then ForYou.Results() end
   if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
   return last and last.observations or {}
 end
@@ -2418,6 +2424,7 @@ end
 
 function ForYou.Invalidate()
   cache = nil
+  dirty = true
   if job then job.stale = true end
 end
 

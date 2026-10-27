@@ -214,20 +214,40 @@ item has known sources (never in combat).
 
 ### For you
 
-The page is laid out like the Suggested Content tab of modern WoW's Adventure
-Guide: the top suggestion on a large card (icon, title, why, details, a Go or
-Start trip button, and arrows to step through the rest), the next two on
-smaller cards beside it. The card art comes from the client when it has the
-Adventure Guide textures (Forever does); otherwise the cards are plain
-parchment. Each card shows the trip's key numbers (level, travel time,
-quests, XP per minute) and its quests; hover it for every detail and step.
-The tooltip of a card, or of any row with directions or a trip, has a small
-map under it with the route drawn on it (the zone, the continent or the world
-map, whichever holds it all, zoomed in on the route; walking white, flights
-light blue, boats and the like deeper blue). The arrows under the cards page through the rest, three at a time (back to page 1 when the cards change); shift-click adds a card to
-your trip.
+The main window is the home screen: under a header with your portrait,
+"Level 8 · Dun Morogh", the summary line and the time buttons, three regions
+with their own jobs:
 
-The window keeps one size: For you is the main window, and **Quests**
+- **Your journey**: the journey you're on, with its icon, title, the current
+  stop ("Stop 3 of 5 · Find Shimmerweed in Dun Morogh"), stops done and the
+  time remaining, a progress bar, a map of what's left, **Continue journey**
+  (closes the window and makes sure the directions box is up) and **View
+  details** (the journey overview). On plain directions it shows the
+  destination and "Directions"; with nothing on it is one line, and the
+  suggestions move up.
+- **Something to do next**: the suggestions as three equal cards per page,
+  each with its icon, a tag for its role (QUESTING, EXPLORE, ALTERNATIVE), the
+  title, a line of why in plain words, up to three facts (where or "Nearby",
+  level, travel time) and **Start journey** (**Directions** when there is only
+  a route). The card art comes from the client when it has the Adventure
+  Guide textures (Forever does); otherwise the cards are plain parchment.
+  Hover a card for every detail, its stops and steps; the tooltip of a card,
+  or of any row with directions or a journey, has a small map under it with
+  the route drawn on it (the zone, the continent or the world map, whichever
+  holds it all, zoomed in on the route; walking white, flights light blue,
+  boats and the like deeper blue). The arrows under the cards (or the mouse
+  wheel) page through the rest, three at a time (back to page 1 when the
+  cards change). Shift-click adds a card to your journey as a detour; while a
+  journey is on, Start journey asks instead: **Add as detour**, **Switch
+  journey** (the journey you're on is set aside) or Cancel.
+- **Good to know**: up to four small observations (new abilities at the next
+  level, gear wearing out, a quest ready to hand in, vendors nearby...), the
+  numbers in gold, each with at most one button: **Add detour** (the stop
+  joins your journey, or starts one), **Show ...** (a side page) or **Go**
+  (plain directions). Hover one for the full text.
+
+The window keeps one size (roughly 4:3, so it fits a 1080p screen at UI
+scale 1): the home screen is the main window, and **Quests**
 (Journal: your quest log and quest search; Hubs), **Vendors**, **Trainers**
 (Class; Weapons: one row per weapon your class can learn and you don't know,
 "Polearms (Woo Ping)", with the nearest weapon master who teaches it to your
