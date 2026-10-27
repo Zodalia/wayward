@@ -798,7 +798,7 @@ end
 -- A journey's open stops as plain stops to add elsewhere (a dungeon entrance
 -- keeps its `after`, so it still comes after the stops planned with it).
 function Journey.OpenStops(journey)
-  local root = journey.root or journey.def
+  local root = journey.root or journey.def or journey
   local out = {}
   for _, stop in ipairs(root.stops or {}) do
     if open(stop) then out[#out + 1] = stop end
@@ -891,6 +891,40 @@ end
 
 -- The definition back from Journey.Save; plan it with Journey.Plan. A save
 -- from before dungeon entrances were stops (`finish`) still loads.
+-- Names that say nothing about the journey (older saves used them for any
+-- journey that had gained stops).
+local GENERIC_TITLES = { ["Your journey"] = true, ["Your trip"] = true }
+function Journey.IsGenericTitle(title)
+  return title == nil or title == "" or GENERIC_TITLES[title] == true
+end
+
+-- A name from what a journey holds: its quests ("The Perfect Stout", "The
+-- Perfect Stout and 2 more quests"), else its first open stop ("Repair at
+-- Thrawn Boltar"). For journeys you put together yourself, out of detours.
+function Journey.NameFor(def)
+  local names, seen, firstText = {}, {}, nil
+  for _, stop in ipairs(def and def.stops or {}) do
+    if not (stop.done or stop.skipped) then
+      local id = stop.action and stop.action.questID
+      if id then
+        if not seen[id] then
+          seen[id] = true
+          local q = ns.Quests and ns.Quests.Quest and ns.Quests.Quest(id)
+          local name = q and q.name or (ns.QuestLog and ns.QuestLog.Title and ns.QuestLog.Title(id))
+          if name then names[#names + 1] = name end
+        end
+      elseif not firstText then
+        firstText = stop.text or (stop.node and stop.node.label)
+      end
+    end
+  end
+  if #names == 1 then return names[1] end
+  if #names > 1 then
+    return string.format("%s and %d more quest%s", names[1], #names - 1, #names == 2 and "" or "s")
+  end
+  return firstText or "Your journey"
+end
+
 function Journey.Load(saved)
   local def = { title = saved.title, kind = saved.kind, icon = saved.icon, manual = saved.manual, stops = {} }
   local function load(s)
@@ -910,6 +944,7 @@ function Journey.Load(saved)
     def.finish = load(saved.finish)
     adoptFinish(def)
   end
+  if Journey.IsGenericTitle(def.title) then def.title = Journey.NameFor(def) end
   return def
 end
 

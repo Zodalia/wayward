@@ -485,7 +485,10 @@ end
 -- Puts "Add detour" first among a row's actions while a journey is on, for a
 -- row that has somewhere to go. Returns the row.
 function Search.WithDetour(row, label)
-  if row and ns.Nav.active and (row.journey or (row.goal and row.route)) then
+  -- Nothing to add when the journey already has it (the objective of a quest
+  -- on it, the NPC it is heading for).
+  if row and ns.Nav.active and (row.journey or (row.goal and row.route))
+    and not (ns.Nav.JourneyHas and ns.Nav.JourneyHas(ns.Nav.StopsFor(row))) then
     row.actions = row.actions or {}
     table.insert(row.actions, 1, Search.DetourAction(row, label))
   end

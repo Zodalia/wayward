@@ -271,7 +271,7 @@ function Panel.Choose(r)
   local a = ns.Nav.active
   local now = a.journey and string.format("You're on a journey: %s.", a.title or "")
     or string.format("You have directions to %s.", a.title or "")
-  StaticPopup_Show("WAYWARD_SWITCH", now, r.title or "", { result = r })
+  ns.Nav.CancelLast(StaticPopup_Show("WAYWARD_SWITCH", now, r.title or "", { result = r }))
 end
 
 -- What clicking a result does (rows, cards and tiles): start its directions
@@ -297,6 +297,16 @@ local function subtitle(r)
   return (r.zone or "") .. "  ·  no route found from here"
 end
 
+-- "[9] Frostmane Hold  ·  Dun Morogh  ·  ~2 min" -> the rest, "~2 min".
+-- Only a time at the very end ("<1 min", "~2 min", "~1 h 5 min"); otherwise
+-- the text as it is and nil.
+function Panel.SplitTime(text)
+  if not text then return "", nil end
+  local rest, time = text:match("^(.-)%s+·%s+([<~]%d[%d%s]*[hm][%sa-z%d]*)$")
+  if rest and time and (time:find("min$") or time:find("h$")) then return rest, time end
+  return text, nil
+end
+
 local function createRow(parent, index)
   local row = CreateFrame("Button", nil, parent)
   row:SetSize(352, ROW_HEIGHT)
@@ -315,15 +325,24 @@ local function createRow(parent, index)
     end
   end)
 
+  -- One line each, cut short rather than wrapped into the next row (the
+  -- tooltip has it all); a travel time at the end of the subtitle gets its
+  -- own place at the right, so a long name can't push it out of sight.
   row.title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   row.title:SetPoint("TOPLEFT", 6, -5)
   row.title:SetPoint("RIGHT", row.action, "LEFT", -4, 0)
   row.title:SetJustifyH("LEFT")
+  row.title:SetWordWrap(false)
+
+  row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  row.time:SetPoint("TOPRIGHT", row.action, "BOTTOMRIGHT", 0, -4)
+  row.time:SetJustifyH("RIGHT")
 
   row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   row.sub:SetPoint("TOPLEFT", row.title, "BOTTOMLEFT", 0, -3)
-  row.sub:SetPoint("RIGHT", -6, 0)
+  row.sub:SetPoint("RIGHT", row.time, "LEFT", -6, 0)
   row.sub:SetJustifyH("LEFT")
+  row.sub:SetWordWrap(false)
 
   ns.Skin.Button(row.action)
   ns.Skin.Text(row.title)
@@ -596,7 +615,7 @@ local function create()
   f.portrait = f:CreateTexture(nil, "ARTWORK")
   f.portrait:SetSize(PORTRAIT, PORTRAIT)
   f.portrait:SetPoint("TOPLEFT", MARGIN, HEADER_TOP)
-  if f.portrait.SetMask then pcall(f.portrait.SetMask, f.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+  -- No mask: the game's portrait texture is round already.
   f.portraitRing = f:CreateTexture(nil, "OVERLAY")
   f.portraitRing:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
   f.portraitRing:SetSize(PORTRAIT * 1.2, PORTRAIT * 1.2)
@@ -714,7 +733,9 @@ local function paint()
       end
       local c = r.titleColor or row.titleDefault
       if c then row.title:SetTextColor(c.r, c.g, c.b) end
-      row.sub:SetText(subtitle(r))
+      local text, time = Panel.SplitTime(subtitle(r))
+      row.sub:SetText(text)
+      row.time:SetText(time or "")
       local action = r.actions and r.actions[1]
       row.action:SetShown(action ~= nil)
       if action then row.action:SetText(action.label) end
@@ -991,3 +1012,13 @@ end)
 -- Not for each zone a flight passes over: once, where you land.
 local function zoneChanged() Panel.Refresh() end
 ns.On("ZONE_CHANGED_NEW_AREA", function() ns.AfterFlight(zoneChanged) end)
+
+-- The portrait isn't ready when the panel is first drawn after a login: draw
+-- it again when the game says it changed.
+local function portraitChanged(unit)
+  if frame and (unit == nil or unit == "player") and SetPortraitTexture then
+    pcall(SetPortraitTexture, frame.portrait, "player")
+  end
+end
+ns.On("UNIT_PORTRAIT_UPDATE", portraitChanged)
+ns.On("PORTRAITS_UPDATED", function() portraitChanged() end)

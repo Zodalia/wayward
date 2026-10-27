@@ -639,7 +639,9 @@ local function abilitiesNeed(ctx)
     kind = "abilities", urgency = 0.2, title = string.format("%s at level %d", capitalize(spells), s.nextLevel),
     text = string.format("%s at level %d%s.", capitalize(spells), s.nextLevel, where),
     highlights = { spells, string.format("level %d", s.nextLevel) },
-    goal = best and best.goal, route = best and best.route, zone = best and best.zone,
+    -- Nothing to learn there yet: the trainer and the spells on the Trainers
+    -- page, not directions to someone who can't teach you today.
+    page = "trainers", pageLabel = "Show trainer",
   }
 end
 
@@ -1146,6 +1148,18 @@ local function zoneOptions(ctx, start, net)
     end
     zones = kept
   end
+  -- Below HOME_LEVEL, never another race's starting zone across the sea: a
+  -- neighbour by road or tram (Elwynn from Dun Morogh) is a fine change of
+  -- scenery, a boat to Teldrassil isn't.
+  if home then
+    local kept = {}
+    for _, z in ipairs(zones) do
+      local node = z.now[1] and z.now[1].node
+      local far = STARTING_ZONES[z.mapID] and z.mapID ~= home and node and node.instance ~= start.instance
+      if not far then kept[#kept + 1] = z end
+    end
+    zones = kept
+  end
 
   local out = {}
   for _, z in ipairs(zones) do
@@ -1448,11 +1462,14 @@ end
 local PART_ORDER = { progression = 1, novelty = 2, suitability = 3, intent = 4, proximity = 5 }
 local LEAD_ORDER = { "progression", "novelty", "suitability", "intent", "proximity" }
 
--- The part with the biggest value (LEAD_ORDER on a tie).
+-- The part with the biggest value (LEAD_ORDER on a tie). Proximity never
+-- leads: anything within two minutes scores full marks for it, and being
+-- close is a reason to go, not what a suggestion is about (it still counts in
+-- the relevance and can still be named in the why).
 local function lead(parts)
   local best, bestValue = nil, -1
   for _, name in ipairs(LEAD_ORDER) do
-    if (parts[name] or 0) > bestValue then best, bestValue = name, parts[name] or 0 end
+    if name ~= "proximity" and (parts[name] or 0) > bestValue then best, bestValue = name, parts[name] or 0 end
   end
   return best
 end
@@ -1642,6 +1659,46 @@ end
 
 local CATEGORY = { hub = "Quest hub", handin = "Hand in", finish = "Finish", quest = "Best quest" }
 
+-- Facts for the cards, one order on every card: its level, how far, then
+-- what it holds. Each text says what it is ("Level 8-10", "Nearby", "~4 min
+-- away", "11 quests"); XP stays in the tooltip, not the headline.
+local function levelFact(lo, hi)
+  if not lo then return nil end
+  hi = hi or lo
+  return { "Level", lo == hi and ("Level " .. lo) or string.format("Level %d-%d", lo, hi) }
+end
+
+local function awayFact(seconds)
+  if not seconds then return nil end
+  if seconds <= NEAR_SECONDS then return { "Nearby", "Nearby" } end
+  return { "Travel", ns.FormatDuration(seconds) .. " away" }
+end
+
+-- "~16 min in all": the whole journey's time.
+local function allFact(seconds)
+  if not seconds then return nil end
+  return { "Time", ns.FormatDuration(seconds) .. " in all" }
+end
+
+local function questLevels(quests)
+  local lo, hi
+  for _, q in ipairs(quests or {}) do
+    if q.level then
+      lo, hi = math.min(lo or q.level, q.level), math.max(hi or q.level, q.level)
+    end
+  end
+  return lo, hi
+end
+
+local function factList(...)
+  local out = {}
+  for i = 1, select("#", ...) do
+    local f = select(i, ...)
+    if f and #out < 3 then out[#out + 1] = f end
+  end
+  return out
+end
+
 local function optionRow(option, ctx)
   local count = #option.quests
   local fresh, logged, handins = questCounts(option)
@@ -1710,9 +1767,17 @@ local function optionRow(option, ctx)
   end
   if ctx.xpMode then stats[#stats + 1] = { "XP", "~" .. formatNumber(option.value) } end
 
+  local lo, hi = questLevels(option.quests)
+  if level then lo, hi = tonumber(level), tonumber(level) end
+  local holds
+  if option.kind == "handin" then holds = { "Ready", string.format("%d to hand in", handins) }
+  elseif option.kind == "finish" then holds = { "Quests", plural(logged, "quest") }
+  elseif option.kind == "quest" then holds = allFact(option.seconds or option.trip)
+  else holds = { "Quests", plural(fresh + handins, "quest") } end
   local row = {
     id = option.kind .. (option.name or option.title), kind = option.kind, raid = option.raid, title = option.title,
     category = CATEGORY[option.kind] or (option.raid and "Raid" or "Dungeon"),
+    facts = factList(levelFact(lo, hi), awayFact(travelTo(option)), holds),
     subtitle = string.format("%s  ·  %s  ·  %s", firstPart(option.zone),
       ns.FormatDuration(option.trip), table.concat(why, ", ")),
     place = place, stats = stats, zone = option.zone,
@@ -1780,6 +1845,7 @@ local function notableRow(option, ctx)
     subtitle = string.format("%s  ·  %s  ·  %s", option.zone, ns.FormatDuration(option.travel), option.tag),
     place = string.format("%s  ·  %s", option.tag, option.zone), stats = stats, zone = option.zone,
     goal = option.goal, journey = option.journey, details = details,
+    facts = factList(levelFact(q.level), awayFact(option.travel), option.trip > option.travel and allFact(option.trip) or nil),
   }
   return scoreRow(row, option, ctx)
 end
@@ -1822,6 +1888,7 @@ local function zoneRow(z, ctx)
     place = string.format("%s  ·  start at %s", levels, z.first.place), zone = z.zone,
     stats = { { "Quests", quests }, ctx.xpMode and { "XP", "~" .. formatNumber(z.value) } or { "Hubs", tostring(#z.hubs) },
       { z.journey and "Journey" or "Travel", ns.FormatDuration(z.trip) } },
+    facts = factList(levelFact(z.lowest, z.highest), awayFact(z.trip), { "Quests", plural(#z.now, "quest") }),
     goal = z.goal, route = z.route, journey = z.journey, details = details,
   }
   return scoreRow(row, z, ctx)
@@ -1895,7 +1962,9 @@ local function handinObservations(handins, start)
       out[#out + 1] = observationFor({
         id = "obs:handin" .. i, kind = "handin", urgency = math.min(0.75, 0.5 + 0.05 * n),
         title = h.title,
-        text = string.format("%s ready to hand in %s, %s away.", plural(n, "quest"), h.where, ns.FormatDuration(h.trip)),
+        -- "ready to hand in at Brewnall Village" (not "in in"), "... to Watcher Dodds".
+        text = string.format("%s ready to hand in %s, %s away.", plural(n, "quest"),
+          h.place and ("at " .. h.place) or h.where, ns.FormatDuration(h.trip)),
         highlights = { plural(n, "quest"), ns.FormatDuration(h.trip) },
         goal = h.goal, route = h.route, stop = stops[1], stops = stops,
       })
@@ -1907,8 +1976,10 @@ end
 ---------------------------------------------------------------- page
 
 local function summaryFor(ctx, observations)
+  -- The header above already says your level and zone, and the Good to know
+  -- region shows its own tiles: the summary is only what they don't say.
   local level = UnitLevel("player")
-  local parts = { string.format("Level %d: a few good options from where you are.", level) }
+  local parts = { "A few good options from where you are." }
   if ctx.budget then
     local minutes = ctx.budget / 60
     if ctx.nothingFits then
@@ -1916,9 +1987,6 @@ local function summaryFor(ctx, observations)
     else
       parts[1] = string.format("Fits in %d min: a few good options from where you are.", minutes)
     end
-  end
-  if #observations > 0 then
-    parts[#parts + 1] = string.format("|cff7fd1ae%s|r good to know.", plural(#observations, "thing"))
   end
   if not ctx.quests then
     parts[#parts + 1] = "Install " .. ns.Data.ADDON .. " for quest hubs and XP; dungeons are ranked by level fit and travel time."
@@ -1934,7 +2002,7 @@ local function summaryFor(ctx, observations)
   if ready + unfinished > 0 then
     local counted = {}
     if ready > 0 then counted[#counted + 1] = string.format("%d ready to hand in", ready) end
-    if unfinished > 0 then counted[#counted + 1] = string.format("%d to finish (timed by objectives left)", unfinished) end
+    if unfinished > 0 then counted[#counted + 1] = string.format("%d to finish", unfinished) end
     parts[#parts + 1] = string.format("Quest log: %s.", table.concat(counted, ", "))
     if ctx.unplaced > 0 then
       parts[#parts + 1] = string.format("%s in your log can't be placed on the map%s.", plural(ctx.unplaced, "quest"),
@@ -2274,24 +2342,25 @@ local function assignRoles(rows)
   end
   local function any() return true end
   local function differs(a, b) return a.zoneKey ~= b.zoneKey or a.kind ~= b.kind end
+  -- A card's tag says what it is, whichever slot it filled: a card about a new
+  -- zone is never tagged as carrying on, however few cards there are.
+  local function roleOf(r)
+    if r.lead == "progression" then return "continue" end
+    if r.lead == "novelty" then return "explore" end
+    return "alternative"
+  end
   local out = {}
   while #left > 0 do
     local cont = take(function(r) return r.lead == "progression" end) or take(any)
-    cont.role = "continue"
     out[#out + 1] = cont
     local explore = take(function(r) return r.lead == "novelty" and differs(r, cont) end)
       or take(function(r) return differs(r, cont) end) or take(any)
-    if explore then
-      explore.role = "explore"
-      out[#out + 1] = explore
-    end
+    if explore then out[#out + 1] = explore end
     local alternative = take(function(r) return r.kind ~= cont.kind and (not explore or r.kind ~= explore.kind) end)
       or take(any)
-    if alternative then
-      alternative.role = "alternative"
-      out[#out + 1] = alternative
-    end
+    if alternative then out[#out + 1] = alternative end
   end
+  for _, r in ipairs(out) do r.role = roleOf(r) end
   return out
 end
 ForYou.AssignRoles = assignRoles
@@ -2302,12 +2371,16 @@ ForYou.AssignRoles = assignRoles
 -- cards follow the journey without a rebuild.
 local function visible(results)
   local trip, places = tripStops()
+  -- A journey you set aside isn't suggested again piece by piece: the Good to
+  -- know tile offers to resume it instead.
+  local setAside = ns.Nav.SetAsideQuests and ns.Nav.SetAsideQuests() or {}
   local out = {}
   for _, r in ipairs(results or {}) do
     if #out >= MAX_RESULTS then break end
     local overlap = false
     for _, stop in ipairs(r.journey and r.journey.stops or {}) do
-      if stop.action and trip[stop.action.questID] then
+      local id = stop.action and stop.action.questID
+      if id and (trip[id] or setAside[id]) then
         overlap = true
         break
       end
@@ -2402,15 +2475,49 @@ end
 
 -- The observations ("Good to know"), most urgent first: built with the cards
 -- and cached and invalidated with them. Empty until the first build is done.
+-- The newest journey set aside, as a tile that resumes it.
+local function setAsideObservation()
+  local entry = ns.charDB.journeys and ns.charDB.journeys[1]
+  if not entry or (entry.stops or 0) == 0 then return nil end
+  local left = plural(entry.stops, "stop")
+  return {
+    id = "obs:setaside", kind = "setaside", icon = entry.icon or "Interface\\Icons\\INV_Misc_Map_01",
+    text = string.format("You set aside %s, %s left.", entry.title or "a journey", left),
+    highlights = { left }, urgency = 0.6,
+    action = { label = "Resume", kind = "resume", index = 1 },
+  }
+end
+
+-- What the tiles show: nothing the journey on now already does (a hand-in
+-- that is one of its stops, a repairer it already visits), and the newest
+-- set-aside journey first among the rest of its urgency.
+local function shownObservations(list)
+  local out = {}
+  local resume = setAsideObservation()
+  for _, o in ipairs(list or {}) do
+    local a = o.action
+    local stops = a and a.kind == "detour" and (a.stops or { a.stop })
+    if not (stops and ns.Nav.JourneyHas and ns.Nav.JourneyHas(stops)) then out[#out + 1] = o end
+  end
+  if resume then
+    local at = #out + 1
+    for i, o in ipairs(out) do
+      if (o.urgency or 0) < resume.urgency then at = i break end
+    end
+    table.insert(out, at, resume)
+  end
+  return out
+end
+
 function ForYou.Observations()
   local now = GetTime and GetTime()
-  if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
+  if cache and now and now - cache.at < CACHE_SECONDS then return shownObservations(cache.observations) end
   -- The panel asks for the cards first, which starts the build; only when
   -- nothing was ever built (and no build is under way) is one started here,
   -- so a refresh never builds twice.
   if dirty and not job then ForYou.Results() end
-  if cache and now and now - cache.at < CACHE_SECONDS then return cache.observations or {} end
-  return last and last.observations or {}
+  if cache and now and now - cache.at < CACHE_SECONDS then return shownObservations(cache.observations) end
+  return shownObservations(last and last.observations)
 end
 
 -- fn(results, err, net) once For you's results are fresh: now, or when the

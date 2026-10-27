@@ -253,10 +253,12 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 228: Talk to the flight master at 
 - 231: Go to %s (%s to %s)
 - 234: Talk to 
-- 235: Walk to 
-- 243: fly to 
-- 247: hearth to 
-- 250: on foot
+- 240: Walk to 
+- 241: Walk to the area for 
+- 243: Walk to 
+- 251: fly to 
+- 255: hearth to 
+- 258: on foot
 
 ## Quests.lua
 
@@ -634,6 +636,10 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 528: Train your new spells
 - 530: Talk to 
 - 532: Go to 
+- 896: Your journey
+- 896: Your trip
+- 923: %s and %d more quest%s
+- 925: Your journey
 
 ## Camps.lua
 
@@ -648,87 +654,86 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 184: no route to 
 - 184: a stop
 - 184: ; left out.
-- 205: You're on a journey: %s.\n\nAdd \"%s\" to it as a detour, or switch to it? 
-- 206: Switching sets your journey aside, to resume later (View details in the directions box).
-- 207: Add as detour
-- 207: Cancel
-- 207: Switch journey
-- 219: Talk to 
-- 221: Go to 
-- 231: Train your new spells at 
-- 329: you have arrived: 
-- 337: couldn't show the journey's fanfare: 
-- 373: no route from here.
-- 412: faster route with your flight paths: 
-- 501: %d quests
-- 546: couldn't show a question (
-- 570: Add to journey
-- 570: Not now
-- 570: New journey
-- 581: Start journey
-- 581: Not now
-- 588: You picked up %s.%s\n\nAdd it to your journey (about %s more), or start a new journey for it (%s)? 
-- 589: A new journey sets the one on now aside, to resume later.
-- 592: You picked up %s.%s\n\nStart a journey for it (%s)?
-- 634: %s isn't offered yet (it needs earlier quests): dropped from the journey.
-- 635: that quest
-- 864: no stops left.
-- 876: can't move that stop there: it comes after another stop.
-- 890: Your journey
-- 899: no route to 
-- 899:  from here.
-- 907:  is already in your journey.
-- 914: no route for the journey from here.
-- 919: added %s to your journey: %d stops, %s
-- 1086:  continues with:
-- 1150: resuming journey: 
-- 1150:  (/ww stop to end it)
-- 1156: resuming directions to 
-- 1156:  (/ww stop to end them)
-- 1203: script ran too long
-- 1234: couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.
-- 1247: /ww resume - pick up the saved journey again
-- 1248: a journey is already on.
-- 1249: no saved journey.
-- 1286: set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.
-- 1299: no journey set aside there.
-- 1304: can't read your position here.
-- 1311: no route from here to what's left of 
-- 1311: ; it's kept.
-- 1315: nothing left to do on 
-- 1321: resuming journey: 
-- 1332: forgotten: 
-- 1340: just now
-- 1343: /ww journeys [resume\|forget <n>] - the journey on now and the ones set aside
-- 1347: no journey set aside there.
-- 1352: on now: %s (%d of %d stops done, %s to go)
-- 1355: no journey on now.
-- 1358: none set aside.
-- 1360: set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d
-- 1406: /ww detail steps\|stops - what the directions box shows: every step, or just the stop
-- 1410: directions box: the stop you're heading for; hover it for the step.
-- 1411: directions box: every step to the next stop.
-- 1432: re-routed from here (
-- 1442: you moved a long way
-- 1445: you're on another continent
-- 1449: you went another way
-- 1512: that spot's cleared: on to another for %s.
-- 1514: that spot's cleared: other stops first while it respawns (%s).
-- 1517: that spot's cleared: back when it respawns (%s).
-- 1563: you're doing %s here: it's next on the journey now.
-- 1606: you abandoned %s: nothing left on the journey, so it's cancelled.
-- 1609: you abandoned %s: dropped from your journey.
-- 1657: nothing else on the journey to do first; skip it to take it off.
-- 1662: later: %s, after %s.
-- 1662: that stop
-- 1662: the next stop
-- 1677: Skip
-- 1677: Cancel
-- 1681: Skip \"%s\"?\n\nIt's taken off the journey%s.
-- 1681: this stop
-- 1682: , with \"%s\", which needs it
-- 1682: a stop
-- 1683: , with the %d stops that need it
+- 218: You're on a journey: %s.\n\nAdd \"%s\" to it as a detour, or switch to it? 
+- 219: Switching sets your journey aside, to resume later (View details in the directions box).
+- 220: Add as detour
+- 220: Cancel
+- 220: Switch journey
+- 232: Talk to 
+- 234: Go to 
+- 244: Train your new spells at 
+- 342: you have arrived: 
+- 350: couldn't show the journey's fanfare: 
+- 386: no route from here.
+- 425: faster route with your flight paths: 
+- 514: %d quests
+- 559: couldn't show a question (
+- 583: Add to journey
+- 583: Not now
+- 583: New journey
+- 594: Start journey
+- 594: Not now
+- 601: You picked up %s.%s\n\nAdd it to your journey (about %s more), or start a new journey for it (%s)? 
+- 602: A new journey sets the one on now aside, to resume later.
+- 605: You picked up %s.%s\n\nStart a journey for it (%s)?
+- 647: %s isn't offered yet (it needs earlier quests): dropped from the journey.
+- 648: that quest
+- 877: no stops left.
+- 889: can't move that stop there: it comes after another stop.
+- 910: no route to 
+- 910:  from here.
+- 918:  is already in your journey.
+- 930: no route for the journey from here.
+- 935: added %s to your journey: %d stops, %s
+- 1102:  continues with:
+- 1213: resuming journey: 
+- 1213:  (/ww stop to end it)
+- 1219: resuming directions to 
+- 1219:  (/ww stop to end them)
+- 1266: script ran too long
+- 1297: couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.
+- 1310: /ww resume - pick up the saved journey again
+- 1311: a journey is already on.
+- 1312: no saved journey.
+- 1349: set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.
+- 1362: no journey set aside there.
+- 1367: can't read your position here.
+- 1374: no route from here to what's left of 
+- 1374: ; it's kept.
+- 1378: nothing left to do on 
+- 1384: resuming journey: 
+- 1395: forgotten: 
+- 1403: just now
+- 1406: /ww journeys [resume\|forget <n>] - the journey on now and the ones set aside
+- 1410: no journey set aside there.
+- 1415: on now: %s (%d of %d stops done, %s to go)
+- 1418: no journey on now.
+- 1421: none set aside.
+- 1423: set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d
+- 1506: /ww detail steps\|stops - what the directions box shows: every step, or just the stop
+- 1510: directions box: the stop you're heading for; hover it for the step.
+- 1511: directions box: every step to the next stop.
+- 1532: re-routed from here (
+- 1542: you moved a long way
+- 1545: you're on another continent
+- 1549: you went another way
+- 1612: that spot's cleared: on to another for %s.
+- 1614: that spot's cleared: other stops first while it respawns (%s).
+- 1617: that spot's cleared: back when it respawns (%s).
+- 1663: you're doing %s here: it's next on the journey now.
+- 1706: you abandoned %s: nothing left on the journey, so it's cancelled.
+- 1709: you abandoned %s: dropped from your journey.
+- 1757: nothing else on the journey to do first; skip it to take it off.
+- 1762: later: %s, after %s.
+- 1762: that stop
+- 1762: the next stop
+- 1777: Skip
+- 1777: Cancel
+- 1781: Skip \"%s\"?\n\nIt's taken off the journey%s.
+- 1781: this stop
+- 1782: , with \"%s\", which needs it
+- 1782: a stop
+- 1783: , with the %d stops that need it
 
 ## OnTheWay.lua
 
@@ -982,35 +987,37 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 210: Learn it from 
 - 214: You know it
 - 214: No trainer for your class known yet
-- 264: Where is 
-- 267: Where do I do 
-- 267: this quest
-- 269: Where is 
-- 269: my next stop
-- 273: Your current stop: 
-- 275: Current stop
-- 289: Where do I find 
-- 289: Where do I do 
-- 310: Where is my class trainer?
-- 316: Nearest repair
-- 344: Nearest flight master
-- 347: Nearest flight master
-- 348: Nearest inn
-- 350: Likely questions right now. Click one for directions, or type to find anything.
-- 367: Stuck? Type what you're looking for: a quest, an item, someone (by name or role), a dungeon, a zone 
-- 368: or a spell. In chat: /ww find <text>.
-- 376: Nothing to ask right now: no journey on and nothing left to do in your log. 
-- 377: Type what you're looking for.
-- 379: Type at least 
-- 379:  letters.
-- 380: Nothing called \"%s\" among %s.
-- 381: the people and spells Wayward knows
-- 382: the zones, towns and dungeons Wayward knows
-- 383: quests, items, people and places
-- 394: Can't read your position here.
-- 401: First %d of %s matching \"%s\". Type more to narrow it down.
-- 404: %s matching \"%s\". Click one to go there.
-- 422: /ww find <text> - find a quest, item, person, dungeon, zone or spell, with directions
+- 269: Where do I find 
+- 270: Where do I find 
+- 271: Where do I go for 
+- 271: this quest
+- 288: Where is 
+- 291: Where do I go for 
+- 291: this quest
+- 293: Where is 
+- 293: my next stop
+- 297: Your current stop: 
+- 299: Current stop
+- 333: Where is my class trainer?
+- 339: Nearest repair
+- 367: Nearest flight master
+- 370: Nearest flight master
+- 371: Nearest inn
+- 373: Likely questions right now. Click one for directions, or type to find anything.
+- 390: Stuck? Type what you're looking for: a quest, an item, someone (by name or role), a dungeon, a zone 
+- 391: or a spell. In chat: /ww find <text>.
+- 399: Nothing to ask right now: no journey on and nothing left to do in your log. 
+- 400: Type what you're looking for.
+- 402: Type at least 
+- 402:  letters.
+- 403: Nothing called \"%s\" among %s.
+- 404: the people and spells Wayward knows
+- 405: the zones, towns and dungeons Wayward knows
+- 406: quests, items, people and places
+- 417: Can't read your position here.
+- 424: First %d of %s matching \"%s\". Type more to narrow it down.
+- 427: %s matching \"%s\". Click one to go there.
+- 445: /ww find <text> - find a quest, item, person, dungeon, zone or spell, with directions
 
 ## QuestTimes.lua
 
@@ -1082,209 +1089,226 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 639: %s at level %d
 - 640: %s at level %d%s.
 - 641: level %d
-- 655: Bags full
-- 655: Bags nearly full (%d of %d slots free)
-- 656: : the nearest vendor is %s, %s away.
-- 660: %d of %d
-- 662: Sell at 
-- 662: sell at 
-- 675: Vendor nearby: 
-- 676: A vendor nearby: %s, %s away.
-- 679: Visit 
-- 793: Hand in %s to %s
-- 793: the quest giver
-- 799: the quest giver
-- 802: hand in %s %s
-- 854: finish %s %s
-- 871: pick up %s %s
-- 878: Pick up quests here: 
-- 924: Run 
-- 960: Pick up %s from %s
-- 967: Enter 
-- 995: pick up 
-- 1007: , then 
-- 1028: Do 
-- 1031: Do 
-- 1084: Hand in 
-- 1084: Finish 
-- 1084: Do 
-- 1193: Quest in 
-- 1208: Quest in 
-- 1213: Pick up %s from %s
-- 1213: the quest giver
-- 1465: right nearby
-- 1469: quests in your log are ready to hand in
-- 1470: picks up where your log left off
-- 1472: continues quests in your log
-- 1473: its quests are waiting at their givers
-- 1477: ready to hand in from your log
-- 1478: already in your log
-- 1479: continues a chain you started
-- 1480: a quest line to start
-- 1483: where your journey already is
-- 1484: the zone you're in, with quests left
-- 1485: its chains lead on
-- 1486: somewhere new to quest
-- 1489:  is at its cap
-- 1489: the next rank of 
-- 1491: something to carry on with
-- 1495: a zone you haven't seen
-- 1496: a zone you've barely explored
-- 1497: a zone you know
-- 1499: a dungeon you haven't run
-- 1499: a dungeon you know
-- 1503: a quest that stands out
-- 1505: a quest that stands out: 
-- 1505: a quest you haven't done
-- 1506: a new rank to learn
-- 1507: something familiar
-- 1511:  at your level
-- 1512: full XP for 
-- 1513:  at your level, part done
-- 1514:  at your level
-- 1514: fits your level
-- 1515: something you can train right now
-- 1516:  with a reward for you
-- 1517: a quest at your level
-- 1521: the kind you asked for
-- 1522: the kind of journey you start most
-- 1523: in your journey's zone
-- 1524: fits your %d min
-- 1525: a change of pace
-- 1583:   (ready to hand in)
-- 1585:   (in your log, ~%d%% done)
-- 1586:   (in your log)
-- 1606: %d min
-- 1607:  (your average)
-- 1615: %d x %s per quest
-- 1617: %s left on %d in your log
-- 1619: %d x %d s per hand-in
-- 1633:   -  %s XP
-- 1636: Quest 
-- 1643: Quest hub
-- 1643: Hand in
-- 1643: Finish
-- 1643: Best quest
-- 1650: ~%s in %s (%s).
-- 1653: Least travel of %d that fit in %d min: ~%s in %s (%s).
-- 1658: handing one in takes ~%d s
-- 1660: unfinished ones take %s times the share of objectives left
-- 1664: Quests in your log count at full XP; 
-- 1668: XP estimated for %s the data has no XP for.
-- 1672: No quest XP data: quests count by level fit.
-- 1676: Raid: needs a raid group.
-- 1676: Dungeon: bring a group.
-- 1683:  (%d in your log)
-- 1688:  in your log
-- 1690: %s + %d to hand in
-- 1697: Level
-- 1698: Travel
-- 1700: Raid
-- 1700: Group
-- 1702: Ready
-- 1704: In your log
-- 1707: Level
-- 1709: Quests
-- 1709: %d + %d ready
-- 1715: Raid
-- 1715: Dungeon
-- 1726:   ·  %s on the way
-- 1739: No quests for it: ranked by level fit and travel time.
-- 1740: Ranked by level fit and travel time. Install 
-- 1740:  for its quests and XP.
-- 1744: Level
-- 1745: Travel
-- 1748: Raid
-- 1748: Dungeon
-- 1749: %s  ·  %s  ·  fits your level
-- 1751: %s  ·  %s  ·  fits your level
-- 1751: Raid
-- 1751: Group
-- 1762: It's in your log, %s away
-- 1763: Its quest giver is %s away
-- 1764: , the whole journey %s
-- 1765: Don't miss: %s %s.
-- 1767: Quest 
-- 1767:   (in your log)
-- 1768:   -  %s XP
-- 1776: Level
-- 1776: Travel
-- 1777: Journey
-- 1779: Don't miss
-- 1788: Level 
-- 1788: Levels %d-%d
-- 1790: Questing zone: %s you can take now%s%s.
-- 1791: , %d more as their chains unlock
-- 1792: , ~%s XP in all
-- 1794: Start at %s: the journey picks up its %s.
-- 1800: Then: 
-- 1802: Chains lead on to 
-- 1810:   -  %s XP
-- 1812: Quest 
-- 1818: %d + %d
-- 1820: Questing zone
-- 1821: %s  ·  %s  ·  %s  ·  start at %s
-- 1822: %s  ·  start at %s
-- 1823: Quests
-- 1823: Hubs
-- 1824: Journey
-- 1824: Travel
-- 1836: Profession
-- 1859: obs:
-- 1870: Add detour
-- 1873: Show
-- 1875: Go
-- 1896: obs:handin
-- 1898: %s ready to hand in %s, %s away.
-- 1911: Level %d: a few good options from where you are.
-- 1915: Nothing to quest fits in %d min: the quickest option, a bit over.
-- 1917: Fits in %d min: a few good options from where you are.
-- 1921: \|cff7fd1ae%s\|r good to know.
-- 1924: Install 
-- 1924:  for quest hubs and XP; dungeons are ranked by level fit and travel time.
-- 1926: At the level cap quests give no XP, so they count by level fit.
-- 1928: No quest XP in the data: quests count by level fit.
-- 1936: %d ready to hand in
-- 1937: %d to finish (timed by objectives left)
-- 1938: Quest log: %s.
-- 1940: %s in your log can't be placed on the map%s.
-- 1941:  without quest data
-- 1954: %s %.0f
-- 1966: Can't read your position here.
-- 2005: vendor nearby
-- 2089: best quest
-- 2095: don't miss
-- 2113: %s %s (%d more quest%s)
-- 2114: at level 
-- 2114: after earlier quests
-- 2136: dungeon journey
-- 2147: Also for your level: 
-- 2150: Dungeons later, once you can take most of their quests: 
-- 2176:   ·  a bit over
-- 2177: Nothing fits in %d min; this is the quickest. 
-- 2205: What to do next, for this character, from where you stand.
-- 2209: Nothing to suggest from here yet. Visit a trainer for your class, open a flight map, or install 
-- 2210:  for quest hubs and XP estimates.
-- 2354: Couldn't work this out (the error has the details).
-- 2448: For you: no cards built yet
-- 2451: card %d [%s] %s: relevance %.2f (suitability %.2f, proximity %.2f, progression %.2f, novelty %.2f, intent %.2f); why: %s
-- 2456: observations: none
-- 2458: observation %d [%s] urgency %.2f: %s%s
-- 2532: Time:
-- 2533: How long you have: For you only suggests what fits.
-- 2535: Any
-- 2540: /ww time <minutes> \| off - For you suggests only what fits in that time
-- 2545: time budget off: For you suggests anything
-- 2548: For you suggests what fits in %d min (/ww time off to stop)
-- 2551: time budget: %d min (/ww time off to stop)
-- 2552: no time budget (/ww time 20: only what fits in 20 minutes)
-- 2554: /ww time <minutes> \| off
-- 2565: Questing zone
-- 2565: Dungeon
-- 2565: Raid
-- 2586: \|level 
-- 2590: spell\|
-- 2687: /ww next - what to do next (opens the For you page)
+- 644: Show trainer
+- 657: Bags full
+- 657: Bags nearly full (%d of %d slots free)
+- 658: : the nearest vendor is %s, %s away.
+- 662: %d of %d
+- 664: Sell at 
+- 664: sell at 
+- 677: Vendor nearby: 
+- 678: A vendor nearby: %s, %s away.
+- 681: Visit 
+- 795: Hand in %s to %s
+- 795: the quest giver
+- 801: the quest giver
+- 804: hand in %s %s
+- 856: finish %s %s
+- 873: pick up %s %s
+- 880: Pick up quests here: 
+- 926: Run 
+- 962: Pick up %s from %s
+- 969: Enter 
+- 997: pick up 
+- 1009: , then 
+- 1030: Do 
+- 1033: Do 
+- 1086: Hand in 
+- 1086: Finish 
+- 1086: Do 
+- 1207: Quest in 
+- 1222: Quest in 
+- 1227: Pick up %s from %s
+- 1227: the quest giver
+- 1482: right nearby
+- 1486: quests in your log are ready to hand in
+- 1487: picks up where your log left off
+- 1489: continues quests in your log
+- 1490: its quests are waiting at their givers
+- 1494: ready to hand in from your log
+- 1495: already in your log
+- 1496: continues a chain you started
+- 1497: a quest line to start
+- 1500: where your journey already is
+- 1501: the zone you're in, with quests left
+- 1502: its chains lead on
+- 1503: somewhere new to quest
+- 1506:  is at its cap
+- 1506: the next rank of 
+- 1508: something to carry on with
+- 1512: a zone you haven't seen
+- 1513: a zone you've barely explored
+- 1514: a zone you know
+- 1516: a dungeon you haven't run
+- 1516: a dungeon you know
+- 1520: a quest that stands out
+- 1522: a quest that stands out: 
+- 1522: a quest you haven't done
+- 1523: a new rank to learn
+- 1524: something familiar
+- 1528:  at your level
+- 1529: full XP for 
+- 1530:  at your level, part done
+- 1531:  at your level
+- 1531: fits your level
+- 1532: something you can train right now
+- 1533:  with a reward for you
+- 1534: a quest at your level
+- 1538: the kind you asked for
+- 1539: the kind of journey you start most
+- 1540: in your journey's zone
+- 1541: fits your %d min
+- 1542: a change of pace
+- 1600:   (ready to hand in)
+- 1602:   (in your log, ~%d%% done)
+- 1603:   (in your log)
+- 1623: %d min
+- 1624:  (your average)
+- 1632: %d x %s per quest
+- 1634: %s left on %d in your log
+- 1636: %d x %d s per hand-in
+- 1650:   -  %s XP
+- 1653: Quest 
+- 1660: Quest hub
+- 1660: Hand in
+- 1660: Finish
+- 1660: Best quest
+- 1668: Level
+- 1668: Level 
+- 1668: Level %d-%d
+- 1673: Nearby
+- 1673: Nearby
+- 1674: Travel
+- 1680: Time
+- 1680:  in all
+- 1707: ~%s in %s (%s).
+- 1710: Least travel of %d that fit in %d min: ~%s in %s (%s).
+- 1715: handing one in takes ~%d s
+- 1717: unfinished ones take %s times the share of objectives left
+- 1721: Quests in your log count at full XP; 
+- 1725: XP estimated for %s the data has no XP for.
+- 1729: No quest XP data: quests count by level fit.
+- 1733: Raid: needs a raid group.
+- 1733: Dungeon: bring a group.
+- 1740:  (%d in your log)
+- 1745:  in your log
+- 1747: %s + %d to hand in
+- 1754: Level
+- 1755: Travel
+- 1757: Raid
+- 1757: Group
+- 1759: Ready
+- 1761: In your log
+- 1764: Level
+- 1766: Quests
+- 1766: %d + %d ready
+- 1773: Ready
+- 1773: %d to hand in
+- 1774: Quests
+- 1776: Quests
+- 1779: Raid
+- 1779: Dungeon
+- 1791:   ·  %s on the way
+- 1804: No quests for it: ranked by level fit and travel time.
+- 1805: Ranked by level fit and travel time. Install 
+- 1805:  for its quests and XP.
+- 1809: Level
+- 1810: Travel
+- 1813: Raid
+- 1813: Dungeon
+- 1814: %s  ·  %s  ·  fits your level
+- 1816: %s  ·  %s  ·  fits your level
+- 1816: Raid
+- 1816: Group
+- 1827: It's in your log, %s away
+- 1828: Its quest giver is %s away
+- 1829: , the whole journey %s
+- 1830: Don't miss: %s %s.
+- 1832: Quest 
+- 1832:   (in your log)
+- 1833:   -  %s XP
+- 1841: Level
+- 1841: Travel
+- 1842: Journey
+- 1844: Don't miss
+- 1854: Level 
+- 1854: Levels %d-%d
+- 1856: Questing zone: %s you can take now%s%s.
+- 1857: , %d more as their chains unlock
+- 1858: , ~%s XP in all
+- 1860: Start at %s: the journey picks up its %s.
+- 1866: Then: 
+- 1868: Chains lead on to 
+- 1876:   -  %s XP
+- 1878: Quest 
+- 1884: %d + %d
+- 1886: Questing zone
+- 1887: %s  ·  %s  ·  %s  ·  start at %s
+- 1888: %s  ·  start at %s
+- 1889: Quests
+- 1889: Hubs
+- 1890: Journey
+- 1890: Travel
+- 1891: Quests
+- 1903: Profession
+- 1926: obs:
+- 1937: Add detour
+- 1940: Show
+- 1942: Go
+- 1963: obs:handin
+- 1966: %s ready to hand in %s, %s away.
+- 1982: A few good options from where you are.
+- 1986: Nothing to quest fits in %d min: the quickest option, a bit over.
+- 1988: Fits in %d min: a few good options from where you are.
+- 1992: Install 
+- 1992:  for quest hubs and XP; dungeons are ranked by level fit and travel time.
+- 1994: At the level cap quests give no XP, so they count by level fit.
+- 1996: No quest XP in the data: quests count by level fit.
+- 2004: %d ready to hand in
+- 2005: %d to finish
+- 2006: Quest log: %s.
+- 2008: %s in your log can't be placed on the map%s.
+- 2009:  without quest data
+- 2022: %s %.0f
+- 2034: Can't read your position here.
+- 2073: vendor nearby
+- 2157: best quest
+- 2163: don't miss
+- 2181: %s %s (%d more quest%s)
+- 2182: at level 
+- 2182: after earlier quests
+- 2204: dungeon journey
+- 2215: Also for your level: 
+- 2218: Dungeons later, once you can take most of their quests: 
+- 2244:   ·  a bit over
+- 2245: Nothing fits in %d min; this is the quickest. 
+- 2273: What to do next, for this character, from where you stand.
+- 2277: Nothing to suggest from here yet. Visit a trainer for your class, open a flight map, or install 
+- 2278:  for quest hubs and XP estimates.
+- 2427: Couldn't work this out (the error has the details).
+- 2484: obs:setaside
+- 2485: You set aside %s, %s left.
+- 2485: a journey
+- 2487: Resume
+- 2555: For you: no cards built yet
+- 2558: card %d [%s] %s: relevance %.2f (suitability %.2f, proximity %.2f, progression %.2f, novelty %.2f, intent %.2f); why: %s
+- 2563: observations: none
+- 2565: observation %d [%s] urgency %.2f: %s%s
+- 2639: Time:
+- 2640: How long you have: For you only suggests what fits.
+- 2642: Any
+- 2647: /ww time <minutes> \| off - For you suggests only what fits in that time
+- 2652: time budget off: For you suggests anything
+- 2655: For you suggests what fits in %d min (/ww time off to stop)
+- 2658: time budget: %d min (/ww time off to stop)
+- 2659: no time budget (/ww time 20: only what fits in 20 minutes)
+- 2661: /ww time <minutes> \| off
+- 2672: Questing zone
+- 2672: Dungeon
+- 2672: Raid
+- 2693: \|level 
+- 2697: spell\|
+- 2794: /ww next - what to do next (opens the For you page)
 
 ## UI/Skin.lua
 
@@ -1357,12 +1381,12 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 - 14: BINDING_NAME_CLICK WaywardTargetButton:LeftButton
 - 14: Target the NPC for this step
-- 34: Target 
-- 34: the NPC for this step
-- 35: CLICK WaywardTargetButton:LeftButton
-- 36: Key: 
-- 36: Set a key: Key Bindings > AddOns > Wayward
-- 56: /target 
+- 36: Target 
+- 36: the NPC for this step
+- 37: CLICK WaywardTargetButton:LeftButton
+- 38: Key: 
+- 38: Set a key: Key Bindings > AddOns > Wayward
+- 58: /target 
 
 ## UI/JourneyOverview.lua
 
@@ -1427,7 +1451,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 37: Needs 
 - 37:  first.
 - 59: Follow-up quests
-- 85: Confirm
+- 85: Add to journey
 - 92: Cancel
 - 107:  to do it
 - 108:  (your average)
@@ -1442,52 +1466,57 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 - 60: Add
 - 74: %s\nA detour of %s on your journey.
-- 153: %s  \|cff9d9d9dleast out of the way first\|r
-- 158: Couldn't list these here.
-- 166: \|cff9d9d9din your journey\|r
+- 162: %s  \|cff9d9d9dleast out of the way first\|r
+- 167: Couldn't list these here.
+- 175: \|cff9d9d9din your journey\|r
 
 ## UI/Cards.lua
 
-- 258: Page-
-- 259: Up
-- 260: Down
-- 261: Disabled
-- 284: Prev
-- 286: Next
-- 328: Level
-- 332: Nearby
-- 332: Nearby
-- 334: Travel
-- 342: Start journey
-- 342: Directions
-- 392: couldn't draw a suggestion card: 
-- 408: Page %d of %d
-- 493: cards not created yet: open /ww first
-- 498: card %d: shown=%s visible=%s result=%s title=%q font=%s size=%s colour=%.2f,%.2f,%.2f,%.2f width=%s
+- 280: Page-
+- 281: Up
+- 282: Down
+- 283: Disabled
+- 306: Prev
+- 308: Next
+- 364: Level
+- 368: Nearby
+- 368: Nearby
+- 370: Travel
+- 378: Start journey
+- 378: Directions
+- 429: couldn't draw a suggestion card: 
+- 445: Page %d of %d
+- 536: cards not created yet: open /ww first
+- 541: card %d: shown=%s visible=%s result=%s title=%q font=%s size=%s colour=%.2f,%.2f,%.2f,%.2f width=%s
 
 ## UI/JourneyBox.lua
 
 - 23: No journey on the go. Pick something below.
-- 24: A flexible plan you can continue, reorder or expand.
+- 24: The last stop. View details to reorder, add a detour or set it aside.
 - 25: Directions to one place. Starting a journey folds it in as a stop.
-- 156: StatusBar
-- 169: Continue journey
-- 171: View details
-- 228: Stop %d of %d  ·  %s
-- 232: %d stops
-- 234: %d of %d stop%s complete  ·  %s remaining
-- 240: Continue journey
-- 244: Directions
-- 250: %d step%s  ·  %s remaining
-- 254: Continue
+- 73: the next stop
+- 74: Then: 
+- 75: , and %d more stop%s
+- 79:   %d set aside.
+- 180: StatusBar
+- 193: Continue journey
+- 195: View details
+- 252: Stop %d of %d  ·  %s
+- 256: %d stops
+- 258: %d of %d stop%s complete  ·  %s remaining
+- 264: Continue journey
+- 268: Directions
+- 274: %d step%s  ·  %s remaining
+- 278: Continue
 
 ## UI/Observations.lua
 
 - 20: Add detour
 - 20: Show
 - 20: Go
+- 20: Resume
 - 21: Nothing to flag right now.
-- 140: Go
+- 145: Go
 
 ## UI/Profile.lua
 
@@ -1542,30 +1571,30 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 273: You have directions to %s.
 - 290: %s  ·  %s  ·  %d stop%s
 - 297:   ·  no route found from here
-- 362: ChatEdit_InsertLink
-- 364: InsertLink
-- 372: Data: 
-- 372:  + places you visited. 
-- 373: Data: places you visited. 
-- 374: Quest
-- 375: Install 
-- 375:  for quests, items and every trainer. 
-- 379: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
-- 380: master once and routes will use your flight paths.\|r
-- 385: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
-- 386: paths here.\|r
-- 388: %d known flight path%s. Boat and zeppelin docks are approximate.
-- 512: Level %d  ·  %s
-- 513: Level %d
-- 549: Options
-- 553: Wayward's settings. Also: right-click the minimap button, or /ww options.
-- 570: CheckButton
-- 653: YOUR JOURNEY
-- 655: SOMETHING TO DO NEXT
-- 659: GOOD TO KNOW
-- 732: %d-%d of %d
-- 800: Search
-- 825: Getting the quest data ready...
+- 381: ChatEdit_InsertLink
+- 383: InsertLink
+- 391: Data: 
+- 391:  + places you visited. 
+- 392: Data: places you visited. 
+- 393: Quest
+- 394: Install 
+- 394:  for quests, items and every trainer. 
+- 398: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
+- 399: master once and routes will use your flight paths.\|r
+- 404: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
+- 405: paths here.\|r
+- 407: %d known flight path%s. Boat and zeppelin docks are approximate.
+- 531: Level %d  ·  %s
+- 532: Level %d
+- 568: Options
+- 572: Wayward's settings. Also: right-click the minimap button, or /ww options.
+- 589: CheckButton
+- 672: YOUR JOURNEY
+- 674: SOMETHING TO DO NEXT
+- 678: GOOD TO KNOW
+- 753: %d-%d of %d
+- 821: Search
+- 846: Getting the quest data ready...
 
 ## UI/MinimapButton.lua
 

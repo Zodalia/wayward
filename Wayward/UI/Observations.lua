@@ -17,7 +17,7 @@ local ICON = 36
 local PAD = 8
 local GOLD = "|cffffd200"
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Note_01"
-local LABELS = { detour = "Add detour", show = "Show", go = "Go" }
+local LABELS = { detour = "Add detour", show = "Show", go = "Go", resume = "Resume" }
 local NONE_TEXT = "Nothing to flag right now."
 
 local frame
@@ -52,9 +52,14 @@ function Obs.Run(o)
   -- What the journey or the directions are called: the action's own title,
   -- else the observation's text.
   local name = action.title or o.text or action.label or "detour"
-  if action.kind == "detour" and action.stop then
-    local stops = type(action.stop[1]) == "table" and action.stop or { action.stop }
+  if action.kind == "detour" and (action.stops or action.stop) then
+    -- Every stop it brings (all the hand-ins of a group), not just the first.
+    local stops = action.stops or (type(action.stop[1]) == "table" and action.stop or { action.stop })
     ns.Nav.AddToTrip(stops, name)
+    ns.Panel.Refresh()
+    return true
+  elseif action.kind == "resume" then
+    ns.Nav.ResumeSetAside(action.index or 1)
     ns.Panel.Refresh()
     return true
   elseif action.kind == "show" and action.page then
@@ -140,10 +145,25 @@ local function fill(tile, o)
   if action then tile.button:SetText(action.label or LABELS[action.kind] or "Go") end
 end
 
+-- The tiles share the row: fewer tiles, wider ones, so no slot stands
+-- empty while another tile's text is cut short.
+local function layout(count)
+  if not frame then return end
+  local n = math.max(1, math.min(count, MAX))
+  local tileWidth = math.floor((frame.width - (n - 1) * GAP) / n)
+  for i, tile in ipairs(frame.tiles) do
+    tile:ClearAllPoints()
+    tile:SetPoint("TOPLEFT", (i - 1) * (tileWidth + GAP), 0)
+    tile:SetWidth(tileWidth)
+  end
+  frame.tileWidth = tileWidth
+end
+
 -- Brings the tiles up to date; returns the region's height.
 function Obs.Update()
   if not frame then return 0 end
   local list = Obs.List()
+  layout(#list)
   for i, tile in ipairs(frame.tiles) do
     local ok, err = pcall(fill, tile, list[i])
     if not ok then
@@ -157,6 +177,9 @@ function Obs.Update()
 end
 
 function Obs.Height() return TILE_H end
+
+-- How wide each tile is drawn now (for tests).
+function Obs.TileWidth() return frame and frame.tileWidth end
 
 -- The tiles as drawn, { text, label } each (for tests).
 function Obs.Tiles()

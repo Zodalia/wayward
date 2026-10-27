@@ -247,6 +247,30 @@ local function objectiveName(text)
   return trim(text)
 end
 
+-- "Frostmane Headhunter slain" is a kill objective: the mobs, in the plural
+-- ("Frostmane Headhunters"). A few names stay as they are, a few change.
+local SAME_PLURAL = { vermin = true, sheep = true, deer = true, fish = true, elk = true }
+local function mobsPlural(name)
+  local last = name:match("(%a+)$") or name
+  local lower = last:lower()
+  if SAME_PLURAL[lower] or lower:find("s$") then return name end
+  if lower:find("man$") then return name:sub(1, -3) .. "en" end
+  if lower == "wolf" or lower == "elf" or lower == "dwarf" then return name:sub(1, -2) .. "ves" end
+  if lower:find("[^aeiou]y$") then return name:sub(1, -2) .. "ies" end
+  if lower:find("ch$") or lower:find("sh$") or lower:find("x$") then return name .. "es" end
+  return name .. "s"
+end
+
+-- The question a log quest's objective asks: "Where do I find Shimmerweed?",
+-- "Where do I find Frostmane Headhunters?" (not "... Headhunter slain?").
+function Find.ObjectiveQuestion(progress, questTitle)
+  local what = progress and objectiveName(progress) or ""
+  local mobs = what:match("^(.-)%s+slain$") or what:match("^(.-)%s+killed$")
+  if mobs and mobs ~= "" then return "Where do I find " .. mobsPlural(mobs) .. "?" end
+  if what ~= "" then return "Where do I find " .. what .. "?" end
+  return "Where do I go for " .. (questTitle or "this quest") .. "?"
+end
+
 local function lowerFirst(text)
   return (text:gsub("^%u", string.lower))
 end
@@ -264,7 +288,7 @@ local function stopRow(ctx)
     title = "Where is " .. who .. "?"
   elseif action.kind == "complete" and action.questID then
     local q = ns.Quests.Quest(action.questID)
-    title = "Where do I do " .. (q and q.name or ns.QuestLog.Title(action.questID) or "this quest") .. "?"
+    title = "Where do I go for " .. (q and q.name or ns.QuestLog.Title(action.questID) or "this quest") .. "?"
   else
     title = "Where is " .. (stop.node.label or "my next stop") .. "?"
   end
@@ -284,9 +308,8 @@ local function objectiveRows(ctx, out)
       local stops = ns.Quests.Available() and ns.Journey.QuestStops(entry.id, ctx.start) or {}
       local journey = #stops > 0 and ns.Journey.Plan(ctx.start, { title = entry.title, stops = stops }, ctx.net) or nil
       if node or journey then
-        local what = entry.progress and objectiveName(entry.progress)
         local row = { id = "objective" .. entry.id, kind = "objective", questID = entry.id,
-          title = what and what ~= "" and ("Where do I find " .. what .. "?") or ("Where do I do " .. entry.title .. "?"),
+          title = Find.ObjectiveQuestion(entry.progress, entry.title),
           journey = journey, details = {} }
         if node then
           row.goal = ns.Geo.Node(node.mapID, node.x, node.y, entry.title) or node

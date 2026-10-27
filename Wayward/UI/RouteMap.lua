@@ -4,8 +4,9 @@ local _, ns = ...
 -- route drawn on it: the smallest map that holds the whole route (the zone,
 -- else the continent, else the world map), from the game's own map art,
 -- zoomed in on the route (with some room around it).
--- Walking is white, flights light blue, boats and the like deeper blue; you,
--- each stop and the destination are marked. Shown only when the client has
+-- Walking is white, flights light blue, boats and the like deeper blue, a
+-- hearthstone purple (with its icon where you use it); you, each stop and
+-- the destination are marked. Shown only when the client has
 -- the map art API.
 
 local RouteMap = {}
@@ -18,6 +19,7 @@ local MIN_VIEW = 0.12    -- the closest zoom: this share of the map's width
 local LINE_COLOR = { walk = { 1, 1, 1, 0.9 }, fly = { 0.45, 0.8, 1, 1 }, transport = { 0.25, 0.5, 1, 1 },
   hearth = { 0.75, 0.5, 1, 0.6 } }
 local MARK_COLOR = { start = { 0.3, 1, 0.3 }, stop = { 1, 0.82, 0 }, goal = { 1, 0.3, 0.2 } }
+local HEARTH_ICON = "Interface\\Icons\\INV_Misc_Rune_01"
 
 local frame -- the tooltip's map
 local unpack = unpack or table.unpack
@@ -204,6 +206,25 @@ function RouteMap.Draw(v, r)
   end
   mark(points[#points], "goal")
   hideFrom(v.marks, marked + 1)
+
+  -- The purple line is a hearthstone: say so with its icon where you use it.
+  v.hearth = v.hearth or v.canvas:CreateTexture(nil, "OVERLAY")
+  v.hearth:Hide()
+  RouteMap.hearthShown = false
+  for _, step in ipairs(steps) do
+    if step.mode == "hearth" then
+      local x, y = at(step.from)
+      if x then
+        v.hearth:SetTexture(HEARTH_ICON)
+        v.hearth:SetSize(14, 14)
+        v.hearth:ClearAllPoints()
+        v.hearth:SetPoint("CENTER", v.canvas, "TOPLEFT", x, y + 9)
+        v.hearth:Show()
+        RouteMap.hearthShown = true
+      end
+      break
+    end
+  end
 
   v.label:SetText(ns.MapName(mapID) or "")
   RouteMap.mapID, RouteMap.lines, RouteMap.marks, RouteMap.view = mapID, drawn, marked, view

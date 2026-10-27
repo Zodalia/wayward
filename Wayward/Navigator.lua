@@ -195,6 +195,19 @@ end
 -- Starting something new while a journey is on asks: add it as a detour, or
 -- switch to it (the journey on now is set aside, to resume later; see
 -- Nav.SetAside)? Switches straight away where the game's dialogs aren't there.
+-- A three-button question with Cancel last on screen: Add as detour, Switch
+-- journey, Cancel. The game's second button is the one Escape answers, so
+-- Cancel stays button2 and only the buttons' places change.
+function Nav.CancelLast(dialog)
+  if not (dialog and dialog.button1 and dialog.button2 and dialog.button3 and dialog.button3:IsShown()) then return end
+  pcall(function()
+    dialog.button3:ClearAllPoints()
+    dialog.button3:SetPoint("LEFT", dialog.button1, "RIGHT", 13, 0)
+    dialog.button2:ClearAllPoints()
+    dialog.button2:SetPoint("LEFT", dialog.button3, "RIGHT", 13, 0)
+  end)
+end
+
 local function ask(label, detour, start)
   local function switch()
     if Nav.active then Nav.SetAside() end
@@ -209,7 +222,7 @@ local function ask(label, detour, start)
     OnAlt = function(_, data) data.switch() end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
-  StaticPopup_Show("WAYWARD_TRIP", Nav.active.title, label, { add = detour, switch = switch })
+  Nav.CancelLast(StaticPopup_Show("WAYWARD_TRIP", Nav.active.title, label, { add = detour, switch = switch }))
 end
 
 -- A stop for a plain destination (a trainer, a vendor, a hub); someone to
@@ -887,8 +900,6 @@ end
 -- where you are; plain directions become a journey ("custom") with their
 -- destination as a stop. With no journey on, this starts one. Returns true
 -- when the journey changed.
-local TRIP_TITLE = "Your journey"
-
 function Nav.AddToTrip(stops, label)
   local here = ns.Geo.PlayerNode()
   if not here or #stops == 0 then return false end
@@ -907,8 +918,13 @@ function Nav.AddToTrip(stops, label)
     ns.print(label .. " is already in your journey.")
     return false
   end
+  -- A detour doesn't change what the journey is: one from a suggestion (a
+  -- zone, a dungeon, a quest) keeps its name. One you put together yourself
+  -- is named after what it holds now.
   local root = journey.root or journey.def
-  root.title = TRIP_TITLE
+  if root.kind == "custom" or ns.Journey.IsGenericTitle(root.title) then
+    root.title = ns.Journey.NameFor(root)
+  end
   local planned = ns.Journey.Replan(journey, here)
   if not planned then
     ns.print("no route for the journey from here.")
@@ -1098,6 +1114,53 @@ function Nav.TripHasQuest(questID)
     if stop.action and stop.action.questID == questID and not stop.done and not stop.skipped then return true end
   end
   return false
+end
+
+-- Whether the journey on now already has every one of these stops open: the
+-- same step of the same quest, a stop with the same NPC, or a stop in the
+-- same place (a few yards). False with no journey, or no stops to ask about.
+local SAME_SPOT = 5
+local function openStops()
+  local a = Nav.active
+  local root = a and a.journey and (a.journey.root or a.journey.def)
+  local out = {}
+  for _, stop in ipairs(root and root.stops or {}) do
+    if not stop.done and not stop.skipped then out[#out + 1] = stop end
+  end
+  if a and not a.journey and a.goal then out[#out + 1] = { node = a.goal, npc = a.goal.npc } end
+  return out
+end
+
+local function sameStop(a, b)
+  local qa, qb = a.action and a.action.questID, b.action and b.action.questID
+  if qa or qb then return qa == qb and a.action.kind == b.action.kind end
+  if a.npc or b.npc then return a.npc ~= nil and a.npc == b.npc end
+  return a.node and b.node and a.node.mapID == b.node.mapID and ns.Geo.Distance(a.node, b.node) <= SAME_SPOT
+end
+
+function Nav.JourneyHas(stops)
+  if not (Nav.active and stops and #stops > 0) then return false end
+  local open = openStops()
+  for _, s in ipairs(stops) do
+    local found = false
+    for _, o in ipairs(open) do
+      if sameStop(s, o) then found = true break end
+    end
+    if not found then return false end
+  end
+  return true
+end
+
+-- The quests still open on set-aside journeys: { [questID] = index in the list }.
+function Nav.SetAsideQuests()
+  local out = {}
+  for i, entry in ipairs(ns.charDB.journeys or {}) do
+    for _, stop in ipairs(entry.journey and entry.journey.stops or {}) do
+      local id = stop.action and stop.action.questID
+      if id and not (stop.done or stop.skipped) and not out[id] then out[id] = i end
+    end
+  end
+  return out
 end
 
 -- Takes a quest's open stops out of the journey.
@@ -1368,11 +1431,48 @@ end)
 -- { title, kind, icon, done, total (stops), seconds (left), stopIndex,
 --   stopText (the stop you're heading for), directions (true with plain
 --   directions: one stop, the destination) }, or nil with nothing on.
+-- The time the open quest objectives still need, on top of the travel: your
+-- time per quest (QuestTimes, else For you's 5 minutes) for each quest still
+-- to do, times the share of its objectives left (at least a quarter, as For
+-- you counts them).
+local MIN_SHARE_LEFT = 0.25
+local function shareLeft(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  if not objectives or #objectives == 0 then return 1 end
+  local need, have = 0, 0
+  for _, o in ipairs(objectives) do
+    local required = o.numRequired and o.numRequired > 0 and o.numRequired or 1
+    need = need + required
+    have = have + (o.finished and required or math.min(o.numFulfilled or 0, required))
+  end
+  return math.max(MIN_SHARE_LEFT, 1 - have / need)
+end
+
+function Nav.WorkSeconds(journey)
+  local total, seen = 0, {}
+  for _, s in ipairs(journey and journey.stops or {}) do
+    local id = s.action and s.action.kind == "complete" and s.action.questID
+    if id and not seen[id] and not (s.done or s.skipped or s.passed) then
+      seen[id] = true
+      total = total + questSeconds() * shareLeft(id)
+    end
+  end
+  return total
+end
+
+-- Travel left plus the quest work left: what "remaining" means on screen.
+function Nav.TimeLeft(here)
+  local travel = Nav.RemainingSeconds(here)
+  if not travel then return nil end
+  return travel + (Nav.active.journey and Nav.WorkSeconds(Nav.active.journey) or 0)
+end
+
 function Nav.Progress()
   local a = Nav.active
   if not a then return nil end
   local here = ns.Geo.PlayerNode()
-  local out = { title = a.title, seconds = Nav.RemainingSeconds(here), done = 0, total = 1, stopIndex = 1,
+  local out = { title = a.title, seconds = Nav.TimeLeft(here), travel = Nav.RemainingSeconds(here),
+    done = 0, total = 1, stopIndex = 1,
     stopText = a.title, directions = a.journey == nil }
   if a.journey then
     out.kind, out.icon = a.journey.kind, a.journey.icon

@@ -415,7 +415,7 @@ function Overview.Refresh()
   end
   frame.title:SetText(a.title)
   frame.info:SetText(string.format("%d of %d stops done  ·  %s to go%s", done, #rows,
-    ns.FormatDuration(ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())),
+    ns.FormatDuration(ns.Nav.TimeLeft(ns.Geo.PlayerNode())),
     root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
   -- Rows one under the other (step lines are shorter), as many as fit.
   -- Scrolled: from line scroll + 1, as many as fit. A list that needs

@@ -2,8 +2,8 @@ local _, ns = ...
 
 -- The follow-up question (Nav.FollowUpOffer): the quests a chain continues
 -- with, a tick box and a time each (travel it adds and doing it), and the
--- total of the ticked ones at the bottom. Confirm adds them to the trip;
--- Cancel, Escape or the x adds nothing.
+-- total of the ticked ones at the bottom. Add to journey adds them to the
+-- journey; Cancel, Escape or the x adds nothing.
 
 local ChainPicker = {}
 ns.ChainPicker = ChainPicker
@@ -80,9 +80,9 @@ local function create()
   f.total:SetJustifyH("LEFT")
 
   f.confirm = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  f.confirm:SetSize(110, 22)
+  f.confirm:SetSize(120, 22)
   f.confirm:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 14)
-  f.confirm:SetText("Confirm")
+  f.confirm:SetText("Add to journey")
   f.confirm:SetScript("OnClick", function() ChainPicker.Confirm() end)
   ns.Skin.Button(f.confirm)
 

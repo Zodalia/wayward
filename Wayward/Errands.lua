@@ -111,7 +111,7 @@ local function npcPlaces(kind, here)
     if npc.kinds and harvestedAs(npc, kind) and friendlyHarvested(npc, faction) then
       local node = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name)
       if node then
-        out[#out + 1] = { id = id, npc = npc.name, node = node }
+        out[#out + 1] = { id = id, npc = npc.name, node = node, subZone = npc.subZone }
         seen[id] = true
       end
     end
@@ -239,7 +239,7 @@ function Errands.Get(key)
     if p.distance < math.huge then
       p.extra = ns.OnTheWay.Added(p.node, stops, net)
       if p.extra < math.huge then
-        p.place = ns.Places.NameFor(p.node) or ns.MapName(p.node.mapID)
+        p.place = (p.subZone ~= "" and p.subZone) or ns.Places.NameFor(p.node) or ns.MapName(p.node.mapID)
         p.inTrip = going(p)
         list[#list + 1] = p
       end

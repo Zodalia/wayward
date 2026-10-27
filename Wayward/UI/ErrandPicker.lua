@@ -89,6 +89,12 @@ local function create()
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
   f:SetBackdropColor(0, 0, 0, 0.9)
+  -- A dark fill of its own under the rows: a UI skin may make the backdrop
+  -- see-through, and chat behind the list made it hard to read.
+  f.shade = f:CreateTexture(nil, "BACKGROUND", nil, 7)
+  f.shade:SetPoint("TOPLEFT", 3, -3)
+  f.shade:SetPoint("BOTTOMRIGHT", -3, 3)
+  f.shade:SetColorTexture(0, 0, 0, 0.85)
   tinsert(UISpecialFrames, "WaywardErrandPicker")
 
   f.chips = {}
@@ -103,6 +109,9 @@ local function create()
   for i = 1, ROWS do
     f.rows[i] = row(f, i)
     f.rows[i]:SetPoint("TOPLEFT", f.heading, "BOTTOMLEFT", 0, -4 - (i - 1) * ROW_HEIGHT)
+    -- As wide as the box, which takes the directions box's width (narrower
+    -- with the compass off): a fixed width put the Add buttons past its edge.
+    f.rows[i]:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
   end
 
   f.empty = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")

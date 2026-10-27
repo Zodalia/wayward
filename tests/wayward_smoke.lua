@@ -81,6 +81,10 @@ local function newObj()
           return fs
         elseif k == "CreateTexture" then return newObj()
         elseif k == "GetPoint" then return "CENTER", nil, "CENTER", 0, 0
+        elseif k == "SetFrameStrata" then rawset(self, "strata", (...))
+        elseif k == "GetFrameStrata" then return rawget(self, "strata")
+        elseif k == "SetFrameLevel" then rawset(self, "level", (...))
+        elseif k == "GetFrameLevel" then return rawget(self, "level")
         end
       end
     end
@@ -113,6 +117,7 @@ local ZONES = {
   -- Starting zones: no NPCs of their own (For you's starting-zone test fills them).
   [1429] = { cont = 1415, x0 = 0.40, y0 = 0.76, w = 0.08, h = 0.08, name = "Elwynn Forest" },
   [1426] = { cont = 1415, x0 = 0.28, y0 = 0.55, w = 0.08, h = 0.08, name = "Dun Morogh" },
+  [1438] = { cont = 1414, x0 = 0.28, y0 = 0.05, w = 0.08, h = 0.08, name = "Teldrassil" },
 }
 
 local function vec(x, y) return { x = x, y = y, GetXY = function(s) return s.x, s.y end } end
@@ -481,6 +486,8 @@ rawset(hud, "GetRight", function() return 600 end)
 rawset(hud, "GetTop", function() return 700 end)
 ns.TargetButton.Sync()
 check(ns.TargetButton.Macro() == "/target " .. r.goal.npc, "the target button targets them: " .. tostring(ns.TargetButton.Macro()))
+check(ns.TargetButton.Frame():GetFrameStrata() == (ns.HUD.Frame():GetFrameStrata() or "MEDIUM"),
+  "on the directions box's layer, so the Wayward window covers it: " .. tostring(ns.TargetButton.Frame():GetFrameStrata()))
 InCombatLockdown = function() return true end
 ns.Nav.Stop()
 ns.TargetButton.Sync()
@@ -1698,10 +1705,13 @@ do
     and goulash and goulash.category == "Best quest" and deadmines and deadmines.category == "Dungeon"
     and count("Due now") == 0 and count("Worth a visit") == 0,
     "one card per kind: a questing zone, the dungeon, the best quest; nothing due as a card (" .. titles(list) .. ")")
-  local roles = {}
-  for i = 1, math.min(3, #list) do roles[#roles + 1] = list[i].role or "?" end
-  check(table.concat(roles, ",") == "continue,explore,alternative",
-    "the first page is a continuation, an exploration and an alternative: " .. table.concat(roles, ","))
+  local roles, honest = {}, #list > 0
+  local ROLE_FOR = { progression = "continue", novelty = "explore" }
+  for _, r in ipairs(list) do
+    roles[#roles + 1] = r.role or "?"
+    if r.role ~= (ROLE_FOR[r.lead] or "alternative") then honest = false end
+  end
+  check(honest, "every card's tag is what it is about (progression continues, novelty explores): " .. table.concat(roles, ","))
   local scored = #list > 0
   for _, r in ipairs(list) do
     local p = r.relevance_parts
@@ -1748,7 +1758,8 @@ do
     "the training observation highlights the spells and the cost: " .. table.concat(train and train.highlights or {}, ","))
   check(train and train.details[1] and not train.details[1].more and train.details[1].text:find("  -  ", 1, true),
     "the spells you can learn come first in its details: " .. tostring(train and train.details[1] and train.details[1].text))
-  check(ns.ForYou.SummaryText():find("a few good options") and ns.ForYou.SummaryText():find("good to know")
+  check(ns.ForYou.SummaryText():find("^A few good options") and not ns.ForYou.SummaryText():find("^Level")
+    and not ns.ForYou.SummaryText():find("good to know")
     and not ns.ForYou.SummaryText():find("quests per hour") and not ns.ForYou.SummaryText():find("XP per minute"),
     "summary: " .. ns.ForYou.SummaryText())
 
@@ -1868,7 +1879,7 @@ do
   check(soon and soon.text:find("^Gear at 70%%: ") and soon.urgency < 0.5 and ti and si > ti
     and soon.action and soon.action.kind == "detour",
     "gear at 70% with a repairer close by: an observation after what's due (" .. obsTexts(obs) .. ")")
-  check(ns.ForYou.SummaryText():find("things|r good to know", 1, true), "the summary counts the observations: " .. ns.ForYou.SummaryText())
+  check(not ns.ForYou.SummaryText():find("good to know", 1, true), "the tiles speak for themselves: " .. ns.ForYou.SummaryText())
   durability = { 50, 50 }
 
   -- No spell list yet, at an even level: a visit to the trainer is worth it.
@@ -2012,6 +2023,10 @@ do
   player.mapID = 1429
   check(zoneTitles() == "Dun Morogh,Redridge Mountains",
     "with too few quests left at home, another starting zone is fine: " .. zoneTitles())
+  counts[1438] = 9
+  check(zoneTitles() == "Dun Morogh,Redridge Mountains",
+    "but not one across the sea, however many quests it has: " .. zoneTitles())
+  counts[1438] = nil
   counts[1429] = 4
   UnitLevel = function() return 10 end
   check(zoneTitles() == "Dun Morogh,Elwynn Forest,Redridge Mountains",
@@ -3715,7 +3730,8 @@ do
   check(#stops == 5 and order.pickup53 < order.complete53 and order.complete53 < order.turnin53
     and order.complete50 < order.turnin50 and not order.pickup50,
     "added quests keep their own order inside the one trip: " .. kinds(stops))
-  check(ns.Nav.active.title == "Your journey", "the journey is called Your journey once it holds more")
+  check(ns.Nav.active.title:find(" and 1 more quest$") ~= nil,
+    "a journey you put together is named after its quests: " .. ns.Nav.active.title)
 
   -- In journey takes it out; the hand-in row can join too.
   byID(ns.QuestsPage.Results(""), "log50").actions[1].run()
@@ -4531,7 +4547,7 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
   ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
   check(labels() == "Shore camp,Bank", "an added stop goes where it fits best, here first: " .. labels())
-  check(ns.Nav.active.title == "Your journey", "the journey is renamed: " .. ns.Nav.active.title)
+  check(ns.Nav.active.title == "Stormwind errands", "a detour keeps the journey's name: " .. ns.Nav.active.title)
   check(not ns.JourneyOverview.IsShown() and ns.HUD.Flashing(),
     "adding to a trip doesn't open the overview; the book button flashes instead")
   local hud = ns.HUD.Frame()
@@ -4563,8 +4579,9 @@ do
   check(shown and shown.label == trainer.title, "plain directions ask too")
   shown.data.switch()
   check(ns.Nav.active.title == trainer.title and not ns.Nav.active.journey, "Switch journey starts the new directions instead")
-  check(#ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "Your journey"
-    and ns.Nav.SetAsideList()[1].stops == 2, "and sets the journey aside, with its 2 stops left")
+  check(#ns.Nav.SetAsideList() == 1 and not ns.Journey.IsGenericTitle(ns.Nav.SetAsideList()[1].title)
+    and ns.Nav.SetAsideList()[1].stops == 2,
+    "and sets the journey aside, with its 2 stops left: " .. tostring(ns.Nav.SetAsideList()[1] and ns.Nav.SetAsideList()[1].title))
   ns.charDB.journeys = nil
 
   -- Plain directions become a journey when something is added.
@@ -4849,6 +4866,11 @@ do
   ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "|cffffd200rank|r" },
     { text = "Quests in your log count at full XP; ...", more = true }, { text = "shown" } } } }, "", true)
   check(ns.Cards.Detail(1) == "rank", "without a why, a card shows its first detail: " .. tostring(ns.Cards.Detail(1)))
+  check(ns.Cards.More(1) == "shown", "under it, the next detail that isn't held for the tooltip: " .. tostring(ns.Cards.More(1)))
+  ns.Cards.Show({ { title = "Facts", route = route, why = "A zone you haven't seen", stats = { { "XP", "~900" } },
+    facts = { { "Level", "Level 8-10" }, { "Nearby", "Nearby" }, { "Quests", "11 quests" } } } }, "", true)
+  check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=Level 8-10,NEARBY=Nearby,QUESTS=11 quests" and ns.Cards.More(1) == "",
+    "a row's facts come before its stats: " .. table.concat(ns.Cards.Stats(1), ","))
   ns.Cards.Show(suggestions, "", true)
 
   ns.Cards.Show({ { title = "Run The Stockade  ·  level 23", subtitle = "Stormwind City  ·  ~5 min  ·  1 quest",
@@ -4938,6 +4960,14 @@ do
   check(trip and ns.RouteMap.Show({ title = "Over the sea", journey = trip }) and ns.RouteMap.mapID == 947,
     "a trip over the sea uses the world map: " .. tostring(ns.RouteMap.mapID))
   check(ns.RouteMap.marks >= 2, "you, its stops and the destination are marked")
+  check(not ns.RouteMap.hearthShown, "no hearthstone on the way: no hearthstone icon")
+  local here = ns.Geo.PlayerNode()
+  local inn = ns.Geo.Node(1439, 0.45, 0.3, "Inn")
+  ns.RouteMap.Show({ title = "Hearth home", route = { steps = {
+    { mode = "walk", from = here, to = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), seconds = 30 },
+    { mode = "hearth", from = ns.Geo.Node(1439, 0.55, 0.5, "Shore"), to = inn, seconds = 10 } }, seconds = 40 },
+    goal = inn })
+  check(ns.RouteMap.hearthShown, "a hearthstone leg is marked with its icon where you use it")
   C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
   ns.RouteMap.Hide()
 end
@@ -5921,7 +5951,7 @@ do
     "Extend and Replan keep them")
   ns.Nav.StartJourney(replanned)
   ns.Nav.AddToTrip({ visit(0.62, "D") }, "D")
-  check(ns.Nav.active.journey.kind == "zone" and ns.Nav.active.title == "Your journey", "a detour keeps the journey's kind")
+  check(ns.Nav.active.journey.kind == "zone" and ns.Nav.active.title == "Zone", "a detour keeps the journey's kind and name")
   ns.Nav.Stop()
   ns.Nav.AddToTrip({ visit(0.53, "Alone") }, "Alone")
   check(ns.Nav.active and ns.Nav.active.journey.kind == "custom", "a detour with nothing on starts a custom journey")
@@ -6010,7 +6040,7 @@ do
   shown = nil
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "A detour", stops = { visit(0.6, "Y") } }))
   shown.data.add()
-  check(ns.Nav.active.title == "Your journey" and labels():find("Y", 1, true) and #ns.Nav.SetAsideList() == 1,
+  check(ns.Nav.active.title == "Something new" and labels():find("Y", 1, true) and #ns.Nav.SetAsideList() == 1,
     "Add as detour: merged, nothing set aside: " .. labels())
   -- The overview lists them under the journey, with Resume and Forget.
   ns.JourneyOverview.Show()
@@ -6019,7 +6049,7 @@ do
     "the overview lists the set-aside journey: " .. tostring(rows[1]))
   local frame = ns.JourneyOverview.EnsureFrame()
   frame.aside[1].resume.scripts.OnClick(frame.aside[1].resume)
-  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Your journey", "Resume swaps them")
+  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Something new", "Resume swaps them")
   frame.aside[1].forget.scripts.OnClick(frame.aside[1].forget)
   check(#ns.Nav.SetAsideList() == 0 and #ns.JourneyOverview.SetAsideRows() == 0, "Forget takes it off")
   -- The pickup question's New journey sets the one on aside too.
@@ -6149,10 +6179,12 @@ do
   local ordered = F.AssignRoles({ A, C, B, D, E })
   local got = {}
   for _, r in ipairs(ordered) do got[#got + 1] = r.title .. "=" .. r.role end
-  check(table.concat(got, ",") == "A=continue,B=explore,D=alternative,C=continue,E=explore",
-    "roles: the continuation, an exploration elsewhere, an alternative kind, then again: " .. table.concat(got, ","))
+  check(table.concat(got, ",") == "A=continue,B=explore,D=alternative,C=explore,E=alternative",
+    "roles: a page mixes kinds and zones, and each card is tagged by what leads it: " .. table.concat(got, ","))
   local only = F.AssignRoles({ row("Z", "zone", "Y", "novelty", 0.3) })
-  check(#only == 1 and only[1].role == "continue", "a lone card is the continuation")
+  check(#only == 1 and only[1].role == "explore", "a lone card about a new zone is the exploration, not a continuation")
+  local fitOnly = F.AssignRoles({ row("N", "quest", "Y", "suitability", 0.6) })
+  check(fitOnly[1].role == "alternative", "a card led by fit alone is an alternative")
 
   -- The real cards: QuestieDB XP, a quest ready to hand in out in the hills.
   local zoneSupport = LibQuestieDB.Support.Get
@@ -6178,12 +6210,32 @@ do
   ns.Fanfare.lastNew = nil
 
   local list = rows()
-  local pattern = { "continue", "explore", "alternative" }
-  local repeating = #list >= 4
-  for i, r in ipairs(list) do
-    if r.role ~= pattern[(i - 1) % 3 + 1] then repeating = false end
+  local ROLE_FOR = { progression = "continue", novelty = "explore" }
+  local function honest(cards)
+    for _, r in ipairs(cards) do
+      if r.role ~= (ROLE_FOR[r.lead] or "alternative") or r.lead == "proximity" then return false end
+    end
+    return #cards > 0
   end
-  check(repeating, "every page of three repeats continue, explore, alternative: " .. titles(list))
+  check(#list >= 4 and honest(list), "every card is tagged by its strongest reason, never by distance: " .. titles(list))
+  -- Facts: one order on every card (level, how far, what it holds), each saying what it is; no XP.
+  local factsOK, seen = true, {}
+  for _, r in ipairs(list) do
+    local f = r.facts or {}
+    local texts = {}
+    for _, fact in ipairs(f) do texts[#texts + 1] = fact[2] end
+    seen[#seen + 1] = table.concat(texts, ", ")
+    if #f == 0 or #f > 3 or f[1][1] ~= "Level" or not f[1][2]:find("^Level %d") then factsOK = false end
+    for _, fact in ipairs(f) do
+      if fact[1] == "XP" or fact[2]:find("XP") then factsOK = false end
+      if not fact[2]:find("%a") then factsOK = false end -- never a bare number
+    end
+  end
+  check(factsOK, "every card's facts start with its level and say what each number is: " .. table.concat(seen, " | "))
+  local zoneCard = find(list, "Quest in Redridge Mountains")
+  local zf = zoneCard and zoneCard.facts or {}
+  check(#zf == 3 and zf[1][2]:find("^Level %d+") and (zf[2][2] == "Nearby" or zf[2][2]:find(" away$")) and zf[3][2]:find("^%d+ quests?$"),
+    "a zone card: its levels, how far, its quests")
   local first, second, third = list[1], list[2], list[3]
   check(first and second and (first.zoneKey ~= second.zoneKey or first.kind ~= second.kind),
     "the exploration is in another zone or of another kind than the continuation")
@@ -6291,10 +6343,17 @@ do
   GetTime = function() return clock end
   F.Invalidate()
   obs = F.Observations()
-  check(F.Observations() == obs and F.Results() and F.Observations() == obs, "observations are cached with the cards")
+  local function ids(list)
+    local out = {}
+    for _, o in ipairs(list) do out[#out + 1] = o.id end
+    return table.concat(out, ",")
+  end
   local runs = F.runs
+  check(ids(F.Observations()) == ids(obs) and F.Results() and ids(F.Observations()) == ids(obs) and F.runs == runs,
+    "observations are cached with the cards")
   F.Invalidate()
-  check(F.Observations() ~= obs and F.runs == runs + 1, "and rebuilt with them")
+  F.Observations()
+  check(F.runs == runs + 1, "and rebuilt with them")
   local vendor = obsFind(F.Observations(), "vendor")
   check(vendor and vendor.urgency < 0.2 and vendor.action.kind == "detour" and vendor.text:find("^A vendor nearby: "),
     "a vendor a couple of minutes away is worth a quiet tile: " .. tostring(vendor and vendor.text))
@@ -6333,9 +6392,10 @@ do
   obs = F.Observations()
   local abilities = obsFind(obs, "abilities")
   check(abilities and abilities.text:find("^2 new spells at level 22: your trainer is ") and abilities.text:find("in Stormwind", 1, true)
-    and abilities.action.kind == "go" and abilities.action.route and abilities.highlights[2] == "level 22"
+    and abilities.action.kind == "show" and abilities.action.page == "trainers" and abilities.highlights[2] == "level 22"
     and not obsFind(obs, "train"),
-    "two levels ahead: new spells at level 22, with directions to the trainer: " .. tostring(abilities and abilities.text))
+    "two levels ahead: new spells at level 22, naming the trainer, with the Trainers page to look at: "
+    .. tostring(abilities and abilities.text))
   ns.charDB.classSpells.services[2].levelReq, ns.charDB.classSpells.services[3].levelReq = 24, 24
   F.Invalidate()
   check(not obsFind(F.Observations(), "abilities"), "four levels ahead: not yet")
@@ -6349,7 +6409,7 @@ do
   SlashCmdList.WAYWARD("debug cards")
   local printed = table.concat(chat, "\n", said + 1)
   check(printed:find("card 1 [continue] ", 1, true) and printed:find("relevance %d%.%d%d %(suitability %d%.%d%d, proximity")
-    and printed:find("; why: ", 1, true) and printed:find("card 2 [explore] ", 1, true)
+    and printed:find("; why: ", 1, true) and printed:find("card 2 %[%a+%] ")
     and printed:find("observation 1 [", 1, true) and printed:find("urgency %d%.%d%d: "),
     "/ww debug cards prints roles, relevance, parts, why and the observations")
   local lines = F.Diagnose()
@@ -6361,11 +6421,34 @@ do
   local here = ns.Geo.PlayerNode()
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Just the hand-in", stops = ns.Journey.QuestStops(50, here) }), true)
   list = F.Results()
-  local held = #list >= 3 and not find(list, "Hand in 1 quest to Watcher Dodds")
-  for i, r in ipairs(list) do
-    if r.role ~= pattern[(i - 1) % 3 + 1] then held = false end
-  end
-  check(held, "with the hand-in on your journey, the roles are picked over the cards left: " .. titles(list))
+  local held = #list >= 3 and not find(list, "Hand in 1 quest to Watcher Dodds") and honest(list)
+  check(held, "with the hand-in on your journey, the cards left keep honest tags: " .. titles(list))
+  -- Nothing the journey already does: the hand-in tile goes, and Find offers no detour to it.
+  check(not obsFind(F.Observations(), "handin"), "a hand-in on your journey gets no tile of its own: " .. kinds(F.Observations()))
+  local onJourney = ns.Search.WithDetour({ title = "Watcher Dodds",
+    journey = ns.Journey.Plan(here, { title = "Watcher Dodds", stops = ns.Journey.QuestStops(50, here) }) })
+  check(not onJourney.actions, "Find offers no detour to what the journey already has")
+  local elsewhere = ns.Search.WithDetour({ title = "Elsewhere", goal = ns.Geo.Node(1433, 0.7, 0.7, "Elsewhere"),
+    route = { steps = {}, seconds = 60 } })
+  check(elsewhere.actions and elsewhere.actions[1].label == "Add detour", "but does to somewhere new")
+  -- Set aside: its quests aren't suggested again; a tile offers to resume it.
+  ns.Nav.SetAside()
+  list = F.Results()
+  check(not find(list, "Hand in 1 quest to Watcher Dodds"), "a set-aside journey's quests get no card: " .. titles(list))
+  local resume = obsFind(F.Observations(), "setaside")
+  check(resume and resume.text == "You set aside Just the hand-in, 1 stop left." and resume.action.kind == "resume",
+    "a tile offers to resume it: " .. tostring(resume and resume.text))
+  check(ns.Observations.Run(resume) and ns.Nav.active and ns.Nav.active.title == "Just the hand-in"
+    and #ns.Nav.SetAsideList() == 0 and not obsFind(F.Observations(), "setaside"),
+    "Resume starts it again, and the tile goes")
+  ns.Nav.Stop()
+  runTimers()
+  -- A detour tile brings every stop it has, not only the first.
+  local two = { { node = ns.Geo.Node(1433, 0.52, 0.5, "One"), text = "One" },
+    { node = ns.Geo.Node(1433, 0.56, 0.5, "Two"), text = "Two" } }
+  ns.Observations.Run({ text = "Two hand-ins", action = { kind = "detour", stop = two[1], stops = two } })
+  local root = ns.Nav.active and ns.Nav.active.journey and (ns.Nav.active.journey.root or ns.Nav.active.journey.def)
+  check(root and #root.stops == 2, "a detour tile adds all its stops: " .. tostring(root and #root.stops))
   ns.Nav.Stop()
   runTimers()
 
@@ -6427,8 +6510,8 @@ do
   if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
   lines = Box.Lines()
   check(Box.State() == "journey" and lines[1] == "The Perfect Stout" and lines[2] == "Stop 1 of 3  ·  Talk to the innkeeper"
-    and lines[3]:find("^0 of 3 stops complete  ·  .* remaining$") and lines[4] ~= "",
-    "a journey: title, the current stop, stops done and time left, a description (" .. table.concat(lines, " / ") .. ")")
+    and lines[3]:find("^0 of 3 stops complete  ·  .* remaining$") and lines[4] == "Then: Find Shimmerweed, and 1 more stop.",
+    "a journey: title, the current stop, stops done and time left, what comes next (" .. table.concat(lines, " / ") .. ")")
   continue, details = Box.Buttons()
   check(continue == "Continue journey" and details == "View details", "with Continue journey and View details")
   local a = ns.Nav.active
@@ -6901,6 +6984,129 @@ do
   LibQuestieDB.Enum.npcFlags.INNKEEPER = nil
   refreshData()
 end
+---------------------------------------------------------------- screenshot review (begin)
+-- ===== screenshot review: fixes from the first in-game pass =====
+do
+  io.write("screenshot review\n")
+  ns.Nav.Stop()
+  runTimers()
+  local here = ns.Geo.PlayerNode()
+
+  -- Journey names: an older save called "Your journey" is named after what it holds.
+  local plain = ns.Journey.Plan(here, { title = "Your journey", stops = { { node = ns.Geo.Node(1433, 0.55, 0.5, "Camp"),
+    text = "Grab the thing" } } })
+  local saved = ns.Journey.Save(plain)
+  saved.title = "Your journey"
+  check(ns.Journey.Load(saved).title == "Grab the thing", "an old generic save is named after its first stop")
+  local q6 = ns.Quests.Quest(6)
+  if q6 and q6.name then
+    check(ns.Journey.NameFor({ stops = { { action = { kind = "pickup", questID = 6 } }, { action = { kind = "turnin", questID = 6 } } } })
+      == q6.name, "one quest: its name")
+    check(ns.Journey.NameFor({ stops = { { action = { kind = "pickup", questID = 6 } }, { action = { kind = "pickup", questID = 999901 } },
+      { action = { kind = "pickup", questID = 999902 } } } }) == q6.name, "quests without a name don't count")
+  end
+  check(ns.Journey.NameFor({ stops = { { text = "Done already", done = true }, { text = "Repair at Thrawn Boltar" } } })
+    == "Repair at Thrawn Boltar", "no quests: the first stop still to do")
+
+  -- Side-panel rows: one line each, the travel time in its own place.
+  local function split(text) local a, b = ns.Panel.SplitTime(text) return a .. "|" .. tostring(b) end
+  check(split("[9] Frostmane Hold  ·  Dun Morogh  ·  ~2 min") == "[9] Frostmane Hold  ·  Dun Morogh|~2 min"
+    and split("Grif Wildheart  ·  Dun Morogh  ·  <1 min") == "Grif Wildheart  ·  Dun Morogh|<1 min"
+    and split("Far  ·  ~1 h 5 min") == "Far|~1 h 5 min",
+    "a subtitle's travel time is lifted out of it")
+  check(split("Zone  ·  Dun Morogh  ·  no route found from here") == "Zone  ·  Dun Morogh  ·  no route found from here|nil"
+    and split("Levels 17-19  ·  start at Lakeshire") == "Levels 17-19  ·  start at Lakeshire|nil",
+    "anything else stays as it is")
+
+  -- Places: where no flight path names a town, the subzone of an NPC you met there does.
+  ns.db.npcs[990777] = { name = "Thrawn Boltar", kinds = { vendor = true }, faction = "Alliance", mapID = 1426,
+    x = 0.32, y = 0.59, subZone = "Kharanos" }
+  ns.Fire("DATA_CHANGED")
+  check(ns.Places.NameFor(ns.Geo.Node(1426, 0.321, 0.59)) == "Kharanos", "a spot by an NPC you met takes their subzone's name")
+  check(ns.Places.NameFor(ns.Geo.Node(1426, 0.9, 0.9)) ~= "Kharanos", "but not one across the zone")
+  ns.db.npcs[990777] = nil
+  ns.Fire("DATA_CHANGED")
+  check(ns.Places.NameFor(ns.Geo.Node(1426, 0.321, 0.59)) ~= "Kharanos", "forgotten with the NPC")
+
+  -- Good to know: fewer tiles share the row, so none stands empty beside a cut-off one.
+  if ns.Observations.TileWidth then
+    local savedObs = ns.ForYou.Observations
+    local function tiles(n)
+      local out = {}
+      for i = 1, n do out[i] = { id = "t" .. i, kind = "x", text = "Tile " .. i, highlights = {}, urgency = 0.5 } end
+      return out
+    end
+    ns.ForYou.Observations = function() return tiles(2) end
+    ns.Observations.Update()
+    local two = ns.Observations.TileWidth()
+    ns.ForYou.Observations = function() return tiles(4) end
+    ns.Observations.Update()
+    local four = ns.Observations.TileWidth()
+    check(two and four and two > four * 1.8, "two tiles are each about twice as wide as four: " .. tostring(two) .. " / " .. tostring(four))
+    ns.ForYou.Observations = savedObs
+    ns.Observations.Update()
+  end
+
+  -- Find's questions read as questions: no "slain", mobs in the plural.
+  local Q = ns.Find.ObjectiveQuestion
+  check(Q("3/8 Frostmane Headhunter slain") == "Where do I find Frostmane Headhunters?"
+    and Q("Frostmane Headhunter slain: 3/8") == "Where do I find Frostmane Headhunters?",
+    "a kill objective asks for the mobs: " .. Q("3/8 Frostmane Headhunter slain"))
+  check(Q("Shimmerweed: 0/6") == "Where do I find Shimmerweed?" and Q("Kobold Vermin slain: 0/10") == "Where do I find Kobold Vermin?"
+    and Q("Young Wolf slain") == "Where do I find Young Wolves?" and Q("Dark Iron Spy slain") == "Where do I find Dark Iron Spies?",
+    "items as they are; a few plurals that aren't just an s")
+  check(Q(nil, "The Perfect Stout") == "Where do I go for The Perfect Stout?", "no objective text: where to go for the quest")
+
+  -- The switch question: Cancel last on screen, still the button Escape answers.
+  local function fakeButton()
+    local b = {}
+    function b.ClearAllPoints(self) self.after = nil end
+    function b.SetPoint(self, _, rel) self.after = rel end
+    function b.IsShown() return true end
+    return b
+  end
+  local dialog = { button1 = fakeButton(), button2 = fakeButton(), button3 = fakeButton() }
+  ns.Nav.CancelLast(dialog)
+  check(dialog.button3.after == dialog.button1 and dialog.button2.after == dialog.button3,
+    "Add as detour, Switch journey, then Cancel")
+  ns.Nav.CancelLast(nil)
+  check(true, "no dialog: nothing to move")
+
+  -- Walking to an objective area names the place, not the quest.
+  local area = ns.Geo.Node(1426, 0.9, 0.9, "The Perfect Stout")
+  local work = { node = area, text = "Do The Perfect Stout", action = { kind = "complete", questID = 777 } }
+  local walk = { steps = { { mode = "walk", from = here, to = area, seconds = 30, stop = work } }, seconds = 30 }
+  check(ns.Router.Describe(walk, 1, true) == "Walk to the area for The Perfect Stout",
+    "no place name known: the area for the quest: " .. ns.Router.Describe(walk, 1, true))
+  ns.db.npcs[990778] = { name = "Rejold", kinds = { vendor = true }, faction = "Alliance", mapID = 1426, x = 0.9, y = 0.9,
+    subZone = "Shimmer Ridge" }
+  ns.Fire("DATA_CHANGED")
+  check(ns.Router.Describe(walk, 1, true) == "Walk to Shimmer Ridge", "a known place: its name: " .. ns.Router.Describe(walk, 1, true))
+  ns.db.npcs[990778] = nil
+  ns.Fire("DATA_CHANGED")
+
+  -- Remaining time counts the quest work left, not only the travel.
+  local savedObjectives = C_QuestLog.GetQuestObjectives
+  C_QuestLog.GetQuestObjectives = function(id)
+    if id == 777 then return { { numRequired = 6, numFulfilled = 3 } } end
+    return {}
+  end
+  local work = ns.Nav.WorkSeconds({ stops = {
+    { action = { kind = "complete", questID = 777 } }, { action = { kind = "complete", questID = 777 } },
+    { action = { kind = "turnin", questID = 777 } }, { action = { kind = "complete", questID = 778 }, done = true } } })
+  local perQuest = ns.QuestTimes.Seconds() or ns.ForYou.SECONDS_PER_QUEST
+  check(math.abs(work - perQuest / 2) < 1, "half the objectives left: half your time per quest, once per quest: " .. work)
+  C_QuestLog.GetQuestObjectives = function() return { { numRequired = 8, numFulfilled = 8, finished = true } } end
+  check(math.abs(ns.Nav.WorkSeconds({ stops = { { action = { kind = "complete", questID = 779 } } } }) - perQuest / 4) < 1,
+    "a quest all but done still counts a quarter")
+  C_QuestLog.GetQuestObjectives = savedObjectives
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Walk", stops = { { node = ns.Geo.Node(1433, 0.56, 0.5, "Far"), text = "Far" } } }), true)
+  local p = ns.Nav.Progress()
+  check(p and p.seconds == p.travel, "with nothing to do but get there, remaining is the travel")
+  ns.Nav.Stop()
+  runTimers()
+end
+---------------------------------------------------------------- screenshot review (end)
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
