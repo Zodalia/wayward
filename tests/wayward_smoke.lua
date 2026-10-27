@@ -3369,8 +3369,8 @@ do
   local lines = ns.HUD.Lines()
   check(ns.Nav.InArea() and ns.Nav.Waiting() and not ns.Nav.ownsWaypoint,
     "near any of their spawns: in the area, no waypoint")
-  check(lines[4]:find("In the area", 1, true) and lines[4]:find("2/8", 1, true),
-    "the box says so, with the progress: " .. lines[4])
+  check(lines[4]:find("In the area", 1, true) and lines[5] == "Murloc Forager slain: 2/8\nMurloc Scout slain: 0/5",
+    "the box says so, with each objective on its own line: " .. lines[4] .. " | " .. lines[5])
   player.x = 0.45
   ns.HUD.Update()
   check(ns.Nav.InArea(), "a little way out: still in the area (no flicker at the edge)")

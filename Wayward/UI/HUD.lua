@@ -25,6 +25,7 @@ local INFO_RIGHT = -(PADDING + ADD_SIZE + 2) -- the last line stops short of the
 local HOME = { "TOP", "TOP", 0, -140 }
 local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the journey gains stops
 local FLASH_PULSES = 3
+local MAX_OBJECTIVES = 4 -- lines of objectives under the step; past that, "+N more"
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -211,11 +212,17 @@ local function create()
   f.sub:SetPoint("RIGHT", -PADDING, 0)
   f.sub:SetJustifyH("LEFT")
 
+  -- What a quest still needs, one objective a line, while you're doing it.
+  f.objectives = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  f.objectives:SetPoint("RIGHT", -PADDING, 0)
+  f.objectives:SetJustifyH("LEFT")
+  f.objectives:SetSpacing(2)
+
   f.info = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
   f.info:SetPoint("RIGHT", INFO_RIGHT, 0)
   f.info:SetJustifyH("LEFT")
-  for _, fs in ipairs({ f.title, f.step, f.sub, f.info }) do ns.Skin.Text(fs) end
+  for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -263,13 +270,28 @@ local function facing()
   return value
 end
 
+-- The unfinished objectives of a quest in your log, e.g. { "4/8 Wolf Meat", "0/1 Wolf Pelt" }.
+function HUD.Objectives(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  local out = {}
+  for _, o in ipairs(objectives or {}) do
+    if not o.finished and o.text then out[#out + 1] = o.text end
+  end
+  return out
+end
+
 -- The first unfinished objective of a quest in your log, e.g. "4/8 Wolf Meat".
 function HUD.ObjectiveText(questID)
-  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
-  for _, o in ipairs(objectives or {}) do
-    if not o.finished and o.text then return o.text end
-  end
-  return nil
+  return HUD.Objectives(questID)[1]
+end
+
+-- The objectives as the box's lines: as many as fit, then how many more.
+local function objectiveLines(list)
+  if #list <= MAX_OBJECTIVES then return table.concat(list, "\n") end
+  local shown = {}
+  for i = 1, MAX_OBJECTIVES - 1 do shown[i] = list[i] end
+  shown[#shown + 1] = string.format("|cff9d9d9d+%d more|r", #list - #shown)
+  return table.concat(shown, "\n")
 end
 
 -- Where the current step is among the steps to the next stop (a journey) or
@@ -339,29 +361,38 @@ function HUD.Update()
   local sub = frame.stepHidden and "" or frame.subText
   frame.step:SetText(frame.stepHidden and progress.stopText or frame.stepText)
   frame.sub:SetText(sub)
+
+  -- A quest's objectives get their own lines between the step and the status.
+  local objectives = step.stop and step.stop.action and step.stop.action.kind == "complete"
+    and HUD.Objectives(step.stop.action.questID) or {}
+  local objective = objectives[1]
+  local above = sub ~= "" and frame.sub or frame.step
+  frame.objectives:SetText(objectiveLines(objectives))
+  frame.objectives:SetShown(objective ~= nil)
+  frame.objectives:ClearAllPoints()
+  frame.objectives:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -5)
+  frame.objectives:SetPoint("RIGHT", -PADDING, 0)
   frame.info:ClearAllPoints()
-  frame.info:SetPoint("TOPLEFT", sub ~= "" and frame.sub or frame.step, "BOTTOMLEFT", 0, -5)
+  frame.info:SetPoint("TOPLEFT", objective and frame.objectives or above, "BOTTOMLEFT", 0, -5)
   frame.info:SetPoint("RIGHT", INFO_RIGHT, 0)
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
-  local objective = step.stop and step.stop.action and step.stop.action.kind == "complete"
-    and HUD.ObjectiveText(step.stop.action.questID)
   if objective and ns.Nav.InArea() then
     -- Among what you need: no arrow, just how it's going (and how long, at your pace here).
     if ns.Camps.LooksCleared(step.stop) then
-      frame.info:SetText("|cffffd100Camp looks cleared|r  ·  " .. objective .. "     " .. remaining)
+      frame.info:SetText("|cffffd100Camp looks cleared|r     " .. remaining)
     else
       local left = ns.Camps.TimeLeft(step.stop)
-      frame.info:SetText("|cff7fd1aeIn the area|r  ·  " .. objective
+      frame.info:SetText("|cff7fd1aeIn the area|r"
         .. (left and ("  ·  " .. ns.FormatDuration(left) .. " left here") or "") .. "     " .. remaining)
     end
   elseif objective then
     -- On the way from a spot you've cleared to the next, or back to one respawning.
     local respawn = ns.Journey.RespawnIn(step.stop)
-    local lead = respawn > 0 and ("|cff9d9d9dRespawns in " .. ns.FormatDuration(respawn) .. "|r  ·  ")
-      or ns.Journey.ClearedAreas(step.stop) > 0 and "|cff9d9d9dNext spot|r  ·  " or ""
-    frame.info:SetText(lead .. objective .. "     " .. remaining)
+    local lead = respawn > 0 and ("|cff9d9d9dRespawns in " .. ns.FormatDuration(respawn) .. "|r     ")
+      or ns.Journey.ClearedAreas(step.stop) > 0 and "|cff9d9d9dNext spot|r     " or ""
+    frame.info:SetText(lead .. remaining)
   elseif ns.Nav.Interaction() == "fly" then
     frame.info:SetText(string.format("Pick %s on the flight map     %s", step.to.label or "your destination", remaining))
   elseif ns.Nav.Interaction() == "hearth" then
@@ -390,8 +421,9 @@ function HUD.Update()
   -- Grow to fit the text (titles and steps can wrap).
   local function height(fs) return fs:GetStringHeight() or 12 end
   local subHeight = sub ~= "" and (3 + height(frame.sub)) or 0
+  local objectivesHeight = objective and (5 + height(frame.objectives)) or 0
   frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + (trip and 16 or 5) + height(frame.step)
-    + subHeight + 5 + height(frame.info)))
+    + subHeight + objectivesHeight + 5 + height(frame.info)))
 
   local heading = facing()
   -- The compass points the way while you walk; otherwise its circle shows what's ahead.
@@ -429,10 +461,12 @@ ns.Movers.Add({ key = "Directions", label = "Directions", posKey = "hudPos", hom
 function HUD.CompassShown() return frame ~= nil and frame.holder:IsShown() end
 function HUD.Width() return frame and frame.width end
 
--- The directions box's text, top to bottom (for tests).
+-- The directions box's text: title, step, step count, status line, then the
+-- objectives (shown between the step and the status; for tests).
 function HUD.Lines()
   if not frame then return {} end
-  return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText() }
+  return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText(),
+    frame.objectives:IsShown() and frame.objectives:GetText() or "" }
 end
 
 -- Pulses the book button a few times: the journey has changed, its overview is a click away.
