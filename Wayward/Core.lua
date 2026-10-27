@@ -495,7 +495,8 @@ SlashCmdList.WAYWARD = function(msg)
     end
     local questQuery = rest:match("^quest%s+(.+)$")
     if questQuery then
-      local id = tonumber(questQuery) or tonumber(questQuery:match("quest:(%d+)"))
+      local kind, id = ns.Search.Parse(questQuery)
+      if kind and kind ~= "quest" then id = nil end
       local matches = id and { { id = id } } or ns.Quests.FindQuests(questQuery)
       if #matches == 0 then ns.print("no quest called " .. questQuery) end
       for i = 1, math.min(#matches, 3) do

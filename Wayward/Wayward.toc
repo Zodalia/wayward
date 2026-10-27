@@ -25,6 +25,7 @@ Data\ClassSpells.lua
 Sources\Questie.lua
 Sources\QuestieLive.lua
 Sources\Spells.lua
+Search.lua
 Harvest.lua
 Network.lua
 Hearth.lua
