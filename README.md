@@ -249,16 +249,21 @@ with their own jobs:
 
 - **Your journey**: the journey you're on, with its icon, title, the current
   stop ("Stop 3 of 5 · Find Shimmerweed in Dun Morogh"), stops done and the
-  time remaining, a progress bar, a map of what's left, **Continue journey**
-  (closes the window and makes sure the directions box is up) and **View
-  details** (the journey overview). On plain directions it shows the
+  time remaining (travel plus the objectives still to do, at your time per
+  quest), a progress bar, what comes next ("Then: Do Frostmane Hold, and 3
+  more stops"), a map of what's left, **Continue journey** (closes the window
+  and makes sure the directions box is up) and **View details** (the journey
+  overview). A detour never renames a journey: one started from a suggestion
+  keeps its name, and one you put together yourself is named after its
+  quests ("The Perfect Stout and 2 more quests"). On plain directions it shows the
   destination and "Directions"; with nothing on it is one line, and the
   suggestions move up.
 - **Something to do next**: the suggestions as three equal cards per page,
   each with its icon, a tag for its role (QUESTING, EXPLORE, ALTERNATIVE), the
-  title, a line of why in plain words, up to three facts (where or "Nearby",
-  level, travel time) and **Start journey** (**Directions** when there is only
-  a route). The card art comes from the client when it has the Adventure
+  title, a line of why in plain words, a line on what starting it does, up
+  to three facts in one order ("Level 8-10", "Nearby" or "~4 min away",
+  "11 quests"; XP is in the tooltip) and **Start journey** (**Directions**
+  when there is only a route). The card art comes from the client when it has the Adventure
   Guide textures (Forever does); otherwise the cards are plain parchment.
   Hover a card for every detail, its stops and steps; the tooltip of a card,
   or of any row with directions or a journey, has a small map under it with
@@ -347,11 +352,15 @@ haven't been to, a notable quest; a card shown refresh after refresh and
 never started slowly loses a little, down to 60%, and is never hidden for
 it) and *intent* (15%: the time budget, the kind of journey you start most,
 learned per character, and the zone of the journey you're on). Each page of
-three cards is picked by *role* rather than by rank: a **continuation** (the
-most relevant card whose strongest part is progression), an **exploration**
-(the most relevant whose strongest part is novelty, in another zone or of
-another kind) and an **alternative** (the most relevant of a third kind);
-later pages repeat that over what is left. Each card says in one sentence
+three cards mixes kinds rather than ranking them on one number: the most
+relevant card that carries on with something, the most relevant new thing in
+another zone or of another kind, and the most relevant of a third kind; later
+pages repeat that over what is left. A card's tag says what it is about,
+whichever place it got: QUESTING when its strongest part is progression,
+EXPLORE when it is novelty, ALTERNATIVE otherwise. Distance counts in the
+relevance but never picks the tag. Below level 10, another race's starting
+zone across the sea (Teldrassil from Dun Morogh) is never suggested; a
+neighbour by road or tram (Elwynn Forest) can be. Each card says in one sentence
 what its two strongest parts are ("Picks up where your log left off, right
 nearby"; "A zone you haven't seen, 6 quests at your level"), and the tooltip
 has the estimate underneath (XP, the travel and the time per quest). XP comes
@@ -362,7 +371,9 @@ without quest data dungeons are ranked by level fit and travel time; the
 summary line says which. Quests already in your log count at full XP, with
 only the time left for them; a dungeon's quests in your log count toward it.
 A card with a quest your journey already has isn't shown until the journey
-is done. The Quests page has every hub and your whole log. `/ww debug` shows
+is done, and neither is one with a quest from a journey you set aside: a
+Good to know tile offers to resume that journey instead. Tiles leave out
+what the journey already does (a hand-in that is one of its stops). The Quests page has every hub and your whole log. `/ww debug` shows
 how long a refresh took; `/ww debug cards` prints each card's role,
 relevance and parts, and each observation.
 
@@ -380,7 +391,8 @@ stops as a detour), an undiscovered flight path within about 3 minutes,
 gear at 75% or lower with a repairer under 2 minutes away, your class
 trainer at an even level before your first visit or two levels after the
 last one, spells you can't afford yet, new spells coming at the next level
-or two (and where your trainer is), and a vendor under 2 minutes away. The
+or two (naming your trainer, with the Trainers page to look at rather than
+directions there), and a vendor under 2 minutes away. The
 time budget doesn't filter them.
 
 **Notable quests.** XP isn't everything: Wayward also asks "am I missing

@@ -271,7 +271,7 @@ function Panel.Choose(r)
   local a = ns.Nav.active
   local now = a.journey and string.format("You're on a journey: %s.", a.title or "")
     or string.format("You have directions to %s.", a.title or "")
-  StaticPopup_Show("WAYWARD_SWITCH", now, r.title or "", { result = r })
+  ns.Nav.CancelLast(StaticPopup_Show("WAYWARD_SWITCH", now, r.title or "", { result = r }))
 end
 
 -- What clicking a result does (rows, cards and tiles): start its directions

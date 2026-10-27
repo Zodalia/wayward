@@ -195,6 +195,19 @@ end
 -- Starting something new while a journey is on asks: add it as a detour, or
 -- switch to it (the journey on now is set aside, to resume later; see
 -- Nav.SetAside)? Switches straight away where the game's dialogs aren't there.
+-- A three-button question with Cancel last on screen: Add as detour, Switch
+-- journey, Cancel. The game's second button is the one Escape answers, so
+-- Cancel stays button2 and only the buttons' places change.
+function Nav.CancelLast(dialog)
+  if not (dialog and dialog.button1 and dialog.button2 and dialog.button3 and dialog.button3:IsShown()) then return end
+  pcall(function()
+    dialog.button3:ClearAllPoints()
+    dialog.button3:SetPoint("LEFT", dialog.button1, "RIGHT", 13, 0)
+    dialog.button2:ClearAllPoints()
+    dialog.button2:SetPoint("LEFT", dialog.button3, "RIGHT", 13, 0)
+  end)
+end
+
 local function ask(label, detour, start)
   local function switch()
     if Nav.active then Nav.SetAside() end
@@ -209,7 +222,7 @@ local function ask(label, detour, start)
     OnAlt = function(_, data) data.switch() end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
-  StaticPopup_Show("WAYWARD_TRIP", Nav.active.title, label, { add = detour, switch = switch })
+  Nav.CancelLast(StaticPopup_Show("WAYWARD_TRIP", Nav.active.title, label, { add = detour, switch = switch }))
 end
 
 -- A stop for a plain destination (a trainer, a vendor, a hub); someone to

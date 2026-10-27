@@ -6973,6 +6973,44 @@ do
     ns.Observations.Update()
   end
 
+  -- Find's questions read as questions: no "slain", mobs in the plural.
+  local Q = ns.Find.ObjectiveQuestion
+  check(Q("3/8 Frostmane Headhunter slain") == "Where do I find Frostmane Headhunters?"
+    and Q("Frostmane Headhunter slain: 3/8") == "Where do I find Frostmane Headhunters?",
+    "a kill objective asks for the mobs: " .. Q("3/8 Frostmane Headhunter slain"))
+  check(Q("Shimmerweed: 0/6") == "Where do I find Shimmerweed?" and Q("Kobold Vermin slain: 0/10") == "Where do I find Kobold Vermin?"
+    and Q("Young Wolf slain") == "Where do I find Young Wolves?" and Q("Dark Iron Spy slain") == "Where do I find Dark Iron Spies?",
+    "items as they are; a few plurals that aren't just an s")
+  check(Q(nil, "The Perfect Stout") == "Where do I go for The Perfect Stout?", "no objective text: where to go for the quest")
+
+  -- The switch question: Cancel last on screen, still the button Escape answers.
+  local function fakeButton()
+    local b = {}
+    function b.ClearAllPoints(self) self.after = nil end
+    function b.SetPoint(self, _, rel) self.after = rel end
+    function b.IsShown() return true end
+    return b
+  end
+  local dialog = { button1 = fakeButton(), button2 = fakeButton(), button3 = fakeButton() }
+  ns.Nav.CancelLast(dialog)
+  check(dialog.button3.after == dialog.button1 and dialog.button2.after == dialog.button3,
+    "Add as detour, Switch journey, then Cancel")
+  ns.Nav.CancelLast(nil)
+  check(true, "no dialog: nothing to move")
+
+  -- Walking to an objective area names the place, not the quest.
+  local area = ns.Geo.Node(1426, 0.9, 0.9, "The Perfect Stout")
+  local work = { node = area, text = "Do The Perfect Stout", action = { kind = "complete", questID = 777 } }
+  local walk = { steps = { { mode = "walk", from = here, to = area, seconds = 30, stop = work } }, seconds = 30 }
+  check(ns.Router.Describe(walk, 1, true) == "Walk to the area for The Perfect Stout",
+    "no place name known: the area for the quest: " .. ns.Router.Describe(walk, 1, true))
+  ns.db.npcs[990778] = { name = "Rejold", kinds = { vendor = true }, faction = "Alliance", mapID = 1426, x = 0.9, y = 0.9,
+    subZone = "Shimmer Ridge" }
+  ns.Fire("DATA_CHANGED")
+  check(ns.Router.Describe(walk, 1, true) == "Walk to Shimmer Ridge", "a known place: its name: " .. ns.Router.Describe(walk, 1, true))
+  ns.db.npcs[990778] = nil
+  ns.Fire("DATA_CHANGED")
+
   -- Remaining time counts the quest work left, not only the travel.
   local savedObjectives = C_QuestLog.GetQuestObjectives
   C_QuestLog.GetQuestObjectives = function(id)
