@@ -79,6 +79,11 @@ window's title bar, to open them.
 `/ww options` opens the panel, `/ww help` lists the commands, `/ww welcome`
 shows the introduction again, `/ww reset` puts every window back.
 
+## Design
+
+The pillars, the vocabulary (journey, stop, step, detour) and the 0.5
+rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
+
 ## What it does
 
 `Wayward/` is the addon; `/wayward` (or `/ww`) opens the panel. In detail:
