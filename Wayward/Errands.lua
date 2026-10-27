@@ -1,11 +1,12 @@
 local _, ns = ...
 
--- Errands: stops you add to a trip for yourself, not for a quest (repair,
--- sell, mail, bank, ...), like a road map's "add a stop: petrol". Each kind
--- lists the places that add least to the trip on now (OnTheWay.Added), from
--- NPCs you've talked to (Harvest.lua), the data sources' NPC flags and, for
--- mailboxes, the ones you've opened and the sources' objects named "Mailbox".
--- UI/ErrandPicker.lua is the list behind the directions box's + button.
+-- Errands: detours you add to a journey for yourself, not for a quest
+-- (repair, sell, mail, bank, ...), like a road map's "add a stop: petrol".
+-- Each kind lists the places that add least to the journey on now
+-- (OnTheWay.Added), from NPCs you've talked to (Harvest.lua), the data
+-- sources' NPC flags and, for mailboxes, the ones you've opened and the
+-- sources' objects named "Mailbox". UI/ErrandPicker.lua is the list behind
+-- the directions box's + button.
 
 local Errands = {}
 ns.Errands = Errands
@@ -189,7 +190,7 @@ ns.Listen("SOURCES_CHANGED", function() sourceIndex, mailboxIndex = {}, nil end)
 
 local cache = {}
 
--- The NPCs the trip already goes to, and its objects' places (mailboxes).
+-- The NPCs the journey already goes to, and its objects' places (mailboxes).
 local function inTrip(a)
   local names, objects = {}, {}
   local root = a.journey and (a.journey.root or a.journey.def)
@@ -209,7 +210,7 @@ local function inTrip(a)
   end
 end
 
--- A kind's places for the trip on now, least out of the way first:
+-- A kind's places for the journey on now, least out of the way first:
 -- { {npc?, node, place, extra (seconds it adds), inTrip}, ... }, and a line
 -- to show instead when there are none.
 function Errands.Get(key)
@@ -255,7 +256,7 @@ function Errands.Get(key)
     if key == "mailbox" then
       empty = "No mailboxes known yet. Open one once and Wayward remembers it, or install " .. ns.Data.ADDON .. "."
     else
-      empty = string.format("None known near your trip. Talk to one once and Wayward remembers where they are, "
+      empty = string.format("None known near your journey. Talk to one once and Wayward remembers where they are, "
         .. "or install %s.", ns.Data.ADDON)
     end
   end
@@ -276,7 +277,7 @@ function Errands.Stop(key, p)
   return { node = node or p.node, text = kind.text }
 end
 
--- Adds a place to the trip. Returns true when the trip changed.
+-- Adds a place to the journey as a detour. Returns true when the journey changed.
 function Errands.Add(key, p)
   local kind = byKey[key]
   if not (kind and p) or p.inTrip then return false end

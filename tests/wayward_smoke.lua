@@ -1191,9 +1191,19 @@ player.x, player.y = 0.75, 0.75
 ns.HUD.Update()
 fire("QUEST_ACCEPTED", 103)
 check(midStop.done, "middle stop done")
+check(entrance.action and entrance.action.kind == "enter" and entrance.action.dungeon == "Test Dungeon"
+  and journey.def.finish == nil and journey.root.stops[4] == entrance,
+  "the finish \"Enter X\" is an ordinary stop of the enter kind, last of the stops planned with it")
 player.mapID, player.x, player.y = 1453, 0.5, 0.5
 ns.HUD.Update()
-check(ns.Nav.active == nil, "reaching the final stop ends the journey")
+check(ns.Nav.active and ns.Nav.Waiting() and ns.Nav.Interaction() == "enter"
+  and ns.HUD.Lines()[4]:find("go in", 1, true), "at the entrance the journey waits for you to go in: " .. ns.HUD.Lines()[4])
+local savedInstance = { IsInInstance, GetInstanceInfo }
+IsInInstance = function() return true, "party" end
+GetInstanceInfo = function() return "Test Dungeon", "party", 1, "Normal", 5, 0, false, 1 end
+fire("PLAYER_ENTERING_WORLD")
+IsInInstance, GetInstanceInfo = savedInstance[1], savedInstance[2]
+check(ns.Nav.active == nil and entrance.done, "loading into the dungeon ends the journey")
 
 io.write("hearthstone\n")
 do
@@ -1713,7 +1723,7 @@ do
   local last = dj and dj.stops[#dj.stops]
   local picked = {}
   for _, st in ipairs(dj and dj.stops or {}) do
-    if st.action then picked[#picked + 1] = st.action.kind .. st.action.questID end
+    if st.action and st.action.questID then picked[#picked + 1] = st.action.kind .. st.action.questID end
   end
   table.sort(picked)
   check(last and last.text == "Enter The Deadmines" and table.concat(picked, ",") == "pickup20,pickup21",
@@ -2262,7 +2272,7 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Blackwood", stops = qs }))
   check(ns.Nav.CurrentStep().stop.action.kind == "item", "first: collect the sample")
   ns.Nav.MoveOn()
-  check(ns.Nav.CurrentStep().stop == qs[1] and chat[#chat]:find("nothing else on the trip to do first", 1, true),
+  check(ns.Nav.CurrentStep().stop == qs[1] and chat[#chat]:find("nothing else on the journey to do first", 1, true),
     "move on: everything after needs the sample, so nothing can come first")
   bags[500] = 1
   fire("BAG_UPDATE_DELAYED")
@@ -2478,13 +2488,13 @@ do
   end
   fire("QUEST_ACCEPTED", 501)
   runTimers()
-  check(shown and shown.text:find("You picked up Westfall Rumours.\nChain: 3 more quests (levels 20-24), ends in The Deadmines.\n\nStart a trip", 1, true),
+  check(shown and shown.text:find("You picked up Westfall Rumours.\nChain: 3 more quests (levels 20-24), ends in The Deadmines.\n\nStart a journey", 1, true),
     "the pickup question says it leads to a long chain: " .. tostring(shown and shown.text))
   shown = nil
   log = { 98400 }
   fire("QUEST_ACCEPTED", 98400)
   runTimers()
-  check(shown and shown.text:find("You picked up Ledger Errand.\n\nStart a trip", 1, true),
+  check(shown and shown.text:find("You picked up Ledger Errand.\n\nStart a journey", 1, true),
     "but not about one more quest: " .. tostring(shown and shown.text))
   ns.Nav.Stop()
   StaticPopupDialogs, StaticPopup_Show = nil, nil
@@ -2696,8 +2706,8 @@ do
   fire("QUEST_ACCEPTED", 40)
   runTimers()
   check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("Murloc Menace", 1, true)
-    and shown.text:find("more), or start a new trip", 1, true) and shown.data,
-    "with a trip on: add it, with the time it adds, or a new trip: " .. tostring(shown and shown.text))
+    and shown.text:find("more), or start a new journey", 1, true) and shown.data,
+    "with a journey on: add it, with the time it adds, or a new journey: " .. tostring(shown and shown.text))
   StaticPopupDialogs.WAYWARD_PICKUP_ADD.OnAccept(nil, shown.data)
   check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Add to trip: both quests in it")
 
@@ -2885,8 +2895,8 @@ do
     "a stop to talk to the repairer: " .. tostring(added and added.text))
   hud.add.scripts.OnClick(hud.add)
   ns.ErrandPicker.Select("repair")
-  check(ns.ErrandPicker.Rows()[1].time:find("in your trip", 1, true) and not ns.ErrandPicker.AddRow(1),
-    "listed again as in your trip, and not added twice: " .. rowText())
+  check(ns.ErrandPicker.Rows()[1].time:find("in your journey", 1, true) and not ns.ErrandPicker.AddRow(1),
+    "listed again as in your journey, and not added twice: " .. rowText())
   -- The last kind you added from is where it opens next time.
   ns.ErrandPicker.Toggle()
   ns.ErrandPicker.Toggle()
@@ -2902,8 +2912,8 @@ do
   check(box and box.node.object and not box.action, "a mailbox stop has nobody to talk to")
   hud.add.scripts.OnClick(hud.add)
   ns.ErrandPicker.Select("mailbox")
-  check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].time:find("in your trip", 1, true),
-    "and the mailbox shows as in your trip: " .. rowText())
+  check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].time:find("in your journey", 1, true),
+    "and the mailbox shows as in your journey: " .. rowText())
   ns.ErrandPicker.Hide()
 
   -- Plain directions become a trip with the place added.
@@ -3058,7 +3068,7 @@ do
 
   local before = #chat
   SlashCmdList.WAYWARD("sounds")
-  check(chatSince(before):find("step (a stop added to your trip): 1. IG_ABILITY_PAGE_TURN", 1, true),
+  check(chatSince(before):find("step (a stop added to your journey): 1. IG_ABILITY_PAGE_TURN", 1, true),
     "/ww sounds lists the moments and what each plays")
   before = #chat
   SlashCmdList.WAYWARD("sounds step")
@@ -3158,7 +3168,7 @@ do
   SlashCmdList.WAYWARD("sounds use step id 567")
   before = #chat
   SlashCmdList.WAYWARD("sounds")
-  check(ns.Sounds.Kit("step") == 567 and chatSince(before):find("step (a stop added to your trip): #567 (not on the list)", 1, true),
+  check(ns.Sounds.Kit("step") == 567 and chatSince(before):find("step (a stop added to your journey): #567 (not on the list)", 1, true),
     "use step id 567 keeps it, and the list shows it")
 
   -- export: the choices on one line.
@@ -3569,7 +3579,7 @@ do
   check(#stops == 5 and order.pickup53 < order.complete53 and order.complete53 < order.turnin53
     and order.complete50 < order.turnin50 and not order.pickup50,
     "added quests keep their own order inside the one trip: " .. kinds(stops))
-  check(ns.Nav.active.title == "Your trip", "the trip is called Your trip once it holds more")
+  check(ns.Nav.active.title == "Your journey", "the journey is called Your journey once it holds more")
 
   -- In trip takes it out; the hand-in row can join too.
   byID(ns.QuestsPage.Results(""), "log50").actions[1].run()
@@ -4365,7 +4375,7 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
   ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
   check(labels() == "Shore camp,Bank", "an added stop goes where it fits best, here first: " .. labels())
-  check(ns.Nav.active.title == "Your trip", "the trip is renamed: " .. ns.Nav.active.title)
+  check(ns.Nav.active.title == "Your journey", "the journey is renamed: " .. ns.Nav.active.title)
   check(not ns.JourneyOverview.IsShown() and ns.HUD.Flashing(),
     "adding to a trip doesn't open the overview; the book button flashes instead")
   local hud = ns.HUD.Frame()
@@ -4377,30 +4387,35 @@ do
     "with the overview open it shows the new stop, no flash")
   ns.Nav.Stop()
 
-  -- Starting something while a trip is on asks: add, replace or cancel.
+  -- Starting something while a journey is on asks: add as a detour, switch journey, or cancel.
   local shown
   StaticPopupDialogs = {}
   StaticPopup_Show = function(which, a, b, data) shown = { which = which, trip = a, label = b, data = data } end
+  ns.charDB.journeys = nil
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Stormwind errands", stops = { stopAt(1453, 0.5, 0.5, "Bank") } }))
   local other = ns.Journey.Plan(here, { title = "Shore run", stops = { stopAt(1439, 0.55, 0.5, "Shore camp") } })
   ns.Nav.StartJourney(other)
-  check(shown and shown.which == "WAYWARD_TRIP" and shown.trip == "Stormwind errands" and shown.label == "Shore run",
-    "starting a journey during a trip asks first")
-  check(ns.Nav.active.title == "Stormwind errands", "nothing changes until you answer (Cancel keeps the trip)")
+  check(shown and shown.which == "WAYWARD_TRIP" and shown.trip == "Stormwind errands" and shown.label == "Shore run"
+    and StaticPopupDialogs.WAYWARD_TRIP.button1 == "Add as detour" and StaticPopupDialogs.WAYWARD_TRIP.button3 == "Switch journey"
+    and StaticPopupDialogs.WAYWARD_TRIP.button2 == "Cancel", "starting a journey during a journey asks first: detour, switch or cancel")
+  check(ns.Nav.active.title == "Stormwind errands", "nothing changes until you answer (Cancel keeps the journey)")
   shown.data.add()
-  check(labels() == "Shore camp,Bank", "Add to trip merges it into the current trip")
+  check(labels() == "Shore camp,Bank", "Add as detour merges it into the current journey")
   shown = nil
   local trainer = ns.Trainers.Results()[1]
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   check(shown and shown.label == trainer.title, "plain directions ask too")
-  shown.data.replace()
-  check(ns.Nav.active.title == trainer.title and not ns.Nav.active.journey, "Replace starts the new directions instead")
+  shown.data.switch()
+  check(ns.Nav.active.title == trainer.title and not ns.Nav.active.journey, "Switch journey starts the new directions instead")
+  check(#ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "Your journey"
+    and ns.Nav.SetAsideList()[1].stops == 2, "and sets the journey aside, with its 2 stops left")
+  ns.charDB.journeys = nil
 
-  -- Plain directions become a trip when something is added.
+  -- Plain directions become a journey when something is added.
   shown = nil
   ns.Nav.AddToTrip({ stopAt(1439, 0.55, 0.5, "Shore camp") }, "Shore camp")
-  check(not shown and ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2,
-    "adding to plain directions makes a trip with both: " .. (ns.Nav.active.journey and labels() or "-"))
+  check(not shown and ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2 and ns.Nav.active.journey.kind == "custom",
+    "adding to plain directions makes a custom journey with both: " .. (ns.Nav.active.journey and labels() or "-"))
 
   -- The same quest isn't added twice; a row's stops can be added (shift-click).
   ns.Nav.Stop()
@@ -4555,8 +4570,8 @@ do
   check(f.moveOn:IsShown() and f.skip:IsShown() and f.next == nil and f.prev == nil,
     "a trip's box has move on and skip, no next or back")
   local function tip(b) b.scripts.OnEnter(b) return GameTooltip:GetText() end
-  check(tip(f.moveOn) == "Move to the next step and do this later" and tip(f.skip) == "Skip this step"
-    and tip(f.list) == "See full journey", "the buttons' tooltips")
+  check(tip(f.moveOn) == "Do this stop later" and tip(f.skip) == "Skip this stop"
+    and tip(f.list) == "View details" and tip(f.close) == "End journey", "the buttons' tooltips")
 
   -- Move on, not in a camp: this stop later, after the next one that doesn't need it.
   check(ns.Nav.MoveOnKind() == "later", "move on would do it later")
@@ -4605,6 +4620,7 @@ do
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   ns.HUD.Update()
   check(not f.moveOn:IsShown() and not f.skip:IsShown() and ns.Nav.MoveOnKind() == nil, "plain directions: no move on or skip")
+  check(tip(f.close) == "Stop directions", "and the x stops directions, not a journey")
   ns.Nav.Stop()
 end
 ---------------------------------------------------------------- move on and skip (end)
@@ -5578,6 +5594,335 @@ do
   refreshData()
 end
 ---------------------------------------------------------------- game and season (end)
+-- ===== stream C: journey model =====
+do
+  io.write("stream C: journey model\n")
+  ns.Nav.Stop()
+  runTimers()
+  ns.charDB.journeys = nil
+  ns.charDB.detail = nil
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local function visit(x, label, mapID) return { node = ns.Geo.Node(mapID or 1433, x, 0.5, label), text = "Visit " .. label } end
+  local function labels()
+    local out = {}
+    for _, st in ipairs(ns.Nav.active and ns.Nav.active.journey and ns.Nav.active.journey.stops or {}) do
+      out[#out + 1] = st.node.label
+    end
+    return table.concat(out, ",")
+  end
+  local function goTo(stop)
+    player.mapID, player.x, player.y = stop.node.mapID, stop.node.x, stop.node.y
+    ns.HUD.Update()
+  end
+
+  -- Explore a zone: planned with a text of its own, done once you're in the zone.
+  local explore = { node = ns.Geo.Node(1437, 0.5, 0.5, "Wetlands"), action = { kind = "explore", mapID = 1437 } }
+  local after = visit(0.5, "Wetlands shore", 1437)
+  after.node = ns.Geo.Node(1437, 0.5, 0.9, "Wetlands shore")
+  local journey = ns.Journey.Plan(here, { title = "See the Wetlands", kind = "zone",
+    icon = "Interface\\Icons\\INV_Misc_Map_01", stops = { explore, after } })
+  check(journey and journey.stops[1] == explore and explore.text == "Explore Wetlands"
+    and ns.Router.Describe(journey, #journey.steps - 1) ~= nil, "an explore stop plans, named after its zone: " .. tostring(explore.text))
+  check(journey.kind == "zone" and journey.icon == "Interface\\Icons\\INV_Misc_Map_01" and journey.def.kind == "zone"
+    and journey.root.icon == journey.icon, "the journey carries its kind and icon")
+  ns.Nav.StartJourney(journey)
+  check(ns.Journey.PendingAction({ stop = explore }) == explore, "an explore stop waits like a quest stop")
+  player.mapID, player.x, player.y = 1437, 0.5, 0.97 -- just inside the Wetlands, nowhere near the stop
+  ns.HUD.Update()
+  check(explore.done and ns.Nav.active and ns.Nav.HeadingFor() == after,
+    "being anywhere in the zone does the explore stop; on to the next")
+  ns.Nav.Stop()
+
+  -- A zone inside the one to explore counts (the map's parent); flying over it doesn't.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local explore2 = { node = ns.Geo.Node(1437, 0.5, 0.5, "Wetlands"), action = { kind = "explore", mapID = 1437 } }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Wetlands again", stops = { explore2, visit(0.5, "Shore 2", 1437) } }))
+  local realBest, realInfo = C_Map.GetBestMapForUnit, C_Map.GetMapInfo
+  C_Map.GetBestMapForUnit = function() return 99001 end
+  C_Map.GetMapInfo = function(id)
+    if id == 99001 then return { mapID = 99001, name = "Menethil Harbor", parentMapID = 1437 } end
+    return realInfo(id)
+  end
+  UnitOnTaxi = function() return true end
+  fire("ZONE_CHANGED_NEW_AREA")
+  check(not explore2.done, "flying over the zone doesn't count")
+  UnitOnTaxi = function() return false end
+  fire("ZONE_CHANGED_NEW_AREA")
+  check(explore2.done, "a subzone of the zone (its parent map) counts, on the zone change event")
+  C_Map.GetBestMapForUnit, C_Map.GetMapInfo = realBest, realInfo
+  ns.Nav.Stop()
+
+  -- Enter a dungeon: an ordinary stop that can sit in the middle, done when you load in.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local enter = { node = ns.Geo.Node(1433, 0.56, 0.5, "The Deadmines entrance"),
+    action = { kind = "enter", dungeon = "The Deadmines" } }
+  local a, b = visit(0.53, "A"), visit(0.6, "B")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Deadmines day", kind = "dungeon", stops = { b, enter, a } }))
+  check(labels() == "A,The Deadmines entrance,B" and enter.text == "Enter The Deadmines",
+    "an enter stop is planned where it fits, not last: " .. labels())
+  goTo(a)
+  goTo(enter)
+  check(ns.Nav.Waiting() and ns.Nav.Interaction() == "enter" and ns.HUD.Lines()[4]:find("go in", 1, true),
+    "at the entrance: go in: " .. ns.HUD.Lines()[4])
+  check(not ns.Nav.EnteredInstance("Wailing Caverns") and not enter.done, "loading into another instance isn't it")
+  check(ns.Nav.EnteredInstance("Deadmines") and enter.done and ns.Nav.active and ns.Nav.HeadingFor() == b,
+    "loading into the dungeon (\"The\" or not) does the stop; the journey goes on to B")
+  ns.Nav.Stop()
+  -- A save from before: its `finish` loads as an enter stop after the rest.
+  local old = ns.Journey.Load({ title = "Old run", stops = { { node = { mapID = 1433, x = 0.53, y = 0.5, label = "A" }, text = "Visit A" } },
+    finish = { node = { mapID = 1453, x = 0.5, y = 0.5, label = "The Stockade" }, text = "Enter The Stockade" } })
+  check(old.finish == nil and #old.stops == 2 and old.stops[2].action and old.stops[2].action.kind == "enter"
+    and old.stops[2].action.dungeon == "The Stockade" and old.stops[2].after[1] == old.stops[1],
+    "an older save's finish loads as an enter stop that comes after the others")
+  local hub = ns.Journey.Plan(here, { title = "Hub", stops = {}, finish = { node = a.node, text = "Pick up quests here: X" } })
+  check(hub and #hub.stops == 1 and not hub.stops[1].action, "a finish that isn't a dungeon is a plain stop, done on arrival")
+
+  -- Learn: class training, from a result with spells (the training card); done once something is learned.
+  local trainer = ns.Geo.Node(1433, 0.54, 0.5, "Demisette Cloyce")
+  trainer.npc = "Demisette Cloyce"
+  local stops = ns.Nav.StopsFor({ title = "Train 2 new spells in Lakeshire", goal = trainer, spells = { "Life Tap", 136126 } })
+  check(#stops == 1 and stops[1].action.kind == "learn" and stops[1].text == "Train your new spells at Demisette Cloyce"
+    and stops[1].npc == "Demisette Cloyce", "a result with spells becomes a learn stop: " .. tostring(stops[1] and stops[1].text))
+  local learn = stops[1]
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Training", stops = { learn, visit(0.6, "After") } }))
+  goTo(learn)
+  check(ns.Nav.Waiting() and ns.Nav.TargetNPC() == "Demisette Cloyce" and ns.HUD.Lines()[4]:find("train your spells", 1, true),
+    "at the trainer: talk to them and train your spells: " .. ns.HUD.Lines()[4])
+  local savedUnitName = UnitName
+  UnitName = function(unit) if unit == "npc" then return "Demisette Cloyce" end return "Zodalia" end
+  fire("TRAINER_SHOW")
+  check(not learn.done, "opening the trainer alone doesn't finish it (nothing learned yet)")
+  SERVICES[2][2] = "used" -- bought Life Tap
+  fire("TRAINER_UPDATE")
+  check(learn.done and ns.Nav.active and ns.Nav.HeadingFor().node.label == "After",
+    "learning a listed spell finishes the stop; on to the next")
+  SERVICES[2][2] = "available"
+  fire("TRAINER_CLOSED")
+  runTimers()
+  ns.Nav.Stop()
+  -- Any new spell counts when none are listed; a listed spell already known counts at once.
+  local any = { node = trainer, npc = trainer.npc, text = "Train at Demisette Cloyce", action = { kind = "learn", spells = {}, npc = trainer.npc } }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Training 2", stops = { any, visit(0.6, "After") } }))
+  goTo(any)
+  fire("TRAINER_SHOW")
+  SERVICES[1][2] = "used" -- bought Corruption
+  fire("SPELLS_CHANGED")
+  check(any.done, "with no spells listed, any spell bought at the trainer finishes it")
+  SERVICES[1][2] = "unavailable"
+  fire("TRAINER_CLOSED")
+  runTimers()
+  ns.Nav.Stop()
+  local known = { node = trainer, npc = trainer.npc, action = { kind = "learn", spells = { 136126 }, npc = trainer.npc } }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Training 3", stops = { known, visit(0.6, "After") } }))
+  check(known.text == "Train your new spells at Demisette Cloyce", "a learn stop without text names its trainer")
+  goTo(known)
+  local savedKnown = IsPlayerSpell
+  IsPlayerSpell = function(id) return id == 136126 end
+  fire("TRAINER_SHOW")
+  check(known.done, "a listed spell you already know finishes it as the trainer opens")
+  IsPlayerSpell = savedKnown
+  fire("TRAINER_CLOSED")
+  runTimers()
+  ns.Nav.Stop()
+  -- Where the client can't show the trainer's list, talking to them has to do.
+  local fallback = { node = trainer, npc = trainer.npc, action = { kind = "learn", spells = { "Life Tap" }, npc = trainer.npc } }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Training 4", stops = { fallback, visit(0.6, "After") } }))
+  goTo(fallback)
+  local savedNum = GetNumTrainerServices
+  GetNumTrainerServices = nil
+  check(not ns.Nav.CanWatchTraining(), "without the trainer API, training can't be watched")
+  fire("TRAINER_SHOW")
+  check(fallback.done, "so talking to the trainer finishes the stop")
+  GetNumTrainerServices = savedNum
+  UnitName = savedUnitName
+  fire("TRAINER_CLOSED")
+  runTimers()
+  ns.Nav.Stop()
+
+  -- Kind and icon through save, load, extend and re-plan; the kinds set here.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local zone = ns.Journey.Plan(here, { title = "Zone", kind = "zone", icon = "Interface\\Icons\\INV_Misc_Map_01",
+    stops = { visit(0.53, "A"), visit(0.56, "B") } })
+  local saved = ns.Journey.Save(zone)
+  check(saved.kind == "zone" and saved.icon == "Interface\\Icons\\INV_Misc_Map_01" and saved.finish == nil, "Save keeps the kind and icon")
+  local loaded = ns.Journey.Load(saved)
+  local resumed = ns.Journey.Resume(loaded, here)
+  check(loaded.kind == "zone" and resumed and resumed.kind == "zone" and resumed.icon == saved.icon, "Load and Resume keep them")
+  ns.Journey.Extend(zone, { visit(0.59, "C") })
+  local replanned = ns.Journey.Replan(zone, here)
+  check(replanned and replanned.kind == "zone" and replanned.icon == saved.icon and #replanned.stops == 3,
+    "Extend and Replan keep them")
+  ns.Nav.StartJourney(replanned)
+  ns.Nav.AddToTrip({ visit(0.62, "D") }, "D")
+  check(ns.Nav.active.journey.kind == "zone" and ns.Nav.active.title == "Your journey", "a detour keeps the journey's kind")
+  ns.Nav.Stop()
+  ns.Nav.AddToTrip({ visit(0.53, "Alone") }, "Alone")
+  check(ns.Nav.active and ns.Nav.active.journey.kind == "custom", "a detour with nothing on starts a custom journey")
+  ns.Nav.Stop()
+  local offer = ns.Nav.PickupOffer({ 1 })
+  check(offer and offer.journey.kind == "quest" and offer.journey.icon == "Interface\\GossipFrame\\AvailableQuestIcon",
+    "a picked-up quest's journey is of the quest kind")
+  check(ns.Nav.AddDetour == ns.Nav.AddToTrip, "Nav.AddDetour is Nav.AddToTrip")
+
+  -- Nav.Progress: the one count for the directions box and the home screen.
+  local p1, p2, p3 = visit(0.53, "P1"), visit(0.56, "P2"), visit(0.59, "P3")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Progress", kind = "custom", stops = { p1, p2, p3 } }))
+  local p = ns.Nav.Progress()
+  check(p and p.done == 0 and p.total == 3 and p.stopIndex == 1 and p.stopText == "Visit P1" and p.seconds > 0
+    and p.kind == "custom" and p.title == "Progress" and not p.directions,
+    string.format("progress at the start: %d of %d, stop %d (%s)", p.done, p.total, p.stopIndex, tostring(p.stopText)))
+  goTo(p1)
+  p = ns.Nav.Progress()
+  check(p.done == 1 and p.total == 3 and p.stopIndex == 2 and p.stopText == "Visit P2",
+    string.format("after a stop: %d of %d, stop %d (%s)", p.done, p.total, p.stopIndex, tostring(p.stopText)))
+  check(ns.HUD.Lines()[1]:find("1 of 3 done", 1, true), "the directions box shows the same count: " .. ns.HUD.Lines()[1])
+  ns.Nav.Drop(p2)
+  p = ns.Nav.Progress()
+  check(p.done == 1 and p.total == 2 and p.stopIndex == 2 and p.stopText == "Visit P3",
+    string.format("a skipped stop isn't counted: %d of %d, stop %d", p.done, p.total, p.stopIndex))
+  ns.Nav.Stop()
+  local dest = ns.Geo.Node(1433, 0.6, 0.5, "Somewhere")
+  ns.Nav.Start("Somewhere", dest, ns.Router.Plan(here, dest, ns.Network.Build()))
+  p = ns.Nav.Progress()
+  check(p and p.directions and p.total == 1 and p.done == 0 and p.stopText == "Somewhere", "plain directions: one stop, the destination")
+  ns.Nav.Stop()
+  check(ns.Nav.Progress() == nil, "nothing on: no progress")
+
+  -- Set aside, resume, forget.
+  local lastFanfare = ns.Fanfare.lastTrip
+  local s1, s2, s3 = visit(0.53, "S1"), visit(0.56, "S2"), visit(0.59, "S3")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "First journey", kind = "zone", icon = "Interface\\Icons\\INV_Misc_Map_01",
+    stops = { s1, s2, s3 } }))
+  goTo(s1)
+  local before = #chat
+  local entry = ns.Nav.SetAside()
+  local list = ns.Nav.SetAsideList()
+  check(ns.Nav.active == nil and ns.charDB.nav == nil and ns.Fanfare.lastTrip == lastFanfare,
+    "set aside: navigation ends, nothing saved as the journey on now, no fanfare")
+  check(entry and #list == 1 and list[1] == entry and entry.title == "First journey" and entry.kind == "zone"
+    and entry.icon == "Interface\\Icons\\INV_Misc_Map_01" and entry.stops == 2 and entry.at and entry.journey.stops[1].done,
+    "it's in the list with its kind, icon, time and stops left")
+  check(chat[before + 1] and chat[before + 1]:find("set aside: First journey (2 stops left)", 1, true), "and says so: " .. tostring(chat[before + 1]))
+  check(ns.Nav.SetAside() == nil, "nothing on: nothing to set aside")
+  player.x = 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Second journey", stops = { visit(0.7, "T1") } }))
+  check(ns.Nav.ResumeSetAside(1) and ns.Nav.active and ns.Nav.active.title == "First journey" and labels() == "S2,S3",
+    "resuming plans what's left of it from here: " .. labels())
+  p = ns.Nav.Progress()
+  check(p.done == 1 and p.total == 3, "with the stop already done still counted")
+  check(#list == 1 and list[1].title == "Second journey", "the journey that was on is set aside in its place")
+  -- After a relog: the list is plain saved data, and still resumes.
+  ns.Nav.SetAside()
+  ns.Nav.active = nil
+  ns.charDB.journeys = CopyTable(ns.charDB.journeys)
+  list = ns.Nav.SetAsideList()
+  check(#list == 2 and list[1].title == "First journey" and list[2].title == "Second journey", "newest first")
+  check(ns.Nav.ResumeSetAside(2) and ns.Nav.active.title == "Second journey" and #list == 1,
+    "after a relog a set-aside journey resumes from the saved data")
+  ns.Nav.Stop()
+  check(ns.Nav.ForgetSetAside(1) and #list == 0 and not ns.Nav.ForgetSetAside(1), "forget takes it off the list")
+  -- Five at most: the oldest goes.
+  for i = 1, 6 do
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Journey " .. i, stops = { visit(0.6, "J" .. i) } }))
+    ns.Nav.SetAside()
+  end
+  local titles = {}
+  for _, e in ipairs(ns.Nav.SetAsideList()) do titles[#titles + 1] = e.title end
+  check(table.concat(titles, ",") == "Journey 6,Journey 5,Journey 4,Journey 3,Journey 2", "five kept, newest first: " .. table.concat(titles, ","))
+  -- The three-way question: Switch journey sets the one on aside and starts the new one.
+  ns.charDB.journeys = nil
+  StaticPopupDialogs = {}
+  local shown
+  StaticPopup_Show = function(which, x, y, data) shown = { which = which, data = data } end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "On now", stops = { visit(0.53, "N1"), visit(0.56, "N2") } }))
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Something new", stops = { visit(0.7, "X") } }))
+  check(shown and shown.which == "WAYWARD_TRIP" and ns.Nav.active.title == "On now", "a new journey asks first")
+  shown.data.switch()
+  check(ns.Nav.active.title == "Something new" and #ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "On now",
+    "Switch journey: the new one is on, the old one set aside")
+  shown = nil
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "A detour", stops = { visit(0.6, "Y") } }))
+  shown.data.add()
+  check(ns.Nav.active.title == "Your journey" and labels():find("Y", 1, true) and #ns.Nav.SetAsideList() == 1,
+    "Add as detour: merged, nothing set aside: " .. labels())
+  -- The overview lists them under the journey, with Resume and Forget.
+  ns.JourneyOverview.Show()
+  local rows = ns.JourneyOverview.SetAsideRows()
+  check(#rows == 1 and rows[1]:find("On now", 1, true) and rows[1]:find("2 stops left", 1, true) and rows[1]:find("just now", 1, true),
+    "the overview lists the set-aside journey: " .. tostring(rows[1]))
+  local frame = ns.JourneyOverview.EnsureFrame()
+  frame.aside[1].resume.scripts.OnClick(frame.aside[1].resume)
+  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Your journey", "Resume swaps them")
+  frame.aside[1].forget.scripts.OnClick(frame.aside[1].forget)
+  check(#ns.Nav.SetAsideList() == 0 and #ns.JourneyOverview.SetAsideRows() == 0, "Forget takes it off")
+  -- The pickup question's New journey sets the one on aside too.
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  local log = { 10, 1 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  QUESTS[1].finishedBy = { { 345 } }
+  refreshData()
+  shown = nil
+  fire("QUEST_ACCEPTED", 1)
+  runTimers()
+  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and StaticPopupDialogs.WAYWARD_PICKUP_ADD.button3 == "New journey",
+    "picking up a quest on a journey offers to add it or start a new journey")
+  StaticPopupDialogs.WAYWARD_PICKUP_ADD.OnAlt(nil, shown.data)
+  check(ns.Nav.active.title == "Redridge Goulash" and #ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "On now",
+    "New journey sets the one on aside")
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
+  QUESTS[1].finishedBy = nil
+  refreshData()
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  -- /ww journeys lists them in chat; resume and forget by number.
+  before = #chat
+  SlashCmdList.WAYWARD("journeys")
+  local said = table.concat(chat, "\n", before + 1)
+  check(said:find("on now: Redridge Goulash", 1, true) and said:find("set aside 1: On now (2 stops left", 1, true),
+    "/ww journeys lists the journey on now and the ones set aside")
+  SlashCmdList.WAYWARD("journeys resume 1")
+  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Redridge Goulash", "/ww journeys resume 1")
+  SlashCmdList.WAYWARD("journeys forget 1")
+  check(#ns.Nav.SetAsideList() == 0, "/ww journeys forget 1")
+  ns.Nav.Stop()
+  ns.JourneyOverview.EnsureFrame():Hide()
+  ns.charDB.journeys = nil
+
+  -- Detail on demand: the box shows every step, or just the stop (the step on hover).
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local bank = { node = ns.Geo.Node(1453, 0.5, 0.5, "Bank"), text = "Visit the bank" }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "To Stormwind", stops = { bank } }))
+  ns.HUD.Update()
+  local step = ns.Router.Describe(ns.Nav.active.route, 1)
+  check(ns.Nav.Detail() == "steps" and ns.HUD.Lines()[2] == step and ns.HUD.Lines()[3]:find("^Step 1 of")
+    and ns.HUD.StepTooltip() == nil, "by default the box shows the step and its count: " .. ns.HUD.Lines()[2])
+  SlashCmdList.WAYWARD("detail stops")
+  check(ns.charDB.detail == "stops" and ns.Nav.Detail() == "stops", "/ww detail stops, per character")
+  check(ns.HUD.Lines()[2] == "Visit the bank" and ns.HUD.Lines()[3] == "", "now it shows the stop, no step count: " .. ns.HUD.Lines()[2])
+  local tip = ns.HUD.StepTooltip()
+  check(tip and tip[1] == step and tip[2]:find("^Step 1 of"), "the step and its count are on hover: " .. tostring(tip and tip[1]))
+  local hud = ns.HUD.Frame()
+  hud.scripts.OnEnter(hud)
+  check(GameTooltip:GetText() == step, "hovering the box shows the step")
+  hud.scripts.OnLeave(hud)
+  local choice
+  for _, c in ipairs(ns.Options.Choices()) do
+    if c.name == "Every step in the directions box" then choice = c end
+  end
+  check(choice and choice.section == "Navigation aid" and choice.get() == false, "the option is under navigation aid, off now")
+  choice.set(true)
+  check(ns.Nav.Detail() == "steps" and ns.HUD.Lines()[2] == step and ns.HUD.StepTooltip() == nil, "ticking it shows the steps again")
+  SlashCmdList.WAYWARD("detail")
+  check(ns.Nav.Detail() == "stops", "/ww detail alone toggles")
+  goTo(bank)
+  check(ns.Nav.active == nil, "arriving ends it as before")
+  ns.charDB.detail = nil
+  ns.Nav.Stop()
+  ns.JourneyOverview.EnsureFrame():Hide()
+end
+-- ===== stream C: journey model (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

@@ -1,10 +1,10 @@
 local _, ns = ...
 
--- Add a stop (the directions box's + button): the kinds of stop along the
--- top (repair, vendor, mailbox, bank, ...), and under them the places of the
--- chosen kind that add least to the trip, each with the time it adds and Add
--- (Errands.lua). It hangs under the directions box, or over it near the
--- bottom of the screen; adding a place closes it.
+-- Add a detour (the directions box's + button): the kinds of detour along
+-- the top (repair, vendor, mailbox, bank, ...), and under them the places of
+-- the chosen kind that add least to the journey, each with the time it adds
+-- and Add (Errands.lua). It hangs under the directions box, or over it near
+-- the bottom of the screen; adding a place closes it.
 
 local Picker = {}
 ns.ErrandPicker = Picker
@@ -71,7 +71,7 @@ local function row(parent, i)
   r:SetScript("OnEnter", function(self)
     local p = self.place
     if not p then return end
-    tooltip(self, p.npc or Picker.Kind().label, string.format("%s\nAdds %s to your trip.", p.place or "",
+    tooltip(self, p.npc or Picker.Kind().label, string.format("%s\nA detour of %s on your journey.", p.place or "",
       ns.FormatDuration(p.extra)))
   end)
   r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -163,7 +163,7 @@ function Picker.Refresh()
     r.place = p
     if p then
       r.text:SetText(string.format("%s  |cff9d9d9d%s|r", p.npc or kind.label, p.place or ""))
-      r.time:SetText(p.inTrip and "|cff9d9d9din your trip|r" or ("+" .. ns.FormatDuration(p.extra)))
+      r.time:SetText(p.inTrip and "|cff9d9d9din your journey|r" or ("+" .. ns.FormatDuration(p.extra)))
       r.add:SetEnabled(not p.inTrip)
       r:Show()
     else
@@ -206,7 +206,7 @@ end
 
 function Picker.IsShown() return frame ~= nil and frame:IsShown() end
 
--- Adds the place on row `i` to the trip and closes the list.
+-- Adds the place on row `i` to the journey and closes the list.
 function Picker.AddRow(i)
   local p = frame and frame.list and frame.list[i]
   if not p then return false end
