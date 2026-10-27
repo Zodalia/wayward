@@ -123,6 +123,9 @@ local function readService(index)
       s.icon = v
     end
   end
+  -- The name comes first on every client. Classic Era gives none until it has
+  -- loaded (TRAINER_SERVICE_INFO_NAME_UPDATE): the rank isn't a name.
+  if type(r[1]) ~= "string" then s.name = nil end
   s.levelReq = GetTrainerServiceLevelReq(index)
   s.cost = GetTrainerServiceCost(index)
   if GetTrainerServiceSkillLine then s.skillLine = GetTrainerServiceSkillLine(index) end
@@ -209,6 +212,7 @@ end
 
 ns.On("TRAINER_SHOW", function() ns.After(0.5, readTrainer) end)
 ns.On("TRAINER_UPDATE", readTrainer)
+ns.On("TRAINER_SERVICE_INFO_NAME_UPDATE", readTrainer)
 -- What you could have learned and didn't, you left there on purpose.
 ns.On("TRAINER_CLOSED", function()
   if not classTrainerOpen then return end
