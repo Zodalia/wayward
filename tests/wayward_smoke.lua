@@ -3755,9 +3755,9 @@ do
 
   -- Add detour puts a quest into the journey you're on, or starts one.
   ns.Nav.Stop()
-  check(cull.actions and cull.actions[1].label == "Add detour", "log rows have an Add detour action")
+  check(cull.actions and cull.actions[1].label == "Start journey", "with no journey on, log rows say Start journey")
   cull.actions[1].run(cull)
-  check(ns.Nav.active and ns.Nav.TripHasQuest(50), "with no journey on, Add detour starts one with that quest")
+  check(ns.Nav.active and ns.Nav.TripHasQuest(50), "with no journey on, Start journey starts one with that quest")
   rows = ns.QuestsPage.Results("")
   check(byID(rows, "log50").actions[1].label == "In journey" and not byID(rows, "picked"),
     "a quest in the journey says In journey; no separate pile of picks")
@@ -4895,14 +4895,20 @@ do
   ns.Cards.Step(10)
   check(titles() == "Suggestion 1,Suggestion 2,Suggestion 3", "back to the first")
 
-  -- The card button and shift-click work like a row.
+  -- The card button works like a row; while something is on, Add detour
+  -- beside it adds the card straight away (shift-click no longer does).
+  check(ns.Cards.AddButton(2) == nil, "no Add detour on a card with nothing on")
   ns.Panel.Activate(suggestions[1])
   check(ns.Nav.active and ns.Nav.active.title == "Suggestion 1", "a card's Directions starts its directions")
-  IsShiftKeyDown = function() return true end
+  suggestions[2].goal = ns.Geo.Node(1433, 0.4, 0.5, "Other camp")
   ns.Panel.Search("cardtest", "")
-  ns.Panel.Activate(suggestions[2])
-  check(ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2, "shift-click on a card adds it to the journey")
-  IsShiftKeyDown = nil
+  check(ns.Cards.Drawn()[2] == "Suggestion 2|Directions|Add detour" and ns.Cards.AddButton(1) == nil,
+    "while something is on, a card shows Add detour beside its button, unless it's already on: "
+      .. table.concat(ns.Cards.Drawn(), ","))
+  local addButton = ns.Cards.AddButton(2)
+  addButton.scripts.OnClick(addButton)
+  check(ns.Nav.active.journey and #ns.Nav.active.journey.stops == 2, "a card's Add detour adds it to the journey")
+  suggestions[2].goal = goal
   ns.Nav.Stop()
 
   -- The card's one line of why: the row's, else its first detail (the
@@ -7089,8 +7095,8 @@ do
   end
   check(detourLabel(ns.Vendors.Results()[1]) == nil and detourLabel(ns.QuestHubs.Results()[1]) == nil
     and detourLabel(dm) == "Quests", "with no journey: no Add detour on directions rows")
-  check(detourLabel(byID(ns.QuestsPage.Results("lakeshire logs"), "quest7")) == "Add detour",
-    "quest rows keep Add detour, which starts a journey")
+  check(detourLabel(byID(ns.QuestsPage.Results("lakeshire logs"), "quest7")) == "Start journey",
+    "quest rows say Start journey instead, which starts one")
 
   -- The Items page's quest rules now live in Quests.lua.
   local codes = {}

@@ -466,11 +466,25 @@ function Search.RoleText(e)
   return #parts > 0 and table.concat(parts, ", ") or nil
 end
 
+-- What the detour button says: "Add detour" while a journey is on, "Start
+-- journey" when there's none for it to join (it starts one).
+function Search.DetourLabel()
+  return ns.Nav.active and "Add detour" or "Start journey"
+end
+
+-- Whether a result can join the journey on now: there is one, the result has
+-- somewhere to go, and the journey doesn't already have it (the objective of
+-- a quest on it, the NPC it is heading for).
+function Search.CanAdd(row)
+  return row and ns.Nav.active and (row.journey or (row.goal and row.route))
+    and not (ns.Nav.JourneyHas and ns.Nav.JourneyHas(ns.Nav.StopsFor(row))) and true or false
+end
+
 -- The "Add detour" action for a result row: puts its stops (a journey's open
 -- stops, or a visit to its destination) into the journey you're on, or starts
 -- one. Every page uses this one, so rows of every kind act the same.
 function Search.DetourAction(row, label)
-  return { label = "Add detour", run = function(r)
+  return { label = Search.DetourLabel(), detour = true, run = function(r)
     r = r or row
     local stops = ns.Nav.StopsFor(r)
     if #stops == 0 then
@@ -485,10 +499,7 @@ end
 -- Puts "Add detour" first among a row's actions while a journey is on, for a
 -- row that has somewhere to go. Returns the row.
 function Search.WithDetour(row, label)
-  -- Nothing to add when the journey already has it (the objective of a quest
-  -- on it, the NPC it is heading for).
-  if row and ns.Nav.active and (row.journey or (row.goal and row.route))
-    and not (ns.Nav.JourneyHas and ns.Nav.JourneyHas(ns.Nav.StopsFor(row))) then
+  if Search.CanAdd(row) then
     row.actions = row.actions or {}
     table.insert(row.actions, 1, Search.DetourAction(row, label))
   end

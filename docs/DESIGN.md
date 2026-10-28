@@ -105,12 +105,13 @@ Three regions with distinct roles; they never compete on one ranking:
    an exploration, an alternative. Each card: kind tag, title, one or two
    lines of *why* in plain words, a meta row of up to three facts (distance
    or "Nearby", level range, travel time or transport), **Start journey**.
-   Hover for every detail, the stops and the route map, as today. Shift-click
-   or, while a journey is active, the button offers **Add as detour** /
-   **Switch journey** (keeps the current one set aside) / Cancel.
+   Hover for every detail, the stops and the route map, as today. While a
+   journey is active, **Add detour** sits beside it (adds straight away), and
+   the button offers **Add as detour** / **Switch journey** (keeps the
+   current one set aside) / Cancel.
 3. **Good to know** (`ForYou.Observations()`): up to four tiles. Each: icon,
    text with highlighted numbers, and at most one action: **Add detour**
-   (`Nav.AddToTrip` of the observation's stop; starts a journey if none),
+   (`Nav.AddToTrip` of the observation's stop; **Start journey** if none),
    **Show ...** (opens a side page), or **Go** (plain directions). Ordered
    by urgency, then usefulness. No time budget filtering.
 

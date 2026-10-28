@@ -3,7 +3,7 @@ local _, ns = ...
 -- "Good to know", the bottom region of the main window: up to four tiles
 -- from ForYou.Observations(), each an icon, a short text with its numbers in
 -- gold, and at most one button: Add detour (the observation's stop joins the
--- journey, or starts one), Show ... (a side page) or Go (plain directions).
+-- journey; Start journey when none is on), Show ... (a side page) or Go (plain directions).
 -- Hover a tile for the full text. Until ForYou has observations, the region
 -- says so in one line.
 
@@ -142,7 +142,11 @@ local function fill(tile, o)
   tile.text:SetText(Obs.Highlight(o.text, o.highlights))
   local action = o.action
   tile.button:SetShown(action ~= nil)
-  if action then tile.button:SetText(action.label or LABELS[action.kind] or "Go") end
+  if action then
+    -- A detour's label follows the journey, which may have started or ended
+    -- since the observation was made.
+    tile.button:SetText(action.kind == "detour" and ns.Search.DetourLabel() or action.label or LABELS[action.kind] or "Go")
+  end
 end
 
 -- The tiles share the row: fewer tiles, wider ones, so no slot stands

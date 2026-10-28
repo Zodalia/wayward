@@ -1934,7 +1934,7 @@ local function observationFor(need)
     if coords then o.icon, o.iconCoords = "Interface\\TargetingFrame\\UI-Classes-Circles", coords end
   end
   if need.stop then
-    o.action = { label = "Add detour", kind = "detour", stop = need.stop, stops = need.stops, goal = need.goal,
+    o.action = { label = ns.Search.DetourLabel(), kind = "detour", stop = need.stop, stops = need.stops, goal = need.goal,
       route = need.route, title = need.title }
   elseif need.page then
     o.action = { label = need.pageLabel or "Show", kind = "show", page = need.page }

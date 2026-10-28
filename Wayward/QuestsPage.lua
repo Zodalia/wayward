@@ -147,12 +147,12 @@ end
 
 -- "Add detour" puts a quest (what's left of it: pick up, objectives, hand in)
 -- into the journey you're on, re-ordered from where you are; with no journey
--- on it starts one. "In journey" takes it out again.
+-- on it says "Start journey" and starts one. "In journey" takes it out again.
 local function journeyAction(questID, name)
   if ns.Nav.TripHasQuest(questID) then
     return { label = "In journey", run = function() ns.Nav.RemoveQuest(questID) end }
   end
-  return { label = "Add detour", run = function()
+  return { label = ns.Search.DetourLabel(), detour = true, run = function()
     local here = ns.Geo.PlayerNode()
     local stops = here and ns.Journey.QuestStops(questID, here) or {}
     if #stops == 0 then

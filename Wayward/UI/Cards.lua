@@ -5,7 +5,8 @@ local _, ns = ...
 -- card for every detail, its stops and the route map. Each card: the round
 -- icon, its role tag (QUESTING / EXPLORE / ALTERNATIVE), the title, one or
 -- two lines of why, a row of up to three facts, and Start journey (or
--- Directions when the row has only a route).
+-- Directions when the row has only a route), with Add detour beside it while
+-- a journey is on.
 -- The card art is the Adventure Guide pane where the client has that atlas
 -- (Forever does); otherwise plain parchment.
 --
@@ -139,14 +140,28 @@ local function extra(card)
   return b
 end
 
+-- While a journey is on: add the card's stops to it, without the question
+-- Start journey asks.
+local function add(card)
+  local b = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
+  b:SetSize(84, 22)
+  b:SetText("Add detour")
+  b:Hide()
+  b:SetScript("OnClick", function() if card.result then ns.Panel.AddDetour(card.result) end end)
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Add detour")
+    GameTooltip:AddLine("Adds this to the journey you're on; the order is planned again from where you are.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  return b
+end
+
 local function hover(card)
   card:EnableMouse(true)
   card:SetScript("OnEnter", function(self) if self.result then ns.Panel.ShowTooltip(self, self.result) end end)
   card:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  -- Shift-click adds to the journey, like the panel's rows.
-  card:SetScript("OnMouseUp", function(self)
-    if self.result and IsShiftKeyDown and IsShiftKeyDown() then ns.Panel.Activate(self.result) end
-  end)
 end
 
 -- A row of up to three facts, an icon and a value each ("~4 min away"),
@@ -265,6 +280,8 @@ local function makeCard(parent, width)
   card.button:SetPoint("BOTTOM", 0, 10)
   card.extra = extra(card)
   card.extra:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
+  card.add = add(card)
+  card.add:SetPoint("LEFT", card.button, "RIGHT", 6, 0)
   hover(card)
   return card
 end
@@ -411,12 +428,17 @@ local function fill(card, r)
   card.rule:SetShown(#facts > 0)
   card.button:SetText(Cards.ButtonFor(r))
   card.button:SetEnabled(r.journey ~= nil or r.route ~= nil)
+  -- Add detour while a journey is on takes the second place: a row's own
+  -- Add detour action is the same thing, and three buttons don't fit.
+  local canAdd = ns.Search.CanAdd(r)
   local action = r.actions and r.actions[1]
+  if canAdd or (action and action.detour) then action = nil end
+  card.add:SetShown(canAdd)
   card.extra:SetShown(action ~= nil)
   if action then card.extra:SetText(action.label) end
   -- Side by side when there are two buttons.
   card.button:ClearAllPoints()
-  card.button:SetPoint("BOTTOM", action and -43 or 0, 10)
+  card.button:SetPoint("BOTTOM", canAdd and -45 or action and -43 or 0, 10)
 end
 
 local reported
@@ -508,6 +530,12 @@ function Cards.More(index)
   return c and c.more:GetText()
 end
 
+-- A card's Add detour button while it shows (1 = leftmost), else nil, for tests.
+function Cards.AddButton(index)
+  local c = card(index)
+  return c and c.add:IsShown() and c.add or nil
+end
+
 -- A card's facts as drawn, "LABEL=value" (1 = leftmost), for tests.
 function Cards.Stats(index)
   local c = card(index)
@@ -526,6 +554,7 @@ function Cards.Drawn()
   for _, c in ipairs(view.cards) do
     if c.result then
       out[#out + 1] = (c.title:GetText() or "") .. "|" .. (c.button:GetText() or "")
+        .. (c.add:IsShown() and "|" .. (c.add:GetText() or "") or "")
     end
   end
   return out

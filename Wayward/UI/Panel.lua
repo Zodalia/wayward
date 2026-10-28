@@ -243,6 +243,7 @@ local function addDetour(r)
   if #stops > 0 then ns.Nav.AddToTrip(stops, r.title) end
   Panel.Refresh()
 end
+Panel.AddDetour = addDetour
 
 -- Sets the journey on now aside (kept to resume later) where the navigator
 -- can, else ends it.
@@ -275,10 +276,9 @@ function Panel.Choose(r)
 end
 
 -- What clicking a result does (rows, cards and tiles): start its directions
--- or journey; with shift held during a journey, add it as a detour instead;
--- during a journey, the button asks: detour, switch or cancel.
+-- or journey; during a journey it asks: detour, switch or cancel. (To add
+-- straight away: a card's Add detour button, a row's Add detour action.)
 function Panel.Activate(r)
-  if ns.Nav.active and IsShiftKeyDown and IsShiftKeyDown() then return addDetour(r) end
   if ns.Nav.active and (r.journey or r.route) then return Panel.Choose(r) end
   start(r)
 end
