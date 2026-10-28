@@ -993,12 +993,22 @@ check(not find(shops, "Bowyer"), "no ammo vendors for a warlock")
 UnitClass = function() return "Hunter", "HUNTER", 3 end
 GetInventorySlotInfo = function(name) return name == "RangedSlot" and 18 or 0 end
 GetInventoryItemID = function(_, slot) return slot == 18 and 100 or nil end
-GetInventoryItemCount = function() return 150 end
+GetInventoryItemCount = function() return 100 end
+-- 100 Sharp Arrows (in the ammo slot) and 50 Rough Arrows: every arrow counts.
+C_Container = {
+  GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+  GetContainerItemInfo = function(_, slot)
+    if slot == 1 then return { itemID = 2515, stackCount = 100 } end
+    if slot == 2 then return { itemID = 2512, stackCount = 50 } end
+  end,
+}
 shops = ns.Vendors.Results()
 local bowyer = find(shops, "Lakeshire Bowyer")
 check(bowyer and bowyer.title:find("Ammo") and bowyer.details[1].text:find("Sharp Arrow"),
   "hunter with a bow: arrow vendor listed (" .. titles(shops) .. ")")
-check(ns.Vendors.SummaryText():find("Ammo %(150 left%)"), "summary shows ammo left: " .. ns.Vendors.SummaryText())
+check(ns.Vendors.SummaryText():find("Ammo %(150 left%)"), "summary shows ammo left, of every kind: "
+  .. ns.Vendors.SummaryText())
+C_Container = nil
 
 UnitClass = function() return "Mage", "MAGE", 8 end
 GetInventoryItemID = function() return nil end
@@ -1961,6 +1971,16 @@ do
   -- A hunter with a bow and no ammo.
   UnitClass = function() return "Hunter", "HUNTER", 3 end
   GetInventoryItemID = function(_, slot) return slot == 18 and 100 or nil end
+  -- 150 Rough and 800 Sharp Arrows: plenty, whichever is in the ammo slot.
+  C_Container = {
+    GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+    GetContainerItemInfo = function(_, slot)
+      if slot == 1 then return { itemID = 2512, stackCount = 150 } end
+      if slot == 2 then return { itemID = 2515, stackCount = 800 } end
+    end,
+  }
+  check(not obsFind(observations(), "ammo"), "plenty of ammo across two kinds: no ammo observation")
+  C_Container = nil
   obs = observations()
   local ammo = obs[1]
   check(ammo and ammo.kind == "ammo" and ammo.text:find("^No ammo left: buy ammo at Lakeshire Cook")

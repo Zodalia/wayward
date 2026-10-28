@@ -372,24 +372,7 @@ end
 -- Food and drink in your bags (any item the Vendors page calls food), or nil
 -- when the bag API is missing.
 local function bagFoodCount()
-  local container = C_Container
-  local numSlots = container and container.GetContainerNumSlots or GetContainerNumSlots
-  if type(numSlots) ~= "function" then return nil end
-  local count = 0
-  for bag = 0, NUM_BAG_SLOTS or 4 do
-    for slot = 1, numSlots(bag) or 0 do
-      local itemID, stack
-      if container and container.GetContainerItemInfo then
-        local info = container.GetContainerItemInfo(bag, slot)
-        if type(info) == "table" then itemID, stack = info.itemID, info.stackCount end
-      elseif GetContainerItemInfo then
-        local _, n, _, _, _, _, _, _, _, id = GetContainerItemInfo(bag, slot)
-        itemID, stack = id, n
-      end
-      if itemID and ns.Vendors.GoodsKind(itemID) == "food" then count = count + (stack or 1) end
-    end
-  end
-  return count
+  return ns.Vendors.BagCount({ food = true })
 end
 
 -- Free and total bag slots, or nil when the bag API is missing.
@@ -410,13 +393,9 @@ local function bagSpace()
   return free, total
 end
 
--- Arrows or bullets left; 0 with nothing in the ammo slot.
-local function ammoLeft()
-  local ok, slot = pcall(GetInventorySlotInfo or error, "AmmoSlot")
-  if not (ok and slot) then return nil end
-  if not (GetInventoryItemID and GetInventoryItemID("player", slot)) then return 0 end
-  local n = GetInventoryItemCount and GetInventoryItemCount("player", slot)
-  return type(n) == "number" and n or nil
+-- Arrows or bullets left (see Vendors.AmmoCount).
+local function ammoLeft(p)
+  return ns.Vendors.AmmoCount(p.ammo)
 end
 
 local VENDOR_VERB = { repair = "repair", ammo = "buy ammo", food = "buy food & drink" }
@@ -444,7 +423,7 @@ local function vendorNeeds(ctx)
   local due = {}
   if p.urgent then due.repair = true end
   if p.ammo then
-    local left = ammoLeft()
+    local left = ammoLeft(p)
     if left and left < LOW_AMMO then due.ammo = left end
   end
   local _, class = UnitClass("player")

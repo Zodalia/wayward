@@ -112,6 +112,43 @@ local function slotItem(name)
   return slot, GetInventoryItemID and GetInventoryItemID("player", slot)
 end
 
+-- How many of the goods of `kinds` ({ food = true }, { arrow = true }...;
+-- see Vendors.GoodsKind) are in your bags, or nil when the bag API is missing.
+function Vendors.BagCount(kinds)
+  local container = C_Container
+  local numSlots = container and container.GetContainerNumSlots or GetContainerNumSlots
+  if type(numSlots) ~= "function" then return nil end
+  local count = 0
+  for bag = 0, NUM_BAG_SLOTS or 4 do
+    for slot = 1, numSlots(bag) or 0 do
+      local itemID, stack
+      if container and container.GetContainerItemInfo then
+        local info = container.GetContainerItemInfo(bag, slot)
+        if type(info) == "table" then itemID, stack = info.itemID, info.stackCount end
+      elseif GetContainerItemInfo then
+        local _, n, _, _, _, _, _, _, _, id = GetContainerItemInfo(bag, slot)
+        itemID, stack = id, n
+      end
+      if itemID and kinds[Vendors.GoodsKind(itemID)] then count = count + (stack or 1) end
+    end
+  end
+  return count
+end
+
+-- Arrows or bullets left, of every kind `kinds` ({ bullet = true }) names
+-- (heavy and light shot alike, not only the kind in the ammo slot); without
+-- the bag API, what the ammo slot counts (0 with nothing in it). Nil when
+-- neither can be read.
+function Vendors.AmmoCount(kinds)
+  local inBags = kinds and Vendors.BagCount(kinds)
+  if inBags then return inBags end
+  local ok, slot = pcall(GetInventorySlotInfo or error, "AmmoSlot")
+  if not (ok and slot) then return nil end
+  if not (GetInventoryItemID and GetInventoryItemID("player", slot)) then return 0 end
+  local n = GetInventoryItemCount and GetInventoryItemCount("player", slot)
+  return type(n) == "number" and n or nil
+end
+
 -- Ammo your ranged weapon fires; hunters without one are shown both kinds.
 local function ammoKinds(class)
   local _, weapon = slotItem("RangedSlot")
@@ -150,8 +187,7 @@ function Vendors.Needs()
       local top = topTier(goods.ammo[kind], level)
       for _, e in ipairs(goods.ammo[kind]) do want(e, "ammo", top) end
     end
-    local slot = slotItem("AmmoSlot")
-    p.ammoCount = slot and GetInventoryItemCount and GetInventoryItemCount("player", slot)
+    p.ammoCount = Vendors.AmmoCount(p.ammo)
   end
 
   p.reagents = {}
