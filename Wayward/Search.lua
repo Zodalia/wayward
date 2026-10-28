@@ -88,10 +88,6 @@ function Search.Forget(kind)
   if kind then indexes[kind] = nil else indexes = {} end
 end
 
-ns.Listen("DATA_CHANGED", function() Search.Forget() end)
-ns.Listen("SOURCES_CHANGED", function() Search.Forget() end)
-ns.On("SPELLS_CHANGED", function() Search.Forget("spell") end)
-
 local builders = {}
 
 local function entry(kind, id, name, extra)
@@ -326,6 +322,38 @@ local function index(kind)
   end
   return indexes[kind]
 end
+
+-- Quests and items come from the data sources, which DATA_CHANGED (a quest
+-- handed in, an NPC met, a level) leaves alone: those indexes are kept, as
+-- rebuilding them on the next keystroke runs too long for the game. Items
+-- named from the vendors you visited (no item source), and a quest or item
+-- index built before the data was ready, go stale like the rest. What's
+-- dropped is rebuilt in the background.
+local function keep(kind)
+  local built = indexes[kind]
+  if not (built and #built > 0) then return false end
+  return kind == "quest" or (kind == "item" and ns.Data.Has("Item"))
+end
+
+local function rebuild(kinds)
+  if #kinds == 0 then return end
+  ns.Warm(function()
+    for _, kind in ipairs(kinds) do index(kind) end
+  end)
+end
+
+ns.Listen("DATA_CHANGED", function()
+  local dropped = {}
+  for kind in pairs(indexes) do
+    if not keep(kind) then
+      indexes[kind] = nil
+      if kind == "quest" or kind == "item" or kind == "npc" then dropped[#dropped + 1] = kind end
+    end
+  end
+  rebuild(dropped)
+end)
+ns.Listen("SOURCES_CHANGED", function() Search.Forget() end)
+ns.On("SPELLS_CHANGED", function() Search.Forget("spell") end)
 
 -- The index of one kind (for pages that need the entries themselves).
 function Search.Index(kind)

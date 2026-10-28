@@ -6922,7 +6922,15 @@ do
   ITEMS[9012] = { name = "Finch Feather" }
   check(#Search.Find("finch", "item") == 0, "an index is kept until the data changes")
   refreshData()
-  check(names(Search.Find("finch", "item")) == "Finch Feather", "and rebuilt after SOURCES_CHANGED / DATA_CHANGED")
+  check(names(Search.Find("finch", "item")) == "Finch Feather", "and rebuilt after SOURCES_CHANGED")
+  -- A quest handed in, an NPC met: the item and quest indexes (from the data
+  -- sources) are kept, as rebuilding them mid-search runs too long; the NPCs
+  -- are rebuilt in the background.
+  local items, quests, npcs = Search.Index("item"), Search.Index("quest"), Search.Index("npc")
+  ns.Fire("DATA_CHANGED", "npcs")
+  check(Search.Index("item") == items and Search.Index("quest") == quests, "DATA_CHANGED keeps the item and quest indexes")
+  local rebuilt = Search.Index("npc")
+  check(rebuilt ~= npcs and #rebuilt == #npcs, "and rebuilds the NPCs")
 
   local here, net = ns.Geo.PlayerNode(), ns.Network.Build()
   local repair = Search.NearestNPC("repair", here, net)
