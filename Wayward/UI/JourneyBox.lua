@@ -166,9 +166,7 @@ function Box.Create(parent, width)
   f.icon:SetPoint("TOPLEFT", PAD + 2, -PAD - 2)
   if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   f.ring = f:CreateTexture(nil, "OVERLAY")
-  f.ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-  f.ring:SetSize(ICON * 1.12, ICON * 1.12)
-  f.ring:SetPoint("CENTER", f.icon, "CENTER", 10, -10)
+  ns.Skin.Ring(f.ring, f.icon, ICON)
 
   f.title = label(f, "GameFontNormalLarge", 16, GOLD)
   f.title:SetPoint("TOPLEFT", LEFT, -PAD - 2)

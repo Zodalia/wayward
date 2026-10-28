@@ -158,6 +158,19 @@ end
 
 function Skin.Window(f) add("window", f); hookShow(f) end
 function Skin.Box(f) add("box", f); hookShow(f) end
+
+-- Rings a round icon with the minimap tracking border. The ring's art is
+-- off-centre in its file: drawn 53 wide it rings a 20-wide disc round the
+-- point (17, 15), so it's scaled to the icon and pinned by that point. The
+-- opening is a little smaller than the icon, so the band covers its edge.
+local RING_FILE = "Interface\\Minimap\\MiniMap-TrackingBorder"
+function Skin.Ring(ring, icon, iconSize)
+  local size = iconSize * 0.85 * 53 / 20
+  ring:SetTexture(RING_FILE)
+  ring:SetSize(size, size)
+  ring:ClearAllPoints()
+  ring:SetPoint("TOPLEFT", icon, "CENTER", -size * 17 / 53, size * 15 / 53)
+end
 function Skin.Inset(f) add("inset", f) end
 function Skin.Button(b) add("button", b) end
 function Skin.CloseButton(b) add("close", b) end

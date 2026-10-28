@@ -111,9 +111,7 @@ local function icon(card, size, ringSize)
   if hasAtlas("adventureguide-ring") then
     card.ring:SetAtlas("adventureguide-ring")
   else
-    card.ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    card.ring:SetSize(ringSize * 0.75, ringSize * 0.75)
-    card.ring:SetPoint("CENTER", card.icon, "CENTER", 10, -10)
+    ns.Skin.Ring(card.ring, card.icon, size)
   end
 end
 
