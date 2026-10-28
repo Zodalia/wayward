@@ -296,7 +296,7 @@ ns.Listen("SOURCES_CHANGED", function() cache = {} end)
 
 -- Where you stand when a mailbox opens is where it is (to a few yards).
 local function recordMailbox()
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not here then return end
   ns.db.mailboxes = ns.db.mailboxes or {}
   for _, m in ipairs(ns.db.mailboxes) do

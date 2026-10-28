@@ -2287,8 +2287,23 @@ do
     "after a relog the trip resumes from where it was")
   check(#ns.JourneyOverview.Rows() == 3, "the overview still shows the stops already done")
 
-  -- A reload before the game can place you: the trip waits for it, it isn't lost.
+  -- A reload where the game gives no position (the Deeprun Tram): planned
+  -- from the last place it did, and the directions don't move on by themselves.
   local savedNav, realMap = ns.charDB.nav, player.mapID
+  check(ns.charDB.lastPlace and ns.charDB.lastPlace.mapID == realMap, "the last place you stood is kept")
+  ns.Nav.active, player.mapID = nil, nil
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  runTimers()
+  check(ns.Nav.active and ns.Nav.active.journey.stops[1].action.kind == "turnin",
+    "no position after a reload (the tram): the trip resumes from where you last stood")
+  check(ns.Geo.PlayerNode().stale and ns.Geo.PlayerNodeExact() == nil and ns.Nav.Tick() == nil,
+    "planning uses the last place; arriving waits for a real position")
+  player.mapID = realMap
+  check(not ns.Geo.PlayerNode().stale, "out of the tram: where you stand again")
+
+  -- A reload before the game has ever placed you: the trip waits for it, it isn't lost.
+  savedNav = ns.charDB.nav
+  ns.charDB.lastPlace = nil
   ns.Nav.active, player.mapID = nil, nil
   fire("PLAYER_ENTERING_WORLD", false, true)
   runTimers()
@@ -2298,6 +2313,7 @@ do
   check(ns.Nav.active and ns.Nav.active.journey.stops[1].action.kind == "turnin", "a moment later it resumes")
   -- Never placed: kept, and said so once the tries run out.
   savedNav = ns.charDB.nav
+  ns.charDB.lastPlace = nil
   ns.Nav.active, player.mapID = nil, nil
   local before = #chat
   fire("PLAYER_ENTERING_WORLD", false, true)

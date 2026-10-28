@@ -43,7 +43,7 @@ end
 local MOVED = 0.002 -- map fraction: a few yards
 function Harvest.RecordNPC(kind, extra)
   local id = npcID()
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not (id and here) then return nil end
   local npc = ns.db.npcs[id]
   local changed = npc == nil or not npc.kinds[kind] or extra ~= nil
@@ -226,7 +226,7 @@ end)
 -- A flight map only lists the flight paths of the continent you're on, so
 -- what you know is tracked per continent (continent uiMapID).
 local function playerContinent()
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   return here and ns.Geo.Continents()[here.instance], here
 end
 

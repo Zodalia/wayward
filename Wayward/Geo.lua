@@ -29,12 +29,30 @@ function Geo.Node(mapID, x, y, label)
   return { label = label, mapID = mapID, x = x, y = y, instance = instance, wx = wx, wy = wy }
 end
 
-function Geo.PlayerNode()
+-- Where you stand, or nil where the game gives no map position (the Deeprun
+-- Tram, dungeons, a loading screen). For what's measured against where you
+-- really are: arriving, talking to someone, recording where something is.
+-- The last place read is kept (across reloads) for Geo.PlayerNode.
+function Geo.PlayerNodeExact()
   local mapID = C_Map.GetBestMapForUnit("player")
   local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
   if not pos then return nil end
   local x, y = pos:GetXY()
-  return Geo.Node(mapID, x, y, "You")
+  local node = Geo.Node(mapID, x, y, "You")
+  if node and ns.charDB then ns.charDB.lastPlace = { mapID = mapID, x = x, y = y } end
+  return node
+end
+
+-- Where to plan from: where you stand, or else the last place your position
+-- could be read (where you went into the tram or the dungeon), marked
+-- `stale`. Nil only when there's never been one.
+function Geo.PlayerNode()
+  local node = Geo.PlayerNodeExact()
+  if node then return node end
+  local last = ns.charDB and ns.charDB.lastPlace
+  node = last and Geo.Node(last.mapID, last.x, last.y, "You")
+  if node then node.stale = true end
+  return node
 end
 
 function Geo.Distance(a, b)

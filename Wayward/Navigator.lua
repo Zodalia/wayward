@@ -649,7 +649,7 @@ end
 
 ns.Listen("QUESTS_OFFERED", function(npcName, ids)
   local a = Nav.active
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not (a and a.journey and here) then return end
   local missing = {}
   for k = a.index, #a.route.steps do
@@ -684,7 +684,7 @@ end)
 
 function Nav.Talked(npcName)
   local a = Nav.active
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not (a and here) then return end
   local name, node = Nav.TargetNPC()
   local close = node and ns.Geo.Distance(here, node) <= TALK_RADIUS
@@ -793,7 +793,7 @@ local function inZone(mapID, here)
 end
 
 function Nav.InZone(mapID)
-  return inZone(mapID, ns.Geo.PlayerNode())
+  return inZone(mapID, ns.Geo.PlayerNodeExact())
 end
 
 -- True when an explore stop was just done.
@@ -803,7 +803,7 @@ local function exploreCheck(here)
   return finishStop(function(action) return action.kind == "explore" and inZone(action.mapID, here) end)
 end
 
-ns.On("ZONE_CHANGED_NEW_AREA", function() exploreCheck(ns.Geo.PlayerNode()) end)
+ns.On("ZONE_CHANGED_NEW_AREA", function() exploreCheck(ns.Geo.PlayerNodeExact()) end)
 
 -- Entering a dungeon (an `enter` stop): done when the world you load into is
 -- that instance, as Dungeons.lua learns entrances. A wing counts for its
@@ -1661,7 +1661,7 @@ end
 local function doingLater()
   local a = Nav.active
   if not (a and a.journey) or onTaxi() or Nav.Dead() then return end
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not here then return end
   local current = a.route.steps[a.index]
   local busy = a.waiting or (current and current.stop and current.stop.inArea)
@@ -1810,7 +1810,7 @@ end
 function Nav.MoveOn()
   local a = Nav.active
   local stop = Nav.HeadingFor()
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not (stop and here) then return end
   local kind = Nav.MoveOnKind()
   if kind == "cleared" then
@@ -1911,7 +1911,7 @@ end)
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not here then return nil, Nav.CurrentStep() end
   if Nav.Dead() then
     died(a)
