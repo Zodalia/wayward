@@ -179,6 +179,23 @@ function PlanReport.Build()
         end
       end
       if #gathered > 0 then add("Gathered as you go (not headed for): %s", table.concat(gathered, "; ")) end
+      -- How each quest's spawns lie: spread (gathered as you go) or crowded in one spot (a stop).
+      local seenQuest, spreadLines = {}, {}
+      for _, s in ipairs(ns.Journey.AllStops(journey)) do
+        local id = s.action and s.action.kind == "complete" and s.action.questID
+        if id and not s.done and not s.skipped and not seenQuest[id] then
+          seenQuest[id] = true
+          local info = ns.Journey.SpreadInfo(id)
+          spreadLines[#spreadLines + 1] = string.format(
+            "  %s: %d areas over %.0f yd, %d of %d spawns (%.0f%%) round the busiest spot, %d around you  >  %s",
+            ns.Nav.StopName(s), info.areas, info.span, info.busiest, info.total, info.share * 100,
+            here and ns.Journey.SpawnsAround(id, here) or 0, info.spread and "spread: gathered as you go" or "a stop")
+        end
+      end
+      if #spreadLines > 0 then
+        add("How the objectives lie:")
+        for _, line in ipairs(spreadLines) do add(line) end
+      end
       if #missing > 0 then add("Open but not in the plan (no route?): %s", table.concat(missing, "; ")) end
 
       -- A fresh plan from here, as a re-plan would make it, put back after.

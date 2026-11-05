@@ -7844,9 +7844,14 @@ do
   -- In one of its areas, objectives open, nothing else to head for, and the
   -- hand-in nearer than the gathering left (your time per quest times the
   -- share left, with no pace seen yet): gather where you are. No arrow, no
-  -- wait. A goretusk spawn beside Oslow puts the hand-in inside an area too.
+  -- wait. A goretusk spawn beside Oslow puts the hand-in inside an area too
+  -- (three more far off keep it spread: no spot holds half of its spawns).
   NPCS[9602].spawns[44][3] = { 37, 31 }
+  NPCS[9602].spawns[44][4] = { 5, 65 }
+  NPCS[9602].spawns[44][5] = { 5, 75 }
+  NPCS[9602].spawns[44][6] = { 45, 95 }
   refreshData()
+  check(ns.Journey.Spread(4600), "still spread with a spawn by Oslow: " .. ns.Journey.SpreadInfo(4600).share)
   ns.Journey.ResetPace()
   ns.Nav.Stop()
   player.x, player.y = 0.5, 0.52
@@ -7867,7 +7872,8 @@ do
   local report = ns.PlanReport.Build()
   check(report:find("(quest 4600: in log", 1, true) and report:find("waits on gathering", 1, true)
     and report:find("gathering where you are", 1, true)
-    and report:find("Gathered as you go (not headed for): Do Redridge Stew", 1, true),
+    and report:find("Gathered as you go (not headed for): Do Redridge Stew", 1, true)
+    and report:find("Do Redridge Stew: 9 areas over", 1, true) and report:find("spread: gathered as you go", 1, true),
     "the plan report says which quest (its ID and state), that it's gathered, and where you are:\n" .. report)
 
   -- A stop with someone to see goes ahead of a hand-in that isn't ready.
@@ -7910,7 +7916,68 @@ do
   objectives[2] = { text = "Goretusk slain: 0/3", finished = false }
   complete = false
   ns.Journey.ResetPace()
-  NPCS[9602].spawns[44][3] = nil
+  for k = 6, 3, -1 do NPCS[9602].spawns[44][k] = nil end
+  refreshData()
+
+  -- Mobs crowded round one spot (five of eight within 350 yd of it), a few
+  -- strays across the zone: as many areas and as wide as Redridge Stew, but
+  -- not spread. That spot is a stop to go and do it, as ever.
+  NPCS[9604] = { name = "Defias Smuggler", minLevel = 16, maxLevel = 17, spawns = { [44] = {
+    { 60, 60 }, { 61, 62 }, { 63, 61 }, { 62, 64 }, { 64, 63 }, { 15, 15 }, { 85, 15 }, { 15, 85 } } } }
+  QUESTS[4601] = { name = "Smuggler Sweep", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9604 } } } }
+  refreshData()
+  local info = ns.Journey.SpreadInfo(4601)
+  check(info.areas >= 4 and info.span >= 400 and info.busiest == 5 and not info.spread,
+    string.format("crowded round one spot: a stop, not gathered (%d areas, %.0f yd, %d of %d round the busiest)",
+      info.areas, info.span, info.busiest, info.total))
+  log = { 4600, 4601 }
+  local smugglers = { { text = "Defias Smuggler slain: 0/6", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or id == 4601 and smugglers or {} end
+  local both = ns.Journey.QuestStops(4600, here)
+  for _, s in ipairs(ns.Journey.QuestStops(4601, here)) do both[#both + 1] = s end
+  planned = ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Redridge", stops = both })
+  local smuggleDo, stewDo
+  for _, s in ipairs(both) do
+    if s.action.kind == "complete" then
+      if s.action.questID == 4601 then smuggleDo = s else stewDo = s end
+    end
+  end
+  local smugglersPlanned = false
+  for _, s in ipairs(planned.stops) do if s == smuggleDo then smugglersPlanned = true end end
+  check(smugglersPlanned and not smuggleDo.gather and stewDo.gather,
+    "with both: the smugglers' spot is a stop on the plan; the stew is still gathered as you go")
+  log = { 4600 }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
+  QUESTS[4601], NPCS[9604] = nil, nil
+  refreshData()
+
+  -- In areas of two quests gathered as you go: "Gather here" names the one
+  -- with the most of its spawns around you, not the first on the list. A
+  -- vulture at 15,85; three murlocs right beside it (the rest spread out).
+  NPCS[9606] = { name = "Murloc Raider", minLevel = 16, maxLevel = 17, spawns = { [44] = {
+    { 18, 80 }, { 21, 83 }, { 18, 88 }, { 5, 5 }, { 5, 15 }, { 5, 25 }, { 55, 45 } } } }
+  QUESTS[4602] = { name = "Murloc Fins", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9606 } } } }
+  refreshData()
+  check(ns.Journey.Spread(4602), "the murlocs are spread too: " .. ns.Journey.SpreadInfo(4602).share)
+  log = { 4600, 4602 }
+  local fins = { { text = "Murloc Raider slain: 0/5", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or id == 4602 and fins or {} end
+  ns.Nav.Stop()
+  player.x, player.y = 0.15, 0.85
+  here = ns.Geo.PlayerNode()
+  local two = ns.Journey.QuestStops(4600, here)
+  for _, s in ipairs(ns.Journey.QuestStops(4602, here)) do two[#two + 1] = s end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge", stops = two }), true)
+  ns.HUD.Update()
+  local g2 = ns.Nav.GatheringHere()
+  check(g2 and g2.area.stop.action.questID == 4602 and ns.HUD.Lines()[2] == "Gather here for Murloc Fins",
+    "in areas of both: gather here for the one with the most around you: " .. tostring(ns.HUD.Lines()[2]))
+  ns.Nav.Stop()
+  log = { 4600 }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
+  QUESTS[4602], NPCS[9606] = nil, nil
   refreshData()
   ns.JourneyOverview.EnsureFrame():Hide()
 

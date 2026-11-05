@@ -351,12 +351,17 @@ end
 -- Heading for one camp and waiting there isn't how anyone does those: you
 -- pick them up while you go about the rest. A quest's objectives "spread"
 -- when they're in SPREAD_AREAS areas or more, SPREAD_YARDS or more apart end
--- to end. Its "Do ..." stop (stop.gather, set by Journey.Plan) isn't a
+-- to end, and no one spot holds much of them: the busiest circle of
+-- BUSY_YARDS holds less than BUSY_SHARE of the spawns. A quest whose mobs
+-- crowd one place (the Defias round a mine) isn't: that place is a stop to
+-- go and do it, as ever. Its "Do ..." stop (stop.gather, set by Journey.Plan) isn't a
 -- destination: the journey heads for the next stop with someone to see (a
 -- pickup, a hand-in), through an area of it that's on the way (a "via" on
 -- that leg), and never waits there. The Journey window's shopping list says
 -- what of it is around you (Journey.ShoppingList).
 local SPREAD_AREAS, SPREAD_YARDS = 4, 400
+local BUSY_YARDS, BUSY_SHARE = 350, 0.5
+local BUSY_CENTRES = 300 -- spawns tried as the busy spot's centre at most (evenly picked)
 -- An area is on the way when going through it adds VIA_YARDS or less. On the
 -- way to the quest's own hand-in, its objectives still open, the best area
 -- whatever it adds (you'd only be turned back at the hand-in).
@@ -370,24 +375,56 @@ Journey.VIA_YARDS, Journey.VIA_RADIUS, Journey.NEAR_YARDS = VIA_YARDS, VIA_RADIU
 -- Keyed by the quest's area list (Quests.ObjectiveAreas), so new data re-checks.
 local spreadCache = setmetatable({}, { __mode = "k" })
 
-function Journey.Spread(questID)
+-- How a quest's objective spawns lie: { areas, span (yards end to end),
+-- total (spawns), busiest (spawns in the busiest BUSY_YARDS circle), share
+-- (busiest / total), spread }. Built once per quest's data.
+function Journey.SpreadInfo(questID)
   local areas = questID and ns.Quests.ObjectiveAreas(questID) or {}
-  if #areas < SPREAD_AREAS then return false end
-  if spreadCache[areas] ~= nil then return spreadCache[areas] end
-  local instance, x0, x1, y0, y1
+  if spreadCache[areas] then return spreadCache[areas] end
+  local nodes, instance, x0, x1, y0, y1 = {}, nil, nil, nil, nil, nil
   for _, area in ipairs(areas) do
     for _, m in ipairs(area) do
       local n = m.node
       instance = instance or n.instance
       if n.instance == instance then
+        nodes[#nodes + 1] = n
         x0, x1 = math.min(x0 or n.wx, n.wx), math.max(x1 or n.wx, n.wx)
         y0, y1 = math.min(y0 or n.wy, n.wy), math.max(y1 or n.wy, n.wy)
       end
     end
   end
-  local spread = x0 ~= nil and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) >= SPREAD_YARDS
-  spreadCache[areas] = spread
-  return spread
+  local info = { areas = #areas, total = #nodes, span = x0 and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) or 0,
+    busiest = 0, share = 1 }
+  local every = math.max(1, math.ceil(#nodes / BUSY_CENTRES))
+  for i = 1, #nodes, every do
+    local count = 0
+    for _, n in ipairs(nodes) do
+      if ns.Geo.Distance(nodes[i], n) <= BUSY_YARDS then count = count + 1 end
+    end
+    if count > info.busiest then info.busiest = count end
+  end
+  if #nodes > 0 then info.share = info.busiest / #nodes end
+  info.spread = info.areas >= SPREAD_AREAS and info.span >= SPREAD_YARDS and info.share < BUSY_SHARE
+  spreadCache[areas] = info
+  return info
+end
+
+function Journey.Spread(questID)
+  return Journey.SpreadInfo(questID).spread
+end
+
+-- How many of a quest's open objective spawns are within HERE_YARDS of you:
+-- how much of it there is to do right where you are.
+local HERE_YARDS = 150
+function Journey.SpawnsAround(questID, here)
+  local count = 0
+  if not here then return 0 end
+  for _, area in ipairs(Journey.OpenAreas(questID)) do
+    for _, n in ipairs(area.nodes) do
+      if ns.Geo.Distance(n, here) <= HERE_YARDS then count = count + 1 end
+    end
+  end
+  return count
 end
 
 local function gatherable(stop)
@@ -528,19 +565,28 @@ end
 
 -- The open area of a quest you're gathering for (one you have, or pick up
 -- earlier on the journey) that `here` is within `radius` (VIA_RADIUS) of:
--- { stop, index, node } or nil.
+-- { stop, index, node, around } or nil. In areas of several, the quest with
+-- the most of its spawns around you (Journey.SpawnsAround): what there's
+-- most of to do here, not the first on the list.
 local function gatherAreaAt(gathers, here, picked, radius)
   if not here then return nil end
+  local best
   for _, g in ipairs(gathers) do
     local questID = g.action.questID
     if (inLog(questID) or (picked and picked[questID])) and not objectivesDone(questID) then
       for _, area in ipairs(Journey.OpenAreas(questID)) do
         local node, d = ns.Data.Nearest(area.nodes, here)
-        if node and d <= (radius or VIA_RADIUS) then return { stop = g, index = area.index, node = node } end
+        if node and d <= (radius or VIA_RADIUS) then
+          local around = Journey.SpawnsAround(questID, here)
+          if not best or around > best.around then
+            best = { stop = g, index = area.index, node = node, around = around }
+          end
+          break
+        end
       end
     end
   end
-  return nil
+  return best
 end
 
 -- The journey's open area you're in, if any (see gatherAreaAt).
