@@ -26,6 +26,8 @@ local POOL = 24            -- rows drawn at most (stops and steps)
 local SUGGESTIONS = 4      -- "Detours on the way" rows
 local SUGGEST_HEIGHT = 18
 local SET_ASIDE = 5        -- set-aside journey rows (Nav keeps that many)
+local SHOP_ROWS = 5        -- shopping list rows around you (then one "more elsewhere")
+local SHOP_EVERY = 2       -- seconds between looks at what's around you
 local HANDLE_WIDTH = 16
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
@@ -238,6 +240,37 @@ local function create()
   f.marker:SetColorTexture(1, 0.82, 0, 0.9)
   f.marker:Hide()
 
+  -- PROTOTYPE: the shopping list. What the quests you gather as you go still
+  -- want, the ones around you listed; the rest on one line, on hover.
+  f.shopHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  f.shopHeader:SetJustifyH("LEFT")
+  f.shopHeader:SetText("Shopping list")
+  ns.Skin.Text(f.shopHeader)
+  f.shop = {}
+  for i = 1, SHOP_ROWS + 1 do
+    local row = CreateFrame("Frame", nil, f)
+    row:SetSize(356, SUGGEST_HEIGHT)
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.text:SetPoint("LEFT", 4, 0)
+    row.text:SetPoint("RIGHT", -4, 0)
+    row.text:SetJustifyH("LEFT")
+    row.text:SetWordWrap(false)
+    ns.Skin.Text(row.text)
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", function(self) Overview.ShowShopTooltip(self) end)
+    row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    row:Hide()
+    f.shop[i] = row
+  end
+  -- What's around you changes as you walk: look again every SHOP_EVERY seconds.
+  f.shopTicker = CreateFrame("Frame", nil, f)
+  f.shopTicker:SetScript("OnUpdate", function(self, elapsed)
+    self.wait = (self.wait or 0) + (elapsed or 0)
+    if self.wait < SHOP_EVERY then return end
+    self.wait = 0
+    if Overview.ShopChanged() then Overview.Refresh() end
+  end)
+
   -- Detours on the way: things to add that cost little (OnTheWay.lua).
   f.suggestHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   f.suggestHeader:SetJustifyH("LEFT")
@@ -338,12 +371,13 @@ function Overview.Rows()
   local rows = {}
   for _, stop in ipairs(ns.Journey.AllStops(a.journey)) do
     if not (stop.skipped or stop.passed) then
-      local state = stop.done and "done" or stop == now and "now" or "next"
+      local state = stop.done and "done" or stop == now and "now" or stop.gather and "gather" or "next"
       rows[#rows + 1] = { stop = stop, state = state }
     end
   end
-  -- Done stops first, in the order they happened to be listed.
-  local order = { done = 1, now = 2, next = 3 }
+  -- Done stops first, in the order they happened to be listed; what you
+  -- gather as you go right under the stop you're on.
+  local order = { done = 1, now = 2, gather = 3, next = 4 }
   local keyed = {}
   for i, r in ipairs(rows) do keyed[i] = { r = r, i = i } end
   table.sort(keyed, function(x, y)
@@ -358,6 +392,7 @@ local LOOK = {
   done = { "|cff7fd1aedone|r  ", 0.6 },
   now = { "|cffffd200now|r  ", 1 },
   next = { "      ", 1 },
+  gather = { "|cff80c0ffas you go|r  ", 0.9 },
 }
 
 local FINISHED = { done = true }
@@ -428,6 +463,83 @@ function Overview.ToggleFinished()
   local lines = Overview.Lines()
   unfolded = not (lines[1] and lines[1].header and not lines[1].folded)
   Overview.Refresh()
+end
+
+---------------------------------------------------------------- shopping list (prototype)
+
+local GREY = "|cff9d9d9d"
+
+local function countText(e)
+  return (e.have and e.need) and string.format("%d/%d", e.have, e.need) or nil
+end
+
+local function shopText(e)
+  local count = countText(e)
+  return string.format("%s  %s%s%s|r", e.name, GREY, count and (count .. "  ·  ") or "", e.quest)
+end
+
+local function placeOf(node)
+  if not (node and ns.Places) then return nil end
+  local ok, place = pcall(ns.Places.NameFor, node)
+  return ok and place or nil
+end
+
+-- The list as lines, top to bottom: { text, entry? } for what's around you
+-- (SHOP_ROWS at most), then { text, entries } for the rest. Empty when the
+-- journey gathers nothing as you go.
+function Overview.ShopLines()
+  local a = ns.Nav.active
+  if not (a and a.journey) then return {} end
+  local list = ns.Journey.ShoppingList(a.journey, ns.Geo.PlayerNode())
+  if #list == 0 then return {} end
+  local lines, elsewhere = {}, {}
+  for _, e in ipairs(list) do
+    if e.near and #lines < SHOP_ROWS then
+      lines[#lines + 1] = { text = shopText(e), entry = e }
+    else
+      elsewhere[#elsewhere + 1] = e
+    end
+  end
+  if #lines == 0 then lines[1] = { text = GREY .. "Nothing on it right around here.|r" } end
+  if #elsewhere > 0 then
+    lines[#lines + 1] = { text = string.format("%s+%d more elsewhere|r", GREY, #elsewhere), entries = elsewhere }
+  end
+  return lines
+end
+
+local function shopSignature(lines)
+  local parts = {}
+  for i, line in ipairs(lines) do parts[i] = line.text end
+  return table.concat(parts, "\n")
+end
+
+-- Whether the list would read differently now (you walked somewhere else).
+function Overview.ShopChanged()
+  if not (frame and frame:IsShown()) then return false end
+  return shopSignature(Overview.ShopLines()) ~= (Overview.shopShown or "")
+end
+
+function Overview.ShowShopTooltip(row)
+  local line = row.line
+  if not (line and GameTooltip) then return end
+  GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+  if line.entry then
+    local e = line.entry
+    GameTooltip:SetText(e.name, 1, 1, 1)
+    GameTooltip:AddLine("For " .. e.quest .. (countText(e) and ("  ·  " .. countText(e)) or ""), 0.6, 0.6, 0.6, true)
+    GameTooltip:AddLine("Around you now. The journey carries on whenever you do.", 0.5, 0.82, 0.68, true)
+  elseif line.entries then
+    GameTooltip:SetText("Elsewhere", 1, 1, 1)
+    for _, e in ipairs(line.entries) do
+      local place = placeOf(e.node)
+      GameTooltip:AddLine(string.format("%s%s  %s", e.name, countText(e) and (" " .. countText(e)) or "",
+        place and ("near " .. place) or ""), 0.8, 0.8, 0.8, true)
+    end
+    GameTooltip:AddLine("The journey takes you through these when they're on the way.", 0.5, 0.82, 0.68, true)
+  else
+    return
+  end
+  GameTooltip:Show()
 end
 
 function Overview.Refresh()
@@ -509,7 +621,7 @@ function Overview.Refresh()
       row.zone:SetText(zone and ("      " .. zone) or "")
       row.text:SetAlpha(look[2])
       row.movable = r.state == "now" or r.state == "next"
-      row.drop:SetShown(r.state == "now" or r.state == "next")
+      row.drop:SetShown(r.state == "now" or r.state == "next" or r.state == "gather")
       -- No pins on an order you dragged yourself: all of it keeps its place.
       local pinned = ns.Journey.IsPinned(r.stop)
       row.pin:SetShown(row.movable and not root.manual)
@@ -535,6 +647,27 @@ function Overview.Refresh()
   -- Under the stops: detours on the way, the journeys set aside, then the
   -- map. A scrolling list keeps its full height.
   local y = -44 - (maxScroll > 0 and room or used) - 10
+  -- The shopping list (gathering as you go), when there's anything on it.
+  local shop = Overview.ShopLines()
+  Overview.shopShown = shopSignature(shop)
+  frame.shopHeader:ClearAllPoints()
+  frame.shopHeader:SetPoint("TOPLEFT", 12, y)
+  frame.shopHeader:SetShown(#shop > 0)
+  if #shop > 0 then y = y - 16 end
+  for i, row in ipairs(frame.shop) do
+    local line = shop[i]
+    row.line = line
+    if line then
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", 12, y)
+      row.text:SetText(line.text)
+      row:Show()
+      y = y - SUGGEST_HEIGHT
+    else
+      row:Hide()
+    end
+  end
+  if #shop > 0 then y = y - 6 end
   local list = ns.OnTheWay and ns.OnTheWay.Get() or {}
   frame.suggestHeader:ClearAllPoints()
   frame.suggestHeader:SetPoint("TOPLEFT", 12, y)
@@ -679,3 +812,5 @@ end)
 ns.Listen("JOURNEY_EXTENDED", Overview.Refresh)
 ns.Listen("NAV_CHANGED", Overview.Refresh)
 ns.Listen("JOURNEYS_CHANGED", Overview.Refresh)
+-- The shopping list's counts.
+ns.On("QUEST_LOG_UPDATE", function() Overview.Refresh() end)

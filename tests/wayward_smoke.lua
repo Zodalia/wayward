@@ -7636,6 +7636,127 @@ do
   runTimers()
 end
 ---------------------------------------------------------------- screenshot review (end)
+-- ===== proto: shopping list (gathering as you go) =====
+do
+  io.write("proto: shopping list\n")
+  ns.Nav.Stop()
+  local saved = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives, time }
+  local clock = 5000
+  time = function() return clock end
+  -- Redridge Stew: vultures and goretusks all over Redridge (five areas, ~800
+  -- yards end to end), handed in to Foreman Oslow (36,30).
+  NPCS[9601] = { name = "Stringy Vulture", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 15, 15 }, { 15, 85 }, { 85, 15 } } } }
+  NPCS[9602] = { name = "Goretusk", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 50, 50 }, { 85, 85 } } } }
+  QUESTS[4600] = { name = "Redridge Stew", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9601 }, { 9602 } } } }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.finishedBy, questKeys.objectives = 3, 10
+  refreshData()
+  check(ns.Journey.Spread(4600) and #ns.Quests.ObjectiveAreas(4600) == 5, "objectives in five areas across the zone: spread")
+  check(not ns.Journey.Spread(43), "the murlocs' three camps aren't")
+
+  -- Not in the log yet: pick it up, then the hand-in, through an area on the
+  -- way once you have it. The objectives aren't a stop to head for.
+  local log, complete = {}, false
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return log[i] and { questID = log[i], isHeader = false } or nil end
+  C_QuestLog.IsComplete = function() return complete end
+  local objectives = { { text = "Stringy Vulture slain: 1/4", finished = false }, { text = "Goretusk slain: 0/3", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
+  local function at(node, x, y) return node and math.abs(node.x - x) < 1e-6 and math.abs(node.y - y) < 1e-6 end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.95
+  local here = ns.Geo.PlayerNode()
+  local planned = ns.Journey.Plan(here, { title = "Redridge Stew", stops = ns.Journey.QuestStops(4600, here) })
+  local kinds = {}
+  for i, s in ipairs(planned.stops) do kinds[i] = s.action.kind end
+  check(table.concat(kinds, ",") == "pickup,turnin", "planned: pickup, then hand-in; the objectives aren't headed for: "
+    .. table.concat(kinds, ","))
+  check(not planned.stops[1].via and planned.stops[2].via, "no area before you have it; one on the way to the hand-in")
+
+  -- In the log: straight for Oslow, through the goretusks at 50,50 (on the way).
+  log = { 4600 }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge Stew", stops = ns.Journey.QuestStops(4600, here) }), true)
+  local step = ns.Nav.CurrentStep()
+  check(ns.Nav.HeadingFor().action.kind == "turnin", "heading for the hand-in, not the objectives")
+  check(step.via and not step.stop and at(step.to, 0.5, 0.5), "through the area on the way (50,50)")
+  local text = ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index)
+  check(text:find("^Through"), "the step says so: " .. text)
+
+  -- The Journey window: the objectives as a row gathered as you go, and the list.
+  ns.JourneyOverview.Show()
+  local gatherRow
+  for _, r in ipairs(ns.JourneyOverview.Rows()) do if r.state == "gather" then gatherRow = r end end
+  check(gatherRow and gatherRow.stop.action.kind == "complete", "the window lists the objectives as gathered as you go")
+  local lines = ns.JourneyOverview.ShopLines()
+  check(#lines == 2 and lines[1].text:find("Nothing on it", 1, true) and lines[2].entries and #lines[2].entries == 2,
+    "far from every spawn: nothing around here, two elsewhere")
+
+  -- Passing through the area: not waited in, on to Oslow.
+  player.x, player.y = 0.5, 0.52
+  ns.HUD.Update()
+  step = ns.Nav.CurrentStep()
+  check(not ns.Nav.Waiting() and not step.via and ns.Nav.HeadingFor().action.kind == "turnin",
+    "in the area: passed through, not waited in; still heading for the hand-in")
+  check(gatherRow.stop.worked and next(gatherRow.stop.worked) ~= nil, "the area counts as visited")
+  lines = ns.JourneyOverview.ShopLines()
+  check(lines[1].entry and lines[1].entry.name == "Goretusk" and lines[1].text:find("0/3", 1, true)
+    and lines[2].entries and lines[2].entries[1].name == "Stringy Vulture",
+    "around you: the goretusks, with the count; the vultures elsewhere")
+  check(not ns.JourneyOverview.ShopChanged(), "the window already shows it (the step changed)")
+
+  -- Planned again from here: still for Oslow, through another area (the
+  -- objectives aren't done), not back through the one just visited.
+  ns.Nav.Recalculate()
+  step = ns.Nav.CurrentStep()
+  check(ns.Nav.HeadingFor().action.kind == "turnin" and step.via and not at(step.to, 0.5, 0.5),
+    string.format("re-planned: through another area (%.2f, %.2f), not the one just visited", step.to.x, step.to.y))
+
+  -- Walking on (no step reached): the window's next look sees the list changed.
+  player.x, player.y = 0.15, 0.17
+  check(ns.JourneyOverview.ShopChanged(), "among the vultures: the window sees the list changed")
+  ns.JourneyOverview.Refresh()
+  check(not ns.JourneyOverview.ShopChanged() and ns.JourneyOverview.ShopLines()[1].entry.name == "Stringy Vulture",
+    "and shows the vultures once it looks again")
+  player.x, player.y = 0.5, 0.52
+
+  -- Everything gathered: no more areas, straight to the hand-in, empty list.
+  objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
+  objectives[2] = { text = "Goretusk slain: 3/3", finished = true }
+  complete = true
+  fire("QUEST_LOG_UPDATE")
+  step = ns.Nav.CurrentStep()
+  local anyVia = false
+  for k = ns.Nav.active.index, #ns.Nav.active.route.steps do
+    if ns.Nav.active.route.steps[k].via then anyVia = true end
+  end
+  check(gatherRow.stop.done and not anyVia and ns.Nav.HeadingFor().action.kind == "turnin",
+    "all gathered: straight to the hand-in")
+  check(#ns.JourneyOverview.ShopLines() == 0, "and nothing on the list")
+
+  -- A stop elsewhere, nothing it needs: an area far off the way isn't a detour.
+  objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }
+  objectives[2] = { text = "Goretusk slain: 0/3", finished = false }
+  complete = false
+  ns.Nav.Stop()
+  player.x, player.y = 0.9, 0.5
+  here = ns.Geo.PlayerNode()
+  local docks = { node = ns.Geo.Node(1433, 0.9, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
+  local stops = ns.Journey.QuestStops(4600, here)
+  stops[#stops + 1] = docks
+  planned = ns.Journey.Plan(here, { title = "Redridge", stops = stops })
+  check(planned.stops[1] == docks and not docks.via,
+    "a stop that doesn't need it, no area close to the way: no detour through one")
+  ns.JourneyOverview.EnsureFrame():Hide()
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives, time =
+    saved[1], saved[2], saved[3], saved[4], saved[5]
+  QUESTS[4600], NPCS[9601], NPCS[9602] = nil, nil, nil
+  refreshData()
+  ns.Nav.Stop()
+  runTimers()
+end
+-- ===== proto: shopping list (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

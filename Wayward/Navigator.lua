@@ -541,7 +541,13 @@ local function syncStops()
   local current = Nav.CurrentStep()
   local pending = current and current.stop and not current.stop.done and current.stop
   if ns.Journey.SyncQuestState(a.journey.root or a.journey.def) == 0 then return end
-  if pending and pending.done then
+  -- Everything gathered for a quest: no more going through its areas.
+  local gathered = false
+  for k = a.index, #a.route.steps do
+    local via = a.route.steps[k].via
+    if via and via.stop.done then gathered = true end
+  end
+  if (pending and pending.done) or gathered then
     Nav.Recalculate()
   else
     showStep()
@@ -1726,7 +1732,9 @@ local function liveBlocker(a, here)
   if Nav.InArea() then return "in the next stop's objective area", true end
   local stops = stopsAhead(a)
   -- One stop left in one place: nothing to put in another order.
-  if #stops == 0 or (#stops == 1 and not stops[1].aimArea) then return "one stop left", true end
+  if #stops == 0 or (#stops == 1 and not stops[1].aimArea and not ns.Journey.HasGathering(a.journey)) then
+    return "one stop left", true
+  end
   if a.livePlanning then return "a re-plan is running" end
   local now = GetTime and GetTime()
   if not now then return "no game clock", true end
@@ -1762,6 +1770,11 @@ local function liveCheck(a, here)
   local stops = stopsAhead(a)
   a.lastLive, a.liveFrom, a.livePlanning = GetTime(), here, true
   local journey, route, index, aim, pins = a.journey, a.route, a.index, stops[1].aimArea, a.pins
+  local function viaKey(stop)
+    local via = stop and stop.via
+    return via and (tostring(via.stop.action.questID) .. ":" .. via.index) or ""
+  end
+  local via = viaKey(stops[1])
   ns.Warm(function() return ns.Journey.Replan(journey, here) end, function(ok, planned)
     a.livePlanning = nil
     -- Moved on meanwhile (a stop reached, a pin, another re-plan, ended): stale.
@@ -1776,7 +1789,7 @@ local function liveCheck(a, here)
     for i, stop in ipairs(planned.stops) do
       if stop ~= stops[i] then same = false end
     end
-    if same and planned.stops[1].aimArea == aim then
+    if same and planned.stops[1].aimArea == aim and viaKey(planned.stops[1]) == via then
       note("re-plan as you go: same order, next %s", stopName(stops[1]))
       return
     end
@@ -1785,6 +1798,8 @@ local function liveCheck(a, here)
     if upNext ~= stops[1] then
       note("re-plan as you go: next %s instead of %s", stopName(upNext), stopName(stops[1]))
       ns.print(string.format("%s is next now: it fits better from where you are.", upNext.text or "another stop"))
+    elseif same and planned.stops[1].aimArea == aim then
+      note("re-plan as you go: %s", upNext.via and "through another area on the way" or "straight on, nothing to gather on the way")
     elseif same then
       note("re-plan as you go: another spot for %s", stopName(upNext))
     else
@@ -2265,7 +2280,10 @@ function Nav.Tick()
         end
       end
     end
-    if reached or inside or (inside == nil and ns.Geo.Distance(here, step.to) <= radius) then
+    -- An area to gather in on the way: anywhere in it counts, and it's passed, not waited in.
+    local viaHere = step.via and ns.Journey.InVia(step.via, here)
+    if viaHere then ns.Journey.PassVia(step.via) end
+    if reached or inside or viaHere or (inside == nil and ns.Geo.Distance(here, step.to) <= radius) then
       if ns.Journey.PendingAction(step) then
         a.waiting = true
         if a.index ~= k then

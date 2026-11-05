@@ -232,6 +232,12 @@ function Router.Describe(route, index, travelOnly)
   end
   -- The destination is someone to talk to (a trainer, a vendor).
   if not nextStep and step.to.npc then return "Talk to " .. step.to.npc end
+  -- Through an area to gather in on the way (Journey: gathering as you go).
+  if step.via then
+    local place = ns.Places and ns.Places.NameFor(step.to)
+    if place and place ~= step.to.label then return string.format("Through %s (%s)", place, step.to.label) end
+    return "Through the area for " .. step.to.label
+  end
   -- An objective area is labelled with its quest: walk to the place there
   -- ("Walk to Shimmer Ridge"), else to "the area for The Perfect Stout".
   local stop = step.stop

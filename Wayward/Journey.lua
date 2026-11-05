@@ -344,15 +344,213 @@ local function resolve(stop, here)
   end
 end
 
+---------------------------------------------------------------- gathering as you go
+
+-- PROTOTYPE (proto/shopping-list). Some quests want things that are all over
+-- a zone (Westfall Stew: vulture meat, goretusk snouts, murloc eyes, okra).
+-- Heading for one camp and waiting there isn't how anyone does those: you
+-- pick them up while you go about the rest. A quest's objectives "spread"
+-- when they're in SPREAD_AREAS areas or more, SPREAD_YARDS or more apart end
+-- to end. Its "Do ..." stop (stop.gather, set by Journey.Plan) isn't a
+-- destination: the journey heads for the next stop with someone to see (a
+-- pickup, a hand-in), through an area of it that's on the way (a "via" on
+-- that leg), and never waits there. The Journey window's shopping list says
+-- what of it is around you (Journey.ShoppingList).
+local SPREAD_AREAS, SPREAD_YARDS = 4, 400
+-- An area is on the way when going through it adds VIA_YARDS or less. On the
+-- way to the quest's own hand-in, its objectives still open, the best area
+-- whatever it adds (you'd only be turned back at the hand-in).
+local VIA_YARDS = 250
+-- Within VIA_RADIUS of an area's spawns you're in it: passed through.
+local VIA_RADIUS = 80
+-- Within NEAR_YARDS of a spawn, a shopping list entry is around you.
+local NEAR_YARDS = 200
+Journey.VIA_YARDS, Journey.VIA_RADIUS, Journey.NEAR_YARDS = VIA_YARDS, VIA_RADIUS, NEAR_YARDS
+
+-- Keyed by the quest's area list (Quests.ObjectiveAreas), so new data re-checks.
+local spreadCache = setmetatable({}, { __mode = "k" })
+
+function Journey.Spread(questID)
+  local areas = questID and ns.Quests.ObjectiveAreas(questID) or {}
+  if #areas < SPREAD_AREAS then return false end
+  if spreadCache[areas] ~= nil then return spreadCache[areas] end
+  local instance, x0, x1, y0, y1
+  for _, area in ipairs(areas) do
+    for _, m in ipairs(area) do
+      local n = m.node
+      instance = instance or n.instance
+      if n.instance == instance then
+        x0, x1 = math.min(x0 or n.wx, n.wx), math.max(x1 or n.wx, n.wx)
+        y0, y1 = math.min(y0 or n.wy, n.wy), math.max(y1 or n.wy, n.wy)
+      end
+    end
+  end
+  local spread = x0 ~= nil and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) >= SPREAD_YARDS
+  spreadCache[areas] = spread
+  return spread
+end
+
+local function gatherable(stop)
+  local action = stop and stop.action
+  return action ~= nil and action.kind == "complete" and action.questID ~= nil and Journey.Spread(action.questID)
+end
+
+-- Marks the stops gathered as you go. With nothing else open to head for,
+-- none is: the quest's areas are the destination as before.
+local function markGathering(stops)
+  local other = false
+  for _, stop in ipairs(stops) do
+    stop.gather = gatherable(stop) or nil
+    if not stop.gather and not stop.done and not stop.skipped then other = true end
+  end
+  if not other then
+    for _, stop in ipairs(stops) do stop.gather = nil end
+  end
+end
+
+-- Whether the journey still has something to gather as you go.
+function Journey.HasGathering(journey)
+  local root = journey and (journey.root or journey.def)
+  for _, stop in ipairs(root and root.stops or {}) do
+    if stop.gather and not stop.done and not stop.skipped then return true end
+  end
+  return false
+end
+
+-- Whether `to` needs `g` done first (the quest's hand-in).
+local function needsDirectly(to, g)
+  for _, s in ipairs(to.after or {}) do
+    if s == g then return true end
+  end
+  return false
+end
+
+-- The area to go through on the way from `from` to stop `to`: of the quests
+-- gathered as you go that you have (or pick up earlier on the journey,
+-- `picked`), an area not visited lately and not where you are, adding the
+-- least; see VIA_YARDS. The one the last plan chose stays unless another
+-- saves STICK_YARDS. Returns { stop, index, node } or nil.
+local function pickVia(gathers, from, to, picked)
+  if not (from and to and to.node and #gathers > 0) then return nil end
+  local direct = ns.Geo.Distance(from, to.node)
+  if direct == math.huge then return nil end
+  local now = time()
+  local best, bestExtra
+  for _, g in ipairs(gathers) do
+    local questID = g.action.questID
+    if (inLog(questID) or picked[questID]) and not objectivesDone(questID) then
+      local needed = needsDirectly(to, g)
+      for _, area in ipairs(Journey.OpenAreas(questID)) do
+        local cleared = g.worked and g.worked[area.index] and now - g.worked[area.index] < CLEARED_FOR
+        local node, d = ns.Data.Nearest(area.nodes, from)
+        if node and not cleared and d > VIA_RADIUS then
+          local extra = d + ns.Geo.Distance(node, to.node) - direct
+          local last = to.via
+          if last and last.stop == g and last.index == area.index then extra = extra - STICK_YARDS end
+          if (needed or extra <= VIA_YARDS) and (not bestExtra or extra < bestExtra) then
+            best, bestExtra = { stop = g, index = area.index, node = node }, extra
+          end
+        end
+      end
+    end
+  end
+  return best
+end
+
+-- A leg through `via`: the walk there (its last step carries .via), then on
+-- to `to`. Nil when either half has no route, or the via is at the stop.
+local function throughVia(from, via, to, net)
+  local first = ns.Router.Plan(from, via.node, net)
+  local second = first and ns.Router.Plan(via.node, to, net)
+  if not (first and second) or #first.steps == 0 or #second.steps == 0 then return nil end
+  local steps = {}
+  local function add(step, mark)
+    local copy = {}
+    for k, v in pairs(step) do copy[k] = v end
+    if mark then copy.via = via end
+    steps[#steps + 1] = copy
+  end
+  for i, step in ipairs(first.steps) do add(step, i == #first.steps) end
+  for _, step in ipairs(second.steps) do add(step) end
+  return { steps = steps, seconds = first.seconds + second.seconds }
+end
+
+-- Whether you're in a via's area (near any of its open spawns).
+function Journey.InVia(via, here)
+  if not (via and via.stop and here) then return false end
+  for _, area in ipairs(Journey.OpenAreas(via.stop.action.questID)) do
+    if area.index == via.index then
+      local _, d = ns.Data.Nearest(area.nodes, here)
+      return d ~= nil and d <= VIA_RADIUS
+    end
+  end
+  return ns.Geo.Distance(via.node, here) <= VIA_RADIUS
+end
+
+-- Passed through a via's area: visited, so the next plans go elsewhere for a
+-- respawn's time.
+function Journey.PassVia(via)
+  local g = via and via.stop
+  if not g then return end
+  g.worked = g.worked or {}
+  g.worked[via.index] = time()
+end
+
+-- What the journey's gathered-as-you-go quests still want, around you first,
+-- then nearest first:
+--   { {questID, quest, name, have, need, node, distance, near}, ... }
+-- `have`/`need` from the quest log (nil when it doesn't say).
+function Journey.ShoppingList(journey, here)
+  refresh()
+  local root = journey and (journey.root or journey.def)
+  local out, seen = {}, {}
+  for _, stop in ipairs(root and root.stops or {}) do
+    local id = gatherable(stop) and not stop.done and not stop.skipped and stop.action.questID
+    if id and not seen[id] and inLog(id) and not objectivesDone(id) then
+      seen[id] = true
+      local q = ns.Quests.Quest(id)
+      local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(id) or {}
+      for _, group in ipairs(ns.Quests.ObjectiveGroups(id)) do
+        local entry, finished = { questID = id, quest = q and q.name or ("quest " .. id), name = group.name or "?" }, false
+        for _, o in ipairs(objectives) do
+          if group.name and type(o.text) == "string" and o.text:find(group.name, 1, true) then
+            finished = o.finished and true or false
+            local have, need = o.numFulfilled, o.numRequired
+            if not (type(have) == "number" and type(need) == "number") then
+              local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
+              have, need = tonumber(a), tonumber(b)
+            end
+            entry.have, entry.need = have, need
+          end
+        end
+        if not finished then
+          local node, d = ns.Data.Nearest(group.nodes, here)
+          entry.node, entry.distance = node, d or math.huge
+          entry.near = here ~= nil and entry.distance <= NEAR_YARDS
+          out[#out + 1] = entry
+        end
+      end
+    end
+  end
+  table.sort(out, function(x, y)
+    if x.near ~= y.near then return x.near end
+    if x.distance ~= y.distance then return x.distance < y.distance end
+    return x.name < y.name
+  end)
+  return out
+end
+
 ---------------------------------------------------------------- ordering
 
 -- The stops a stop comes after: the ones it needs (`after`), the ones you
 -- chose to do first (`later`, Journey.Postpone) and, with pins, the ones a
 -- pinned stop keeps ahead of it (`pinAfter`) and the pinned stops it stays
--- behind (`pinnedBy`, Journey.Pin). `noPins`: without the pins.
+-- behind (`pinnedBy`, Journey.Pin). `noPins`: without the pins. A stop
+-- gathered as you go isn't headed for: what needs it comes after what it
+-- needs instead (a hand-in after the pickup).
 local PREREQUISITES = { "after", "later", "pinAfter", "pinnedBy" }
 
-local function prerequisites(stop, noPins)
+local function ownPrerequisites(stop, noPins)
   if not (stop.later or ((stop.pinAfter or stop.pinnedBy) and not noPins)) then return stop.after or {} end
   local out = {}
   for k, key in ipairs(PREREQUISITES) do
@@ -360,6 +558,27 @@ local function prerequisites(stop, noPins)
       for _, s in ipairs(stop[key] or {}) do out[#out + 1] = s end
     end
   end
+  return out
+end
+
+local function prerequisites(stop, noPins)
+  local list = ownPrerequisites(stop, noPins)
+  local gathered = false
+  for _, s in ipairs(list) do
+    if s.gather then gathered = true break end
+  end
+  if not gathered then return list end
+  local out, seen = {}, {}
+  local function add(s, depth)
+    if seen[s] then return end
+    seen[s] = true
+    if s.gather and depth < 8 then
+      for _, before in ipairs(ownPrerequisites(s, noPins)) do add(before, depth + 1) end
+    else
+      out[#out + 1] = s
+    end
+  end
+  for _, s in ipairs(list) do add(s, 0) end
   return out
 end
 
@@ -679,7 +898,13 @@ function Journey.Plan(start, def, net)
     stop.text = stop.text or Journey.DefaultText(stop)
     resolve(stop, start)
   end
-  local ordered = root.manual and manualOrder(start, def.stops or {}, net) or orderStops(start, def.stops or {}, net, def.keep)
+  -- Stops gathered as you go aren't headed for; the legs go through them.
+  markGathering(def.stops or {})
+  local heading, gathers = {}, {}
+  for _, stop in ipairs(def.stops or {}) do
+    if stop.gather then gathers[#gathers + 1] = stop else heading[#heading + 1] = stop end
+  end
+  local ordered = root.manual and manualOrder(start, heading, net) or orderStops(start, heading, net, def.keep)
   -- `first`: the stop you're doing now (another quest's objectives, on the
   -- way), when nothing it needs is still open.
   for i, stop in ipairs(ordered) do
@@ -721,8 +946,14 @@ function Journey.Plan(start, def, net)
   local journey = { title = def.title, kind = def.kind, icon = def.icon, def = def, root = root, stops = {},
     skipped = {}, steps = {}, seconds = 0 }
   local legs, from, clock = {}, start, 0
+  refresh()
+  local picked = {} -- quests picked up earlier on the journey: their areas count as vias after
   for _, stop in ipairs(ordered) do
-    local route = stop.node and ns.Router.Plan(from, stop.node, net)
+    local via = pickVia(gathers, from, stop, picked)
+    local route = via and stop.node and throughVia(from, via, stop.node, net)
+    stop.via = route and via or nil
+    route = route or (stop.node and ns.Router.Plan(from, stop.node, net))
+    if stop.action and stop.action.kind == "pickup" and stop.action.questID then picked[stop.action.questID] = true end
     if route then
       legs[#legs + 1] = { from = from, stop = stop, route = route, at = clock }
       clock = math.max(clock + route.seconds, Journey.RespawnIn(stop))
