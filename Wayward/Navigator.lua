@@ -671,15 +671,47 @@ local function askAbout(ids, what)
   end
 end
 
+-- Quests picked up on a journey that add AUTO_ADD_SLACK seconds or less to it
+-- go straight in, without a question: all of them at once when together they
+-- fit, otherwise one by one while the time they add stays within it (each
+-- measured against the journey with the ones before it). Returns the quests
+-- left to ask about. Plain directions aren't a journey: those are asked.
+local AUTO_ADD_SLACK = 180
+
+local function autoAddLine(offer)
+  return string.format("picked up %s: added to your journey (%s more). The journey overview's x drops it.",
+    offer.label, ns.FormatDuration(offer.extra))
+end
+
+local function autoAddPickups(ids)
+  local a = Nav.active
+  if ns.db.settings.autoAddPickups == false or not (a and a.journey) then return ids end
+  local offer = Nav.PickupOffer(ids)
+  if offer and offer.extra and offer.extra <= AUTO_ADD_SLACK then
+    Nav.AddToTrip(offer.stops, offer.label, autoAddLine(offer))
+    return {}
+  end
+  local rest, budget = {}, AUTO_ADD_SLACK
+  for _, id in ipairs(ids) do
+    local one = Nav.active and Nav.active.journey and Nav.PickupOffer({ id })
+    if one and one.extra and one.extra <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one)) then
+      budget = budget - one.extra
+    else
+      rest[#rest + 1] = id
+    end
+  end
+  return rest
+end
+
 local function askPickups()
   if stillPicking() then
     ns.After(PICKUP_WAIT, askPickups)
     return
   end
   waiting = false
-  local ids = picked
+  local ids = autoAddPickups(picked)
   picked = {}
-  if ns.db.settings.askOnPickup == false then return end
+  if #ids == 0 or ns.db.settings.askOnPickup == false then return end
   -- Asked once: progress on it later isn't asked about again.
   ns.charDB.askedProgress = ns.charDB.askedProgress or {}
   for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
@@ -1003,8 +1035,9 @@ end
 -- Adds stops to the current journey as detours and re-plans the order from
 -- where you are; plain directions become a journey ("custom") with their
 -- destination as a stop. With no journey on, this starts one. Returns true
--- when the journey changed.
-function Nav.AddToTrip(stops, label)
+-- when the journey changed. `message`, when given, is said in chat in place
+-- of the usual "added ... to your journey" line.
+function Nav.AddToTrip(stops, label, message)
   local here = ns.Geo.PlayerNode()
   if not here or #stops == 0 then return false end
   local a = Nav.active
@@ -1036,7 +1069,7 @@ function Nav.AddToTrip(stops, label)
   end
   a.title = planned.title
   adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
-  ns.print(string.format("added %s to your journey: %d stops, %s", label, #planned.stops,
+  ns.print(message or string.format("added %s to your journey: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
   ns.Fire("JOURNEY_EXTENDED")
   -- One sound: the follow-up question's, when it asks one.

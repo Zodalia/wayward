@@ -2902,13 +2902,64 @@ do
   QUESTS[40] = { name = "Murloc Menace", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
     finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
   refreshData()
+  check(ns.Nav.PickupOffer({ 40 }).extra <= 180, "Murloc Menace adds 3 min or less to the journey")
+  local said = #chat
+  fire("QUEST_ACCEPTED", 40)
+  runTimers()
+  check(shown == nil and ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45),
+    "a pickup that adds 3 min or less goes straight into the journey, unasked")
+  check(chat[#chat]:find("picked up Murloc Menace: added to your journey (", 1, true)
+    and chat[#chat]:find("x drops it", 1, true) and #chat == said + 1,
+    "and chat says so, with the time and how to drop it: " .. tostring(chat[#chat]))
+
+  -- Picked up together, one that adds more than 3 min (made so here) and one
+  -- that doesn't: the near one goes in, the far one is asked about.
+  QUESTS[47] = { name = "Murloc Courier", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
+  QUESTS[48] = { name = "Murloc Scales", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
+  refreshData()
+  local realOffer = ns.Nav.PickupOffer
+  ns.Nav.PickupOffer = function(ids)
+    local offer = realOffer(ids)
+    for _, id in ipairs(offer and offer.ids or {}) do
+      if id == 47 and offer.extra then offer.extra = offer.extra + 200 end
+    end
+    return offer
+  end
+  log[3], log[4] = 48, 47
+  fire("QUEST_ACCEPTED", 48)
+  fire("QUEST_ACCEPTED", 47)
+  runTimers()
+  check(ns.Nav.TripHasQuest(48) and not ns.Nav.TripHasQuest(47), "the near quest goes in, the far one doesn't")
+  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("You picked up Murloc Courier.", 1, true),
+    "the one that adds more than 3 min is asked about, on its own: " .. tostring(shown and shown.text))
+  ns.Nav.PickupOffer = realOffer
+  shown = nil
+  ns.Nav.RemoveQuest(48)
+  log[3], log[4] = nil, nil
+  QUESTS[47], QUESTS[48] = nil, nil
+  refreshData()
+
+  -- The option off: asked about like any other pickup.
+  shown = nil
+  ns.Nav.RemoveQuest(40)
+  ns.db.settings.autoAddPickups = false
+  check(not ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Murloc Menace dropped from the journey")
   fire("QUEST_ACCEPTED", 40)
   runTimers()
   check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("Murloc Menace", 1, true)
     and shown.text:find("more), or start a new journey", 1, true) and shown.data,
-    "with a journey on: add it, with the time it adds, or a new journey: " .. tostring(shown and shown.text))
+    "with a journey on and the option off: add it, with the time it adds, or a new journey: "
+      .. tostring(shown and shown.text))
   StaticPopupDialogs.WAYWARD_PICKUP_ADD.OnAccept(nil, shown.data)
   check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Add to trip: both quests in it")
+  ns.db.settings.autoAddPickups = nil
+  local auto
+  for _, c in ipairs(ns.Options.Choices()) do
+    if c.name == "Automatically add quest pickups" then auto = c end
+  end
+  check(auto and auto.section == "Journeys and quests" and auto.get() == true, "the option is there, on by default")
 
   -- Already in the trip: nothing to ask.
   shown = nil
@@ -6504,8 +6555,10 @@ do
   QUESTS[1].finishedBy = { { 345 } }
   refreshData()
   shown = nil
+  ns.db.settings.autoAddPickups = false -- asked, not added unasked
   fire("QUEST_ACCEPTED", 1)
   runTimers()
+  ns.db.settings.autoAddPickups = nil
   check(shown and shown.which == "WAYWARD_PICKUP_ADD" and StaticPopupDialogs.WAYWARD_PICKUP_ADD.button3 == "New journey",
     "picking up a quest on a journey offers to add it or start a new journey")
   StaticPopupDialogs.WAYWARD_PICKUP_ADD.OnAlt(nil, shown.data)
