@@ -541,7 +541,13 @@ local function syncStops()
   local current = Nav.CurrentStep()
   local pending = current and current.stop and not current.stop.done and current.stop
   if ns.Journey.SyncQuestState(a.journey.root or a.journey.def) == 0 then return end
-  if pending and pending.done then
+  -- Everything gathered for a quest: no more going through its areas.
+  local gathered = false
+  for k = a.index, #a.route.steps do
+    local via = a.route.steps[k].via
+    if via and via.stop.done then gathered = true end
+  end
+  if (pending and pending.done) or gathered then
     Nav.Recalculate()
   else
     showStep()
@@ -1587,11 +1593,18 @@ end
 
 function Nav.WorkSeconds(journey)
   local total, seen = 0, {}
-  for _, s in ipairs(journey and journey.stops or {}) do
+  -- Quests gathered as you go aren't stops of the plan, but their work counts.
+  local stops = { unpack(journey and journey.stops or {}) }
+  local root = journey and (journey.root or journey.def)
+  for _, s in ipairs(root and root ~= journey and root.stops or {}) do
+    if s.gather then stops[#stops + 1] = s end
+  end
+  for _, s in ipairs(stops) do
     local id = s.action and s.action.kind == "complete" and s.action.questID
     if id and not seen[id] and not (s.done or s.skipped or s.passed) then
       seen[id] = true
-      total = total + questSeconds() * shareLeft(id)
+      -- Gathered as you go: at your pace on it, once there is one.
+      total = total + (s.gather and ns.Journey.GatherSeconds(id) or questSeconds() * shareLeft(id))
     end
   end
   return total
@@ -1615,7 +1628,7 @@ function Nav.Progress()
     out.kind, out.icon = a.journey.kind, a.journey.icon
     out.done, out.total = ns.Journey.Progress(a.journey)
     local stop = Nav.HeadingFor()
-    out.stopText = stop and (stop.text or (stop.node and stop.node.label)) or a.title
+    out.stopText = stop and ns.Journey.StopText(stop) or a.title
     local before = 0
     for _, s in ipairs(a.journey.stops) do
       if s == stop then break end
@@ -1724,9 +1737,12 @@ local function liveBlocker(a, here)
   if not step then return "no step", true end
   if step.mode ~= "walk" then return "the step isn't on foot (" .. tostring(step.mode) .. ")", true end
   if Nav.InArea() then return "in the next stop's objective area", true end
+  if a.gatherHere then return "gathering where you are", true end
   local stops = stopsAhead(a)
   -- One stop left in one place: nothing to put in another order.
-  if #stops == 0 or (#stops == 1 and not stops[1].aimArea) then return "one stop left", true end
+  if #stops == 0 or (#stops == 1 and not stops[1].aimArea and not ns.Journey.HasGathering(a.journey)) then
+    return "one stop left", true
+  end
   if a.livePlanning then return "a re-plan is running" end
   local now = GetTime and GetTime()
   if not now then return "no game clock", true end
@@ -1762,6 +1778,11 @@ local function liveCheck(a, here)
   local stops = stopsAhead(a)
   a.lastLive, a.liveFrom, a.livePlanning = GetTime(), here, true
   local journey, route, index, aim, pins = a.journey, a.route, a.index, stops[1].aimArea, a.pins
+  local function viaKey(stop)
+    local via = stop and stop.via
+    return via and (tostring(via.stop.action.questID) .. ":" .. via.index) or ""
+  end
+  local via = viaKey(stops[1])
   ns.Warm(function() return ns.Journey.Replan(journey, here) end, function(ok, planned)
     a.livePlanning = nil
     -- Moved on meanwhile (a stop reached, a pin, another re-plan, ended): stale.
@@ -1776,7 +1797,7 @@ local function liveCheck(a, here)
     for i, stop in ipairs(planned.stops) do
       if stop ~= stops[i] then same = false end
     end
-    if same and planned.stops[1].aimArea == aim then
+    if same and planned.stops[1].aimArea == aim and viaKey(planned.stops[1]) == via then
       note("re-plan as you go: same order, next %s", stopName(stops[1]))
       return
     end
@@ -1785,6 +1806,8 @@ local function liveCheck(a, here)
     if upNext ~= stops[1] then
       note("re-plan as you go: next %s instead of %s", stopName(upNext), stopName(stops[1]))
       ns.print(string.format("%s is next now: it fits better from where you are.", upNext.text or "another stop"))
+    elseif same and planned.stops[1].aimArea == aim then
+      note("re-plan as you go: %s", upNext.via and "through another area on the way" or "straight on, nothing to gather on the way")
     elseif same then
       note("re-plan as you go: another spot for %s", stopName(upNext))
     else
@@ -1896,7 +1919,9 @@ local function doingLater()
     if stop and stop.action.kind == "complete" then
       local before, now = stop.progress, progressOf(stop.action.questID)
       stop.progress = now
-      if before and before ~= now and not busy and stop ~= (current and current.stop) then
+      -- A quest done together with the stop you're heading for is that stop already.
+      local together = stop.joined ~= nil and stop.joined == (current and current.stop)
+      if before and before ~= now and not busy and not together and stop ~= (current and current.stop) then
         local inside, _, area = areaOf(stop, here)
         if inside then
           stop.inArea = true
@@ -2191,6 +2216,72 @@ ns.On("PLAYER_ALIVE", function()
   if not secretValue(ghost) and ghost == false then alive() end
 end)
 
+-- Gathering as you go (prototype): at a hand-in whose quest still wants
+-- things, nothing waits there; the way goes on through an area for them and
+-- back. While an area comes first, the hand-in doesn't count as reached.
+local SEND_ON_EVERY = 5
+
+local function viaBefore(a, k)
+  for j = a.index, k - 1 do
+    if a.route.steps[j].via then return true end
+  end
+  return false
+end
+
+-- Gathering where you are: the stop you're heading for is a hand-in waiting
+-- on gathering, you'd get there short of what it needs (Journey.ShortOf),
+-- and you're in one of the journey's areas to gather in. Nothing to head for
+-- yet, so no arrow, and nothing waits for you either: walk out and the way
+-- goes on through the next area. A little way out (GATHER_LEAVE) still
+-- counts, so the edge doesn't flicker. { area, stop, seconds } or nil.
+local GATHER_LEAVE = 120
+
+local function gatherHereCheck(a, here)
+  if not (a.journey and here) or onTaxi() then return nil end
+  local step = a.route.steps[a.index]
+  if not step or step.via then return nil end
+  local stop = Nav.HeadingFor()
+  if not (stop and ns.Journey.WaitsOnGathering(stop)) then return nil end
+  local gather
+  for _, s in ipairs(stop.after or {}) do
+    if s.gather then gather = s end
+  end
+  if not (gather and ns.Journey.ShortOf(stop, gather, here)) then return nil end
+  local area = ns.Journey.GatherAreaAt(a.journey, here, a.gatherHere and GATHER_LEAVE or nil)
+  if not area then return nil end
+  return { area = area, stop = stop, seconds = ns.Journey.GatherSeconds(stop.action.questID) }
+end
+
+-- What gathering where you are is about (see gatherHereCheck), or nil.
+function Nav.GatheringHere()
+  local a = Nav.active
+  return a and a.gatherHere or nil
+end
+
+-- True when the journey was sent on from `stop` (re-planned through an area).
+local function sendOn(a, stop, here)
+  if not ns.Journey.StillGathering(a.journey, stop) then return false end
+  local now = GetTime and GetTime() or 0
+  if a.sentOnAt and a.sentOnStop == stop and now - a.sentOnAt < SEND_ON_EVERY then return false end
+  a.sentOnStop, a.sentOnAt = stop, now
+  local journey = ns.Journey.Replan(a.journey, here)
+  local via
+  for _, step in ipairs(journey and journey.steps or {}) do
+    if step.stop then break end
+    if step.via then via = step.via break end
+  end
+  if not via then
+    note("at %s, still gathering, but no area to go through", stopName(stop))
+    return false
+  end
+  note("at %s before it's all gathered: sent on through an area", stopName(stop))
+  ns.print(string.format("not everything for %s yet: on through another spot, then back here.",
+    questName(stop.action.questID)))
+  a.lastReplan = GetTime and GetTime()
+  adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+  return true
+end
+
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
@@ -2265,7 +2356,27 @@ function Nav.Tick()
         end
       end
     end
-    if reached or inside or (inside == nil and ns.Geo.Distance(here, step.to) <= radius) then
+    -- An area to gather in on the way: anywhere in it counts, and it's passed,
+    -- not waited in. So does any other of their areas you walk into: you're
+    -- gathering already, so the arrow goes on to the stop.
+    local viaHere = false
+    if step.via then
+      if ns.Journey.InVia(step.via, here) then
+        viaHere = step.via
+      else
+        viaHere = ns.Journey.GatherAreaAt(a.journey, here) or false
+      end
+      if viaHere then ns.Journey.PassVia(viaHere) end
+    end
+    local near = reached or inside or viaHere or (inside == nil and ns.Geo.Distance(here, step.to) <= radius)
+    -- A hand-in that waits on gathering is never reached (nothing to hand in
+    -- yet): at it, the way goes on through an area, unless one comes first
+    -- already or you're in one of them.
+    if near and pending and ns.Journey.WaitsOnGathering(pending) then
+      if not viaBefore(a, k) and sendOn(a, pending, here) then return here, a.route.steps[a.index] end
+      near = false
+    end
+    if near then
       if ns.Journey.PendingAction(step) then
         a.waiting = true
         if a.index ~= k then
@@ -2305,8 +2416,18 @@ function Nav.Tick()
       break
     end
   end
+  -- Gathering where you are, or stepped out of it (on through an area now).
+  local gathering = gatherHereCheck(a, here)
+  if a.gatherHere and not gathering then
+    a.gatherHere = nil
+    note("left the area you were gathering in")
+    Nav.Recalculate()
+    return here, Nav.CurrentStep()
+  end
+  if gathering and not a.gatherHere then note("gathering where you are, for %s", stopName(gathering.stop)) end
+  a.gatherHere = gathering
   -- In an objective area there's nothing to point at.
-  if Nav.InArea() and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end
+  if (Nav.InArea() or a.gatherHere) and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end
   -- Only when nothing was reached: arriving by teleport still counts as arriving.
   if a.index == startIndex and not a.waiting and not checkRoute(a, here, previous) then liveCheck(a, here) end
   return here, a.route.steps[a.index]

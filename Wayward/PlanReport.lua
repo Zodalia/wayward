@@ -23,6 +23,21 @@ local function yards(a, b)
   return d < math.huge and string.format("%.0f yd", d) or "another continent"
 end
 
+-- " (quest 13: in log, 2/10)" for a quest stop: quests in a chain often share
+-- a name, so the report says which one, and where it stands.
+local function questTag(stop)
+  local id = stop and stop.action and stop.action.questID
+  if not id then return "" end
+  local done, logged = ns.Quests.PlayerQuestState()
+  local state = done[id] and "done" or logged[id] and "in log" or "not taken"
+  if logged[id] then
+    local complete = ns.QuestLog.IsComplete(id)
+    local left = not complete and ns.Quests.ObjectivesLeft(id)
+    state = state .. (complete and ", ready to hand in" or left and (", " .. left .. " to go") or "")
+  end
+  return string.format(" (quest %d: %s)", id, state)
+end
+
 local function names(stops)
   local out = {}
   for _, s in ipairs(stops) do out[#out + 1] = ns.Nav.StopName(s) end
@@ -114,6 +129,10 @@ function PlanReport.Build()
     local flags = {}
     if a.waiting then flags[#flags + 1] = "waiting at the stop" end
     if ns.Nav.InArea() then flags[#flags + 1] = "in its objective area" end
+    local gathering = ns.Nav.GatheringHere()
+    if gathering then
+      flags[#flags + 1] = string.format("gathering where you are (%s to go at your pace)", duration(gathering.seconds))
+    end
     if ns.Nav.Flying() then flags[#flags + 1] = "flying" end
     if #flags > 0 then add("Now: %s", table.concat(flags, ", ")) end
     add("Re-planning as you go: %s (padding %d yd)", ns.Nav.LiveBlocker() or "can run now", ns.Journey.STICK_YARDS)
@@ -133,13 +152,19 @@ function PlanReport.Build()
         ns.WarmStep()
         local tags = {}
         if s.pinned then tags[#tags + 1] = "pinned" end
+        if s.joined then tags[#tags + 1] = "done together with " .. ns.Nav.StopName(s.joined) end
         if s.later then tags[#tags + 1] = "you moved on from it" end
+        if ns.Journey.WaitsOnGathering(s) then
+          tags[#tags + 1] = string.format("waits on gathering, %s to go", duration(ns.Journey.GatherSeconds(s.action.questID)))
+        end
         if s.after then
           for _, before in ipairs(s.after) do
-            if not before.done and not before.skipped then tags[#tags + 1] = "after " .. ns.Nav.StopName(before) end
+            if not before.done and not before.skipped then
+              tags[#tags + 1] = "after " .. ns.Nav.StopName(before) .. questTag(before)
+            end
           end
         end
-        add("  %d. %s%s", i, ns.Nav.StopName(s), #tags > 0 and ("  [" .. table.concat(tags, "; ") .. "]") or "")
+        add("  %d. %s%s%s", i, ns.Nav.StopName(s), questTag(s), #tags > 0 and ("  [" .. table.concat(tags, "; ") .. "]") or "")
         local route = here and s.node and ns.Router.Plan(here, s.node, net)
         add("      at %s, %s, %s from here", place(s.node), here and yards(here, s.node) or "?",
           duration(route and route.seconds))
@@ -147,9 +172,30 @@ function PlanReport.Build()
           for _, line in ipairs(objectiveLines(s, here)) do add(line) end
         end
       end
-      local missing = {}
+      local missing, gathered = {}, {}
       for _, s in ipairs(ns.Journey.AllStops(journey)) do
-        if not planned[s] and not s.done and not s.skipped then missing[#missing + 1] = ns.Nav.StopName(s) end
+        if not planned[s] and not s.done and not s.skipped then
+          local list = s.gather and gathered or missing
+          list[#list + 1] = ns.Nav.StopName(s) .. questTag(s)
+        end
+      end
+      if #gathered > 0 then add("Gathered as you go (not headed for): %s", table.concat(gathered, "; ")) end
+      -- How each quest's spawns lie: spread (gathered as you go) or crowded in one spot (a stop).
+      local seenQuest, spreadLines = {}, {}
+      for _, s in ipairs(ns.Journey.AllStops(journey)) do
+        local id = s.action and s.action.kind == "complete" and s.action.questID
+        if id and not s.done and not s.skipped and not seenQuest[id] then
+          seenQuest[id] = true
+          local info = ns.Journey.SpreadInfo(id)
+          spreadLines[#spreadLines + 1] = string.format(
+            "  %s: %d areas over %.0f yd, %d of %d spawns (%.0f%%) round the busiest spot, %d around you  >  %s",
+            ns.Nav.StopName(s), info.areas, info.span, info.busiest, info.total, info.share * 100,
+            here and ns.Journey.SpawnsAround(id, here) or 0, info.spread and "spread: gathered as you go" or "a stop")
+        end
+      end
+      if #spreadLines > 0 then
+        add("How the objectives lie:")
+        for _, line in ipairs(spreadLines) do add(line) end
       end
       if #missing > 0 then add("Open but not in the plan (no route?): %s", table.concat(missing, "; ")) end
 

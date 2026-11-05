@@ -338,12 +338,15 @@ function Overview.Rows()
   local rows = {}
   for _, stop in ipairs(ns.Journey.AllStops(a.journey)) do
     if not (stop.skipped or stop.passed) then
-      local state = stop.done and "done" or stop == now and "now" or "next"
+      -- A quest done together with the stop you're on is on now too.
+      local state = stop.done and "done" or (stop == now or (now and stop.joined == now)) and "now"
+        or stop.gather and "gather" or "next"
       rows[#rows + 1] = { stop = stop, state = state }
     end
   end
-  -- Done stops first, in the order they happened to be listed.
-  local order = { done = 1, now = 2, next = 3 }
+  -- Done stops first, in the order they happened to be listed; what you
+  -- gather as you go right under the stop you're on.
+  local order = { done = 1, now = 2, gather = 3, next = 4 }
   local keyed = {}
   for i, r in ipairs(rows) do keyed[i] = { r = r, i = i } end
   table.sort(keyed, function(x, y)
@@ -358,6 +361,7 @@ local LOOK = {
   done = { "|cff7fd1aedone|r  ", 0.6 },
   now = { "|cffffd200now|r  ", 1 },
   next = { "      ", 1 },
+  gather = { "|cff80c0ffas you go|r  ", 0.9 },
 }
 
 local FINISHED = { done = true }
@@ -509,7 +513,7 @@ function Overview.Refresh()
       row.zone:SetText(zone and ("      " .. zone) or "")
       row.text:SetAlpha(look[2])
       row.movable = r.state == "now" or r.state == "next"
-      row.drop:SetShown(r.state == "now" or r.state == "next")
+      row.drop:SetShown(r.state == "now" or r.state == "next" or r.state == "gather")
       -- No pins on an order you dragged yourself: all of it keeps its place.
       local pinned = ns.Journey.IsPinned(r.stop)
       row.pin:SetShown(row.movable and not root.manual)
