@@ -932,6 +932,20 @@ function Nav.MoveStop(stop, target)
   return true
 end
 
+-- Pins an open stop of the journey in its place, or unpins it (the
+-- overview's pin, Journey.Pin): re-plans as you go leave it where it is.
+-- Nothing moves when you pin; once unpinned, the next re-plan may move it.
+function Nav.TogglePin(stop)
+  local a = Nav.active
+  if not (a and a.journey and stop) then return false end
+  if not (ns.Journey.Unpin(a.journey, stop) or ns.Journey.Pin(a.journey, stop)) then return false end
+  -- A re-plan under way started without this pin (liveCheck).
+  a.pins = (a.pins or 0) + 1
+  save()
+  ns.Fire("NAV_CHANGED")
+  return true
+end
+
 -- Adds stops to the current journey as detours and re-plans the order from
 -- where you are; plain directions become a journey ("custom") with their
 -- destination as a stop. With no journey on, this starts one. Returns true
@@ -1622,11 +1636,12 @@ local function liveCheck(a, here)
   -- One stop left in one place: nothing to put in another order.
   if #stops == 0 or (#stops == 1 and not stops[1].aimArea) then return end
   a.lastLive, a.liveFrom, a.livePlanning = now, here, true
-  local journey, route, index, aim = a.journey, a.route, a.index, stops[1].aimArea
+  local journey, route, index, aim, pins = a.journey, a.route, a.index, stops[1].aimArea, a.pins
   ns.Warm(function() return ns.Journey.Replan(journey, here) end, function(ok, planned)
     a.livePlanning = nil
-    -- Moved on meanwhile (a stop reached, another re-plan, ended): stale.
-    if not (ok and planned) or Nav.active ~= a or a.journey ~= journey or a.route ~= route or a.index ~= index then
+    -- Moved on meanwhile (a stop reached, a pin, another re-plan, ended): stale.
+    if not (ok and planned) or Nav.active ~= a or a.journey ~= journey or a.route ~= route or a.index ~= index
+      or a.pins ~= pins then
       return
     end
     local same = #planned.stops == #stops

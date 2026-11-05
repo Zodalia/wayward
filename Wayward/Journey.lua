@@ -317,13 +317,20 @@ end
 
 ---------------------------------------------------------------- ordering
 
--- The stops a stop comes after: the ones it needs (`after`) and the ones you
--- chose to do first (`later`, Journey.Postpone).
-local function prerequisites(stop)
-  if not stop.later then return stop.after or {} end
+-- The stops a stop comes after: the ones it needs (`after`), the ones you
+-- chose to do first (`later`, Journey.Postpone) and, with pins, the ones a
+-- pinned stop keeps ahead of it (`pinAfter`) and the pinned stops it stays
+-- behind (`pinnedBy`, Journey.Pin). `noPins`: without the pins.
+local PREREQUISITES = { "after", "later", "pinAfter", "pinnedBy" }
+
+local function prerequisites(stop, noPins)
+  if not (stop.later or ((stop.pinAfter or stop.pinnedBy) and not noPins)) then return stop.after or {} end
   local out = {}
-  for _, s in ipairs(stop.after or {}) do out[#out + 1] = s end
-  for _, s in ipairs(stop.later) do out[#out + 1] = s end
+  for k, key in ipairs(PREREQUISITES) do
+    if k <= 2 or not noPins then
+      for _, s in ipairs(stop[key] or {}) do out[#out + 1] = s end
+    end
+  end
   return out
 end
 
@@ -458,10 +465,10 @@ end
 
 -- Stops in the player's own order (Journey.Move); stops added since (marked
 -- `unplaced`) go where they add the least travel time.
-local function validOrder(order, inPlan)
+local function validOrder(order, inPlan, noPins)
   local placed = {}
   for _, stop in ipairs(order) do
-    for _, before in ipairs(prerequisites(stop)) do
+    for _, before in ipairs(prerequisites(stop, noPins)) do
       if inPlan[before] and not placed[before] then return false end
     end
     placed[stop] = true
@@ -784,7 +791,9 @@ function Journey.Move(journey, stop, target)
   table.insert(order, to, stop)
   local inPlan = {}
   for _, s in ipairs(order) do inPlan[s] = true end
-  if not validOrder(order, inPlan) then return false end
+  -- Pins don't stop a drag: the whole order is yours from now on, so they go.
+  if not validOrder(order, inPlan, true) then return false end
+  for _, s in ipairs(root.stops or {}) do s.pinned, s.pinAfter, s.pinnedBy = nil, nil, nil end
   local stops, moved = {}, {}
   for _, s in ipairs(order) do moved[s] = true end
   for _, s in ipairs(root.stops or {}) do
@@ -805,6 +814,8 @@ end
 function Journey.Postpone(journey, stop)
   local root = journey.root or journey.def
   if not open(stop) then return nil end
+  -- Moving on from a pinned stop unpins it (pinned again if there's nowhere to go).
+  local pinned = Journey.Unpin(journey, stop)
   -- Your newest choice wins: stops you put after this one before needn't wait for it now.
   local waived = {}
   for _, s in ipairs(root.stops or {}) do
@@ -816,14 +827,78 @@ function Journey.Postpone(journey, stop)
     end
     if s.later and #s.later == 0 then s.later = nil end
   end
+  -- So are pins that keep it ahead of theirs.
+  local unfenced = {}
+  for _, s in ipairs(root.stops or {}) do
+    for i = #(s.pinAfter or {}), 1, -1 do
+      if s.pinAfter[i] == stop then
+        unfenced[#unfenced + 1] = s
+        table.remove(s.pinAfter, i)
+      end
+    end
+    if s.pinAfter and #s.pinAfter == 0 then s.pinAfter = nil end
+  end
   local target = Journey.PostponeAfter(journey, stop)
   if not target then
     for _, s in ipairs(waived) do
       s.later = s.later or {}
       table.insert(s.later, stop)
     end
+    for _, s in ipairs(unfenced) do
+      s.pinAfter = s.pinAfter or {}
+      table.insert(s.pinAfter, stop)
+    end
+    if pinned then Journey.Pin(journey, stop) end
   end
   return target
+end
+
+---------------------------------------------------------------- pins
+
+-- A pinned stop keeps its place when the journey re-plans (as you go, or
+-- after a skip or a detour): the open stops ahead of it when you pinned it
+-- stay ahead (stop.pinAfter) and the ones after it stay after (their
+-- pinnedBy). Either side is still ordered for you, and stops added since go
+-- wherever they fit. Pinned first, it stays the next stop. Your newer
+-- choices win: dragging a stop (your whole order) clears every pin, and
+-- moving on from a stop (Postpone) unpins it and lets it go past the pins
+-- that kept it ahead.
+function Journey.Pin(journey, stop)
+  if not open(stop) or stop.pinned then return false end
+  local seen, ahead = false, {}
+  for _, s in ipairs(journey.stops) do
+    if s == stop then
+      seen = true
+    elseif open(s) then
+      if seen then
+        s.pinnedBy = s.pinnedBy or {}
+        table.insert(s.pinnedBy, stop)
+      else
+        ahead[#ahead + 1] = s
+      end
+    end
+  end
+  if not seen then return false end
+  stop.pinned, stop.pinAfter = true, #ahead > 0 and ahead or nil
+  return true
+end
+
+-- True if the stop was pinned.
+function Journey.Unpin(journey, stop)
+  if not (stop and stop.pinned) then return false end
+  local root = journey.root or journey.def
+  stop.pinned, stop.pinAfter = nil, nil
+  for _, s in ipairs(root.stops or {}) do
+    for i = #(s.pinnedBy or {}), 1, -1 do
+      if s.pinnedBy[i] == stop then table.remove(s.pinnedBy, i) end
+    end
+    if s.pinnedBy and #s.pinnedBy == 0 then s.pinnedBy = nil end
+  end
+  return true
+end
+
+function Journey.IsPinned(stop)
+  return stop ~= nil and stop.pinned == true
 end
 
 function Journey.PostponeAfter(journey, stop)
@@ -935,12 +1010,15 @@ function Journey.Save(journey)
   local index = {}
   for i, stop in ipairs(root.stops or {}) do index[stop] = i end
   local function save(stop)
-    local after, later = {}, {}
-    for _, before in ipairs(stop.after or {}) do after[#after + 1] = index[before] end
-    for _, before in ipairs(stop.later or {}) do later[#later + 1] = index[before] end
+    local links = {}
+    for _, key in ipairs(PREREQUISITES) do
+      local list = {}
+      for _, before in ipairs(stop[key] or {}) do list[#list + 1] = index[before] end
+      links[key] = #list > 0 and list or nil
+    end
     return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, npc = stop.npc, action = stop.action, resolve = stop.resolve,
-      done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = #after > 0 and after or nil,
-      later = #later > 0 and later or nil }
+      done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = links.after,
+      later = links.later, pinned = stop.pinned, pinAfter = links.pinAfter, pinnedBy = links.pinnedBy }
   end
   local saved = { title = root.title, kind = root.kind, icon = root.icon, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
@@ -987,11 +1065,11 @@ function Journey.Load(saved)
   local def = { title = saved.title, kind = saved.kind, icon = saved.icon, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, giver = s.giver, npc = s.npc, action = s.action, resolve = s.resolve, done = s.done,
-      passed = s.passed, skipped = s.skipped, worked = s.worked }
+      passed = s.passed, skipped = s.skipped, worked = s.worked, pinned = s.pinned }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end
   for i, s in ipairs(saved.stops or {}) do
-    for _, key in ipairs({ "after", "later" }) do
+    for _, key in ipairs(PREREQUISITES) do
       if s[key] then
         def.stops[i][key] = {}
         for _, j in ipairs(s[key]) do table.insert(def.stops[i][key], def.stops[j]) end

@@ -4492,6 +4492,47 @@ do
   check(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { farStop, homeStop, byStop } })
     .stops[1] == byStop, "planned fresh from there, the near camp comes first too")
 
+  -- Pinned (the overview's lock): a stop keeps its place while the rest
+  -- re-plans around it.
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1437, 0.66, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.JourneyOverview.Show()
+  ns.HUD.Update()
+  local pinsShown, pinsOn = ns.JourneyOverview.PinCount()
+  check(ns.Nav.CurrentStep().stop == farStop and pinsShown == 3 and pinsOn == 0,
+    string.format("each open stop has a pin, none on (%d, %d)", pinsShown, pinsOn))
+  check(ns.Nav.TogglePin(farStop) and select(2, ns.JourneyOverview.PinCount()) == 1, "pin the far camp")
+  stand(pad - 5)
+  check(ns.Nav.CurrentStep().stop == farStop, "walked back to the near camp: the pinned far camp stays next")
+  local pinSaved = ns.Journey.Load(ns.Journey.Save(ns.Nav.active.journey))
+  local savedFar, savedBy
+  for _, s in ipairs(pinSaved.stops) do
+    if s.text == "Go to Far camp" then savedFar = s elseif s.text == "Go to Near camp" then savedBy = s end
+  end
+  check(savedFar and savedFar.pinned and savedBy and savedBy.pinnedBy and savedBy.pinnedBy[1] == savedFar,
+    "the pin is saved with the journey")
+  check(ns.Nav.TogglePin(farStop) and select(2, ns.JourneyOverview.PinCount()) == 0, "unpin it")
+  stand(-(pad - 5))
+  check(ns.Nav.CurrentStep().stop == byStop, "unpinned: the next re-plan puts the near camp first again")
+  -- Pinning a later stop keeps the ones ahead of it ahead.
+  ns.Nav.Stop()
+  player.x = 0.66
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.HUD.Update()
+  check(ns.Nav.active.journey.stops[2] == byStop and ns.Nav.TogglePin(byStop), "pin the near camp, second")
+  stand(pad - 5)
+  check(ns.Nav.CurrentStep().stop == farStop and ns.Nav.active.journey.stops[2] == byStop,
+    "by the near camp: the far camp stays ahead of it")
+  -- Moving on from a pinned stop unpins it; so does dragging (your whole order).
+  ns.Nav.TogglePin(farStop)
+  ns.Nav.MoveOn()
+  check(not ns.Journey.IsPinned(farStop) and ns.Journey.IsPinned(byStop), "moving on from a pinned stop unpins it")
+  ns.Nav.MoveStop(homeStop, ns.Nav.active.journey.stops[1])
+  pinsShown, pinsOn = ns.JourneyOverview.PinCount()
+  check(not ns.Journey.IsPinned(byStop) and pinsShown == 0,
+    "dragging a stop: your order, no pins (" .. pinsShown .. " shown)")
+
   -- Your own order (dragged in the overview) is never re-planned away.
   ns.Nav.Stop()
   ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Banks", stops = { eastBank, westBank } }))

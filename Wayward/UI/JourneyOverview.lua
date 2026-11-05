@@ -5,7 +5,8 @@ local _, ns = ...
 -- stops starts. An open stop can be dropped (x); stops that need it are
 -- dropped with it. Stops you've skipped or dropped aren't listed.
 -- Drag an open stop up or down by its handle (or the row) to reorder the
--- journey. Under an open stop, the steps that get you there (walk, fly,
+-- journey, or pin one (the lock) so re-plans as you go leave it where it is
+-- (Nav.TogglePin). Under an open stop, the steps that get you there (walk, fly,
 -- boat...), with the one you're on marked: open under the current stop, and
 -- any stop's +/- opens or folds them, so you can see where it's taking you
 -- (and hearth instead).
@@ -28,6 +29,8 @@ local SET_ASIDE = 5        -- set-aside journey rows (Nav keeps that many)
 local HANDLE_WIDTH = 16
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
+local PIN_FAINT = 0.35     -- the pin on a stop that isn't pinned
+local PIN_TEXTURE = { [true] = "Interface\\Buttons\\LockButton-Locked-Up", [false] = "Interface\\Buttons\\LockButton-Unlocked-Up" }
 
 local frame
 local HOME = { "TOPLEFT", "TOP", 170, -140 }
@@ -108,13 +111,13 @@ local function create()
     row:SetPoint("TOPLEFT", 12, -44 - (i - 1) * ROW_HEIGHT)
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.text:SetPoint("TOPLEFT", HANDLE_WIDTH + 4, -2)
-    row.text:SetPoint("RIGHT", -24, 0)
+    row.text:SetPoint("RIGHT", -62, 0) -- short of the pin, +/- and x
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
     -- Where the stop is, so a journey across several zones reads at a glance.
     row.zone = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.zone:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
-    row.zone:SetPoint("RIGHT", -24, 0)
+    row.zone:SetPoint("RIGHT", -62, 0)
     row.zone:SetJustifyH("LEFT")
     ns.Skin.Text(row.zone)
     row.drop = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
@@ -135,6 +138,33 @@ local function create()
     end)
     row.expand:SetScript("OnLeave", function() GameTooltip:Hide() end)
     row.expand:Hide()
+    -- Pin the stop in its place (Nav.TogglePin): faint until you point at
+    -- it, bright while pinned.
+    row.pin = CreateFrame("Button", nil, row)
+    row.pin:SetSize(14, 14)
+    row.pin:SetPoint("RIGHT", row.drop, "LEFT", -24, 0)
+    row.pin:SetScript("OnClick", function()
+      ns.Nav.TogglePin(row.stop)
+      if row.pin:IsMouseOver() then row.pin:GetScript("OnEnter")(row.pin) end
+    end)
+    row.pin:SetScript("OnEnter", function(self)
+      self:SetAlpha(1)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      if ns.Journey.IsPinned(row.stop) then
+        GameTooltip:SetText("Unpin this stop")
+        GameTooltip:AddLine("Re-plans can move it again.", 0.6, 0.6, 0.6, true)
+      else
+        GameTooltip:SetText("Pin this stop")
+        GameTooltip:AddLine("It keeps its place when the journey re-plans; the stops around it can still change.",
+          0.6, 0.6, 0.6, true)
+      end
+      GameTooltip:Show()
+    end)
+    row.pin:SetScript("OnLeave", function(self)
+      self:SetAlpha(ns.Journey.IsPinned(row.stop) and 1 or PIN_FAINT)
+      GameTooltip:Hide()
+    end)
+    row.pin:Hide()
     ns.Skin.Text(row.text)
     row.index = i
     local function startDrag()
@@ -455,6 +485,7 @@ function Overview.Refresh()
       row.zone:SetText("")
       row.movable = false
       row.drop:Hide()
+      row.pin:Hide()
       row.handle:Hide()
       row.toggle:Hide()
       row:Show()
@@ -465,6 +496,7 @@ function Overview.Refresh()
       row.text:SetAlpha(1)
       row.movable = false
       row.drop:Hide()
+      row.pin:Hide()
       row.handle:Hide()
       local texture = line.folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up"
       row.toggle:SetNormalTexture(texture)
@@ -478,6 +510,11 @@ function Overview.Refresh()
       row.text:SetAlpha(look[2])
       row.movable = r.state == "now" or r.state == "next"
       row.drop:SetShown(r.state == "now" or r.state == "next")
+      -- No pins on an order you dragged yourself: all of it keeps its place.
+      local pinned = ns.Journey.IsPinned(r.stop)
+      row.pin:SetShown(row.movable and not root.manual)
+      row.pin:SetNormalTexture(PIN_TEXTURE[pinned])
+      if not row.pin:IsMouseOver() then row.pin:SetAlpha(pinned and 1 or PIN_FAINT) end
       row.handle:SetShown(row.movable)
       row.toggle:Hide()
       if line.canOpen then
@@ -562,6 +599,18 @@ function Overview.SetAsideRows()
     if row:IsShown() then out[#out + 1] = row.text:GetText() end
   end
   return out
+end
+
+-- How many rows show a pin, and how many of those are pinned (for tests).
+function Overview.PinCount()
+  local shown, pinned = 0, 0
+  for _, row in ipairs(frame and frame.rows or {}) do
+    if row:IsShown() and row.pin:IsShown() then
+      shown = shown + 1
+      if ns.Journey.IsPinned(row.stop) then pinned = pinned + 1 end
+    end
+  end
+  return shown, pinned
 end
 
 -- How many rows show a drag handle (for tests).

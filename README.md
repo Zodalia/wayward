@@ -712,7 +712,12 @@ button, to add it to the journey you're on.
     or dragged up or down by its handle to reorder the journey. A reordered
     journey keeps your order (`Journey.Move`); stops added later go where
     they add the least travel, and a stop can't move before one it needs (a
-    hand-in before its pickup).
+    hand-in before its pickup). The lock beside a stop pins it
+    (`Nav.TogglePin`, `Journey.Pin`): re-plans as you go keep it where it
+    is, the stops ahead of it ahead and the ones after it after, each side
+    still ordered for you. Pinned first, it stays the next stop. Dragging
+    clears the pins (the whole order is yours then), and moving on from a
+    pinned stop unpins it.
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/ww <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
 - **Quest helpers** on `ns.Quests`: `Quest(id)`, `AllQuests()`,
