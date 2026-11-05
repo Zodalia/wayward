@@ -7683,14 +7683,26 @@ do
   local text = ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index)
   check(text:find("^Through"), "the step says so: " .. text)
 
-  -- The Journey window: the objectives as a row gathered as you go, and the list.
+  -- The Journey window lists the objectives as a row gathered as you go.
   ns.JourneyOverview.Show()
   local gatherRow
   for _, r in ipairs(ns.JourneyOverview.Rows()) do if r.state == "gather" then gatherRow = r end end
   check(gatherRow and gatherRow.stop.action.kind == "complete", "the window lists the objectives as gathered as you go")
-  local lines = ns.JourneyOverview.ShopLines()
+
+  -- The directions box: a toggle for the shopping list, hidden to start
+  -- with, the toggle saying how many things are on it.
+  ns.charDB.shopOpen = nil
+  ns.HUD.Update()
+  local shop = ns.HUD.Shop()
+  check(shop.toggle and shop.count == "2" and not shop.open and shop.height == 0,
+    "the box has a shopping list toggle; list hidden, the toggle says 2: " .. shop.count)
+  local lines = ns.HUD.ShopLines()
   check(#lines == 2 and lines[1].text:find("Nothing on it", 1, true) and lines[2].entries and #lines[2].entries == 2,
     "far from every spawn: nothing around here, two elsewhere")
+  ns.HUD.ToggleShop()
+  shop = ns.HUD.Shop()
+  check(shop.open and shop.count == "" and #shop.lines == 2 and shop.height == 2 * 14 + 10 and ns.charDB.shopOpen,
+    string.format("opened: the list pops up above the box, a line each (%d high), no count on the toggle", shop.height))
 
   -- Passing through the area: not waited in, on to Oslow.
   player.x, player.y = 0.5, 0.52
@@ -7699,11 +7711,11 @@ do
   check(not ns.Nav.Waiting() and not step.via and ns.Nav.HeadingFor().action.kind == "turnin",
     "in the area: passed through, not waited in; still heading for the hand-in")
   check(gatherRow.stop.worked and next(gatherRow.stop.worked) ~= nil, "the area counts as visited")
-  lines = ns.JourneyOverview.ShopLines()
+  lines = ns.HUD.ShopLines()
   check(lines[1].entry and lines[1].entry.name == "Goretusk" and lines[1].text:find("0/3", 1, true)
     and lines[2].entries and lines[2].entries[1].name == "Stringy Vulture",
     "around you: the goretusks, with the count; the vultures elsewhere")
-  check(not ns.JourneyOverview.ShopChanged(), "the window already shows it (the step changed)")
+  check(ns.HUD.Shop().lines[1]:find("Goretusk", 1, true), "and the list above the box says so")
 
   -- Planned again from here: still for Oslow, through another area (the
   -- objectives aren't done), not back through the one just visited.
@@ -7712,29 +7724,28 @@ do
   check(ns.Nav.HeadingFor().action.kind == "turnin" and step.via and not at(step.to, 0.5, 0.5),
     string.format("re-planned: through another area (%.2f, %.2f), not the one just visited", step.to.x, step.to.y))
 
-  -- Walking on (no step reached): the window's next look sees the list changed.
+  -- Walking on: the list follows what's around you.
   player.x, player.y = 0.15, 0.17
-  check(ns.JourneyOverview.ShopChanged(), "among the vultures: the window sees the list changed")
-  ns.JourneyOverview.Refresh()
-  check(not ns.JourneyOverview.ShopChanged() and ns.JourneyOverview.ShopLines()[1].entry.name == "Stringy Vulture",
-    "and shows the vultures once it looks again")
-  local shopLines = #ns.JourneyOverview.ShopLines()
-  local height, shown = ns.JourneyOverview.ShopHeight()
-  check(shown and height == shopLines * 18 + 8, string.format("the list sits on a strip above the window, a row per line: %d lines, %d high",
-    shopLines, height))
-  -- A third thing to gather, right here too: one line more, and the strip
-  -- grows (upward: its bottom is fixed on the window's top edge).
+  ns.HUD.Update()
+  check(ns.HUD.Shop().lines[1]:find("Stringy Vulture", 1, true), "among the vultures: the list says so")
+  local height = ns.HUD.Shop().height
+  -- A third thing to gather, right here too: one line more, and the list
+  -- grows (upward: its bottom is on the box's top edge; the box keeps its size).
   NPCS[9603] = { name = "Murloc Raider", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 16, 20 } } } }
   QUESTS[4600].objectives[1][3] = { 9603 }
   objectives[3] = { text = "Murloc Raider slain: 0/2", finished = false }
   refreshData()
-  ns.JourneyOverview.RefreshShop()
-  local taller = ns.JourneyOverview.ShopHeight()
-  check(#ns.JourneyOverview.ShopLines() == shopLines + 1 and taller == height + 18,
-    string.format("a longer list, a taller strip: %d lines, %d high", #ns.JourneyOverview.ShopLines(), taller))
+  fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
+  shop = ns.HUD.Shop()
+  check(#shop.lines == 3 and shop.height == height + 14,
+    string.format("a longer list, a taller popup: %d lines, %d high", #shop.lines, shop.height))
+  ns.HUD.ToggleShop()
+  shop = ns.HUD.Shop()
+  check(not shop.open and shop.count == "3" and shop.height == 0 and not ns.charDB.shopOpen,
+    "hidden again: the toggle shows the count, 3")
   QUESTS[4600].objectives[1][3], objectives[3], NPCS[9603] = nil, nil, nil
   refreshData()
-  ns.JourneyOverview.RefreshShop()
   player.x, player.y = 0.5, 0.52
 
   -- At the hand-in before it's all gathered (a plan with no area on the way:
@@ -7779,10 +7790,12 @@ do
   end
   check(stew.done and not anyVia and ns.Nav.HeadingFor().action.kind == "turnin",
     "all gathered: straight to the hand-in")
-  check(#ns.JourneyOverview.ShopLines() == 0, "and nothing on the list")
-  ns.JourneyOverview.Show()
-  local _, stripShown = ns.JourneyOverview.ShopHeight()
-  check(not stripShown and ns.JourneyOverview.ShopHeight() == 0, "and no strip above the window")
+  check(#ns.HUD.ShopLines() == 0, "and nothing on the list")
+  ns.charDB.shopOpen = true
+  ns.HUD.Update()
+  shop = ns.HUD.Shop()
+  check(not shop.toggle and not shop.open and shop.height == 0, "no toggle on the box, no list above it, even set open")
+  ns.charDB.shopOpen = nil
 
   -- A stop elsewhere, nothing it needs: an area far off the way isn't a detour.
   objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }
