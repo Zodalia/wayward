@@ -129,6 +129,10 @@ function PlanReport.Build()
     local flags = {}
     if a.waiting then flags[#flags + 1] = "waiting at the stop" end
     if ns.Nav.InArea() then flags[#flags + 1] = "in its objective area" end
+    local gathering = ns.Nav.GatheringHere()
+    if gathering then
+      flags[#flags + 1] = string.format("gathering where you are (%s to go at your pace)", duration(gathering.seconds))
+    end
     if ns.Nav.Flying() then flags[#flags + 1] = "flying" end
     if #flags > 0 then add("Now: %s", table.concat(flags, ", ")) end
     add("Re-planning as you go: %s (padding %d yd)", ns.Nav.LiveBlocker() or "can run now", ns.Journey.STICK_YARDS)
@@ -149,7 +153,9 @@ function PlanReport.Build()
         local tags = {}
         if s.pinned then tags[#tags + 1] = "pinned" end
         if s.later then tags[#tags + 1] = "you moved on from it" end
-        if ns.Journey.WaitsOnGathering(s) then tags[#tags + 1] = "waits on gathering" end
+        if ns.Journey.WaitsOnGathering(s) then
+          tags[#tags + 1] = string.format("waits on gathering, %s to go", duration(ns.Journey.GatherSeconds(s.action.questID)))
+        end
         if s.after then
           for _, before in ipairs(s.after) do
             if not before.done and not before.skipped then

@@ -1593,11 +1593,18 @@ end
 
 function Nav.WorkSeconds(journey)
   local total, seen = 0, {}
-  for _, s in ipairs(journey and journey.stops or {}) do
+  -- Quests gathered as you go aren't stops of the plan, but their work counts.
+  local stops = { unpack(journey and journey.stops or {}) }
+  local root = journey and (journey.root or journey.def)
+  for _, s in ipairs(root and root ~= journey and root.stops or {}) do
+    if s.gather then stops[#stops + 1] = s end
+  end
+  for _, s in ipairs(stops) do
     local id = s.action and s.action.kind == "complete" and s.action.questID
     if id and not seen[id] and not (s.done or s.skipped or s.passed) then
       seen[id] = true
-      total = total + questSeconds() * shareLeft(id)
+      -- Gathered as you go: at your pace on it, once there is one.
+      total = total + (s.gather and ns.Journey.GatherSeconds(id) or questSeconds() * shareLeft(id))
     end
   end
   return total
@@ -1730,6 +1737,7 @@ local function liveBlocker(a, here)
   if not step then return "no step", true end
   if step.mode ~= "walk" then return "the step isn't on foot (" .. tostring(step.mode) .. ")", true end
   if Nav.InArea() then return "in the next stop's objective area", true end
+  if a.gatherHere then return "gathering where you are", true end
   local stops = stopsAhead(a)
   -- One stop left in one place: nothing to put in another order.
   if #stops == 0 or (#stops == 1 and not stops[1].aimArea and not ns.Journey.HasGathering(a.journey)) then
@@ -2218,6 +2226,36 @@ local function viaBefore(a, k)
   return false
 end
 
+-- Gathering where you are: the stop you're heading for is a hand-in waiting
+-- on gathering, you'd get there short of what it needs (Journey.ShortOf),
+-- and you're in one of the journey's areas to gather in. Nothing to head for
+-- yet, so no arrow, and nothing waits for you either: walk out and the way
+-- goes on through the next area. A little way out (GATHER_LEAVE) still
+-- counts, so the edge doesn't flicker. { area, stop, seconds } or nil.
+local GATHER_LEAVE = 120
+
+local function gatherHereCheck(a, here)
+  if not (a.journey and here) or onTaxi() then return nil end
+  local step = a.route.steps[a.index]
+  if not step or step.via then return nil end
+  local stop = Nav.HeadingFor()
+  if not (stop and ns.Journey.WaitsOnGathering(stop)) then return nil end
+  local gather
+  for _, s in ipairs(stop.after or {}) do
+    if s.gather then gather = s end
+  end
+  if not (gather and ns.Journey.ShortOf(stop, gather, here)) then return nil end
+  local area = ns.Journey.GatherAreaAt(a.journey, here, a.gatherHere and GATHER_LEAVE or nil)
+  if not area then return nil end
+  return { area = area, stop = stop, seconds = ns.Journey.GatherSeconds(stop.action.questID) }
+end
+
+-- What gathering where you are is about (see gatherHereCheck), or nil.
+function Nav.GatheringHere()
+  local a = Nav.active
+  return a and a.gatherHere or nil
+end
+
 -- True when the journey was sent on from `stop` (re-planned through an area).
 local function sendOn(a, stop, here)
   if not ns.Journey.StillGathering(a.journey, stop) then return false end
@@ -2376,8 +2414,18 @@ function Nav.Tick()
       break
     end
   end
+  -- Gathering where you are, or stepped out of it (on through an area now).
+  local gathering = gatherHereCheck(a, here)
+  if a.gatherHere and not gathering then
+    a.gatherHere = nil
+    note("left the area you were gathering in")
+    Nav.Recalculate()
+    return here, Nav.CurrentStep()
+  end
+  if gathering and not a.gatherHere then note("gathering where you are, for %s", stopName(gathering.stop)) end
+  a.gatherHere = gathering
   -- In an objective area there's nothing to point at.
-  if Nav.InArea() and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end
+  if (Nav.InArea() or a.gatherHere) and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end
   -- Only when nothing was reached: arriving by teleport still counts as arriving.
   if a.index == startIndex and not a.waiting and not checkRoute(a, here, previous) then liveCheck(a, here) end
   return here, a.route.steps[a.index]

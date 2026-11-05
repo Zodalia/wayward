@@ -536,6 +536,14 @@ function HUD.Update()
   -- Detail on demand: just the stop (and the compass), the step on hover.
   frame.stepHidden = ns.Nav.Detail() == "stops" and frame.stepText ~= progress.stopText
   local sub = frame.stepHidden and "" or frame.subText
+  -- Gathering where you are (prototype): what for, and what's next once it's done.
+  local gatherHere = ns.Nav.GatheringHere()
+  if gatherHere then
+    local q = ns.Quests.Quest(gatherHere.area.stop.action.questID)
+    frame.stepText = "Gather here for " .. (q and q.name or "your quest")
+    frame.stepHidden = false
+    sub = "Then: " .. (gatherHere.stop.text or "the hand-in")
+  end
   frame.step:SetText(frame.stepHidden and progress.stopText or frame.stepText)
   frame.sub:SetText(sub)
 
@@ -557,7 +565,11 @@ function HUD.Update()
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
-  if objective and ns.Nav.InArea() then
+  if gatherHere then
+    -- Nothing waits for you here: walk on whenever you like.
+    frame.info:SetText(string.format("|cff7fd1aeGathering here|r  ·  %s to go at your pace     %s",
+      ns.FormatDuration(gatherHere.seconds), remaining))
+  elseif objective and ns.Nav.InArea() then
     -- Among what you need: no arrow, just how it's going (and how long, at your pace here).
     if ns.Camps.LooksCleared(step.stop) then
       frame.info:SetText("|cffffd100Camp looks cleared|r     " .. remaining)
@@ -606,14 +618,16 @@ function HUD.Update()
 
   local heading = facing()
   -- The compass points the way while you walk; otherwise its circle shows what's ahead.
-  if step.mode == "walk" and distance < math.huge and heading and not ns.Nav.Waiting() and not ns.Nav.Flying() then
+  if step.mode == "walk" and distance < math.huge and heading and not ns.Nav.Waiting() and not ns.Nav.Flying()
+      and not gatherHere then
     frame.arrow:SetRotation(ns.Geo.Bearing(here, step.to) - heading)
     frame.arrow:Show()
     frame.icon:Hide()
   else
     frame.arrow:Hide()
     local action = (step.stop or {}).action
-    frame.icon:SetTexture(action and STOP_ICONS[action.kind] or ns.RouteMap.TravelIcon(step) or WALK_ICON)
+    local kind = gatherHere and "complete" or action and action.kind
+    frame.icon:SetTexture(kind and STOP_ICONS[kind] or ns.RouteMap.TravelIcon(step) or WALK_ICON)
     frame.icon:Show()
   end
 end

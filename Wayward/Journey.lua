@@ -437,6 +437,73 @@ function Journey.StillGathering(_, stop)
   return Journey.WaitsOnGathering(stop)
 end
 
+-- How long a quest gathered as you go likely has left. Your pace on it:
+-- the things gathered since the journey first saw it, over the time since
+-- (walking between spots included), once that's RATE_MIN_ITEMS things over
+-- RATE_MIN_SECONDS. Before that, your time per quest (QuestTimes, else For
+-- you's) times the share of it left, at least a quarter. A quest not taken
+-- yet counts whole; one done, nothing.
+local RATE_MIN_ITEMS, RATE_MIN_SECONDS = 2, 30
+local pace = {} -- [questID] = { at, left }: when the journey first saw it, and how much it needed
+
+local function perQuest()
+  return (ns.QuestTimes and ns.QuestTimes.Seconds()) or (ns.ForYou and ns.ForYou.SECONDS_PER_QUEST) or 300
+end
+
+local function leftAndTotal(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  local left, total = 0, 0
+  for _, o in ipairs(type(objectives) == "table" and objectives or {}) do
+    local have, need = o.numFulfilled, o.numRequired
+    if not (type(have) == "number" and type(need) == "number") and type(o.text) == "string" then
+      local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
+      have, need = tonumber(a), tonumber(b)
+    end
+    if type(have) == "number" and type(need) == "number" then
+      total = total + need
+      if not o.finished then left = left + math.max(0, need - have) end
+    end
+  end
+  if total == 0 then return nil end
+  return left, total
+end
+
+-- Forgets the pace seen so far (for tests).
+function Journey.ResetPace() pace = {} end
+
+function Journey.GatherSeconds(questID)
+  refresh()
+  if completed(questID) or objectivesDone(questID) then return 0 end
+  if not inLog(questID) then return perQuest() end
+  local left, total = leftAndTotal(questID)
+  if not left then return perQuest() end
+  local now, p = time(), pace[questID]
+  if not p or left > p.left then
+    p = { at = now, left = left }
+    pace[questID] = p
+  end
+  local got, spent = p.left - left, now - p.at
+  if got >= RATE_MIN_ITEMS and spent >= RATE_MIN_SECONDS then return left * spent / got end
+  return perQuest() * math.max(0.25, left / total)
+end
+
+-- Walking seconds between two places, as the crow flies (math.huge apart).
+function Journey.WalkSeconds(a, b)
+  local d = ns.Geo.Distance(a, b)
+  if d == math.huge then return d end
+  return d * ns.Router.WALK_FACTOR / ns.Router.RUN_SPEED
+end
+
+-- Seconds until a stop can be done: a camp respawning (RespawnIn), or a
+-- hand-in waiting on gathering (GatherSeconds). Getting there sooner means
+-- waiting, so the planner fits other stops in first: a stop with someone to
+-- see now goes ahead of a hand-in that isn't ready.
+function Journey.ReadyIn(stop)
+  local respawn = Journey.RespawnIn(stop)
+  if Journey.WaitsOnGathering(stop) then return math.max(respawn, Journey.GatherSeconds(stop.action.questID)) end
+  return respawn
+end
+
 -- What a stop says on the directions box: its text, except a hand-in that
 -- waits on gathering ("Gather for The People's Militia, then hand in to
 -- Gryan Stoutmantle"): telling you to hand in a quest that isn't done reads
@@ -459,25 +526,17 @@ local function needsDirectly(to, g)
   return false
 end
 
--- The area to go through on the way from `from` to stop `to`: of the quests
--- gathered as you go that you have (or pick up earlier on the journey,
--- `picked`), an area not visited lately and not where you are, adding the
--- least; see VIA_YARDS. None on the first leg while you're in one of their
--- areas already (`atStart`). The one the last plan chose stays unless another
--- saves STICK_YARDS. Before the quest's own hand-in, with every area
--- visited lately, the one visited longest ago (it respawns first): the way
--- never ends at a hand-in that can't be done yet. Returns { stop, index,
--- node } or nil.
 -- The open area of a quest you're gathering for (one you have, or pick up
--- earlier on the journey) that `here` is in: { stop, index, node } or nil.
-local function gatherAreaAt(gathers, here, picked)
+-- earlier on the journey) that `here` is within `radius` (VIA_RADIUS) of:
+-- { stop, index, node } or nil.
+local function gatherAreaAt(gathers, here, picked, radius)
   if not here then return nil end
   for _, g in ipairs(gathers) do
     local questID = g.action.questID
     if (inLog(questID) or (picked and picked[questID])) and not objectivesDone(questID) then
       for _, area in ipairs(Journey.OpenAreas(questID)) do
         local node, d = ns.Data.Nearest(area.nodes, here)
-        if node and d <= VIA_RADIUS then return { stop = g, index = area.index, node = node } end
+        if node and d <= (radius or VIA_RADIUS) then return { stop = g, index = area.index, node = node } end
       end
     end
   end
@@ -485,16 +544,35 @@ local function gatherAreaAt(gathers, here, picked)
 end
 
 -- The journey's open area you're in, if any (see gatherAreaAt).
-function Journey.GatherAreaAt(journey, here)
+function Journey.GatherAreaAt(journey, here, radius)
   local root = journey and (journey.root or journey.def)
   local gathers = {}
   for _, stop in ipairs(root and root.stops or {}) do
     if stop.gather and not stop.done and not stop.skipped then gathers[#gathers + 1] = stop end
   end
   refresh()
-  return gatherAreaAt(gathers, here)
+  return gatherAreaAt(gathers, here, nil, radius)
 end
 
+-- Whether the hand-in `to` needs `g`, and you likely won't have it all by
+-- the time you walk there from `from` (Journey.GatherSeconds against the
+-- walk): then the way goes through its areas. Likely done on the way, it
+-- heads straight there.
+local function shortOf(to, g, from)
+  return needsDirectly(to, g) and Journey.WalkSeconds(from, to.node) < Journey.GatherSeconds(g.action.questID)
+end
+Journey.ShortOf = shortOf
+
+-- The area to go through on the way from `from` to stop `to`: of the quests
+-- gathered as you go that you have (or pick up earlier on the journey,
+-- `picked`), an area not visited lately and not where you are, adding the
+-- least; see VIA_YARDS. None on the first leg while you're in one of their
+-- areas already (`atStart`). The one the last plan chose stays unless another
+-- saves STICK_YARDS. Before the quest's own hand-in, when you'd get there
+-- short of what it needs (shortOf), whatever it adds, and with every area
+-- visited lately, the one visited longest ago (it respawns first): the way
+-- doesn't end at a hand-in that can't be done yet. Returns { stop, index,
+-- node } or nil.
 local function pickVia(gathers, from, to, picked, atStart)
   if not (from and to and to.node and #gathers > 0) then return nil end
   -- Already in one of their areas: the way isn't turned aside to another.
@@ -506,7 +584,7 @@ local function pickVia(gathers, from, to, picked, atStart)
   for _, g in ipairs(gathers) do
     local questID = g.action.questID
     if (inLog(questID) or picked[questID]) and not objectivesDone(questID) then
-      local needed = needsDirectly(to, g)
+      local needed = shortOf(to, g, from)
       for _, area in ipairs(Journey.OpenAreas(questID)) do
         local visitedAt = g.worked and g.worked[area.index]
         local cleared = visitedAt and now - visitedAt < CLEARED_FOR
@@ -675,10 +753,10 @@ local function orderStops(start, stops, net, keep)
     indexOf[stop] = i + 1
   end
   local cost = costTable(points, net)
-  -- Seconds until a stop can be done (its camps respawning): getting there
-  -- sooner means waiting, so other stops fit in first.
+  -- Seconds until a stop can be done (its camps respawning, or a hand-in
+  -- waiting on gathering): getting there sooner means waiting, so other stops fit in first.
   local readyIn = {}
-  for i, stop in ipairs(stops) do readyIn[i + 1] = Journey.RespawnIn(stop) end
+  for i, stop in ipairs(stops) do readyIn[i + 1] = Journey.ReadyIn(stop) end
   local function arrive(t, from, i)
     return math.max(t + cost(from, i), readyIn[i])
   end

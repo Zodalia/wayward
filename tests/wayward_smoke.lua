@@ -7841,12 +7841,13 @@ do
   check(not ns.Nav.CurrentStep().via and ns.Nav.HeadingFor().action.kind == "turnin" and visited == 1,
     "in another of their areas (85,85): passed, that area visited, on to the hand-in")
 
-  -- In one of its areas, objectives open: the way goes on to the hand-in
-  -- (no redirect), but it doesn't say "Hand in" (a chain of quests sharing
-  -- a name read as one handed in already) and arriving doesn't wait there.
-  -- A goretusk spawn beside Oslow puts the hand-in inside an area too.
+  -- In one of its areas, objectives open, nothing else to head for, and the
+  -- hand-in nearer than the gathering left (your time per quest times the
+  -- share left, with no pace seen yet): gather where you are. No arrow, no
+  -- wait. A goretusk spawn beside Oslow puts the hand-in inside an area too.
   NPCS[9602].spawns[44][3] = { 37, 31 }
   refreshData()
+  ns.Journey.ResetPace()
   ns.Nav.Stop()
   player.x, player.y = 0.5, 0.52
   here = ns.Geo.PlayerNode()
@@ -7854,32 +7855,61 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge Stew", stops = fresh }), true)
   ns.HUD.Update()
   local hudLines = ns.HUD.Lines()
-  check(not ns.Nav.CurrentStep().via and ns.Nav.HeadingFor().action.kind == "turnin",
-    "in one of its areas: straight on to the hand-in, no redirect")
-  check(hudLines[2] == "Gather for Redridge Stew, then hand in to Foreman Oslow",
-    "the box doesn't say hand in while there's gathering to do: " .. tostring(hudLines[2]))
-  check(hudLines[5]:find("Goretusk slain: 0/3", 1, true), "it shows what's still needed: " .. hudLines[5])
-  check(ns.Nav.Progress().stopText:find("^Gather for"), "nor does the stop text elsewhere (home screen, stops detail)")
+  local gathering = ns.Nav.GatheringHere()
+  check(gathering and not ns.Nav.CurrentStep().via and not ns.Nav.Waiting() and not ns.HUD.ArrowShown(),
+    "in one of its areas, short of what the hand-in needs: gathering where you are, no arrow, no wait")
+  check(hudLines[2] == "Gather here for Redridge Stew" and hudLines[3] == "Then: Hand in Redridge Stew to Foreman Oslow"
+    and hudLines[4]:find("Gathering here", 1, true),
+    "the box says so, and what's next: " .. tostring(hudLines[2]) .. " | " .. tostring(hudLines[3]) .. " | " .. hudLines[4])
+  check(hudLines[5]:find("Goretusk slain: 0/3", 1, true), "with what's still needed: " .. hudLines[5])
+  check(ns.Nav.Progress().stopText:find("^Gather for"), "the stop isn't called a hand-in elsewhere either (home screen)")
+  check(ns.Nav.LiveBlocker() == "gathering where you are", "no re-plans while you gather: " .. tostring(ns.Nav.LiveBlocker()))
   local report = ns.PlanReport.Build()
   check(report:find("(quest 4600: in log", 1, true) and report:find("waits on gathering", 1, true)
+    and report:find("gathering where you are", 1, true)
     and report:find("Gathered as you go (not headed for): Do Redridge Stew", 1, true),
-    "the plan report says which quest (its ID and state), and that it's gathered as you go:\n" .. report)
+    "the plan report says which quest (its ID and state), that it's gathered, and where you are:\n" .. report)
+
+  -- A stop with someone to see goes ahead of a hand-in that isn't ready.
+  local docks2 = { node = ns.Geo.Node(1433, 0.9, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
+  local withDocks = ns.Journey.QuestStops(4600, here)
+  withDocks[#withDocks + 1] = docks2
+  planned = ns.Journey.Plan(here, { title = "Redridge", stops = withDocks })
+  check(planned.stops[1] == docks2, "the docks first: the hand-in won't be ready for a while, though it's nearer")
+
+  -- Your pace shows: 5 of 6 in a minute, the last one ~12 s away, sooner than
+  -- the walk to Oslow. You'll likely have it on the way: heading for the
+  -- hand-in (still called gather until it's done), no redirect.
+  clock = clock + 60
+  objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
+  objectives[2] = { text = "Goretusk slain: 2/3", finished = false }
+  fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
+  hudLines = ns.HUD.Lines()
+  check(math.abs(ns.Journey.GatherSeconds(4600) - 12) < 0.01, "your pace: ~12 s to go: " .. ns.Journey.GatherSeconds(4600))
+  check(not ns.Nav.GatheringHere() and ns.Nav.HeadingFor().action.kind == "turnin" and not ns.Nav.CurrentStep().via
+    and hudLines[2] == "Gather for Redridge Stew, then hand in to Foreman Oslow",
+    "likely done on the way: heading for the hand-in: " .. tostring(hudLines[2]))
+
+  -- At Oslow (in an area there) with the last one still to get: gathering
+  -- there, not waiting on a hand-in that can't be done.
   player.x, player.y = 0.36, 0.3
   ns.HUD.Update()
   ns.HUD.Update()
-  check(not ns.Nav.Waiting() and ns.HUD.Lines()[2]:find("^Gather for") and ns.Nav.HeadingFor().action.kind == "turnin",
-    "at the hand-in, in an area, still gathering: not waiting there, still says gather")
+  check(not ns.Nav.Waiting() and ns.Nav.GatheringHere() and ns.HUD.Lines()[2]:find("^Gather here"),
+    "at the hand-in, in an area, one still to get: gathering there, not waiting")
   -- All gathered: now it's a hand-in, and you're there.
-  objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
   objectives[2] = { text = "Goretusk slain: 3/3", finished = true }
   complete = true
   fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
   ns.HUD.Update()
   check(ns.Nav.Waiting() and ns.HUD.Lines()[2] == "Hand in Redridge Stew to Foreman Oslow",
     "all gathered: hand it in, here: " .. tostring(ns.HUD.Lines()[2]))
   objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }
   objectives[2] = { text = "Goretusk slain: 0/3", finished = false }
   complete = false
+  ns.Journey.ResetPace()
   NPCS[9602].spawns[44][3] = nil
   refreshData()
   ns.JourneyOverview.EnsureFrame():Hide()
