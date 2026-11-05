@@ -7720,6 +7720,36 @@ do
     "and shows the vultures once it looks again")
   player.x, player.y = 0.5, 0.52
 
+  -- At the hand-in before it's all gathered (a plan with no area on the way:
+  -- made while the quest wasn't in the log): sent on, not kept waiting.
+  ns.Nav.Stop()
+  here = ns.Geo.PlayerNode()
+  local stewStops = ns.Journey.QuestStops(4600, here)
+  log = {}
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge Stew", stops = stewStops }), true)
+  log = { 4600 }
+  check(not ns.Nav.CurrentStep().via, "a plan with no area on the way to the hand-in")
+  player.x, player.y = 0.36, 0.3
+  local before = #chat
+  ns.HUD.Update()
+  step = ns.Nav.CurrentStep()
+  check(not ns.Nav.Waiting() and step.via and ns.Nav.HeadingFor().action.kind == "turnin",
+    "at the hand-in, still gathering: not waiting, on through an area and back")
+  check(table.concat(chat, "\n", before + 1):find("not everything for Redridge Stew yet", 1, true), "and says so")
+  ns.HUD.Update()
+  check(not ns.Nav.Waiting() and ns.Nav.CurrentStep().via, "standing there: the hand-in doesn't count as reached")
+
+  -- Every area visited lately: the one visited longest ago, never the hand-in alone.
+  local stew
+  for _, s in ipairs(stewStops) do if s.action.kind == "complete" then stew = s end end
+  stew.worked = { [1] = clock - 50, [2] = clock - 10, [3] = clock - 200, [4] = clock - 30, [5] = clock - 40 }
+  planned = ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Redridge Stew", stops = stewStops })
+  local turnin = planned.stops[#planned.stops]
+  check(turnin.action.kind == "turnin" and turnin.via and turnin.via.index == 3,
+    "all visited lately: through the one visited longest ago: " .. tostring(turnin.via and turnin.via.index))
+  stew.worked = nil
+  player.x, player.y = 0.5, 0.52
+
   -- Everything gathered: no more areas, straight to the hand-in, empty list.
   objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
   objectives[2] = { text = "Goretusk slain: 3/3", finished = true }
@@ -7730,7 +7760,7 @@ do
   for k = ns.Nav.active.index, #ns.Nav.active.route.steps do
     if ns.Nav.active.route.steps[k].via then anyVia = true end
   end
-  check(gatherRow.stop.done and not anyVia and ns.Nav.HeadingFor().action.kind == "turnin",
+  check(stew.done and not anyVia and ns.Nav.HeadingFor().action.kind == "turnin",
     "all gathered: straight to the hand-in")
   check(#ns.JourneyOverview.ShopLines() == 0, "and nothing on the list")
 

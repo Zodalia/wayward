@@ -2206,6 +2206,42 @@ ns.On("PLAYER_ALIVE", function()
   if not secretValue(ghost) and ghost == false then alive() end
 end)
 
+-- Gathering as you go (prototype): at a hand-in whose quest still wants
+-- things, nothing waits there; the way goes on through an area for them and
+-- back. While an area comes first, the hand-in doesn't count as reached.
+local SEND_ON_EVERY = 5
+
+local function viaBefore(a, k)
+  for j = a.index, k - 1 do
+    if a.route.steps[j].via then return true end
+  end
+  return false
+end
+
+-- True when the journey was sent on from `stop` (re-planned through an area).
+local function sendOn(a, stop, here)
+  if not ns.Journey.StillGathering(a.journey, stop) then return false end
+  local now = GetTime and GetTime() or 0
+  if a.sentOnAt and a.sentOnStop == stop and now - a.sentOnAt < SEND_ON_EVERY then return false end
+  a.sentOnStop, a.sentOnAt = stop, now
+  local journey = ns.Journey.Replan(a.journey, here)
+  local via
+  for _, step in ipairs(journey and journey.steps or {}) do
+    if step.stop then break end
+    if step.via then via = step.via break end
+  end
+  if not via then
+    note("at %s, still gathering, but no area to go through", stopName(stop))
+    return false
+  end
+  note("at %s before it's all gathered: sent on through an area", stopName(stop))
+  ns.print(string.format("not everything for %s yet: on through another spot, then back here.",
+    questName(stop.action.questID)))
+  a.lastReplan = GetTime and GetTime()
+  adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+  return true
+end
+
 function Nav.Tick()
   local a = Nav.active
   if not a then return nil end
@@ -2283,7 +2319,13 @@ function Nav.Tick()
     -- An area to gather in on the way: anywhere in it counts, and it's passed, not waited in.
     local viaHere = step.via and ns.Journey.InVia(step.via, here)
     if viaHere then ns.Journey.PassVia(step.via) end
-    if reached or inside or viaHere or (inside == nil and ns.Geo.Distance(here, step.to) <= radius) then
+    -- A hand-in that can't be done yet, with an area to go through first: not reached.
+    local hold = pending and pending.action.kind == "turnin" and viaBefore(a, k)
+      and ns.Journey.StillGathering(a.journey, pending)
+    if not hold and (reached or inside or viaHere or (inside == nil and ns.Geo.Distance(here, step.to) <= radius)) then
+      if pending and pending.action.kind == "turnin" and sendOn(a, pending, here) then
+        return here, a.route.steps[a.index]
+      end
       if ns.Journey.PendingAction(step) then
         a.waiting = true
         if a.index ~= k then

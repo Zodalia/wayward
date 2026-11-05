@@ -417,6 +417,21 @@ function Journey.HasGathering(journey)
   return false
 end
 
+-- Whether a hand-in's quest is gathered as you go and still wants things
+-- (the log says its objectives aren't done).
+function Journey.StillGathering(journey, stop)
+  local action = stop and stop.action
+  if not (action and action.kind == "turnin" and action.questID) then return false end
+  local root = journey and (journey.root or journey.def)
+  refresh()
+  for _, s in ipairs(root and root.stops or {}) do
+    if s.gather and not s.done and not s.skipped and s.action.questID == action.questID then
+      return not objectivesDone(action.questID)
+    end
+  end
+  return false
+end
+
 -- Whether `to` needs `g` done first (the quest's hand-in).
 local function needsDirectly(to, g)
   for _, s in ipairs(to.after or {}) do
@@ -429,20 +444,27 @@ end
 -- gathered as you go that you have (or pick up earlier on the journey,
 -- `picked`), an area not visited lately and not where you are, adding the
 -- least; see VIA_YARDS. The one the last plan chose stays unless another
--- saves STICK_YARDS. Returns { stop, index, node } or nil.
+-- saves STICK_YARDS. Before the quest's own hand-in, with every area
+-- visited lately, the one visited longest ago (it respawns first): the way
+-- never ends at a hand-in that can't be done yet. Returns { stop, index,
+-- node } or nil.
 local function pickVia(gathers, from, to, picked)
   if not (from and to and to.node and #gathers > 0) then return nil end
   local direct = ns.Geo.Distance(from, to.node)
   if direct == math.huge then return nil end
   local now = time()
-  local best, bestExtra
+  local best, bestExtra, oldest, oldestAt
   for _, g in ipairs(gathers) do
     local questID = g.action.questID
     if (inLog(questID) or picked[questID]) and not objectivesDone(questID) then
       local needed = needsDirectly(to, g)
       for _, area in ipairs(Journey.OpenAreas(questID)) do
-        local cleared = g.worked and g.worked[area.index] and now - g.worked[area.index] < CLEARED_FOR
+        local visitedAt = g.worked and g.worked[area.index]
+        local cleared = visitedAt and now - visitedAt < CLEARED_FOR
         local node, d = ns.Data.Nearest(area.nodes, from)
+        if node and cleared and needed and d > VIA_RADIUS and (not oldestAt or visitedAt < oldestAt) then
+          oldest, oldestAt = { stop = g, index = area.index, node = node }, visitedAt
+        end
         if node and not cleared and d > VIA_RADIUS then
           local extra = d + ns.Geo.Distance(node, to.node) - direct
           local last = to.via
@@ -454,7 +476,7 @@ local function pickVia(gathers, from, to, picked)
       end
     end
   end
-  return best
+  return best or oldest
 end
 
 -- A leg through `via`: the walk there (its last step carries .via), then on
