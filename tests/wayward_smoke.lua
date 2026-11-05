@@ -7951,6 +7951,64 @@ do
   QUESTS[4601], NPCS[9604] = nil, nil
   refreshData()
 
+  -- Two quests on the same spots (the Militia's Defias drop the Bandanas
+  -- too): one stop, "Do X and Y", both quests' objectives on the box.
+  NPCS[9604] = { name = "Defias Smuggler", minLevel = 16, maxLevel = 17, spawns = { [44] = {
+    { 60, 60 }, { 61, 62 }, { 63, 61 }, { 62, 64 }, { 64, 63 }, { 15, 15 }, { 85, 15 }, { 15, 85 } } } }
+  QUESTS[4601] = { name = "Smuggler Sweep", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9604 } } } }
+  QUESTS[4603] = { name = "Bandana Hunt", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9604 } } } }
+  refreshData()
+  log = { 4601, 4603 }
+  local sweep = { { text = "Defias Smuggler slain: 0/6", finished = false } }
+  local bandanas = { { text = "Defias Smuggler slain: 0/4", finished = false } }
+  local doneIds = {}
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4601 and sweep or id == 4603 and bandanas or {} end
+  C_QuestLog.IsComplete = function(id) return doneIds[id] == true end
+  ns.Nav.Stop()
+  player.x, player.y = 0.62, 0.62
+  here = ns.Geo.PlayerNode()
+  local pair = ns.Journey.QuestStops(4601, here)
+  for _, s in ipairs(ns.Journey.QuestStops(4603, here)) do pair[#pair + 1] = s end
+  local sweepDo, bandanaDo = pair[1], pair[3]
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Smugglers", stops = pair }), true)
+  local js = ns.Nav.active.journey.stops
+  check(js[1] == sweepDo and js[2] == bandanaDo and bandanaDo.joined == sweepDo,
+    "the bandanas are done with the sweep: straight after it, joined to it")
+  ns.HUD.Update()
+  local boxLines = ns.HUD.Lines()
+  check(ns.Nav.InArea() and boxLines[2] == "Do Smuggler Sweep and Bandana Hunt",
+    "one stop on the box, both quests: " .. tostring(boxLines[2]))
+  check(boxLines[5]:find("0/6", 1, true) and boxLines[5]:find("0/4", 1, true),
+    "both quests' objectives under it: " .. boxLines[5]:gsub("%c", " | "))
+  ns.JourneyOverview.Show()
+  local nowRows = 0
+  for _, r in ipairs(ns.JourneyOverview.Rows()) do if r.state == "now" then nowRows = nowRows + 1 end end
+  check(nowRows == 2, "the Journey window shows both as now: " .. nowRows)
+  check(ns.PlanReport.Build():find("done together with Do Smuggler Sweep", 1, true), "the plan report says so")
+  -- Bandanas first: no reshuffle, it's the same stop.
+  local before = #chat
+  bandanas[1] = { text = "Defias Smuggler slain: 2/4", finished = false }
+  fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == sweepDo and not table.concat(chat, " ", before + 1):find("you're doing", 1, true),
+    "progress on the bandanas: still the one stop, no reshuffle")
+  -- The sweep done: the bandanas carry on, right here.
+  sweep[1] = { text = "Defias Smuggler slain: 6/6", finished = true }
+  doneIds[4601] = true
+  fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == bandanaDo and ns.Nav.InArea() and ns.HUD.Lines()[2] == "Do Bandana Hunt",
+    "the sweep done: the bandanas on their own, still in the area: " .. tostring(ns.HUD.Lines()[2]))
+  ns.Nav.Stop()
+  ns.JourneyOverview.EnsureFrame():Hide()
+  log = { 4600 }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
+  C_QuestLog.IsComplete = function() return complete end
+  QUESTS[4601], QUESTS[4603], NPCS[9604] = nil, nil, nil
+  refreshData()
+
   -- In areas of two quests gathered as you go: "Gather here" names the one
   -- with the most of its spawns around you, not the first on the list. A
   -- vulture at 15,85; three murlocs right beside it (the rest spread out).

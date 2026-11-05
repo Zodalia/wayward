@@ -1919,7 +1919,9 @@ local function doingLater()
     if stop and stop.action.kind == "complete" then
       local before, now = stop.progress, progressOf(stop.action.questID)
       stop.progress = now
-      if before and before ~= now and not busy and stop ~= (current and current.stop) then
+      -- A quest done together with the stop you're heading for is that stop already.
+      local together = stop.joined ~= nil and stop.joined == (current and current.stop)
+      if before and before ~= now and not busy and not together and stop ~= (current and current.stop) then
         local inside, _, area = areaOf(stop, here)
         if inside then
           stop.inArea = true

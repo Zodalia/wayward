@@ -152,6 +152,7 @@ function PlanReport.Build()
         ns.WarmStep()
         local tags = {}
         if s.pinned then tags[#tags + 1] = "pinned" end
+        if s.joined then tags[#tags + 1] = "done together with " .. ns.Nav.StopName(s.joined) end
         if s.later then tags[#tags + 1] = "you moved on from it" end
         if ns.Journey.WaitsOnGathering(s) then
           tags[#tags + 1] = string.format("waits on gathering, %s to go", duration(ns.Journey.GatherSeconds(s.action.questID)))

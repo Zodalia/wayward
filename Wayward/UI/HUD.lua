@@ -552,6 +552,12 @@ function HUD.Update()
   local gathering = ns.Journey.WaitsOnGathering(step.stop)
   local objectives = step.stop and step.stop.action and (step.stop.action.kind == "complete" or gathering)
     and HUD.Objectives(step.stop.action.questID) or {}
+  -- Quests done together on these spots: theirs too, under the one stop.
+  for i, s in ipairs(ns.Journey.Together(step.stop) or {}) do
+    if i > 1 then
+      for _, text in ipairs(HUD.Objectives(s.action.questID)) do objectives[#objectives + 1] = text end
+    end
+  end
   local objective = objectives[1]
   local above = sub ~= "" and frame.sub or frame.step
   frame.objectives:SetText(objectiveLines(objectives))

@@ -338,7 +338,9 @@ function Overview.Rows()
   local rows = {}
   for _, stop in ipairs(ns.Journey.AllStops(a.journey)) do
     if not (stop.skipped or stop.passed) then
-      local state = stop.done and "done" or stop == now and "now" or stop.gather and "gather" or "next"
+      -- A quest done together with the stop you're on is on now too.
+      local state = stop.done and "done" or (stop == now or (now and stop.joined == now)) and "now"
+        or stop.gather and "gather" or "next"
       rows[#rows + 1] = { stop = stop, state = state }
     end
   end

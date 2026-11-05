@@ -548,6 +548,17 @@ end
 -- as the wrong quest, or one you've handed in already.
 function Journey.StopText(stop)
   if not stop then return nil end
+  -- Quests done on the same spots: one stop ("Do X and Y").
+  local together = Journey.Together and Journey.Together(stop)
+  if together then
+    local names = {}
+    for i, s in ipairs(together) do
+      local q = ns.Quests.Quest(s.action.questID)
+      names[i] = q and q.name or ("quest " .. s.action.questID)
+    end
+    return "Do " .. (#names == 2 and (names[1] .. " and " .. names[2])
+      or (table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]))
+  end
   if Journey.WaitsOnGathering(stop) then
     local q = ns.Quests.Quest(stop.action.questID)
     local name = q and q.name or ("quest " .. stop.action.questID)
@@ -1074,6 +1085,106 @@ local function adoptFinish(def)
   def.stops[#def.stops + 1] = finish
 end
 
+---------------------------------------------------------------- doing quests together
+
+-- Quests whose objectives are on the same spots (The People's Militia's
+-- Defias, who also drop Red Leather Bandanas) are one stop: the later one
+-- comes straight after the first (stop.joined = the first; the first's
+-- stop.together = { the others }), aimed at the same place, and the box
+-- shows them as one ("Do The People's Militia and Red Leather Bandanas",
+-- both quests' objectives). Underneath they stay stops of their own, so each
+-- is done, handed in or dropped on its own; when the first is done the
+-- other carries on where you are. Two quests go together when at least
+-- TOGETHER_SHARE of the first's spawns in the area it's aimed at have one of
+-- the other's open spawns within TOGETHER_YARDS.
+local TOGETHER_YARDS, TOGETHER_SHARE = 40, 0.5
+
+-- The open spawns of a quest stop's area: the one it's aimed at, else the
+-- one nearest the stop.
+local function aimedNodes(stop)
+  local areas = Journey.OpenAreas(stop.action.questID)
+  local best, bestDistance
+  for _, area in ipairs(areas) do
+    if area.index == stop.aimArea then return area.nodes end
+    local _, d = ns.Data.Nearest(area.nodes, stop.node)
+    if d and (not bestDistance or d < bestDistance) then best, bestDistance = area.nodes, d end
+  end
+  return best or {}
+end
+
+local function openNodes(questID)
+  local out = {}
+  for _, area in ipairs(Journey.OpenAreas(questID)) do
+    for _, n in ipairs(area.nodes) do out[#out + 1] = n end
+  end
+  return out
+end
+
+-- Whether quest stop `b`'s objectives are done where stop `a`'s are aimed.
+function Journey.DoneTogether(a, b)
+  local here = aimedNodes(a)
+  local theirs = openNodes(b.action.questID)
+  if #here == 0 or #theirs == 0 then return false end
+  local shared = 0
+  for _, n in ipairs(here) do
+    local _, d = ns.Data.Nearest(theirs, n)
+    if d and d <= TOGETHER_YARDS then shared = shared + 1 end
+  end
+  return shared >= math.max(1, #here * TOGETHER_SHARE)
+end
+
+local function doing(stop)
+  local action = stop and stop.action
+  return action ~= nil and action.kind == "complete" and action.questID ~= nil and not stop.gather
+    and not stop.done and not stop.skipped
+end
+
+local function joinTogether(ordered)
+  for _, s in ipairs(ordered) do s.together, s.joined = nil, nil end
+  local inPlan = {}
+  for _, s in ipairs(ordered) do inPlan[s] = true end
+  local i = 1
+  while i <= #ordered do
+    local lead = ordered[i]
+    if doing(lead) and not lead.joined then
+      local at = i
+      for j = i + 1, #ordered do
+        local other = ordered[j]
+        if doing(other) and not other.joined and other.action.questID ~= lead.action.questID
+            and Journey.DoneTogether(lead, other) then
+          -- Straight after the lead (and any joined already), if what it needs allows.
+          local candidate = {}
+          for k, s in ipairs(ordered) do
+            if k ~= j then candidate[#candidate + 1] = s end
+            if k == at then candidate[#candidate + 1] = other end
+          end
+          if validOrder(candidate, inPlan) then
+            ordered, at = candidate, at + 1
+            other.joined = lead
+            lead.together = lead.together or {}
+            table.insert(lead.together, other)
+            -- Aimed where the lead is: its area nearest the lead's spot.
+            local node, index = Journey.PickArea(other, lead.node)
+            if node then other.node, other.aimArea = node, index end
+          end
+        end
+      end
+    end
+    i = i + 1
+  end
+  return ordered
+end
+
+-- The open stops done together with `stop` (itself first), or nil when it's on its own.
+function Journey.Together(stop)
+  if not (stop and stop.together) then return nil end
+  local out = { stop }
+  for _, s in ipairs(stop.together) do
+    if not s.done and not s.skipped then out[#out + 1] = s end
+  end
+  return #out > 1 and out or nil
+end
+
 ---------------------------------------------------------------- planning
 
 -- Plans a journey from `start`. Returns
@@ -1138,6 +1249,8 @@ function Journey.Plan(start, def, net)
     end
     previous = stop.node or previous
   end
+  -- Quests done on the same spots: one stop (Journey.JoinTogether).
+  if not root.manual then ordered = joinTogether(ordered) end
 
   local journey = { title = def.title, kind = def.kind, icon = def.icon, def = def, root = root, stops = {},
     skipped = {}, steps = {}, seconds = 0 }
