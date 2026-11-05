@@ -4440,6 +4440,47 @@ do
   check(#chat > before and chat[#chat]:find("re%-routed from here %(you went another way%)"),
     "walking well away from the target re-routes")
 
+  -- Re-planning as you go, with padding: a stop either side of you, and you
+  -- skirting the halfway point between them.
+  ns.Nav.Stop()
+  local liveClock, savedGetTime = 5000, GetTime
+  GetTime = function() return liveClock end
+  local perUnit = ns.Geo.Distance(ns.Geo.Node(1437, 0.5, 0.5), ns.Geo.Node(1437, 0.6, 0.5)) * 10
+  local function stand(yards) -- east of the halfway point (west when negative), a while later
+    liveClock = liveClock + 10
+    player.mapID, player.x, player.y = 1437, 0.5 + yards / perUnit, 0.5
+    ns.HUD.Update()
+  end
+  local westBank = { node = ns.Geo.Node(1437, 0.3, 0.5, "West bank"), text = "Go to West bank" }
+  local eastBank = { node = ns.Geo.Node(1437, 0.7, 0.5, "East bank"), text = "Go to East bank" }
+  player.mapID, player.x, player.y = 1437, 0.5 - 10 / perUnit, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Banks", stops = { eastBank, westBank } }))
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == westBank, "the nearer bank first")
+  local pad = ns.Journey.STICK_YARDS / 2
+  stand(pad - 10)
+  check(ns.Nav.CurrentStep().stop == westBank, "past the halfway point, inside the padding: the west bank still")
+  before = #chat
+  stand(pad + 15)
+  check(ns.Nav.CurrentStep().stop == eastBank, "well past it: the east bank is next, re-planned as you go")
+  check(#chat > before and chat[#chat]:find("Go to East bank is next now", 1, true), "and it says so: " .. chat[#chat])
+  stand(-(pad - 10))
+  check(ns.Nav.CurrentStep().stop == eastBank, "back over the halfway point, inside the padding: no flip back")
+  stand(-(pad + 15))
+  check(ns.Nav.CurrentStep().stop == westBank, "well back the other way: the west bank again")
+  -- Not every frame: the next look waits a few seconds.
+  player.x = 0.5 + (pad + 15) / perUnit
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == westBank, "a moment later: not re-planned yet")
+  stand(pad + 15)
+  check(ns.Nav.CurrentStep().stop == eastBank, "a few seconds on: it is")
+  -- Your own order (dragged in the overview) is never re-planned away.
+  check(ns.Nav.MoveStop(westBank, eastBank) and ns.Nav.CurrentStep().stop == westBank, "you put the west bank first")
+  stand(pad + 40)
+  check(ns.Nav.CurrentStep().stop == westBank, "and it stays first, though the east bank is nearer")
+  ns.Nav.Stop()
+  GetTime = savedGetTime
+
   -- Re-routing: a hearthstone-style jump.
   ns.charDB.knownTaxi, ns.db.transports = known, recorded
   ns.Nav.Stop()

@@ -43,6 +43,20 @@ ns.Journey = Journey
 
 local MAX_SWAP_PASSES = 6
 
+-- Padding for re-plans as you go: a new order (or another of a quest's
+-- areas) has to save the time to walk STICK_YARDS, or the plan keeps the one
+-- you're on. Between two stops at the halfway point either order costs the
+-- same, and each step one way tips it; without this the way would flip back
+-- and forth as you skirt it. With it, you're STICK_YARDS / 2 past the halfway
+-- point before the other stop comes first, and as far back the other way
+-- before it flips back.
+local STICK_YARDS = 60
+Journey.STICK_YARDS = STICK_YARDS
+
+local function stickSeconds()
+  return STICK_YARDS * ns.Router.WALK_FACTOR / ns.Router.RUN_SPEED
+end
+
 ---------------------------------------------------------------- quest stops
 
 -- Quest state comes from the same place as the rest of Wayward (completed
@@ -259,8 +273,10 @@ end
 -- Where to do a stop's objectives from `from` when they're in more than one
 -- area: the one you're in; else one you haven't cleared lately, the least out
 -- of the way on to `toward` (the stop after it); else the one cleared longest
--- ago (it respawns first). Returns the node to head for (the area's open
--- spawn nearest `from`) and the area's index, or nil with fewer than two areas.
+-- ago (it respawns first). The area the plan picked last (stop.aimArea)
+-- stays unless another is STICK_YARDS better. Returns the node to head for
+-- (the area's open spawn nearest `from`) and the area's index, or nil with
+-- fewer than two areas.
 function Journey.PickArea(stop, from, toward)
   local action = stop and stop.action
   if not (action and action.questID and from) then return nil end
@@ -278,6 +294,8 @@ function Journey.PickArea(stop, from, toward)
       rank, value = 2, cleared
     else
       rank, value = 1, distance + (toward and ns.Geo.Distance(node, toward) or 0)
+      -- The area the plan has you heading for, unless another is clearly better.
+      if area.index == stop.aimArea then value = value - STICK_YARDS end
     end
     if not bestRank or rank < bestRank or (rank == bestRank and value < bestValue) then
       best, bestIndex, bestRank, bestValue = node, area.index, rank, value
@@ -321,7 +339,9 @@ local function costTable(points, net)
   end
 end
 
-local function orderStops(start, stops, net)
+-- `keep`: the order the journey had (its stops, Journey.Replan), kept unless
+-- the new one is shorter by more than the padding.
+local function orderStops(start, stops, net, keep)
   local points, indexOf = { start }, {}
   for i, stop in ipairs(stops) do
     points[#points + 1] = stop.node
@@ -393,6 +413,16 @@ local function orderStops(start, stops, net)
       end
     end
     if not improved then break end
+  end
+
+  -- The order you were on, if it has these stops (none added since) and
+  -- isn't more than the padding longer.
+  if keep then
+    local kept = {}
+    for _, stop in ipairs(keep) do
+      if indexOf[stop] then kept[#kept + 1] = indexOf[stop] end
+    end
+    if #kept == #stops and valid(kept) and total(kept) <= best + stickSeconds() then order = kept end
   end
 
   local ordered = {}
@@ -587,7 +617,7 @@ function Journey.Plan(start, def, net)
     stop.text = stop.text or Journey.DefaultText(stop)
     resolve(stop, start)
   end
-  local ordered = root.manual and manualOrder(start, def.stops or {}, net) or orderStops(start, def.stops or {}, net)
+  local ordered = root.manual and manualOrder(start, def.stops or {}, net) or orderStops(start, def.stops or {}, net, def.keep)
   -- `first`: the stop you're doing now (another quest's objectives, on the
   -- way), when nothing it needs is still open.
   for i, stop in ipairs(ordered) do
@@ -620,8 +650,8 @@ function Journey.Plan(start, def, net)
   local previous = start
   for i, stop in ipairs(ordered) do
     if stop.resolve and stop.resolve.kind == "objectives" then
-      local node = Journey.PickArea(stop, previous, ordered[i + 1] and ordered[i + 1].node)
-      if node then stop.node = node end
+      local node, index = Journey.PickArea(stop, previous, ordered[i + 1] and ordered[i + 1].node)
+      if node then stop.node, stop.aimArea = node, index end
     end
     previous = stop.node or previous
   end
@@ -667,6 +697,8 @@ end
 -- The same journey from here, without the stops already done or dropped. The
 -- original plan (root) is the source, so stops added since are included.
 -- `first`: a stop to put first when it can be (the one you're doing now).
+-- The order it had stays unless a new one saves more than the padding
+-- (STICK_YARDS).
 function Journey.Replan(journey, start, net, first)
   local root = journey.root or journey.def
   local remaining = {}
@@ -674,7 +706,7 @@ function Journey.Replan(journey, start, net, first)
     if open(stop) then remaining[#remaining + 1] = stop end
   end
   return Journey.Plan(start, { title = root.title, kind = root.kind, icon = root.icon, stops = remaining, root = root,
-    first = first }, net)
+    first = first, keep = journey.stops }, net)
 end
 
 local function questKey(stop)

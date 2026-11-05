@@ -142,19 +142,17 @@ local function create()
   if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   f.icon:Hide()
 
-  -- Buttons top right: skip and move on (journeys), all stops, recalculate, stop.
+  -- Buttons top right: skip and move on (journeys), all stops, stop. No
+  -- recalculate: the journey re-plans itself as you go (Navigator, liveCheck).
   f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   f.close:SetSize(24, 24)
   f.close:SetPoint("TOPRIGHT", -3, -3)
   f.close:SetScript("OnClick", function() ns.Nav.Stop() end)
   tooltip(f.close, "Stop directions")
   ns.Skin.CloseButton(f.close)
-  f.recalc = squareButton(f, nil, "Interface\\Buttons\\UI-RefreshButton", "R", function() ns.Nav.Recalculate() end,
-    "Recalculate from here")
-  f.recalc:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
     "View details")
-  f.list:SetPoint("RIGHT", f.recalc, "LEFT", -2, 0)
+  f.list:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
   -- A glow over the book button, pulsed when the journey gains stops (HUD.FlashJourney).
   f.listGlow = f.list:CreateTexture(nil, "OVERLAY")
   f.listGlow:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
@@ -316,7 +314,7 @@ local function place(trip)
   frame.step:SetPoint("TOPLEFT", trip and frame.progress or frame.title, "BOTTOMLEFT", 0, trip and -7 or -5)
   frame.step:SetPoint("RIGHT", -PADDING, 0)
   -- The title stops short of the buttons.
-  frame.title:SetPoint("RIGHT", trip and frame.skip or frame.recalc, "LEFT", -6, 0)
+  frame.title:SetPoint("RIGHT", trip and frame.skip or frame.close, "LEFT", -6, 0)
 end
 
 -- The step and its count, for the tooltip when the box shows only the stop

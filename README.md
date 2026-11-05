@@ -102,8 +102,11 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   the journey's title, a bar of stops done ("2 of 5 done", `ns.Nav.Progress()`),
   the step, which step of the way to the next stop you're on, and distance
   and time left, with Blizzard's square buttons for skip this stop and do
-  this stop later (on a journey), View details (the journey overview),
-  recalculate, and End journey (Stop directions on plain directions). Detail
+  this stop later (on a journey), View details (the journey overview) and
+  End journey (Stop directions on plain directions). There's no recalculate
+  button: the journey re-plans as you go, and only changes which stop is
+  next when another is clearly nearer, so skirting the halfway point between
+  two doesn't flip the arrow back and forth. Detail
   on demand: with `/ww detail stops` (or the option) the box shows only the
   stop you're heading for and the compass, and the step when you hover it.
 - **Add a detour**: the directions box's + button (bottom right) lists

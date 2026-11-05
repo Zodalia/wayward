@@ -1587,6 +1587,62 @@ local function checkRoute(a, here, previous)
   return false
 end
 
+-- Re-planning as you go: on foot, every LIVE_EVERY seconds once you've moved
+-- LIVE_MOVE_YARDS since the last look, the journey is planned again from
+-- where you are, as a background job (it can take a few frames). The
+-- planner's padding (Journey.STICK_YARDS) keeps the order you're on unless
+-- another is clearly shorter, so skirting the halfway point between two
+-- stops doesn't flip the way back and forth. Only a new order, or another of
+-- a quest's areas for the next stop, is taken up. Not on an order you set
+-- yourself (Journey.Move), and not at a stop or in its area.
+local LIVE_EVERY, LIVE_MOVE_YARDS = 5, 20
+
+-- The stops still ahead on the route, in its order.
+local function stopsAhead(a)
+  local out = {}
+  for k = a.index, #a.route.steps do
+    local stop = a.route.steps[k].stop
+    if stop and not stop.done and not stop.skipped then out[#out + 1] = stop end
+  end
+  return out
+end
+
+local function liveCheck(a, here)
+  if not a.journey or a.livePlanning then return end
+  local root = a.journey.root or a.journey.def
+  if root.manual then return end
+  local step = a.route.steps[a.index]
+  if not (step and step.mode == "walk") or Nav.InArea() then return end
+  local now = GetTime and GetTime()
+  if not now then return end
+  if (a.lastLive and now - a.lastLive < LIVE_EVERY) or (a.lastReplan and now - a.lastReplan < LIVE_EVERY) then return end
+  local from = a.liveFrom
+  if from and from.instance == here.instance and ns.Geo.Distance(from, here) < LIVE_MOVE_YARDS then return end
+  local stops = stopsAhead(a)
+  -- One stop left in one place: nothing to put in another order.
+  if #stops == 0 or (#stops == 1 and not stops[1].aimArea) then return end
+  a.lastLive, a.liveFrom, a.livePlanning = now, here, true
+  local journey, route, index, aim = a.journey, a.route, a.index, stops[1].aimArea
+  ns.Warm(function() return ns.Journey.Replan(journey, here) end, function(ok, planned)
+    a.livePlanning = nil
+    -- Moved on meanwhile (a stop reached, another re-plan, ended): stale.
+    if not (ok and planned) or Nav.active ~= a or a.journey ~= journey or a.route ~= route or a.index ~= index then
+      return
+    end
+    local same = #planned.stops == #stops
+    for i, stop in ipairs(planned.stops) do
+      if stop ~= stops[i] then same = false end
+    end
+    if same and planned.stops[1].aimArea == aim then return end
+    a.lastReplan = GetTime and GetTime()
+    local upNext = planned.stops[1]
+    if upNext ~= stops[1] then
+      ns.print(string.format("%s is next now: it fits better from where you are.", upNext.text or "another stop"))
+    end
+    adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
+  end)
+end
+
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)
   if isLogin or isReload then return end
   -- Tick compares with where you were before the loading screen.
@@ -2073,6 +2129,6 @@ function Nav.Tick()
   -- In an objective area there's nothing to point at.
   if Nav.InArea() and (Nav.ownsWaypoint or Nav.tomtomWaypoint) then clearWaypoints() end
   -- Only when nothing was reached: arriving by teleport still counts as arriving.
-  if a.index == startIndex and not a.waiting then checkRoute(a, here, previous) end
+  if a.index == startIndex and not a.waiting and not checkRoute(a, here, previous) then liveCheck(a, here) end
   return here, a.route.steps[a.index]
 end
