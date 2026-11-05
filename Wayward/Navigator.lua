@@ -2079,6 +2079,25 @@ function Nav.Skip()
   askPlayer("WAYWARD_SKIP", text, { stop = stop })
 end
 
+-- The directions box's x. A journey asks first, since ending it can't be
+-- undone; plain directions stop at once (they're one click to start again).
+function Nav.End()
+  local a = Nav.active
+  if not a then return end
+  if not (a.journey and StaticPopupDialogs and StaticPopup_Show) then return Nav.Stop() end
+  StaticPopupDialogs.WAYWARD_END = StaticPopupDialogs.WAYWARD_END or {
+    text = "%s",
+    button1 = "End journey", button2 = "Keep going",
+    -- Only the journey you were asked about: not one started since.
+    OnAccept = function(_, data) if Nav.active == data.active then Nav.Stop() end end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  local done, total = ns.Journey.Progress(a.journey)
+  local text = string.format("End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone.",
+    a.title or "this journey", done, total)
+  if not askPlayer("WAYWARD_END", text, { active = a }) then Nav.Stop() end
+end
+
 -- True while you're in the area of the stop you're working on.
 function Nav.InArea()
   local step = Nav.CurrentStep()

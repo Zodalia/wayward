@@ -5084,6 +5084,26 @@ do
   check(tip(f.moveOn) == "Do this stop later" and tip(f.skip) == "Skip this stop"
     and tip(f.list) == "View details" and tip(f.close) == "End journey", "the buttons' tooltips")
 
+  -- The x on a journey asks first; Keep going (or Escape) leaves it on.
+  do
+    local asked
+    StaticPopupDialogs = {}
+    StaticPopup_Show = function(which, text, _, data) asked = { which = which, text = text, data = data } end
+    local journey = ns.Nav.active
+    f.close.scripts.OnClick(f.close)
+    check(asked and asked.which == "WAYWARD_END" and ns.Nav.active == journey
+      and asked.text:find('End "Errands"?', 1, true) and asked.text:find("done 0 of 3 stops", 1, true)
+      and StaticPopupDialogs.WAYWARD_END.button1 == "End journey" and StaticPopupDialogs.WAYWARD_END.button2 == "Keep going",
+      "ending a journey asks first, and nothing changes until you answer: " .. tostring(asked and asked.text))
+    StaticPopupDialogs.WAYWARD_END.OnAccept(nil, { active = {} })
+    check(ns.Nav.active == journey, "a stale yes (another journey since) ends nothing")
+    StaticPopupDialogs.WAYWARD_END.OnAccept(nil, asked.data)
+    check(ns.Nav.active == nil, "yes ends the journey")
+    StaticPopupDialogs, StaticPopup_Show = nil, nil
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { pickup, turnin, far } }))
+    ns.HUD.Update()
+  end
+
   -- Move on, not in a camp: this stop later, after the next one that doesn't need it.
   check(ns.Nav.MoveOnKind() == "later", "move on would do it later")
   local before = #chat
@@ -5132,6 +5152,11 @@ do
   ns.HUD.Update()
   check(not f.moveOn:IsShown() and not f.skip:IsShown() and ns.Nav.MoveOnKind() == nil, "plain directions: no move on or skip")
   check(tip(f.close) == "Stop directions", "and the x stops directions, not a journey")
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function() error("plain directions shouldn't ask") end
+  f.close.scripts.OnClick(f.close)
+  check(ns.Nav.active == nil, "the x on plain directions stops them without asking")
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
   ns.Nav.Stop()
 end
 ---------------------------------------------------------------- move on and skip (end)
