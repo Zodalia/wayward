@@ -49,8 +49,9 @@ local MAX_SWAP_PASSES = 6
 -- same, and each step one way tips it; without this the way would flip back
 -- and forth as you skirt it. With it, you're STICK_YARDS / 2 past the halfway
 -- point before the other stop comes first, and as far back the other way
--- before it flips back.
-local STICK_YARDS = 60
+-- before it flips back. Within the padding the stop you'd reach soonest goes
+-- first (orderStops), so a far stop never comes first for a tiny saving.
+local STICK_YARDS = 40
 Journey.STICK_YARDS = STICK_YARDS
 
 local function stickSeconds()
@@ -415,14 +416,39 @@ local function orderStops(start, stops, net, keep)
     if not improved then break end
   end
 
-  -- The order you were on, if it has these stops (none added since) and
-  -- isn't more than the padding longer.
-  if keep then
+  local pad = stickSeconds()
+  local function soonest(i) return arrive(0, 1, i) end
+
+  -- The stop you'd reach soonest goes first unless that costs more than the
+  -- padding. A stop on a spur (there and back whichever way) costs the same
+  -- first or later, and heading past a nearer stop to it reads as the wrong
+  -- way.
+  local nearest
+  for i = 2, #points do
+    if ready(i, {}) and (not nearest or soonest(i) < soonest(nearest)) then nearest = i end
+  end
+  if nearest and order[1] ~= nearest then
+    local candidate = { nearest }
+    for _, i in ipairs(order) do
+      if i ~= nearest then candidate[#candidate + 1] = i end
+    end
+    local t = total(candidate)
+    if t <= best + pad and valid(candidate) then order, best = candidate, t end
+  end
+
+  -- The order you were on, if it has these stops (none added since): kept
+  -- unless the new one is shorter by more than the padding, or reaches its
+  -- next stop sooner by more than the padding without being longer by more.
+  if keep and #stops > 0 then
     local kept = {}
     for _, stop in ipairs(keep) do
       if indexOf[stop] then kept[#kept + 1] = indexOf[stop] end
     end
-    if #kept == #stops and valid(kept) and total(kept) <= best + stickSeconds() then order = kept end
+    if #kept == #stops and valid(kept) then
+      local keptTotal = total(kept)
+      local sooner = soonest(order[1]) + pad < soonest(kept[1]) and best <= keptTotal + pad
+      if keptTotal <= best + pad and not sooner then order = kept end
+    end
   end
 
   local ordered = {}

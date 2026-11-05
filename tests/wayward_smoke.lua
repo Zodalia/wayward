@@ -4474,7 +4474,29 @@ do
   check(ns.Nav.CurrentStep().stop == westBank, "a moment later: not re-planned yet")
   stand(pad + 15)
   check(ns.Nav.CurrentStep().stop == eastBank, "a few seconds on: it is")
+  -- A stop out on a spur (there and back whichever way): planned first from
+  -- out there, then you walk back. It costs about the same first or later,
+  -- so the stop by you goes first, not the far one.
+  ns.Nav.Stop()
+  local farStop = { node = ns.Geo.Node(1437, 0.7, 0.5, "Far camp"), text = "Go to Far camp" }
+  local byStop = { node = ns.Geo.Node(1437, 0.5, 0.5, "Near camp"), text = "Go to Near camp" }
+  local homeStop = { node = ns.Geo.Node(1437, 0.2, 0.5, "Home camp"), text = "Go to Home camp" }
+  player.mapID, player.x, player.y = 1437, 0.66, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == farStop, "out by the far camp: it comes first")
+  before = #chat
+  stand(pad - 5) -- just on the spur side of the near camp
+  check(ns.Nav.CurrentStep().stop == byStop, "walked back to the near camp: it's next, not the far one")
+  check(#chat > before and chat[#chat]:find("Go to Near camp is next now", 1, true), "and it says so")
+  check(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { farStop, homeStop, byStop } })
+    .stops[1] == byStop, "planned fresh from there, the near camp comes first too")
+
   -- Your own order (dragged in the overview) is never re-planned away.
+  ns.Nav.Stop()
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Banks", stops = { eastBank, westBank } }))
+  stand(pad + 15)
+  check(ns.Nav.CurrentStep().stop == eastBank, "the east bank first again")
   check(ns.Nav.MoveStop(westBank, eastBank) and ns.Nav.CurrentStep().stop == westBank, "you put the west bank first")
   stand(pad + 40)
   check(ns.Nav.CurrentStep().stop == westBank, "and it stays first, though the east bank is nearer")
