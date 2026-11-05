@@ -7845,11 +7845,10 @@ do
   -- hand-in nearer than the gathering left (your time per quest times the
   -- share left, with no pace seen yet): gather where you are. No arrow, no
   -- wait. A goretusk spawn beside Oslow puts the hand-in inside an area too
-  -- (three more far off keep it spread: no spot holds half of its spawns).
-  NPCS[9602].spawns[44][3] = { 37, 31 }
-  NPCS[9602].spawns[44][4] = { 5, 65 }
-  NPCS[9602].spawns[44][5] = { 5, 75 }
-  NPCS[9602].spawns[44][6] = { 45, 95 }
+  -- (more far off keep it spread: no spot holds 40% of its spawns).
+  for k, spot in ipairs({ { 37, 31 }, { 5, 65 }, { 5, 75 }, { 45, 95 }, { 85, 5 }, { 85, 55 } }) do
+    NPCS[9602].spawns[44][k + 2] = spot
+  end
   refreshData()
   check(ns.Journey.Spread(4600), "still spread with a spawn by Oslow: " .. ns.Journey.SpreadInfo(4600).share)
   ns.Journey.ResetPace()
@@ -7873,7 +7872,7 @@ do
   check(report:find("(quest 4600: in log", 1, true) and report:find("waits on gathering", 1, true)
     and report:find("gathering where you are", 1, true)
     and report:find("Gathered as you go (not headed for): Do Redridge Stew", 1, true)
-    and report:find("Do Redridge Stew: 9 areas over", 1, true) and report:find("spread: gathered as you go", 1, true),
+    and report:find("Do Redridge Stew: 11 areas over", 1, true) and report:find("spread: gathered as you go", 1, true),
     "the plan report says which quest (its ID and state), that it's gathered, and where you are:\n" .. report)
 
   -- A stop with someone to see goes ahead of a hand-in that isn't ready.
@@ -7916,7 +7915,7 @@ do
   objectives[2] = { text = "Goretusk slain: 0/3", finished = false }
   complete = false
   ns.Journey.ResetPace()
-  for k = 6, 3, -1 do NPCS[9602].spawns[44][k] = nil end
+  for k = 8, 3, -1 do NPCS[9602].spawns[44][k] = nil end
   refreshData()
 
   -- Mobs crowded round one spot (five of eight within 350 yd of it), a few
@@ -7956,7 +7955,7 @@ do
   -- with the most of its spawns around you, not the first on the list. A
   -- vulture at 15,85; three murlocs right beside it (the rest spread out).
   NPCS[9606] = { name = "Murloc Raider", minLevel = 16, maxLevel = 17, spawns = { [44] = {
-    { 18, 80 }, { 21, 83 }, { 18, 88 }, { 5, 5 }, { 5, 15 }, { 5, 25 }, { 55, 45 } } } }
+    { 18, 80 }, { 21, 83 }, { 18, 88 }, { 5, 5 }, { 5, 15 }, { 5, 25 }, { 55, 45 }, { 65, 5 } } } }
   QUESTS[4602] = { name = "Murloc Fins", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
     finishedBy = { { 345 } }, objectives = { { { 9606 } } } }
   refreshData()

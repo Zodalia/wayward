@@ -352,7 +352,8 @@ end
 -- pick them up while you go about the rest. A quest's objectives "spread"
 -- when they're in SPREAD_AREAS areas or more, SPREAD_YARDS or more apart end
 -- to end, and no one spot holds much of them: the busiest circle of
--- BUSY_YARDS holds less than BUSY_SHARE of the spawns. A quest whose mobs
+-- BUSY_YARDS holds less than BUSY_SHARE of the spawns (in Westfall: the
+-- Liver Pie 25%, the Stew 28%; the Bandanas 47%, the Militia 64%). A quest whose mobs
 -- crowd one place (the Defias round a mine) isn't: that place is a stop to
 -- go and do it, as ever. Its "Do ..." stop (stop.gather, set by Journey.Plan) isn't a
 -- destination: the journey heads for the next stop with someone to see (a
@@ -360,7 +361,7 @@ end
 -- that leg), and never waits there. The Journey window's shopping list says
 -- what of it is around you (Journey.ShoppingList).
 local SPREAD_AREAS, SPREAD_YARDS = 4, 400
-local BUSY_YARDS, BUSY_SHARE = 350, 0.5
+local BUSY_YARDS, BUSY_SHARE = 350, 0.4
 local BUSY_CENTRES = 300 -- spawns tried as the busy spot's centre at most (evenly picked)
 -- An area is on the way when going through it adds VIA_YARDS or less. On the
 -- way to the quest's own hand-in, its objectives still open, the best area
