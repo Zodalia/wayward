@@ -3498,6 +3498,12 @@ do
     "and says so")
   check(ns.HUD.Lines()[4]:find("Next spot", 1, true), "the box says it's the next spot: " .. ns.HUD.Lines()[4])
   check(ns.Journey.ClearedAreas(stop) == 1, "one area cleared")
+  -- /ww plan: the areas the data has for it, which is cleared, which is aimed for.
+  local planText = ns.PlanReport.Build()
+  check(planText:find("Do Murloc Sweep", 1, true) and planText:find("areas in the data: 3", 1, true)
+    and planText:find("cleared lately", 1, true) and planText:find("aimed for", 1, true)
+    and planText:find("left a cleared spot of Do Murloc Sweep", 1, true),
+    "the plan report lists the quest's areas, the cleared one, and the re-plan:\n" .. planText)
 
   -- Back in the cleared camp: still the area. A short step out again points
   -- at the nearest camp not cleared, though the cleared one is nearer.
@@ -3704,7 +3710,62 @@ do
   ns.HUD.Update()
   check(ns.Nav.InArea(), "walk out and back: it's the area again")
 
+  -- The game's own quest marker (Forever) wins over stray spawns in the
+  -- data: only the areas near it count, wherever the others are.
+  ns.Nav.Stop()
+  local savedOnMap, savedLogIndex, savedGetTime = C_QuestLog.GetQuestsOnMap, C_QuestLog.GetLogIndexForQuestID, GetTime
+  GetTime = nil -- the marker read fresh each time
+  local markerAt = ns.Geo.Node(1433, 0.3, 0.3)
+  local continent = ns.Geo.Continents()[markerAt.instance]
+  local mx, my = ns.Geo.MapPos(markerAt, continent)
+  local markerOn = true
+  C_QuestLog.GetLogIndexForQuestID = function(id) return id == 43 and 1 or nil end
+  C_QuestLog.GetQuestsOnMap = function(mapID)
+    return markerOn and mapID == continent and { { questID = 43, x = mx, y = my } } or {}
+  end
+  check(ns.Geo.Distance(markerAt, ns.Geo.Node(1433, 0.8, 0.8)) > ns.Journey.MARKER_YARDS
+    and ns.Geo.Distance(markerAt, ns.Geo.Node(1433, 0.6, 0.6)) <= ns.Journey.MARKER_YARDS,
+    "(the camp at 80,80 is well away from the marker, the one at 60,60 isn't)")
+  local nearMarker, farCounted = ns.Journey.OpenAreas(43), false
+  for _, area in ipairs(nearMarker) do
+    if at(area.nodes[1], 0.8, 0.8) then farCounted = true end
+  end
+  check(#nearMarker == 2 and not farCounted,
+    "with the game's marker on the Scouts' camp, the camp far from it doesn't count: " .. #nearMarker)
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Murloc Sweep", stops = ns.Journey.QuestStops(43, here) }))
+  local markerText = ns.PlanReport.Build()
+  check(markerText:find("far from the game's marker: left out", 1, true), "and the plan report says so:\n" .. markerText)
+  ns.Nav.Stop()
+  markerOn = false
+  check(#ns.Journey.OpenAreas(43) == 3, "without a marker, every camp in the data counts")
+  C_QuestLog.GetQuestsOnMap, C_QuestLog.GetLogIndexForQuestID, GetTime = savedOnMap, savedLogIndex, savedGetTime
+
+  -- A big area (a whole island of spawns) isn't cleared by a minute there:
+  -- walking off it, the way comes back to it, not on to stray spawns.
+  local island = {}
+  for k = 0, 9 do island[#island + 1] = { 50 + (k % 5) * 0.4, 85 + math.floor(k / 5) * 0.4 } end
+  NPCS[9160] = { name = "Island Wizard", minLevel = 18, maxLevel = 19, spawns = { [44] = island } }
+  QUESTS[49] = { name = "Island Sweep", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9160 } } } }
+  refreshData()
+  C_QuestLog.GetInfo = function() return { questID = 49, isHeader = false } end
+  local wizards = { { text = "Island Wizard slain: 2/8", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 49 and wizards or {} end
+  player.x, player.y = 0.509, 0.852
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Island", stops = ns.Journey.QuestStops(49, here) }))
+  ns.HUD.Update()
+  local islandStop = ns.Nav.CurrentStep().stop
+  check(ns.Nav.InArea() and #ns.Quests.ObjectiveAreas(49)[1] >= 8, "on the island, a big area")
+  clock = clock + 60
+  player.x, player.y = 0.509, 0.6
+  ns.HUD.Update()
+  check(not ns.Nav.InArea() and ns.Journey.ClearedAreas(islandStop) == 0 and ns.Journey.RespawnIn(islandStop) == 0,
+    "walked off after a minute: not counted as cleared, no respawn wait")
+
   UnitGUID, UnitName, UnitIsDead, UnitIsTapDenied, UnitIsDeadOrGhost = savedGUID, savedName, nil, nil, nil
+  QUESTS[49], NPCS[9160] = nil, nil
   time = os.time
   QUESTS[46], NPCS[9150], QUESTS[47], NPCS[9151] = nil, nil, nil, nil
   ns.Nav.Stop()
@@ -4439,6 +4500,122 @@ do
   ns.HUD.Update()
   check(#chat > before and chat[#chat]:find("re%-routed from here %(you went another way%)"),
     "walking well away from the target re-routes")
+
+  -- Re-planning as you go, with padding: a stop either side of you, and you
+  -- skirting the halfway point between them.
+  ns.Nav.Stop()
+  local liveClock, savedGetTime = 5000, GetTime
+  GetTime = function() return liveClock end
+  local perUnit = ns.Geo.Distance(ns.Geo.Node(1437, 0.5, 0.5), ns.Geo.Node(1437, 0.6, 0.5)) * 10
+  local function stand(yards) -- east of the halfway point (west when negative), a while later
+    liveClock = liveClock + 10
+    player.mapID, player.x, player.y = 1437, 0.5 + yards / perUnit, 0.5
+    ns.HUD.Update()
+  end
+  local westBank = { node = ns.Geo.Node(1437, 0.3, 0.5, "West bank"), text = "Go to West bank" }
+  local eastBank = { node = ns.Geo.Node(1437, 0.7, 0.5, "East bank"), text = "Go to East bank" }
+  player.mapID, player.x, player.y = 1437, 0.5 - 10 / perUnit, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Banks", stops = { eastBank, westBank } }))
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == westBank, "the nearer bank first")
+  local pad = ns.Journey.STICK_YARDS / 2
+  stand(pad - 10)
+  check(ns.Nav.CurrentStep().stop == westBank, "past the halfway point, inside the padding: the west bank still")
+  before = #chat
+  stand(pad + 15)
+  check(ns.Nav.CurrentStep().stop == eastBank, "well past it: the east bank is next, re-planned as you go")
+  check(#chat > before and chat[#chat]:find("Go to East bank is next now", 1, true), "and it says so: " .. chat[#chat])
+  stand(-(pad - 10))
+  check(ns.Nav.CurrentStep().stop == eastBank, "back over the halfway point, inside the padding: no flip back")
+  stand(-(pad + 15))
+  check(ns.Nav.CurrentStep().stop == westBank, "well back the other way: the west bank again")
+  -- /ww plan: copied, with why re-planning waits, both orders and the re-plans.
+  local reportCopied
+  local realCopyBox = ns.ShowCopyBox
+  ns.ShowCopyBox = function(_, text) reportCopied = text end
+  SlashCmdList.WAYWARD("plan")
+  ns.ShowCopyBox = realCopyBox
+  check(reportCopied and reportCopied:find("Journey: Banks", 1, true)
+    and reportCopied:find("Re-planning as you go: looked 0 s ago", 1, true)
+    and reportCopied:find("1. Go to West bank", 1, true) and reportCopied:find("same order: a re-plan now keeps it", 1, true)
+    and reportCopied:find("re-plan as you go: next Go to East bank instead of Go to West bank", 1, true)
+    and reportCopied:find("re-plan as you go: next Go to West bank instead of Go to East bank", 1, true),
+    "/ww plan copies the report:\n" .. tostring(reportCopied))
+  -- Not every frame: the next look waits a few seconds.
+  player.x = 0.5 + (pad + 15) / perUnit
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == westBank, "a moment later: not re-planned yet")
+  stand(pad + 15)
+  check(ns.Nav.CurrentStep().stop == eastBank, "a few seconds on: it is")
+  -- A stop out on a spur (there and back whichever way): planned first from
+  -- out there, then you walk back. It costs about the same first or later,
+  -- so the stop by you goes first, not the far one.
+  ns.Nav.Stop()
+  local farStop = { node = ns.Geo.Node(1437, 0.7, 0.5, "Far camp"), text = "Go to Far camp" }
+  local byStop = { node = ns.Geo.Node(1437, 0.5, 0.5, "Near camp"), text = "Go to Near camp" }
+  local homeStop = { node = ns.Geo.Node(1437, 0.2, 0.5, "Home camp"), text = "Go to Home camp" }
+  player.mapID, player.x, player.y = 1437, 0.66, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.HUD.Update()
+  check(ns.Nav.CurrentStep().stop == farStop, "out by the far camp: it comes first")
+  before = #chat
+  stand(pad - 5) -- just on the spur side of the near camp
+  check(ns.Nav.CurrentStep().stop == byStop, "walked back to the near camp: it's next, not the far one")
+  check(#chat > before and chat[#chat]:find("Go to Near camp is next now", 1, true), "and it says so")
+  check(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { farStop, homeStop, byStop } })
+    .stops[1] == byStop, "planned fresh from there, the near camp comes first too")
+
+  -- Pinned (the overview's lock): a stop keeps its place while the rest
+  -- re-plans around it.
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1437, 0.66, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.JourneyOverview.Show()
+  ns.HUD.Update()
+  local pinsShown, pinsOn = ns.JourneyOverview.PinCount()
+  check(ns.Nav.CurrentStep().stop == farStop and pinsShown == 3 and pinsOn == 0,
+    string.format("each open stop has a pin, none on (%d, %d)", pinsShown, pinsOn))
+  check(ns.Nav.TogglePin(farStop) and select(2, ns.JourneyOverview.PinCount()) == 1, "pin the far camp")
+  stand(pad - 5)
+  check(ns.Nav.CurrentStep().stop == farStop, "walked back to the near camp: the pinned far camp stays next")
+  local pinSaved = ns.Journey.Load(ns.Journey.Save(ns.Nav.active.journey))
+  local savedFar, savedBy
+  for _, s in ipairs(pinSaved.stops) do
+    if s.text == "Go to Far camp" then savedFar = s elseif s.text == "Go to Near camp" then savedBy = s end
+  end
+  check(savedFar and savedFar.pinned and savedBy and savedBy.pinnedBy and savedBy.pinnedBy[1] == savedFar,
+    "the pin is saved with the journey")
+  check(ns.Nav.TogglePin(farStop) and select(2, ns.JourneyOverview.PinCount()) == 0, "unpin it")
+  stand(-(pad - 5))
+  check(ns.Nav.CurrentStep().stop == byStop, "unpinned: the next re-plan puts the near camp first again")
+  -- Pinning a later stop keeps the ones ahead of it ahead.
+  ns.Nav.Stop()
+  player.x = 0.66
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.HUD.Update()
+  check(ns.Nav.active.journey.stops[2] == byStop and ns.Nav.TogglePin(byStop), "pin the near camp, second")
+  stand(pad - 5)
+  check(ns.Nav.CurrentStep().stop == farStop and ns.Nav.active.journey.stops[2] == byStop,
+    "by the near camp: the far camp stays ahead of it")
+  -- Moving on from a pinned stop unpins it; so does dragging (your whole order).
+  ns.Nav.TogglePin(farStop)
+  ns.Nav.MoveOn()
+  check(not ns.Journey.IsPinned(farStop) and ns.Journey.IsPinned(byStop), "moving on from a pinned stop unpins it")
+  ns.Nav.MoveStop(homeStop, ns.Nav.active.journey.stops[1])
+  pinsShown, pinsOn = ns.JourneyOverview.PinCount()
+  check(not ns.Journey.IsPinned(byStop) and pinsShown == 0,
+    "dragging a stop: your order, no pins (" .. pinsShown .. " shown)")
+
+  -- Your own order (dragged in the overview) is never re-planned away.
+  ns.Nav.Stop()
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Banks", stops = { eastBank, westBank } }))
+  stand(pad + 15)
+  check(ns.Nav.CurrentStep().stop == eastBank, "the east bank first again")
+  check(ns.Nav.MoveStop(westBank, eastBank) and ns.Nav.CurrentStep().stop == westBank, "you put the west bank first")
+  stand(pad + 40)
+  check(ns.Nav.CurrentStep().stop == westBank, "and it stays first, though the east bank is nearer")
+  ns.Nav.Stop()
+  GetTime = savedGetTime
 
   -- Re-routing: a hearthstone-style jump.
   ns.charDB.knownTaxi, ns.db.transports = known, recorded

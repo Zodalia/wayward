@@ -102,8 +102,11 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   the journey's title, a bar of stops done ("2 of 5 done", `ns.Nav.Progress()`),
   the step, which step of the way to the next stop you're on, and distance
   and time left, with Blizzard's square buttons for skip this stop and do
-  this stop later (on a journey), View details (the journey overview),
-  recalculate, and End journey (Stop directions on plain directions). Detail
+  this stop later (on a journey), View details (the journey overview) and
+  End journey (Stop directions on plain directions). There's no recalculate
+  button: the journey re-plans as you go, and only changes which stop is
+  next when another is clearly nearer, so skirting the halfway point between
+  two doesn't flip the arrow back and forth. Detail
   on demand: with `/ww detail stops` (or the option) the box shows only the
   stop you're heading for and the compass, and the step when you hover it.
 - **Add a detour**: the directions box's + button (bottom right) lists
@@ -631,7 +634,13 @@ button, to add it to the journey you're on.
   - Spawns close together are one area (a camp; `ns.Quests.ObjectiveAreas`),
     and a quest's objectives can have several. The journey heads for the one
     least out of the way between the stops either side (`ns.Journey.PickArea`).
-    Leave an area after 30 seconds or more in it and it counts as cleared for
+    With the quest in your log and the game marking where it's done
+    (Forever), only areas within 500 yards of that marker count: a few stray
+    spawns of the same creature elsewhere in the zone aren't the quest's
+    area (`ns.Quests.LogMarker`). With none near the marker, every area does.
+    Leave a big area (8 spawns or more, a whole island) and it counts as
+    cleared only if it looked cleared, not by the time you spent there.
+    Leave a smaller area after 30 seconds or more in it and it counts as cleared for
     5 minutes (about a respawn): the journey is re-planned from where you
     are, on to another area, or to the stops on the way there first, and the
     directions box says "Next spot". A short step out points at the nearest
@@ -709,7 +718,12 @@ button, to add it to the journey you're on.
     or dragged up or down by its handle to reorder the journey. A reordered
     journey keeps your order (`Journey.Move`); stops added later go where
     they add the least travel, and a stop can't move before one it needs (a
-    hand-in before its pickup).
+    hand-in before its pickup). The lock beside a stop pins it
+    (`Nav.TogglePin`, `Journey.Pin`): re-plans as you go keep it where it
+    is, the stops ahead of it ahead and the ones after it after, each side
+    still ordered for you. Pinned first, it stays the next stop. Dragging
+    clears the pins (the whole order is yours then), and moving on from a
+    pinned stop unpins it.
 - **Commands**: `ns.RegisterCommand(name, help, run)` adds `/ww <name>`; `run`
   gets the rest of the line in its original case, so item links survive.
 - **Quest helpers** on `ns.Quests`: `Quest(id)`, `AllQuests()`,
@@ -866,3 +880,11 @@ whole report to copy, `/ww perf reset` clears it and `/ww perf off` puts
 everything back. The timers add a little overhead of their own, and Blizzard's
 APIs are never wrapped. This checks our own code paths only,
 not real Forever behaviour.
+
+**When a journey picks an odd stop:** `/ww plan` opens a report to copy
+(`PlanReport.lua`): where you are, each open stop in the plan's order with
+where it is and how far, every area the data has for a quest's objectives
+(which you've cleared lately, which the plan aims for, and the game's own
+quest marker), whether re-planning as you go can run right now and why not,
+the plan's order against a fresh one from here, and the last 30 re-plans
+and stops reached (`Nav.TraceLines`). It changes nothing on the journey.
