@@ -31,7 +31,7 @@ function Marker.IsTarget(unit)
   if not (name and node) then return false end
   local unitName = UnitName(unit)
   if secret(unitName) or unitName ~= name then return false end
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   return here ~= nil and ns.Geo.Distance(here, node) <= NEAR
 end
 

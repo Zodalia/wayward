@@ -22,34 +22,136 @@ local function spellName(spellID)
   return nil
 end
 
-local dataServices -- { level, services } built from ns.Data.ClassSpells
+local dataServices -- { level, services, blocked } built from ns.Data.ClassSpells
 
 ns.Listen("SOURCES_CHANGED", function() dataServices = nil end)
 ns.On("SPELLS_CHANGED", function() dataServices = nil end)
 
+-- A trainer reading has names and levels, and on Forever no rank (its
+-- GetTrainerServiceInfo gives name, type, icon): spells are matched by name
+-- and level, and by name and rank where both have one.
+local function serviceKeys(name, level, rank)
+  return name .. "@" .. tostring(level or 0), rank and (name .. "|" .. rank)
+end
+
+-- Whether a spell is in `index` (filled by indexSpell): by name and level, by
+-- name and rank, or by name alone for a spell with no numbered rank (Parry):
+-- its level can differ between clients.
+local function numbered(rank)
+  return rank and rank:find("%d") and rank or nil
+end
+
+local function indexSpell(index, name, level, rank)
+  local byLevel, byRank = serviceKeys(name, level, numbered(rank))
+  index[byLevel] = true
+  index[byRank or name] = true
+end
+
+local function inIndex(index, name, level, rank)
+  local byLevel, byRank = serviceKeys(name, level, numbered(rank))
+  return index[byLevel] or index[byRank or name] or false
+end
+
 -- Your class's spells in the shape of a trainer reading (Harvest.lua), from
 -- the data sources: "used" when you know it, "available" from its level.
-local function servicesFromData()
+-- Also the spells your trainer has that you can't learn (`blocked`, see
+-- serviceKeys): for a talent you don't have, or needing a spell that is.
+-- Built again while a spell's name hasn't loaded (`partial`).
+local function fromData()
   local level = UnitLevel("player")
-  if dataServices and dataServices.level == level then return dataServices.services end
+  if dataServices and dataServices.level == level and not dataServices.partial then return dataServices end
   local _, class = UnitClass("player")
   local _, _, raceID = UnitRace("player")
   local faction = UnitFactionGroup("player")
-  local services = {}
+  local onList, byID, blocked, known, partial = {}, {}, {}, {}, false
+  local function block(spell)
+    local name, rank = spellName(spell.spellID)
+    if not name then
+      partial = true
+      return
+    end
+    local byLevel, byRank = serviceKeys(name, spell.level, rank ~= "" and rank or nil)
+    blocked[byLevel] = true
+    if byRank then blocked[byRank] = true end
+  end
   for _, spell in ipairs(ns.Data.ClassSpells(class)) do
     -- Spells for another race or faction, or for a talent you don't have,
     -- aren't on your trainer's list.
-    if (not spell.races or spell.races[raceID]) and (not spell.faction or spell.faction == faction)
-      and (not spell.talent or knowsSpell(spell.talent)) then
-      local name, rank = spellName(spell.spellID)
-      local known = knowsSpell(spell.spellID)
-      services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
-        spellID = spell.spellID, levelReq = spell.level, cost = spell.cost,
-        type = known and "used" or ((spell.level or 0) <= level and "available" or "unavailable") }
+    if (not spell.races or spell.races[raceID]) and (not spell.faction or spell.faction == faction) then
+      if not spell.talent or knowsSpell(spell.talent) then
+        onList[#onList + 1] = spell
+        byID[spell.spellID] = spell
+      else
+        block(spell)
+      end
     end
   end
-  dataServices = { level = level, services = services }
-  return services
+  -- The level you can learn a spell from: its own, or a later one its
+  -- required spells need; false when one of them is neither known nor on
+  -- your list (a talent or quest spell you don't have).
+  local from = {}
+  local function learnableFrom(spell)
+    if from[spell] ~= nil then return from[spell] end
+    if knowsSpell(spell.spellID) then from[spell] = 0 return 0 end
+    from[spell] = false -- a loop in the data can't make a spell learnable
+    local at = spell.level or 0
+    for _, id in ipairs(spell.requires or {}) do
+      local req = byID[id]
+      local reqAt = knowsSpell(id) and 0 or (req and learnableFrom(req))
+      if not reqAt then return false end
+      at = math.max(at, reqAt)
+    end
+    from[spell] = at
+    return at
+  end
+  local services = {}
+  for _, spell in ipairs(onList) do
+    local at = learnableFrom(spell)
+    if at then
+      local name, rank = spellName(spell.spellID)
+      local knows = knowsSpell(spell.spellID)
+      if name and knows then indexSpell(known, name, spell.level, rank) end
+      services[#services + 1] = { name = name or ("Spell " .. spell.spellID), rank = rank ~= "" and rank or nil,
+        spellID = spell.spellID, levelReq = knows and spell.level or at, cost = spell.cost, level = spell.level,
+        named = name ~= nil, type = knows and "used" or (at <= level and "available" or "unavailable") }
+    else
+      block(spell)
+    end
+  end
+  dataServices = { level = level, services = services, blocked = blocked, known = known, partial = partial }
+  return dataServices
+end
+
+-- Your last trainer visit without the spells the data says you can't learn.
+-- The trainer marks those unavailable, which after a level up reads as
+-- "level too low then" (Shadowburn rank 2 at 24 without the talent).
+-- Your spellbook wins over the visit: a spell you know is "used" even when
+-- the visit wasn't read again after you bought it.
+-- A visit at a lower level also gains the spells the data has for the levels
+-- since that it doesn't list: Classic Era leaves out a spell whose name
+-- hasn't loaded yet, and the trainer's filter can hide unavailable ones.
+local function fromTrainer(cs)
+  local data = fromData()
+  local out, listed = {}, {}
+  for _, s in ipairs(cs.services) do
+    local byLevel, byRank = serviceKeys(s.name or "", s.levelReq, s.rank)
+    if not (s.name and (data.blocked[byLevel] or (byRank and data.blocked[byRank]))) then
+      if s.name and s.type ~= "used" and inIndex(data.known, s.name, s.levelReq, s.rank) then
+        local copy = {}
+        for k, v in pairs(s) do copy[k] = v end
+        copy.type = "used"
+        s = copy
+      end
+      out[#out + 1] = s
+    end
+    if s.name then indexSpell(listed, s.name, s.levelReq, s.rank) end
+  end
+  for _, d in ipairs(data.services) do
+    if d.type ~= "used" and d.named and d.levelReq > (cs.level or 0) and not inIndex(listed, d.name, d.level, d.rank) then
+      out[#out + 1] = d
+    end
+  end
+  return out
 end
 
 -- Your class's trainer services and where they come from: your last trainer
@@ -57,8 +159,8 @@ end
 -- sources ("data"), or nil without either.
 function Trainers.Services()
   local cs = ns.charDB.classSpells
-  if cs then return cs.services, "trainer", cs end
-  local services = servicesFromData()
+  if cs then return fromTrainer(cs), "trainer", cs end
+  local services = fromData().services
   if #services > 0 then return services, "data" end
   return nil
 end
@@ -88,16 +190,26 @@ function Trainers.Skipped(s)
 end
 
 -- Learning happens at a trainer, which refreshes the list, so "not used and
--- level reached" means trainable now. `leaveOutSkipped`: not the spells you
--- left at the trainer (counted in `skipped` instead).
+-- level reached" means trainable now. A spell the trainer marked unavailable
+-- although you had its level then needs a spell you don't have (a talent's
+-- rank 1): never trainable until a visit says otherwise. `readAt`: your level
+-- at that visit (nil for spell data, which is read at your level).
+function Trainers.CanTrain(s, level, readAt)
+  if s.type == "used" or not s.levelReq or s.levelReq > level then return false end
+  return not (s.type == "unavailable" and s.levelReq <= (readAt or level))
+end
+
+-- `leaveOutSkipped`: not the spells you left at the trainer (counted in
+-- `skipped` instead).
 function Trainers.SpellSummary(leaveOutSkipped)
   local services, from, cs = Trainers.Services()
   if not services then return nil end
   local level = UnitLevel("player")
+  local readAt = cs and cs.level
   local out = { trainable = 0, cost = 0, nextCount = 0, skipped = 0, updated = cs and cs.updated,
     level = cs and cs.level, fromData = from == "data", names = {} }
   for _, s in ipairs(services) do
-    if s.type ~= "used" and s.levelReq then
+    if s.type ~= "used" and s.levelReq and (s.levelReq > level or Trainers.CanTrain(s, level, readAt)) then
       if s.levelReq <= level and leaveOutSkipped and Trainers.Skipped(s) then
         out.skipped = out.skipped + 1
       elseif s.levelReq <= level then
@@ -224,8 +336,43 @@ local function collect(kind, fits, fromSources)
   return trainers
 end
 
--- Results: { title, zone, goal (route node), route, details } sorted by travel time.
--- Sources: trainers you visited, Data/Seed.lua, and the data sources (Sources.lua).
+-- The spells you can learn right now, in the trainer's order:
+-- { {name, rank, cost, spellID, skipped}, ... }, and the next level with new spells.
+function Trainers.Learnable()
+  local services, _, cs = Trainers.Services()
+  if not services then return {}, nil end
+  local level, readAt = UnitLevel("player"), cs and cs.level
+  local out, nextLevel = {}, nil
+  for _, s in ipairs(services) do
+    if Trainers.CanTrain(s, level, readAt) then
+      out[#out + 1] = { name = s.name, rank = s.rank, cost = s.cost, spellID = s.spellID, skipped = Trainers.Skipped(s) }
+    elseif s.type ~= "used" and s.levelReq and s.levelReq > level and (not nextLevel or s.levelReq < nextLevel) then
+      nextLevel = s.levelReq
+    end
+  end
+  return out, nextLevel
+end
+
+-- The stop a trainer journey ends with: learning the spells there. A `learn`
+-- stop (done when they are learned) where the journey model has one; else a
+-- `talk` stop (done when you talk to them) that says what to learn.
+local function learnStop(goal, name, spells)
+  local kinds = ns.Journey.STOP_KINDS
+  local kind = type(kinds) == "table" and kinds.learn and "learn" or "talk"
+  local action = { kind = kind, npc = name }
+  if kind == "learn" then
+    action.spells = {}
+    for _, s in ipairs(spells) do action.spells[#action.spells + 1] = s.spellID or s.name end
+  end
+  local text = #spells > 0 and string.format("Learn %d new spell%s from %s", #spells, #spells == 1 and "" or "s", name)
+    or ("Talk to " .. name)
+  return { node = goal, npc = name, text = text, action = action }
+end
+
+-- Results: { title, zone, goal (route node), route, journey, details } sorted
+-- by travel time. The tooltip lists the spells you can learn there; the
+-- journey ends with learning them. Sources: trainers you visited,
+-- Data/Seed.lua, and the data sources (Sources.lua).
 function Trainers.Results()
   local className, class = UnitClass("player")
   local start = ns.Geo.PlayerNode()
@@ -233,7 +380,27 @@ function Trainers.Results()
   local net = ns.Network.Build()
   local trainers = collect("classTrainer", function(npc) return npc.class == class end,
     ns.Data.NearestOfKind("classTrainer", UnitFactionGroup("player"), start, function(t) return t.class == class end))
-  return results(trainers, (className or class):lower() .. " trainers", start, net), nil, net
+  local rows = results(trainers, (className or class):lower() .. " trainers", start, net)
+  local spells, nextLevel = Trainers.Learnable()
+  for _, row in ipairs(rows) do
+    row.kind = "trainer"
+    local details = row.details or {}
+    for _, s in ipairs(spells) do
+      details[#details + 1] = { text = string.format("%s%s%s%s", s.name, s.rank and (" (" .. s.rank .. ")") or "",
+        s.cost and ("  -  " .. ns.FormatMoney(s.cost)) or "", s.skipped and "  (left last time)" or ""),
+        color = { r = 0.5, g = 0.82, b = 0.68 } }
+    end
+    if nextLevel then
+      details[#details + 1] = { text = "More at level " .. nextLevel .. ".", color = { r = 0.7, g = 0.7, b = 0.7 } }
+    end
+    if #details > 0 then row.details = details end
+    if row.route then
+      row.journey = ns.Journey.Plan(start, { title = "Train at " .. row.goal.npc, kind = "train",
+        stops = { learnStop(row.goal, row.goal.npc, spells) } }, net)
+    end
+    ns.Search.WithDetour(row)
+  end
+  return rows, nil, net
 end
 
 ---------------------------------------------------------------- weapon masters
@@ -400,5 +567,9 @@ function WeaponMasters.Results()
     if a.seconds ~= b.seconds then return a.seconds < b.seconds end
     return a.title < b.title
   end)
+  for _, row in ipairs(rows) do
+    row.kind = "weaponMaster"
+    ns.Search.WithDetour(row)
+  end
   return rows, nil, net
 end

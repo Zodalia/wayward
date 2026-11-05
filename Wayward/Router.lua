@@ -111,6 +111,7 @@ end
 
 -- Returns { steps = { {mode, from, to, seconds, kind} ... }, seconds } or nil.
 function Router.Plan(start, goal, net)
+  ns.WarmStep()
   local paths = prepare(net)
   local nodes = paths.nodes
   local best = walkCost(start, goal) or math.huge
@@ -231,6 +232,14 @@ function Router.Describe(route, index, travelOnly)
   end
   -- The destination is someone to talk to (a trainer, a vendor).
   if not nextStep and step.to.npc then return "Talk to " .. step.to.npc end
+  -- An objective area is labelled with its quest: walk to the place there
+  -- ("Walk to Shimmer Ridge"), else to "the area for The Perfect Stout".
+  local stop = step.stop
+  if stop and stop.action and stop.action.kind == "complete" and stop.node == step.to then
+    local place = ns.Places and ns.Places.NameFor(step.to)
+    if place and place ~= step.to.label then return "Walk to " .. place end
+    return "Walk to the area for " .. step.to.label
+  end
   return "Walk to " .. step.to.label
 end
 

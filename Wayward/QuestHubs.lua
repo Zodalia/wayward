@@ -101,6 +101,10 @@ function QuestHubs.Results()
   table.sort(results, function(a, b)
     return (a.route and a.route.seconds or math.huge) < (b.route and b.route.seconds or math.huge)
   end)
+  for _, r in ipairs(results) do
+    r.kind = "hub"
+    ns.Search.WithDetour(r)
+  end
   summary = string.format("|cff7fd1ae%d quest%s|r for you at the %d nearest places with quests.", total,
     total == 1 and "" or "s", #results)
   return results, nil, net

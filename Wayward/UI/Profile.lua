@@ -34,7 +34,7 @@ local STEPS = {
     function() return "Talk to your class trainer once, so Wayward knows the spells you can learn." end,
     function() return ns.charDB.classSpells ~= nil end },
   { "hearth", "Hearthstone",
-    function() return "Set your Hearthstone at an inn (or use it once), so trips can use it." end,
+    function() return "Set your Hearthstone at an inn (or use it once), so journeys can use it." end,
     function() return ns.Hearth.Node() ~= nil end },
   { "quests", "Quest data",
     function() return "Install " .. ns.Data.ADDON .. " for quests, items and every trainer." end,

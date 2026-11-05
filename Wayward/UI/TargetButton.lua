@@ -19,7 +19,9 @@ local button, pending, macro
 local function create()
   local b = CreateFrame("Button", "WaywardTargetButton", UIParent, "SecureActionButtonTemplate")
   b:SetSize(26, 26)
-  b:SetFrameStrata("HIGH")
+  -- The directions box's layer, not above it: a window over the box (the
+  -- Wayward panel) covers the button too, instead of it floating on top.
+  b:SetFrameStrata("MEDIUM")
   b:RegisterForClicks("AnyUp", "AnyDown")
   b:SetAttribute("type", "macro")
   b:SetNormalTexture(ICON)
@@ -58,12 +60,19 @@ function TargetButton.Sync()
     button:ClearAllPoints()
     -- Placed by position, not anchored to the box, so the box stays free to move.
     button:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", right + 4, top - 4)
+    if hud.GetFrameStrata and button.SetFrameStrata then
+      button:SetFrameStrata(hud:GetFrameStrata() or "MEDIUM")
+      button:SetFrameLevel((hud:GetFrameLevel() or 0) + 5)
+    end
     button:Show()
   else
     macro = nil
     button:Hide()
   end
 end
+
+-- The button itself (for tests).
+function TargetButton.Frame() return button end
 
 -- What a click runs right now (for tests), or nil when the button is hidden.
 function TargetButton.Macro()

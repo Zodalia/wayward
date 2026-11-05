@@ -255,12 +255,103 @@ local function questLines(details, header, quests)
 end
 
 function Dungeons.SummaryText()
-  return summary or "Dungeons for your level, best level fit and shortest trip first."
+  return summary or "Dungeons for your level, best level fit and nearest entrance first."
 end
 
 function Dungeons.EmptyText()
   return string.format("No dungeon fits level %d. Dungeons show from %d levels under "
     .. "their level to %d over.", UnitLevel("player"), UNDER, OVER)
+end
+
+-- The row for one dungeon: directions to its nearest entrance, the level fit
+-- and its quests in the tooltip, a "Quests" action that picks up the ones you
+-- can take on the way (QuestsPage.lua), and "Add detour" while a journey is
+-- on. `fit`: the level entry that fits you (bestFit), or the first one.
+-- `quests`: Quests.QuestsForAreas over its area IDs.
+local function rowFor(entry, fit, quests, start, net, level)
+  local goal, route
+  for _, node in ipairs(entry.entrances) do
+    local r = ns.Router.Plan(start, node, net)
+    if r and (not route or r.seconds < route.seconds) then goal, route = node, r end
+  end
+  goal = goal or entry.entrances[1]
+  local unknown = goal == nil
+
+  local available, inLog, later = {}, {}, {}
+  for areaID in pairs(entry.areaIDs) do
+    local q = quests[areaID]
+    if q then
+      for _, quest in ipairs(q.available) do available[#available + 1] = quest end
+      for _, quest in ipairs(q.inLog) do inLog[#inLog + 1] = quest end
+      for _, quest in ipairs(q.later or {}) do later[#later + 1] = quest end
+    end
+  end
+
+  -- Why go: the level in the title, quests for it on the second line.
+  local why = { unknown and "entrance not known yet" or ns.MapName(goal.mapID) }
+  if #available > 0 then
+    why[#why + 1] = string.format("%d quest%s for you", #available, #available == 1 and "" or "s")
+  end
+  if #inLog > 0 then why[#why + 1] = #inLog .. " in your log" end
+
+  local details = {}
+  local fitLevel = fit and fit.level
+  if fitLevel then
+    local gap = level - fitLevel
+    details[1] = {
+      text = string.format("%s level %d%s; you are %s.", entry.raid and "Raid" or "Dungeon", fitLevel,
+        #entry.levels > 0 and "" or " (Wayward estimate)",
+        gap == 0 and "the same level" or string.format("%d level%s %s", math.abs(gap),
+          math.abs(gap) == 1 and "" or "s", gap > 0 and "above it" or "below it")),
+    }
+  end
+  if #entry.levels > 1 then
+    for _, l in ipairs(entry.levels) do
+      details[#details + 1] = { text = string.format("  %s: level %d", l.name, l.level), color = { r = 0.7, g = 0.7, b = 0.7 } }
+    end
+  end
+  if unknown then
+    details[#details + 1] = { text = "Wayward doesn't know where its entrance is yet. Walk in once (not through "
+      .. "the dungeon finder) and it remembers.", color = { r = 1, g = 0.5, b = 0.25 } }
+  elseif not (entry.fromSource or entry.learned) then
+    details[#details + 1] = { text = "Entrance position is approximate.", color = { r = 0.6, g = 0.6, b = 0.6 } }
+  end
+  questLines(details, "Quests you can take for it:", available)
+  questLines(details, "In your quest log:", inLog)
+
+  return ns.Search.WithDetour({
+    id = "dungeon" .. normalize(entry.name),
+    kind = "dungeon",
+    title = string.format("%s%s%s", entry.name, entry.raid and " (raid)" or "",
+      fitLevel and ("  ·  level " .. fitLevel) or ""),
+    titleColor = fitLevel and ns.DifficultyColor(fitLevel) or nil,
+    zone = table.concat(why, "  ·  "),
+    goal = goal,
+    route = route,
+    details = details,
+    -- For other pages (For you): the dungeon and its quests behind this row.
+    dungeon = entry,
+    quests = { available = available, inLog = inLog, later = later },
+    -- Pick up the quests you can take, then go in (QuestsPage.lua).
+    actions = #available > 0 and goal and { { label = "Quests", run = function()
+      ns.QuestsPage.StartDungeonRun(entry.name, goal, available)
+    end } } or nil,
+  })
+end
+
+-- The row for any catalogue dungeon, whether or not it fits your level (the
+-- Find page): fit or not, its level is the nearest to yours.
+function Dungeons.RowFor(entry, start, net)
+  local level = UnitLevel("player")
+  local fit = bestFit(entry, level)
+  if not fit then
+    local levels = #entry.levels > 0 and entry.levels or { { level = entry.dataLevel } }
+    for _, l in ipairs(levels) do
+      if l.level and (not fit or math.abs(l.level - level) < math.abs(fit.level - level)) then fit = l end
+    end
+    if fit and not fit.level then fit = nil end
+  end
+  return rowFor(entry, fit, ns.Quests.QuestsForAreas(entry.areaIDs), start, net, level)
 end
 
 function Dungeons.Results()
@@ -282,77 +373,16 @@ function Dungeons.Results()
 
   local results = {}
   for _, f in ipairs(fitting) do
-    local entry = f.entry
-    local goal, route
-    for _, node in ipairs(entry.entrances) do
-      local r = ns.Router.Plan(start, node, net)
-      if r and (not route or r.seconds < route.seconds) then goal, route = node, r end
-    end
-    goal = goal or entry.entrances[1]
-    local unknown = goal == nil
-
-    local available, inLog, later = {}, {}, {}
-    for areaID in pairs(entry.areaIDs) do
-      local q = quests[areaID]
-      if q then
-        for _, quest in ipairs(q.available) do available[#available + 1] = quest end
-        for _, quest in ipairs(q.inLog) do inLog[#inLog + 1] = quest end
-        for _, quest in ipairs(q.later or {}) do later[#later + 1] = quest end
-      end
-    end
-
-    -- Why go: the level in the title, quests for it on the second line.
-    local why = { unknown and "entrance not known yet" or ns.MapName(goal.mapID) }
-    if #available > 0 then
-      why[#why + 1] = string.format("%d quest%s for you", #available, #available == 1 and "" or "s")
-    end
-    if #inLog > 0 then why[#why + 1] = #inLog .. " in your log" end
-
-    local gap = level - f.fit.level
-    local details = { {
-      text = string.format("%s level %d%s; you are %s.", entry.raid and "Raid" or "Dungeon", f.fit.level,
-        #entry.levels > 0 and "" or " (Wayward estimate)",
-        gap == 0 and "the same level" or string.format("%d level%s %s", math.abs(gap),
-          math.abs(gap) == 1 and "" or "s", gap > 0 and "above it" or "below it")),
-    } }
-    if #entry.levels > 1 then
-      for _, l in ipairs(entry.levels) do
-        details[#details + 1] = { text = string.format("  %s: level %d", l.name, l.level), color = { r = 0.7, g = 0.7, b = 0.7 } }
-      end
-    end
-    if unknown then
-      details[#details + 1] = { text = "Wayward doesn't know where its entrance is yet. Walk in once (not through "
-        .. "the dungeon finder) and it remembers.", color = { r = 1, g = 0.5, b = 0.25 } }
-    elseif not (entry.fromSource or entry.learned) then
-      details[#details + 1] = { text = "Entrance position is approximate.", color = { r = 0.6, g = 0.6, b = 0.6 } }
-    end
-    questLines(details, "Quests you can take for it:", available)
-    questLines(details, "In your quest log:", inLog)
-
-    results[#results + 1] = {
-      id = "dungeon" .. normalize(entry.name),
-      title = string.format("%s%s  ·  level %d", entry.name, entry.raid and " (raid)" or "", f.fit.level),
-      titleColor = ns.DifficultyColor(f.fit.level),
-      zone = table.concat(why, "  ·  "),
-      goal = goal,
-      route = route,
-      details = details,
-      score = (route and route.seconds or NO_ENTRANCE) + f.penalty,
-      -- For other pages (For you): the dungeon and its quests behind this row.
-      dungeon = entry,
-      quests = { available = available, inLog = inLog, later = later },
-      -- Pick up the quests you can take, then go in (QuestsPage.lua).
-      actions = #available > 0 and goal and { { label = "Quests", run = function()
-        ns.QuestsPage.StartDungeonRun(entry.name, goal, available)
-      end } } or nil,
-    }
+    local row = rowFor(f.entry, f.fit, quests, start, net, level)
+    row.score = (row.route and row.route.seconds or NO_ENTRANCE) + f.penalty
+    results[#results + 1] = row
   end
 
   table.sort(results, function(a, b)
     if a.score ~= b.score then return a.score < b.score end
     return a.title < b.title
   end)
-  summary = string.format("Dungeons for level %d, best level fit and shortest trip first.", level)
+  summary = string.format("Dungeons for level %d, best level fit and nearest entrance first.", level)
   if not ns.Quests.Available() then
     summary = summary .. " Install " .. ns.Data.ADDON .. " for exact entrances and dungeon quests."
   end

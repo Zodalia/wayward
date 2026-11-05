@@ -1,14 +1,14 @@
 local _, ns = ...
 
 -- Fanfare. Two frames near the top of the screen:
---   * when a trip is done: what it came to, as the 2 to 4 stats that stand out
---     most (levels, quests handed in, gold, XP, ... ; time and distance fill
---     in when there's little else);
+--   * when a journey is done: what it came to, as the 2 to 4 stats that
+--     stand out most (levels, quests handed in, gold, XP, ... ; time and
+--     distance fill in when there's little else), under its title and icon;
 --   * when For you has a new major suggestion (a questing zone, a dungeon,
 --     new spells, a profession's next rank): "New journey available", which
---     you click to start it (or add it to your trip: the usual question);
---     a few seconds after a journey is done, the same toast says "Up next"
---     with For you's top card.
+--     you click to start it (or add it as a detour, or switch to it: the
+--     usual question); a few seconds after a journey is done, the same toast
+--     says "Up next" with For you's top card.
 -- Both fade after a while (not while the mouse is over them); a click on the
 -- first, or the toast's x, closes it. /ww toasts or the options turn the
 -- new-journey toasts off. Their sounds: Sounds.lua (/ww sounds).
@@ -49,7 +49,7 @@ local function stat(parent)
   return { label = l, value = v }
 end
 
----------------------------------------------------------------- trip done
+---------------------------------------------------------------- journey done
 
 local trip
 local TRIP_WIDTH, MAX_STATS, MIN_STATS = 380, 4, 2
@@ -64,7 +64,7 @@ local function xpRef()
   return max and max > 0 and max / 10 or 1000
 end
 
--- The stats a trip can show, most important first: { key, label, priority,
+-- The stats a journey can show, most important first: { key, label, priority,
 -- ref, format }. `ref` is a good amount (a number, or a function for one that
 -- depends on your level): a stat scores its priority at `ref`, more for more
 -- (up to twice at four times `ref`), less for less. Time and distance are
@@ -81,8 +81,8 @@ local STATS = {
   { "seconds", "Time", 10, 300, function(n) return ns.FormatDuration(n) end },
 }
 
--- The stats worth showing for a trip, best first: { key, label, text, score },
--- 2 to 4 of them (fewer only when the trip has less: an instant arrival).
+-- The stats worth showing for a journey, best first: { key, label, text, score },
+-- 2 to 4 of them (fewer only when the journey has less: an instant arrival).
 function Fanfare.Highlights(stats)
   local out = {}
   for order, s in ipairs(STATS) do
@@ -135,7 +135,8 @@ end
 local function showTrip(stats, sound)
   trip = trip or createTrip()
   trip.heading:SetText("Journey complete!")
-  trip.title:SetText(stats.title or "")
+  -- The journey's icon (its kind) before its title.
+  trip.title:SetText((stats.icon and ("|T" .. stats.icon .. ":16:16|t ") or "") .. (stats.title or ""))
   local shown = Fanfare.Highlights(stats)
   for i, slot in ipairs(trip.stats) do
     local h = shown[i]
@@ -161,8 +162,8 @@ end
 -- The banner frame, or nil before the first (for tests).
 function Fanfare.TripFrame() return trip end
 
--- stats: { title, xp, seconds, distance (yards), quests (handed in), picked,
--- levels, money (copper), flights, ranks }
+-- stats: { title, kind, icon, xp, seconds, distance (yards), quests (handed
+-- in), picked, levels, money (copper), flights, ranks }
 function Fanfare.TripDone(stats)
   showTrip(stats)
   Fanfare.lastTrip = stats
@@ -204,7 +205,7 @@ local function createToast()
   f.close:SetSize(22, 22)
   f.close:SetPoint("TOPRIGHT", -2, -2)
   f.close:SetScript("OnClick", function() f:Hide(); if f.onDone then f.onDone() end end)
-  -- Click: start it, or add it to your trip (the usual question when one is on).
+  -- Click: start it, or add it as a detour or switch to it (the usual question when a journey is on).
   f:SetScript("OnMouseUp", function(self)
     local r = self.result
     self:Hide()
@@ -215,7 +216,8 @@ local function createToast()
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
     GameTooltip:SetText(self.result and self.result.title or "")
     GameTooltip:AddLine(self.result and self.result.preview and "A sound test: clicking it starts nothing"
-      or ns.Nav.active and "Click to add it to your trip, or start it instead" or "Click to start it", 0.5, 0.8, 0.7)
+      or ns.Nav.active and "Click to add it to your journey as a detour, or switch to it" or "Click to start it",
+      0.5, 0.8, 0.7)
     GameTooltip:Show()
   end)
   f:SetScript("OnLeave", function() GameTooltip:Hide() end)

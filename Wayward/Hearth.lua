@@ -21,7 +21,7 @@ local function bindName()
 end
 
 local function remember()
-  local name, here = bindName(), ns.Geo.PlayerNode()
+  local name, here = bindName(), ns.Geo.PlayerNodeExact()
   if not (name and here) then return end
   ns.charDB.hearth = { name = name, mapID = here.mapID, x = here.x, y = here.y }
   ns.Fire("DATA_CHANGED", "hearth")

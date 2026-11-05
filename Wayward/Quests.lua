@@ -28,7 +28,6 @@ end
 
 local predecessors -- [questID] = { quests whose nextQuestInChain is questID }
 local questByID -- [questID] = quest row (every quest, with or without a starter)
-local nameIndex -- { {lowercase name, quest row}, ... }, built on the first search
 
 -- Forever adds quests the data knows nothing about the chains of (e.g. a
 -- second "Return the Statuette", 98189, after the original 286). For those
@@ -191,7 +190,7 @@ for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED" })
 end
 -- Abandoning a quest: QUEST_REMOVED fires for a hand-in too, so a moment
 -- later, a quest that wasn't handed in and isn't back in your log was dropped:
--- QUEST_ABANDONED(questID) for the trip, For you and quest times.
+-- QUEST_ABANDONED(questID) for the journey, For you and quest times.
 local ABANDON_CHECK = 0.5
 local handedIn = {}
 
@@ -448,6 +447,7 @@ local function takeableQuests(p)
   local done, inLog = playerQuestState()
   local quests = {}
   for _, q in ipairs(questIndex) do
+    ns.WarmStep()
     if eligible(q, p, done, inLog) then quests[#quests + 1] = q end
   end
   takeable = { key = key, quests = quests }
@@ -509,6 +509,7 @@ function Quests.ZoneQuests(here)
       chain = chain }
   end
   for _, q in ipairs(questIndex) do
+    ns.WarmStep()
     if (fitsLevel(q, p)) then
       local status = blocker(q, p, done, inLog)
       if status == nil then
@@ -542,6 +543,7 @@ function Quests.QuestsForAreas(areaIDs)
   local done, inLog = playerQuestState()
   local out = {}
   for _, q in ipairs(questIndex) do
+    ns.WarmStep()
     local area = Quests.QuestArea(q)
     if area and areaIDs[area] then
       local group = out[area] or { available = {}, inLog = {}, later = {} }
@@ -698,7 +700,7 @@ function Quests.ObjectiveNode(questID, here)
   if not q then return nil end
   local nodes = objectiveCache[questID]
   if not nodes then
-    local ok, built = pcall(objectiveNodes, q, label)
+    local ok, built = ns.Protect(objectiveNodes, q, label)
     nodes = ok and built or {}
     objectiveCache[questID] = nodes
   end
@@ -743,17 +745,19 @@ end
 local followers -- [questID] = { quest rows that come after it }
 
 local function buildFollowers()
-  followers = {}
+  local built = {}
   local function add(before, q)
-    followers[before] = followers[before] or {}
-    table.insert(followers[before], q)
+    built[before] = built[before] or {}
+    table.insert(built[before], q)
   end
   for _, q in pairs(questByID) do
+    ns.WarmStep()
     if (q.nextQuestInChain or 0) ~= 0 and questByID[q.nextQuestInChain] then add(q.id, questByID[q.nextQuestInChain]) end
     for _, id in ipairs(q.preQuestSingle or {}) do add(id, q) end
     for _, id in ipairs(q.preQuestGroup or {}) do add(id, q) end
     if q.inferredAfter then add(q.inferredAfter, q) end
   end
+  followers = followers or built
 end
 
 function Quests.FollowUps(questID)
@@ -859,6 +863,7 @@ local function chainEnd(q)
 end
 
 local function chainAhead(start, p)
+  ns.WarmStep()
   local ahead = { steps = {}, alternatives = {}, count = 0, reachable = 0, dungeons = {} }
   local seen, frontier = { [start.id] = true }, { start }
   local lastReachable
@@ -1048,7 +1053,7 @@ function Quests.ObjectiveGroups(questID)
   if groupCache[questID] then return groupCache[questID] end
   local q = Quests.Quest(questID)
   if not q then return {} end
-  local ok, groups = pcall(objectiveGroups, q, q.name or ("Quest " .. questID))
+  local ok, groups = ns.Protect(objectiveGroups, q, q.name or ("Quest " .. questID))
   groupCache[questID] = ok and groups or {}
   return groupCache[questID]
 end
@@ -1156,7 +1161,7 @@ end
 
 function Quests.ObjectiveAreas(questID)
   if areaCache[questID] then return areaCache[questID] end
-  local ok, areas = pcall(buildAreas, questID)
+  local ok, areas = ns.Protect(buildAreas, questID)
   areaCache[questID] = ok and areas or {}
   return areaCache[questID]
 end
@@ -1190,22 +1195,41 @@ function Quests.ChainStart(questID, done, inLog)
   return chainStart(q, playerProfile(), done, inLog, {})
 end
 
--- Quests whose name contains `text` (case-insensitive), with or without a
--- starter, lowest ID first. The name index is built once, on the first search.
-function Quests.FindQuests(text)
+-- Where you stand with a quest whose reward you want (the Items page):
+-- "available", "low" (grey, you can still take it), "inLog", "done", "level"
+-- (you are too low), "hard" (red, or orange on Hardcore), "chain" (needs
+-- earlier quests), or nil (never for you, or not any more). The same rules
+-- as QuestStatus, in the Items page's words.
+function Quests.RewardStatus(questID, done, inLog)
+  local q = Quests.Quest(questID)
+  if not q then return nil end
+  if not done then done, inLog = playerQuestState() end
+  local p = playerProfile()
+  local status = blocker(q, p, done, inLog)
+  if status == "done" or status == "inLog" then return status end
+  if status == "tooLow" then return "level" end
+  if status == "needsEarlier" then return "chain" end
+  if status then return nil end
+  local _, _, why = fitsLevel(q, p)
+  if why == "red" then return "hard" end
+  if why == "grey" then return "low" end
+  return "available"
+end
+
+-- Every quest the data knows, by ID (with or without a starter), for indexes
+-- built over all of them (Search.lua). Read-only.
+function Quests.Index()
   if not Quests.Available() then return {} end
   if not questIndex then buildQuestIndex() end
-  if not nameIndex then
-    nameIndex = {}
-    for _, q in pairs(questByID) do
-      if type(q.name) == "string" then nameIndex[#nameIndex + 1] = { q.name:lower(), q } end
-    end
-    table.sort(nameIndex, function(a, b) return a[2].id < b[2].id end)
-  end
-  local needle, out = text:lower(), {}
-  for _, entry in ipairs(nameIndex) do
-    if entry[1]:find(needle, 1, true) then out[#out + 1] = entry[2] end
-  end
+  return questByID
+end
+
+-- Quests whose name contains `text` (case-insensitive), with or without a
+-- starter, best match first (Search.lua does the matching).
+function Quests.FindQuests(text)
+  if not Quests.Available() then return {} end
+  local out = {}
+  for _, m in ipairs(ns.Search.Find(text, "quest")) do out[#out + 1] = m.quest end
   return out
 end
 
@@ -1250,15 +1274,16 @@ end
 -- Indexes are rebuilt when a source registers (a companion loading later).
 ns.Listen("SOURCES_CHANGED", function()
   generation = generation + 1
-  questIndex, predecessors, questByID, nameIndex, followers = nil, nil, nil, nil, nil
+  questIndex, predecessors, questByID, followers = nil, nil, nil, nil
   giverNodes, objectiveCache, groupCache, areaCache, mobCache, zoneCache, takeable = {}, {}, {}, {}, {}, nil, nil
   questState, questVersion = nil, questVersion + 1
   chainCache = {}
 end)
 -- The quest index (and the reward items, Notable.lua) built a slice per frame
 -- (ns.Warm) after a login and when the sources change, so no page builds it
--- all at once. True while that's still going: pages wait for it.
-local warmQueued = {}
+-- all at once. True while that's still going: pages wait for it (and get
+-- DATA_CHANGED when it's done).
+local warmQueued, warmPending = {}, 0
 local warmers = { quests = function() if not questIndex then buildQuestIndex() end end }
 
 function Quests.AddWarmer(name, fn)
@@ -1270,11 +1295,15 @@ function Quests.Warm()
     for name, fn in pairs(warmers) do
       if warmQueued[name] ~= generation then
         warmQueued[name] = generation
-        ns.Warm(fn)
+        warmPending = warmPending + 1
+        ns.Warm(fn, function()
+          warmPending = warmPending - 1
+          if warmPending == 0 then ns.Fire("DATA_CHANGED") end
+        end)
       end
     end
   end
-  return ns.Warming()
+  return warmPending > 0
 end
 
 ns.On("PLAYER_ENTERING_WORLD", function(isLogin, isReload)

@@ -229,5 +229,6 @@ function Professions.Results()
     if a.order ~= b.order then return a.order < b.order end
     return a.seconds < b.seconds
   end)
+  for _, row in ipairs(rows) do ns.Search.WithDetour(row) end
   return rows, nil, net
 end

@@ -44,62 +44,93 @@ end
 
 function ns.Fire(message, ...)
   for _, fn in ipairs(listeners[message] or {}) do
-    local ok, err = pcall(fn, ...)
+    local ok, err = ns.Protect(fn, ...)
     if not ok then geterrorhandler()(err) end
   end
 end
 
----------------------------------------------------------------- warm-up
+---------------------------------------------------------------- background jobs
 
--- Indexes over all the quest or item data take longer than Classic Era lets
--- one script run (the game stops it, "script ran too long", and a window being
--- drawn is left blank), so they're built a slice per frame. ns.Warm(fn) queues
--- a build and runs its first slice at once; inside it, ns.WarmStep() hands the
--- rest of the frame back once the slice is used. A build run directly, not by
--- ns.Warm, never stops. Lua can't pause inside a pcall: WarmStep only in
--- Wayward's own loops, never inside a data source's function.
--- DATA_CHANGED once the queue is empty.
+-- Work over all the quest or item data, and For you's first build after a
+-- login, take longer than Classic Era lets one script run (the game stops it,
+-- "script ran too long", and a window being drawn is left blank). So they run
+-- as background jobs, a slice per frame: ns.Warm(fn, done) queues fn and runs
+-- its first slice at once; inside it, ns.WarmStep() hands the rest of the
+-- frame back once the slice is used; done(ok, ...) gets what fn returned.
+-- Code run directly, not by ns.Warm, never stops at a WarmStep.
+-- Lua 5.1 can't pause inside a pcall: in code a job runs, a Lua function is
+-- guarded with ns.Protect instead (data sources' own functions never pause,
+-- so Sources.lua keeps pcall).
 local WARM_SLICE_MS = 8
 local warmQueue, warmCo, warmFrame, sliceStart = {}, nil, nil, 0
+local warmThreads = setmetatable({}, { __mode = "k" }) -- a job's coroutine and ns.Protect's inside it
+local unpack = unpack or table.unpack
 
 local function clock() return debugprofilestop and debugprofilestop() or 0 end
+local function pack(...) return { n = select("#", ...), ... } end
+
+local function inJob()
+  local co = coroutine.running()
+  return co ~= nil and warmThreads[co] == true
+end
 
 function ns.WarmStep()
-  if warmCo and coroutine.running() == warmCo and clock() - sliceStart > WARM_SLICE_MS then
+  if inJob() and clock() - sliceStart > WARM_SLICE_MS then coroutine.yield() end
+end
+
+-- pcall that a job can pause inside: there, fn runs in a coroutine of its
+-- own (which catches errors as pcall does) and passes its pauses on.
+function ns.Protect(fn, ...)
+  if not inJob() then return pcall(fn, ...) end
+  local inner = coroutine.create(fn)
+  warmThreads[inner] = true
+  local results = pack(coroutine.resume(inner, ...))
+  while results[1] and coroutine.status(inner) ~= "dead" do
     coroutine.yield()
+    results = pack(coroutine.resume(inner))
   end
+  return unpack(results, 1, results.n)
 end
 
 -- The frame that runs the slices (for tests).
 function ns.WarmFrame() return warmFrame end
 
--- True while a build is queued or running.
+-- True while a job is queued or running.
 function ns.Warming()
   return warmCo ~= nil or #warmQueue > 0
 end
 
+local current -- the queue entry running: { fn, done }
+
 local function warmTick()
   if not warmCo then
-    local fn = table.remove(warmQueue, 1)
-    if not fn then return end
-    warmCo = coroutine.create(fn)
+    current = table.remove(warmQueue, 1)
+    if not current then
+      warmFrame:SetScript("OnUpdate", nil)
+      return
+    end
+    warmCo = coroutine.create(current[1])
+    warmThreads[warmCo] = true
   end
   sliceStart = clock()
-  local ok, err = coroutine.resume(warmCo)
-  if ok and coroutine.status(warmCo) ~= "dead" then return end
+  local results = pack(coroutine.resume(warmCo))
+  if results[1] and coroutine.status(warmCo) ~= "dead" then return end
   warmCo = nil
-  if not ok then geterrorhandler()(err) end
-  if #warmQueue == 0 then
-    warmFrame:SetScript("OnUpdate", nil)
-    ns.Fire("DATA_CHANGED")
+  if not results[1] then geterrorhandler()(results[2]) end
+  if #warmQueue == 0 then warmFrame:SetScript("OnUpdate", nil) end
+  local done = current[2]
+  current = nil
+  if done then
+    local ok, err = pcall(done, unpack(results, 1, results.n))
+    if not ok then geterrorhandler()(err) end
   end
 end
 
-function ns.Warm(fn)
-  warmQueue[#warmQueue + 1] = fn
+function ns.Warm(fn, done)
+  warmQueue[#warmQueue + 1] = { fn, done }
   warmFrame = warmFrame or CreateFrame("Frame")
   warmFrame:SetScript("OnUpdate", warmTick)
-  -- The first slice now, unless one is under way (or this is inside it).
+  -- The first slice now, unless a job is under way (or this is inside one).
   if not warmCo then warmTick() end
 end
 
@@ -239,12 +270,19 @@ function ns.ItemCount(itemID)
   return fn and fn(itemID) or 0
 end
 
--- true / false, or nil when this client can't say.
+-- true / false, or nil when this client can't say. Known when any of the
+-- client's checks says so: they look in different places (the spellbook,
+-- what you have learned), and Classic Era's spellbook can hide lower ranks.
 function ns.KnowsSpell(spellID)
-  if C_SpellBook and C_SpellBook.IsSpellKnown then return C_SpellBook.IsSpellKnown(spellID) and true or false end
-  if IsPlayerSpell then return IsPlayerSpell(spellID) and true or false end
-  if IsSpellKnown then return IsSpellKnown(spellID) and true or false end
-  return nil
+  local checks = { C_SpellBook and C_SpellBook.IsSpellKnown, IsPlayerSpell, IsSpellKnown }
+  local answer = nil
+  for i = 1, 3 do
+    if checks[i] then
+      if checks[i](spellID) then return true end
+      answer = false
+    end
+  end
+  return answer
 end
 
 ---------------------------------------------------------------- flights
@@ -315,6 +353,7 @@ local DEFAULTS = {
   npcs = {},         -- [npcID] = harvested NPC (see Harvest.lua)
   transports = {},   -- recorded with /ww dock (see Docks.lua)
   dungeonEntrances = {}, -- [name key] = entrances you walked through (see Dungeons.lua)
+  mailboxes = {},    -- { {mapID, x, y}, ... }: mailboxes you opened (see Errands.lua)
   -- showArrow: the compass in the directions box; tomtom: nil until you've
   -- been asked (see UI/Options.lua), then true / false.
   settings = { showArrow = true },
@@ -459,11 +498,17 @@ SlashCmdList.WAYWARD = function(msg)
     ns.print("version " .. ns.VERSION .. " (" .. ns.GameName() .. ")")
     if rest == "cards" then
       for _, line in ipairs(ns.Cards.Diagnose()) do ns.print(line) end
+      -- For you's cards carry a relevance; then its roles, parts and observations too.
+      local shown = ns.Cards.Visible and ns.Cards.Visible() or {}
+      if shown[1] and shown[1].relevance and ns.ForYou.Diagnose then
+        for _, line in ipairs(ns.ForYou.Diagnose()) do ns.print(line) end
+      end
       return
     end
     local questQuery = rest:match("^quest%s+(.+)$")
     if questQuery then
-      local id = tonumber(questQuery) or tonumber(questQuery:match("quest:(%d+)"))
+      local kind, id = ns.Search.Parse(questQuery)
+      if kind and kind ~= "quest" then id = nil end
       local matches = id and { { id = id } } or ns.Quests.FindQuests(questQuery)
       if #matches == 0 then ns.print("no quest called " .. questQuery) end
       for i = 1, math.min(#matches, 3) do

@@ -16,7 +16,7 @@ local function round(v)
 end
 
 local function here()
-  local node = ns.Geo.PlayerNode()
+  local node = ns.Geo.PlayerNodeExact()
   if not node then return nil end
   local subZone = GetSubZoneText and GetSubZoneText() or ""
   return { mapID = node.mapID, x = round(node.x), y = round(node.y),

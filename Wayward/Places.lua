@@ -2,12 +2,14 @@ local _, ns = ...
 
 -- Human names for places ("Auberdine", "Lakeshire"). The client has no
 -- "subzone at this position" lookup, so: the nearest flight path's town, then
--- an explored map area at that spot, else nothing.
+-- an explored map area at that spot, then the subzone of an NPC you've met
+-- close by (Harvest records it: "Kharanos" has no flight path), else nothing.
 
 local Places = {}
 ns.Places = Places
 
 local TOWN_RADIUS = 350 -- yards from a flight master that still count as its town
+local MET_RADIUS = 120  -- yards from an NPC you've met that still count as their subzone
 
 local towns
 
@@ -34,6 +36,33 @@ local function exploredAreaName(node)
   return type(name) == "string" and name ~= "" and name or nil
 end
 
+-- The NPCs you've met with the subzone they stood in, as places (rebuilt
+-- when what you know changes).
+local met
+local function loadMet()
+  met = {}
+  for _, npc in pairs(ns.Harvest and ns.Harvest.AllNPCs() or {}) do
+    if npc.subZone and npc.subZone ~= "" and npc.mapID then
+      local node = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.subZone)
+      if node then met[#met + 1] = node end
+    end
+  end
+end
+
+local function metAreaName(node)
+  if not met then loadMet() end
+  local best, bestDistance = nil, MET_RADIUS
+  for _, place in ipairs(met) do
+    if place.mapID == node.mapID or place.instance == node.instance then
+      local d = ns.Geo.Distance(node, place)
+      if d <= bestDistance then best, bestDistance = place, d end
+    end
+  end
+  return best and best.label
+end
+
+ns.Listen("DATA_CHANGED", function() met = nil end)
+
 function Places.NameFor(node)
   if not towns then loadTowns() end
   local best, bestDistance = nil, TOWN_RADIUS
@@ -42,5 +71,5 @@ function Places.NameFor(node)
     if d <= bestDistance then best, bestDistance = town, d end
   end
   if best then return best.label end
-  return exploredAreaName(node)
+  return exploredAreaName(node) or metAreaName(node)
 end

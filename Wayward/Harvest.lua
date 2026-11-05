@@ -43,7 +43,7 @@ end
 local MOVED = 0.002 -- map fraction: a few yards
 function Harvest.RecordNPC(kind, extra)
   local id = npcID()
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   if not (id and here) then return nil end
   local npc = ns.db.npcs[id]
   local changed = npc == nil or not npc.kinds[kind] or extra ~= nil
@@ -123,6 +123,9 @@ local function readService(index)
       s.icon = v
     end
   end
+  -- The name comes first on every client. Classic Era gives none until it has
+  -- loaded (TRAINER_SERVICE_INFO_NAME_UPDATE): the rank isn't a name.
+  if type(r[1]) ~= "string" then s.name = nil end
   s.levelReq = GetTrainerServiceLevelReq(index)
   s.cost = GetTrainerServiceCost(index)
   if GetTrainerServiceSkillLine then s.skillLine = GetTrainerServiceSkillLine(index) end
@@ -209,6 +212,7 @@ end
 
 ns.On("TRAINER_SHOW", function() ns.After(0.5, readTrainer) end)
 ns.On("TRAINER_UPDATE", readTrainer)
+ns.On("TRAINER_SERVICE_INFO_NAME_UPDATE", readTrainer)
 -- What you could have learned and didn't, you left there on purpose.
 ns.On("TRAINER_CLOSED", function()
   if not classTrainerOpen then return end
@@ -222,7 +226,7 @@ end)
 -- A flight map only lists the flight paths of the continent you're on, so
 -- what you know is tracked per continent (continent uiMapID).
 local function playerContinent()
-  local here = ns.Geo.PlayerNode()
+  local here = ns.Geo.PlayerNodeExact()
   return here and ns.Geo.Continents()[here.instance], here
 end
 
