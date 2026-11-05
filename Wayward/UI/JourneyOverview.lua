@@ -15,6 +15,8 @@ local _, ns = ...
 -- them would push open stops off the list.
 -- Under the stops: detours on the way (OnTheWay.lua), the journeys you set
 -- aside (Nav.SetAside) with Resume and Forget, and a map of the rest.
+-- Above the window (prototype): the shopping list for quests gathered as
+-- you go, on a faded strip that grows upward.
 
 local Overview = {}
 ns.JourneyOverview = Overview
@@ -28,6 +30,9 @@ local SUGGEST_HEIGHT = 18
 local SET_ASIDE = 5        -- set-aside journey rows (Nav keeps that many)
 local SHOP_ROWS = 5        -- shopping list rows around you (then one "more elsewhere")
 local SHOP_EVERY = 2       -- seconds between looks at what's around you
+local SHOP_GAP = 4         -- the list's strip sits this far above the window
+local SHOP_PAD = 4         -- inside the strip, above and below the rows
+local SHOP_FADE = 0.45     -- the strip's background alpha
 local HANDLE_WIDTH = 16
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
@@ -241,15 +246,22 @@ local function create()
   f.marker:Hide()
 
   -- PROTOTYPE: the shopping list. What the quests you gather as you go still
-  -- want, the ones around you listed; the rest on one line, on hover.
-  f.shopHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  f.shopHeader:SetJustifyH("LEFT")
-  f.shopHeader:SetText("Shopping list")
-  ns.Skin.Text(f.shopHeader)
+  -- want, the ones around you listed; the rest on one line, on hover. Just
+  -- the list, on a faded strip sitting on the window's top edge: its bottom
+  -- is fixed there, so a longer list grows upward.
+  f.shopBox = CreateFrame("Frame", nil, f)
+  f.shopBox:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, SHOP_GAP)
+  f.shopBox:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, SHOP_GAP)
+  f.shopBox:SetHeight(1)
+  f.shopBox.bg = f.shopBox:CreateTexture(nil, "BACKGROUND")
+  f.shopBox.bg:SetAllPoints()
+  f.shopBox.bg:SetColorTexture(0, 0, 0, SHOP_FADE)
+  f.shopBox:Hide()
   f.shop = {}
   for i = 1, SHOP_ROWS + 1 do
-    local row = CreateFrame("Frame", nil, f)
-    row:SetSize(356, SUGGEST_HEIGHT)
+    local row = CreateFrame("Frame", nil, f.shopBox)
+    row:SetPoint("TOPLEFT", 8, -SHOP_PAD - (i - 1) * SUGGEST_HEIGHT)
+    row:SetSize(364, SUGGEST_HEIGHT)
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.text:SetPoint("LEFT", 4, 0)
     row.text:SetPoint("RIGHT", -4, 0)
@@ -268,7 +280,7 @@ local function create()
     self.wait = (self.wait or 0) + (elapsed or 0)
     if self.wait < SHOP_EVERY then return end
     self.wait = 0
-    if Overview.ShopChanged() then Overview.Refresh() end
+    if Overview.ShopChanged() then Overview.RefreshShop() end
   end)
 
   -- Detours on the way: things to add that cost little (OnTheWay.lua).
@@ -513,6 +525,35 @@ local function shopSignature(lines)
   return table.concat(parts, "\n")
 end
 
+-- Fills the strip above the window, and sizes it from the bottom up (one
+-- row per line). Hidden with nothing on the list. The window's clamp to
+-- the screen counts the strip, so dragging it up doesn't push the list off.
+function Overview.RefreshShop()
+  if not frame then return end
+  local shop = Overview.ShopLines()
+  Overview.shopShown = shopSignature(shop)
+  for i, row in ipairs(frame.shop) do
+    local line = shop[i]
+    row.line = line
+    if line then
+      row.text:SetText(line.text)
+      row:Show()
+    else
+      row:Hide()
+    end
+  end
+  local height = #shop > 0 and (#shop * SUGGEST_HEIGHT + 2 * SHOP_PAD) or 0
+  frame.shopBox:SetHeight(math.max(height, 1))
+  frame.shopBox:SetShown(#shop > 0)
+  frame.shopHeight = height
+  if frame.SetClampRectInsets then frame:SetClampRectInsets(0, 0, height > 0 and (height + SHOP_GAP) or 0, 0) end
+end
+
+-- The strip's height (0 when hidden) and whether it shows (for tests).
+function Overview.ShopHeight()
+  return frame and frame.shopHeight or 0, frame ~= nil and frame.shopBox:IsShown()
+end
+
 -- Whether the list would read differently now (you walked somewhere else).
 function Overview.ShopChanged()
   if not (frame and frame:IsShown()) then return false end
@@ -647,27 +688,7 @@ function Overview.Refresh()
   -- Under the stops: detours on the way, the journeys set aside, then the
   -- map. A scrolling list keeps its full height.
   local y = -44 - (maxScroll > 0 and room or used) - 10
-  -- The shopping list (gathering as you go), when there's anything on it.
-  local shop = Overview.ShopLines()
-  Overview.shopShown = shopSignature(shop)
-  frame.shopHeader:ClearAllPoints()
-  frame.shopHeader:SetPoint("TOPLEFT", 12, y)
-  frame.shopHeader:SetShown(#shop > 0)
-  if #shop > 0 then y = y - 16 end
-  for i, row in ipairs(frame.shop) do
-    local line = shop[i]
-    row.line = line
-    if line then
-      row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", 12, y)
-      row.text:SetText(line.text)
-      row:Show()
-      y = y - SUGGEST_HEIGHT
-    else
-      row:Hide()
-    end
-  end
-  if #shop > 0 then y = y - 6 end
+  Overview.RefreshShop()
   local list = ns.OnTheWay and ns.OnTheWay.Get() or {}
   frame.suggestHeader:ClearAllPoints()
   frame.suggestHeader:SetPoint("TOPLEFT", 12, y)

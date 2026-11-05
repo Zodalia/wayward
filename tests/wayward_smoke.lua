@@ -7718,6 +7718,23 @@ do
   ns.JourneyOverview.Refresh()
   check(not ns.JourneyOverview.ShopChanged() and ns.JourneyOverview.ShopLines()[1].entry.name == "Stringy Vulture",
     "and shows the vultures once it looks again")
+  local shopLines = #ns.JourneyOverview.ShopLines()
+  local height, shown = ns.JourneyOverview.ShopHeight()
+  check(shown and height == shopLines * 18 + 8, string.format("the list sits on a strip above the window, a row per line: %d lines, %d high",
+    shopLines, height))
+  -- A third thing to gather, right here too: one line more, and the strip
+  -- grows (upward: its bottom is fixed on the window's top edge).
+  NPCS[9603] = { name = "Murloc Raider", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 16, 20 } } } }
+  QUESTS[4600].objectives[1][3] = { 9603 }
+  objectives[3] = { text = "Murloc Raider slain: 0/2", finished = false }
+  refreshData()
+  ns.JourneyOverview.RefreshShop()
+  local taller = ns.JourneyOverview.ShopHeight()
+  check(#ns.JourneyOverview.ShopLines() == shopLines + 1 and taller == height + 18,
+    string.format("a longer list, a taller strip: %d lines, %d high", #ns.JourneyOverview.ShopLines(), taller))
+  QUESTS[4600].objectives[1][3], objectives[3], NPCS[9603] = nil, nil, nil
+  refreshData()
+  ns.JourneyOverview.RefreshShop()
   player.x, player.y = 0.5, 0.52
 
   -- At the hand-in before it's all gathered (a plan with no area on the way:
@@ -7763,6 +7780,9 @@ do
   check(stew.done and not anyVia and ns.Nav.HeadingFor().action.kind == "turnin",
     "all gathered: straight to the hand-in")
   check(#ns.JourneyOverview.ShopLines() == 0, "and nothing on the list")
+  ns.JourneyOverview.Show()
+  local _, stripShown = ns.JourneyOverview.ShopHeight()
+  check(not stripShown and ns.JourneyOverview.ShopHeight() == 0, "and no strip above the window")
 
   -- A stop elsewhere, nothing it needs: an area far off the way isn't a detour.
   objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }
