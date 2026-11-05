@@ -7703,6 +7703,8 @@ do
   shop = ns.HUD.Shop()
   check(shop.open and shop.count == "" and #shop.lines == 2 and shop.height == 2 * 14 + 10 and ns.charDB.shopOpen,
     string.format("opened: the list pops up above the box, a line each (%d high), no count on the toggle", shop.height))
+  check(#shop.rows == 2 and shop.rows[1] == shop.lines[1] and shop.rows[2] == shop.lines[2],
+    "every line shows, each on a row of its own (not one text that shows its first line only): " .. #shop.rows)
 
   -- Passing through the area: not waited in, on to Oslow.
   player.x, player.y = 0.5, 0.52
@@ -7747,6 +7749,7 @@ do
   shop = ns.HUD.Shop()
   check(#shop.lines == 3 and shop.height == height + 14,
     string.format("a longer list, a taller popup: %d lines, %d high", #shop.lines, shop.height))
+  check(#shop.rows == 3 and shop.rows[3] == shop.lines[3], "all three lines show: " .. #shop.rows)
   ns.HUD.ToggleShop()
   shop = ns.HUD.Shop()
   check(not shop.open and shop.count == "3" and shop.height == 0 and not ns.charDB.shopOpen,

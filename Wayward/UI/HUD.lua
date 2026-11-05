@@ -35,7 +35,7 @@ local SHOP_EVERY = 1       -- seconds between looks at what's around you
 local SHOP_GAP = 3         -- the list sits this far above the box
 local SHOP_PAD = 5         -- inside its background
 local SHOP_FADE = 0.35     -- its background's alpha
-local SHOP_LINE = 14       -- a line's height when the client can't say
+local SHOP_LINE = 14       -- a line's height in the list
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -201,11 +201,19 @@ local function create()
   local shopBg = f.shopList:CreateTexture(nil, "BACKGROUND")
   shopBg:SetAllPoints()
   shopBg:SetColorTexture(0, 0, 0, SHOP_FADE)
-  f.shopList.text = f.shopList:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  f.shopList.text:SetPoint("BOTTOMLEFT", SHOP_PAD, SHOP_PAD)
-  f.shopList.text:SetJustifyH("LEFT")
-  f.shopList.text:SetWordWrap(false)
-  f.shopList.text:SetSpacing(2)
+  -- One font string a line: a font string that doesn't wrap shows one line
+  -- only, so the lines can't share one.
+  f.shopList.rows = {}
+  for i = 1, SHOP_ROWS + 1 do
+    local row = f.shopList:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row:SetPoint("TOPLEFT", SHOP_PAD, -SHOP_PAD - (i - 1) * SHOP_LINE)
+    row:SetHeight(SHOP_LINE)
+    row:SetJustifyH("LEFT")
+    row:SetJustifyV("MIDDLE")
+    row:SetWordWrap(false)
+    row:Hide()
+    f.shopList.rows[i] = row
+  end
   f.shopList:EnableMouse(true)
   f.shopList:SetScript("OnEnter", function(self) HUD.ShowShopTooltip(self) end)
   f.shopList:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -264,7 +272,7 @@ local function create()
   f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
   f.info:SetPoint("RIGHT", INFO_RIGHT, 0)
   f.info:SetJustifyH("LEFT")
-  for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info, f.shopList.text }) do ns.Skin.Text(fs) end
+  for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info, unpack(f.shopList.rows) }) do ns.Skin.Text(fs) end
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -436,19 +444,26 @@ local function refreshShop(a, force)
   end
   local lines = HUD.ShopLines(list)
   frame.shopLines = lines
-  local texts = {}
-  for i, line in ipairs(lines) do texts[i] = line.text end
-  local text = frame.shopList.text
-  text:SetWidth(0)
-  text:SetText(table.concat(texts, "\n"))
+  -- A row a line, as wide as the widest (at most the box's width).
   local maxWidth = (frame.width or WIDTH) - 2 * SHOP_PAD
-  local width = text:GetStringWidth() or maxWidth
-  if width > maxWidth then
-    text:SetWidth(maxWidth)
-    width = maxWidth
+  local width = 0
+  for i, row in ipairs(frame.shopList.rows) do
+    local line = lines[i]
+    row:SetWidth(0)
+    if line then
+      row:SetText(line.text)
+      row:Show()
+      width = math.max(width, row:GetStringWidth() or maxWidth)
+    else
+      row:SetText("")
+      row:Hide()
+    end
   end
-  local height = text:GetStringHeight() or (#lines * SHOP_LINE)
-  frame.shopHeight = open and (height + 2 * SHOP_PAD) or 0
+  width = math.min(width, maxWidth)
+  for i, row in ipairs(frame.shopList.rows) do
+    if lines[i] then row:SetWidth(width) end
+  end
+  frame.shopHeight = open and (#lines * SHOP_LINE + 2 * SHOP_PAD) or 0
   frame.shopList:SetSize(width + 2 * SHOP_PAD, math.max(frame.shopHeight, 1))
   frame.shopList:SetShown(open)
   -- Kept on screen with the box: its clamp counts the list.
@@ -461,13 +476,17 @@ function HUD.ToggleShop()
   if frame and ns.Nav.active then refreshShop(ns.Nav.active, true) end
 end
 
--- The toggle and the list, for tests: { toggle, count, open, lines, height }.
+-- The toggle and the list, for tests: { toggle, count, open, lines, height,
+-- rows = the rows' shown text, top to bottom }.
 function HUD.Shop()
   if not frame then return {} end
-  local texts = {}
+  local texts, rows = {}, {}
   for i, line in ipairs(frame.shopLines or {}) do texts[i] = line.text end
+  for _, row in ipairs(frame.shopList.rows) do
+    if row:IsShown() then rows[#rows + 1] = row:GetText() end
+  end
   return { toggle = frame.shopToggle:IsShown(), count = frame.shopToggle.count:GetText() or "",
-    open = frame.shopList:IsShown(), lines = texts, height = frame.shopHeight or 0 }
+    open = frame.shopList:IsShown(), lines = texts, height = frame.shopHeight or 0, rows = rows }
 end
 
 -- Hovering the list: what's around you, and where the rest are.
