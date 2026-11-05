@@ -147,7 +147,7 @@ local function create()
   f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   f.close:SetSize(24, 24)
   f.close:SetPoint("TOPRIGHT", -3, -3)
-  f.close:SetScript("OnClick", function() ns.Nav.Stop() end)
+  f.close:SetScript("OnClick", function() ns.Nav.End() end)
   tooltip(f.close, "Stop directions")
   ns.Skin.CloseButton(f.close)
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
