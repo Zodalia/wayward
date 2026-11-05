@@ -118,6 +118,54 @@ local function save()
   end
 end
 
+---------------------------------------------------------------- trace
+
+-- What re-planned the journey lately, and why (or why a re-plan as you go
+-- didn't), for /ww plan (PlanReport.lua): the last TRACE_SIZE notes. A note
+-- the same as the one before is counted, not repeated.
+local TRACE_SIZE = 30
+local trace = {}
+
+local function clockText()
+  if date then return date("%H:%M:%S") end
+  return GetTime and string.format("%.0f s", GetTime()) or "?"
+end
+
+local function note(fmt, ...)
+  local text = select("#", ...) > 0 and string.format(fmt, ...) or fmt
+  local last = trace[#trace]
+  if last and last.text == text then
+    last.count, last.last = last.count + 1, clockText()
+    return
+  end
+  trace[#trace + 1] = { text = text, at = clockText(), count = 1 }
+  if #trace > TRACE_SIZE then table.remove(trace, 1) end
+end
+Nav.Note = note
+
+-- The notes, oldest first, as lines.
+function Nav.TraceLines()
+  local out = {}
+  for _, e in ipairs(trace) do
+    out[#out + 1] = e.count > 1 and string.format("%s-%s  %s (x%d)", e.at, e.last, e.text, e.count)
+      or string.format("%s  %s", e.at, e.text)
+  end
+  return out
+end
+
+local function stopName(stop)
+  return stop and (stop.text or (stop.node and stop.node.label)) or "nothing"
+end
+Nav.StopName = stopName
+
+-- The first stop a route leads to.
+local function firstStop(route)
+  for _, step in ipairs(route and route.steps or {}) do
+    if step.stop then return step.stop end
+  end
+  return nil
+end
+
 local function showStep()
   local step = Nav.CurrentStep()
   if step then setWaypoint(step.to, ns.Router.Describe(Nav.active.route, Nav.active.index)) end
@@ -174,6 +222,7 @@ local function count(key, n)
 end
 
 local function startJourney(journey, quiet)
+  note("journey started: %s, next %s", journey.title or "?", stopName(journey.stops[1]))
   local last = journey.stops[#journey.stops]
   Nav.active = { title = journey.title, goal = last.node, journey = journey, index = 1,
     route = ns.Router.WithZoneSteps({ steps = journey.steps, seconds = journey.seconds }), stats = newStats() }
@@ -368,6 +417,7 @@ local function planFrom(a, here)
 end
 
 local function adopt(a, route, journey)
+  note("new plan: next %s", stopName(firstStop(route)))
   a.route, a.index = ns.Router.WithZoneSteps(route), 1
   if journey then
     a.journey = journey
@@ -394,6 +444,7 @@ end
 -- Only with nothing left to do (or nothing left that can be reached) has
 -- the journey arrived.
 local function lastStepDone(a)
+  note("the plan's last stop is done")
   if a.journey and ns.Journey.HasOpenStops(a.journey.root or a.journey.def) then
     local here = ns.Geo.PlayerNode()
     local route, journey
@@ -455,6 +506,7 @@ local function finishStop(matches)
     local stop = ns.Journey.PendingAction(step)
     if stop and i >= a.index and matches(stop.action) then
       stop.done, stop.passed = true, nil
+      note("done: %s", stopName(stop))
       if stop.action.kind == "train" then count("ranks") end
       if i == #a.route.steps then return lastStepDone(a) end
       local relocate = false
@@ -921,6 +973,7 @@ end
 function Nav.MoveStop(stop, target)
   local a = Nav.active
   if not (a and a.journey) then return false end
+  note("you moved %s to %s's place", stopName(stop), stopName(target))
   if not ns.Journey.Move(a.journey, stop, target) then
     ns.print("can't move that stop there: it comes after another stop.")
     return false
@@ -939,6 +992,7 @@ function Nav.TogglePin(stop)
   local a = Nav.active
   if not (a and a.journey and stop) then return false end
   if not (ns.Journey.Unpin(a.journey, stop) or ns.Journey.Pin(a.journey, stop)) then return false end
+  note("%s %s", stop.pinned and "pinned" or "unpinned", stopName(stop))
   -- A re-plan under way started without this pin (liveCheck).
   a.pins = (a.pins or 0) + 1
   save()
@@ -1577,8 +1631,12 @@ local function autoReplan(a, here, reason)
   local now = GetTime and GetTime()
   if now and a.lastReplan and now - a.lastReplan < REPLAN_COOLDOWN then return false end
   a.lastReplan = now
+  note("re-route: %s", reason)
   local route, journey = planFrom(a, here)
-  if not route then return false end
+  if not route then
+    note("re-route found no route")
+    return false
+  end
   ns.print("re-routed from here (" .. reason .. ").")
   adopt(a, route, journey)
   return true
@@ -1621,38 +1679,83 @@ local function stopsAhead(a)
   return out
 end
 
-local function liveCheck(a, here)
-  if not a.journey or a.livePlanning then return end
+-- Why there's no re-plan as you go right now, or nil when one can run.
+-- Second: true when that lasts (worth a note), not just a wait.
+local function liveBlocker(a, here)
+  if not a.journey then return "plain directions, not a journey", true end
   local root = a.journey.root or a.journey.def
-  if root.manual then return end
+  if root.manual then return "your own order (you dragged a stop)", true end
+  if onTaxi() then return "on a flight", true end
+  if a.waiting then return "at a stop, waiting for it", true end
   local step = a.route.steps[a.index]
-  if not (step and step.mode == "walk") or Nav.InArea() then return end
-  local now = GetTime and GetTime()
-  if not now then return end
-  if (a.lastLive and now - a.lastLive < LIVE_EVERY) or (a.lastReplan and now - a.lastReplan < LIVE_EVERY) then return end
-  local from = a.liveFrom
-  if from and from.instance == here.instance and ns.Geo.Distance(from, here) < LIVE_MOVE_YARDS then return end
+  if not step then return "no step", true end
+  if step.mode ~= "walk" then return "the step isn't on foot (" .. tostring(step.mode) .. ")", true end
+  if Nav.InArea() then return "in the next stop's objective area", true end
   local stops = stopsAhead(a)
   -- One stop left in one place: nothing to put in another order.
-  if #stops == 0 or (#stops == 1 and not stops[1].aimArea) then return end
-  a.lastLive, a.liveFrom, a.livePlanning = now, here, true
+  if #stops == 0 or (#stops == 1 and not stops[1].aimArea) then return "one stop left", true end
+  if a.livePlanning then return "a re-plan is running" end
+  local now = GetTime and GetTime()
+  if not now then return "no game clock", true end
+  if a.lastLive and now - a.lastLive < LIVE_EVERY then return string.format("looked %.0f s ago", now - a.lastLive) end
+  if a.lastReplan and now - a.lastReplan < LIVE_EVERY then
+    return string.format("re-planned %.0f s ago", now - a.lastReplan)
+  end
+  local from = a.liveFrom
+  if here and from and from.instance == here.instance then
+    local d = ns.Geo.Distance(from, here)
+    if d < LIVE_MOVE_YARDS then
+      return string.format("moved %.0f of %d yards since the last look", d, LIVE_MOVE_YARDS)
+    end
+  end
+  return nil
+end
+
+-- Why the journey isn't re-planning as you go right now (nil: it can).
+function Nav.LiveBlocker()
+  local a = Nav.active
+  if not a then return "no journey" end
+  return (liveBlocker(a, ns.Geo.PlayerNodeExact()))
+end
+
+local function liveCheck(a, here)
+  local blocked, lasting = liveBlocker(a, here)
+  local paused = lasting and blocked or nil
+  if paused ~= a.livePaused then
+    note(paused and ("re-plans as you go paused: " .. paused) or "re-plans as you go on again")
+    a.livePaused = paused
+  end
+  if blocked then return end
+  local stops = stopsAhead(a)
+  a.lastLive, a.liveFrom, a.livePlanning = GetTime(), here, true
   local journey, route, index, aim, pins = a.journey, a.route, a.index, stops[1].aimArea, a.pins
   ns.Warm(function() return ns.Journey.Replan(journey, here) end, function(ok, planned)
     a.livePlanning = nil
     -- Moved on meanwhile (a stop reached, a pin, another re-plan, ended): stale.
-    if not (ok and planned) or Nav.active ~= a or a.journey ~= journey or a.route ~= route or a.index ~= index
-      or a.pins ~= pins then
+    local stale = not ok and "it failed" or not planned and "no route from here" or Nav.active ~= a and "the journey ended"
+      or a.journey ~= journey and "the journey changed" or a.route ~= route and "the route changed"
+      or a.index ~= index and "a step was passed" or a.pins ~= pins and "a pin changed" or nil
+    if stale then
+      note("re-plan as you go dropped: %s", stale)
       return
     end
     local same = #planned.stops == #stops
     for i, stop in ipairs(planned.stops) do
       if stop ~= stops[i] then same = false end
     end
-    if same and planned.stops[1].aimArea == aim then return end
+    if same and planned.stops[1].aimArea == aim then
+      note("re-plan as you go: same order, next %s", stopName(stops[1]))
+      return
+    end
     a.lastReplan = GetTime and GetTime()
     local upNext = planned.stops[1]
     if upNext ~= stops[1] then
+      note("re-plan as you go: next %s instead of %s", stopName(upNext), stopName(stops[1]))
       ns.print(string.format("%s is next now: it fits better from where you are.", upNext.text or "another stop"))
+    elseif same then
+      note("re-plan as you go: another spot for %s", stopName(upNext))
+    else
+      note("re-plan as you go: later stops reordered")
     end
     adopt(a, { steps = planned.steps, seconds = planned.seconds }, planned)
   end)
@@ -1708,6 +1811,7 @@ end
 -- A camp of the stop's is cleared: the journey from here, on to another camp
 -- (or other stops while it respawns), saying which. False without a route.
 local function onFromCamp(a, stop, here)
+  note("left a cleared spot of %s", stopName(stop))
   local journey = a.journey and ns.Journey.Replan(a.journey, here)
   if not journey then return false end
   a.lastReplan = GetTime and GetTime()
@@ -1764,6 +1868,7 @@ local function doingLater()
         if inside then
           stop.inArea = true
           ns.Journey.EnterArea(stop, area)
+          note("progress on %s in its area: put first", stopName(stop))
           local journey = ns.Journey.Replan(a.journey, here, nil, stop)
           if journey then
             a.lastReplan = GetTime and GetTime()
@@ -1908,6 +2013,7 @@ function Nav.MoveOn()
   elseif kind == "done" then
     finishStop(function(action) return action == stop.action end)
   else
+    note("you moved on from %s", stopName(stop))
     local first = ns.Journey.Postpone(a.journey, stop)
     if not first then
       ns.print("nothing else on the journey to do first; skip it to take it off.")
@@ -2129,12 +2235,18 @@ function Nav.Tick()
           showStep()
         end
       elseif k == #steps then
-        if step.stop then step.stop.done, step.stop.passed = true, nil end
+        if step.stop then
+          step.stop.done, step.stop.passed = true, nil
+          note("reached: %s", stopName(step.stop))
+        end
         lastStepDone(a)
         if Nav.active then return here, Nav.CurrentStep() end
         return here, nil
       else
-        if step.stop then step.stop.done, step.stop.passed = true, nil end
+        if step.stop then
+          step.stop.done, step.stop.passed = true, nil
+          note("reached: %s", stopName(step.stop))
+        end
         a.index = k + 1
         showStep()
       end

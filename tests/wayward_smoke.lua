@@ -3498,6 +3498,12 @@ do
     "and says so")
   check(ns.HUD.Lines()[4]:find("Next spot", 1, true), "the box says it's the next spot: " .. ns.HUD.Lines()[4])
   check(ns.Journey.ClearedAreas(stop) == 1, "one area cleared")
+  -- /ww plan: the areas the data has for it, which is cleared, which is aimed for.
+  local planText = ns.PlanReport.Build()
+  check(planText:find("Do Murloc Sweep", 1, true) and planText:find("areas in the data: 3", 1, true)
+    and planText:find("cleared lately", 1, true) and planText:find("aimed for", 1, true)
+    and planText:find("left a cleared spot of Do Murloc Sweep", 1, true),
+    "the plan report lists the quest's areas, the cleared one, and the re-plan:\n" .. planText)
 
   -- Back in the cleared camp: still the area. A short step out again points
   -- at the nearest camp not cleared, though the cleared one is nearer.
@@ -4468,6 +4474,18 @@ do
   check(ns.Nav.CurrentStep().stop == eastBank, "back over the halfway point, inside the padding: no flip back")
   stand(-(pad + 15))
   check(ns.Nav.CurrentStep().stop == westBank, "well back the other way: the west bank again")
+  -- /ww plan: copied, with why re-planning waits, both orders and the re-plans.
+  local reportCopied
+  local realCopyBox = ns.ShowCopyBox
+  ns.ShowCopyBox = function(_, text) reportCopied = text end
+  SlashCmdList.WAYWARD("plan")
+  ns.ShowCopyBox = realCopyBox
+  check(reportCopied and reportCopied:find("Journey: Banks", 1, true)
+    and reportCopied:find("Re-planning as you go: looked 0 s ago", 1, true)
+    and reportCopied:find("1. Go to West bank", 1, true) and reportCopied:find("same order: a re-plan now keeps it", 1, true)
+    and reportCopied:find("re-plan as you go: next Go to East bank instead of Go to West bank", 1, true)
+    and reportCopied:find("re-plan as you go: next Go to West bank instead of Go to East bank", 1, true),
+    "/ww plan copies the report:\n" .. tostring(reportCopied))
   -- Not every frame: the next look waits a few seconds.
   player.x = 0.5 + (pad + 15) / perUnit
   ns.HUD.Update()

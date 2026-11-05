@@ -874,3 +874,11 @@ whole report to copy, `/ww perf reset` clears it and `/ww perf off` puts
 everything back. The timers add a little overhead of their own, and Blizzard's
 APIs are never wrapped. This checks our own code paths only,
 not real Forever behaviour.
+
+**When a journey picks an odd stop:** `/ww plan` opens a report to copy
+(`PlanReport.lua`): where you are, each open stop in the plan's order with
+where it is and how far, every area the data has for a quest's objectives
+(which you've cleared lately, which the plan aims for, and the game's own
+quest marker), whether re-planning as you go can run right now and why not,
+the plan's order against a fresh one from here, and the last 30 re-plans
+and stops reached (`Nav.TraceLines`). It changes nothing on the journey.
