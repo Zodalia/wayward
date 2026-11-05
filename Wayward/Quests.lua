@@ -631,6 +631,24 @@ local function logArea(questID, label)
   return nil
 end
 
+-- The game's own marker for a quest in your log (Forever), or nil. Read
+-- again at most every MARKER_FRESH seconds: objective areas ask for it
+-- several times a second.
+local MARKER_FRESH = 2
+local markerCache = {}
+
+function Quests.LogMarker(questID)
+  local q = Quests.Quest(questID)
+  local label = q and q.name or ("Quest " .. questID)
+  local now = GetTime and GetTime()
+  if not now then return logArea(questID, label) end
+  local cached = markerCache[questID]
+  if cached and now - cached.at < MARKER_FRESH then return cached.node or nil end
+  local node = logArea(questID, label)
+  markerCache[questID] = { node = node or false, at = now }
+  return node
+end
+
 -- Places an item drops or can be picked up: its droppers' and objects' spawns.
 local function itemNodes(itemID, label, nodes)
   nodes = nodes or {}

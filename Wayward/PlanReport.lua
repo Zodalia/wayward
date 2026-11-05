@@ -71,7 +71,12 @@ local function objectiveLines(stop, here)
     end
     local nearest = ns.Data.Nearest(nodes, here)
     local flags = {}
-    if not open[index] then flags[#flags + 1] = "done" end
+    if not open[index] then
+      local fromMarker
+      if source == "log" then fromMarker = select(2, ns.Data.Nearest(nodes, marker)) end
+      flags[#flags + 1] = fromMarker and fromMarker > ns.Journey.MARKER_YARDS and "far from the game's marker: left out"
+        or "done"
+    end
     if stop.aimArea == index then flags[#flags + 1] = "aimed for" end
     if stop.inArea and stop.areaAt == index then flags[#flags + 1] = "you're in it" end
     if ns.Journey.Cleared(stop, index) then flags[#flags + 1] = "cleared lately" end

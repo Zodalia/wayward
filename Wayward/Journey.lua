@@ -176,6 +176,18 @@ end
 -- the camp empty (Camps.lua) counts it as cleared sooner.
 local WORK_SECONDS, CLEARED_FOR = 30, 300
 
+-- An area of BIG_AREA spawns or more (a whole island) isn't cleared in
+-- WORK_SECONDS: leaving it counts as cleared only when it looked cleared
+-- (or you said so, Journey.ClearArea).
+local BIG_AREA = 8
+
+-- In your log, where the game marks the quest (Forever) wins over the
+-- data: only areas with a spawn within MARKER_YARDS of its marker count. A
+-- few stray spawns of the same creature elsewhere in the zone aren't where
+-- the quest is done. With none near the marker, every area counts.
+local MARKER_YARDS = 500
+Journey.MARKER_YARDS = MARKER_YARDS
+
 -- The areas that still have something you need (a finished objective's
 -- spawns don't count; the quest log says which are finished):
 -- { {index, nodes}, ... }.
@@ -199,6 +211,15 @@ function Journey.OpenAreas(questID)
       if not finished[m.group] then nodes[#nodes + 1] = m.node end
     end
     if #nodes > 0 then out[#out + 1] = { index = index, nodes = nodes } end
+  end
+  local marker = #out > 1 and ns.Quests.LogMarker(questID)
+  if marker then
+    local near = {}
+    for _, area in ipairs(out) do
+      local _, distance = ns.Data.Nearest(area.nodes, marker)
+      if distance and distance <= MARKER_YARDS then near[#near + 1] = area end
+    end
+    if #near > 0 then out = near end
   end
   return out
 end
@@ -241,11 +262,19 @@ end
 -- Tracks which of a stop's areas you're in (`index`, nil when in none); each
 -- time in one is a visit (stop.visit, watched by Camps). Returns true when
 -- that just counted the one you left as cleared: after WORK_SECONDS there, or
--- sooner when it looked cleared (Camps.LooksCleared).
+-- sooner when it looked cleared (Camps.LooksCleared); a big area only when
+-- it looked cleared.
+local function bigArea(stop, index)
+  local questID = stop.action and stop.action.questID
+  local area = questID and ns.Quests.ObjectiveAreas(questID)[index]
+  return area ~= nil and #area >= BIG_AREA
+end
+
 function Journey.EnterArea(stop, index)
   if stop.areaAt == index then return false end
   local now, cleared, visit = time(), false, stop.visit
-  if stop.areaAt and visit and (now - visit.since >= WORK_SECONDS or visit.looksCleared) then
+  if stop.areaAt and visit and (visit.looksCleared
+      or (now - visit.since >= WORK_SECONDS and not bigArea(stop, stop.areaAt))) then
     stop.worked = stop.worked or {}
     stop.worked[stop.areaAt] = now
     cleared = true

@@ -3710,7 +3710,62 @@ do
   ns.HUD.Update()
   check(ns.Nav.InArea(), "walk out and back: it's the area again")
 
+  -- The game's own quest marker (Forever) wins over stray spawns in the
+  -- data: only the areas near it count, wherever the others are.
+  ns.Nav.Stop()
+  local savedOnMap, savedLogIndex, savedGetTime = C_QuestLog.GetQuestsOnMap, C_QuestLog.GetLogIndexForQuestID, GetTime
+  GetTime = nil -- the marker read fresh each time
+  local markerAt = ns.Geo.Node(1433, 0.3, 0.3)
+  local continent = ns.Geo.Continents()[markerAt.instance]
+  local mx, my = ns.Geo.MapPos(markerAt, continent)
+  local markerOn = true
+  C_QuestLog.GetLogIndexForQuestID = function(id) return id == 43 and 1 or nil end
+  C_QuestLog.GetQuestsOnMap = function(mapID)
+    return markerOn and mapID == continent and { { questID = 43, x = mx, y = my } } or {}
+  end
+  check(ns.Geo.Distance(markerAt, ns.Geo.Node(1433, 0.8, 0.8)) > ns.Journey.MARKER_YARDS
+    and ns.Geo.Distance(markerAt, ns.Geo.Node(1433, 0.6, 0.6)) <= ns.Journey.MARKER_YARDS,
+    "(the camp at 80,80 is well away from the marker, the one at 60,60 isn't)")
+  local nearMarker, farCounted = ns.Journey.OpenAreas(43), false
+  for _, area in ipairs(nearMarker) do
+    if at(area.nodes[1], 0.8, 0.8) then farCounted = true end
+  end
+  check(#nearMarker == 2 and not farCounted,
+    "with the game's marker on the Scouts' camp, the camp far from it doesn't count: " .. #nearMarker)
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Murloc Sweep", stops = ns.Journey.QuestStops(43, here) }))
+  local markerText = ns.PlanReport.Build()
+  check(markerText:find("far from the game's marker: left out", 1, true), "and the plan report says so:\n" .. markerText)
+  ns.Nav.Stop()
+  markerOn = false
+  check(#ns.Journey.OpenAreas(43) == 3, "without a marker, every camp in the data counts")
+  C_QuestLog.GetQuestsOnMap, C_QuestLog.GetLogIndexForQuestID, GetTime = savedOnMap, savedLogIndex, savedGetTime
+
+  -- A big area (a whole island of spawns) isn't cleared by a minute there:
+  -- walking off it, the way comes back to it, not on to stray spawns.
+  local island = {}
+  for k = 0, 9 do island[#island + 1] = { 50 + (k % 5) * 0.4, 85 + math.floor(k / 5) * 0.4 } end
+  NPCS[9160] = { name = "Island Wizard", minLevel = 18, maxLevel = 19, spawns = { [44] = island } }
+  QUESTS[49] = { name = "Island Sweep", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9160 } } } }
+  refreshData()
+  C_QuestLog.GetInfo = function() return { questID = 49, isHeader = false } end
+  local wizards = { { text = "Island Wizard slain: 2/8", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 49 and wizards or {} end
+  player.x, player.y = 0.509, 0.852
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Island", stops = ns.Journey.QuestStops(49, here) }))
+  ns.HUD.Update()
+  local islandStop = ns.Nav.CurrentStep().stop
+  check(ns.Nav.InArea() and #ns.Quests.ObjectiveAreas(49)[1] >= 8, "on the island, a big area")
+  clock = clock + 60
+  player.x, player.y = 0.509, 0.6
+  ns.HUD.Update()
+  check(not ns.Nav.InArea() and ns.Journey.ClearedAreas(islandStop) == 0 and ns.Journey.RespawnIn(islandStop) == 0,
+    "walked off after a minute: not counted as cleared, no respawn wait")
+
   UnitGUID, UnitName, UnitIsDead, UnitIsTapDenied, UnitIsDeadOrGhost = savedGUID, savedName, nil, nil, nil
+  QUESTS[49], NPCS[9160] = nil, nil
   time = os.time
   QUESTS[46], NPCS[9150], QUESTS[47], NPCS[9151] = nil, nil, nil, nil
   ns.Nav.Stop()

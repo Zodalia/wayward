@@ -634,7 +634,13 @@ button, to add it to the journey you're on.
   - Spawns close together are one area (a camp; `ns.Quests.ObjectiveAreas`),
     and a quest's objectives can have several. The journey heads for the one
     least out of the way between the stops either side (`ns.Journey.PickArea`).
-    Leave an area after 30 seconds or more in it and it counts as cleared for
+    With the quest in your log and the game marking where it's done
+    (Forever), only areas within 500 yards of that marker count: a few stray
+    spawns of the same creature elsewhere in the zone aren't the quest's
+    area (`ns.Quests.LogMarker`). With none near the marker, every area does.
+    Leave a big area (8 spawns or more, a whole island) and it counts as
+    cleared only if it looked cleared, not by the time you spent there.
+    Leave a smaller area after 30 seconds or more in it and it counts as cleared for
     5 minutes (about a respawn): the journey is re-planned from where you
     are, on to another area, or to the stops on the way there first, and the
     directions box says "Next spot". A short step out points at the nearest
