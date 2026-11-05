@@ -30,7 +30,7 @@ local FLASH_PULSES = 3
 local MAX_OBJECTIVES = 4 -- lines of objectives under the step; past that, "+N more"
 -- PROTOTYPE: the shopping list (quests gathered as you go, Journey.ShoppingList).
 local SHOP_ICON = "Interface\\Icons\\INV_Misc_Bag_07"
-local SHOP_ROWS = 5        -- lines for what's around you; the rest is one "+N more elsewhere"
+local SHOP_ROWS = 4        -- things listed, around you first, then nearest; the rest is one "+N more"
 local SHOP_EVERY = 1       -- seconds between looks at what's around you
 local SHOP_GAP = 3         -- the list sits this far above the box
 local SHOP_PAD = 5         -- inside its background
@@ -370,15 +370,23 @@ local function countText(e)
   return (e.have and e.need) and string.format("%d/%d", e.have, e.need) or nil
 end
 
-local function shopText(e)
-  local count = countText(e)
-  return string.format("%s  %s%s%s|r", e.name, GREY, count and (count .. "  ·  ") or "", e.quest)
-end
-
 local function placeOf(node)
   if not (node and ns.Places) then return nil end
   local ok, place = pcall(ns.Places.NameFor, node)
   return ok and place or nil
+end
+
+-- "Goretusk  0/3 · Redridge Stew" around you; farther off, dimmer, and where
+-- the nearest is when that has a name ("· near Lakeshire").
+local function shopText(e)
+  local count = countText(e)
+  local where = ""
+  if not e.near then
+    local place = placeOf(e.node)
+    where = place and ("  ·  near " .. place) or ""
+  end
+  return string.format("%s%s|r  %s%s%s%s|r", e.near and "|cffffffff" or "|cffb0b0b0", e.name, GREY,
+    count and (count .. "  ·  ") or "", e.quest, where)
 end
 
 -- Whether the list is open (per character; hidden until you open it).
@@ -386,26 +394,25 @@ function HUD.ShopOpen()
   return ns.charDB ~= nil and ns.charDB.shopOpen == true
 end
 
--- The list as lines, top to bottom: { text, entry? } for what's around you
--- (SHOP_ROWS at most), then { text, entries } for the rest. Empty when the
--- journey gathers nothing as you go.
+-- The list as lines, top to bottom: { text, entry } for up to SHOP_ROWS
+-- things (around you first, then nearest: Journey.ShoppingList's order),
+-- then { text, entries } for the rest. Empty when the journey gathers
+-- nothing as you go.
 function HUD.ShopLines(list)
   if not list then
     local a = ns.Nav.active
     list = a and a.journey and ns.Journey.ShoppingList(a.journey, ns.Geo.PlayerNode()) or {}
   end
-  if #list == 0 then return {} end
-  local lines, elsewhere = {}, {}
+  local lines, rest = {}, {}
   for _, e in ipairs(list) do
-    if e.near and #lines < SHOP_ROWS then
+    if #lines < SHOP_ROWS then
       lines[#lines + 1] = { text = shopText(e), entry = e }
     else
-      elsewhere[#elsewhere + 1] = e
+      rest[#rest + 1] = e
     end
   end
-  if #lines == 0 then lines[1] = { text = GREY .. "Nothing on it right around here|r" } end
-  if #elsewhere > 0 then
-    lines[#lines + 1] = { text = string.format("%s+%d more elsewhere|r", GREY, #elsewhere), entries = elsewhere }
+  if #rest > 0 then
+    lines[#lines + 1] = { text = string.format("%s+%d more|r", GREY, #rest), entries = rest }
   end
   return lines
 end
@@ -471,7 +478,10 @@ function HUD.ShowShopTooltip(owner)
   GameTooltip:SetText("Shopping list", 1, 1, 1)
   for _, line in ipairs(lines) do
     if line.entry then
-      GameTooltip:AddLine(line.entry.name .. "  " .. GREY .. "around you|r", 0.9, 0.9, 0.9, true)
+      local e = line.entry
+      local place = not e.near and placeOf(e.node)
+      GameTooltip:AddLine(string.format("%s  %s%s|r", e.name, GREY, e.near and "around you" or place and ("near " .. place)
+        or "farther off"), 0.9, 0.9, 0.9, true)
     elseif line.entries then
       for _, e in ipairs(line.entries) do
         local place = placeOf(e.node)

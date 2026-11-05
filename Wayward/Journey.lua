@@ -443,13 +443,43 @@ end
 -- The area to go through on the way from `from` to stop `to`: of the quests
 -- gathered as you go that you have (or pick up earlier on the journey,
 -- `picked`), an area not visited lately and not where you are, adding the
--- least; see VIA_YARDS. The one the last plan chose stays unless another
+-- least; see VIA_YARDS. None on the first leg while you're in one of their
+-- areas already (`atStart`). The one the last plan chose stays unless another
 -- saves STICK_YARDS. Before the quest's own hand-in, with every area
 -- visited lately, the one visited longest ago (it respawns first): the way
 -- never ends at a hand-in that can't be done yet. Returns { stop, index,
 -- node } or nil.
-local function pickVia(gathers, from, to, picked)
+-- The open area of a quest you're gathering for (one you have, or pick up
+-- earlier on the journey) that `here` is in: { stop, index, node } or nil.
+local function gatherAreaAt(gathers, here, picked)
+  if not here then return nil end
+  for _, g in ipairs(gathers) do
+    local questID = g.action.questID
+    if (inLog(questID) or (picked and picked[questID])) and not objectivesDone(questID) then
+      for _, area in ipairs(Journey.OpenAreas(questID)) do
+        local node, d = ns.Data.Nearest(area.nodes, here)
+        if node and d <= VIA_RADIUS then return { stop = g, index = area.index, node = node } end
+      end
+    end
+  end
+  return nil
+end
+
+-- The journey's open area you're in, if any (see gatherAreaAt).
+function Journey.GatherAreaAt(journey, here)
+  local root = journey and (journey.root or journey.def)
+  local gathers = {}
+  for _, stop in ipairs(root and root.stops or {}) do
+    if stop.gather and not stop.done and not stop.skipped then gathers[#gathers + 1] = stop end
+  end
+  refresh()
+  return gatherAreaAt(gathers, here)
+end
+
+local function pickVia(gathers, from, to, picked, atStart)
   if not (from and to and to.node and #gathers > 0) then return nil end
+  -- Already in one of their areas: the way isn't turned aside to another.
+  if atStart and gatherAreaAt(gathers, from, picked) then return nil end
   local direct = ns.Geo.Distance(from, to.node)
   if direct == math.huge then return nil end
   local now = time()
@@ -971,7 +1001,7 @@ function Journey.Plan(start, def, net)
   refresh()
   local picked = {} -- quests picked up earlier on the journey: their areas count as vias after
   for _, stop in ipairs(ordered) do
-    local via = pickVia(gathers, from, stop, picked)
+    local via = pickVia(gathers, from, stop, picked, from == start)
     local route = via and stop.node and throughVia(from, via, stop.node, net)
     stop.via = route and via or nil
     route = route or (stop.node and ns.Router.Plan(from, stop.node, net))

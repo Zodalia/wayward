@@ -2316,9 +2316,18 @@ function Nav.Tick()
         end
       end
     end
-    -- An area to gather in on the way: anywhere in it counts, and it's passed, not waited in.
-    local viaHere = step.via and ns.Journey.InVia(step.via, here)
-    if viaHere then ns.Journey.PassVia(step.via) end
+    -- An area to gather in on the way: anywhere in it counts, and it's passed,
+    -- not waited in. So does any other of their areas you walk into: you're
+    -- gathering already, so the arrow goes on to the stop.
+    local viaHere = false
+    if step.via then
+      if ns.Journey.InVia(step.via, here) then
+        viaHere = step.via
+      else
+        viaHere = ns.Journey.GatherAreaAt(a.journey, here) or false
+      end
+      if viaHere then ns.Journey.PassVia(viaHere) end
+    end
     -- A hand-in that can't be done yet, with an area to go through first: not reached.
     local hold = pending and pending.action.kind == "turnin" and viaBefore(a, k)
       and ns.Journey.StillGathering(a.journey, pending)

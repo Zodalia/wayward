@@ -7697,8 +7697,8 @@ do
   check(shop.toggle and shop.count == "2" and not shop.open and shop.height == 0,
     "the box has a shopping list toggle; list hidden, the toggle says 2: " .. shop.count)
   local lines = ns.HUD.ShopLines()
-  check(#lines == 2 and lines[1].text:find("Nothing on it", 1, true) and lines[2].entries and #lines[2].entries == 2,
-    "far from every spawn: nothing around here, two elsewhere")
+  check(#lines == 2 and lines[1].entry and lines[2].entry and not lines[1].entry.near and not lines[2].entry.near,
+    "far from every spawn: both things listed, nearest first, neither around you")
   ns.HUD.ToggleShop()
   shop = ns.HUD.Shop()
   check(shop.open and shop.count == "" and #shop.lines == 2 and shop.height == 2 * 14 + 10 and ns.charDB.shopOpen,
@@ -7713,12 +7713,19 @@ do
   check(gatherRow.stop.worked and next(gatherRow.stop.worked) ~= nil, "the area counts as visited")
   lines = ns.HUD.ShopLines()
   check(lines[1].entry and lines[1].entry.name == "Goretusk" and lines[1].text:find("0/3", 1, true)
-    and lines[2].entries and lines[2].entries[1].name == "Stringy Vulture",
-    "around you: the goretusks, with the count; the vultures elsewhere")
+    and lines[2].entry and lines[2].entry.name == "Stringy Vulture" and not lines[2].entry.near,
+    "around you: the goretusks first, with the count; then the vultures, farther off")
   check(ns.HUD.Shop().lines[1]:find("Goretusk", 1, true), "and the list above the box says so")
 
-  -- Planned again from here: still for Oslow, through another area (the
-  -- objectives aren't done), not back through the one just visited.
+  -- Planned again while in the goretusks' area: you're gathering already,
+  -- so the way isn't turned aside to another area: straight for Oslow.
+  ns.Nav.Recalculate()
+  step = ns.Nav.CurrentStep()
+  check(ns.Nav.HeadingFor().action.kind == "turnin" and not step.via,
+    "re-planned inside one of its areas: no redirect, straight for the hand-in")
+  -- Out of it: through another area (the objectives aren't done), not back
+  -- through the one just visited.
+  player.x, player.y = 0.5, 0.4
   ns.Nav.Recalculate()
   step = ns.Nav.CurrentStep()
   check(ns.Nav.HeadingFor().action.kind == "turnin" and step.via and not at(step.to, 0.5, 0.5),
@@ -7747,6 +7754,13 @@ do
   QUESTS[4600].objectives[1][3], objectives[3], NPCS[9603] = nil, nil, nil
   refreshData()
   player.x, player.y = 0.5, 0.52
+  -- Up to four things listed; the rest on one line.
+  local many = {}
+  for i = 1, 6 do many[i] = { name = "Thing " .. i, quest = "Redridge Stew", near = i <= 2, distance = i * 10 } end
+  lines = ns.HUD.ShopLines(many)
+  check(#lines == 5 and lines[4].entry and lines[4].entry.name == "Thing 4" and lines[5].entries
+    and #lines[5].entries == 2 and lines[5].text:find("+2 more", 1, true),
+    "six things: four listed, then \"+2 more\"")
 
   -- At the hand-in before it's all gathered (a plan with no area on the way:
   -- made while the quest wasn't in the log): sent on, not kept waiting.
@@ -7810,6 +7824,22 @@ do
   planned = ns.Journey.Plan(here, { title = "Redridge", stops = stops })
   check(planned.stops[1] == docks and not docks.via,
     "a stop that doesn't need it, no area close to the way: no detour through one")
+
+  -- Heading for one area, you walk into another of theirs: you're
+  -- gathering already, so the arrow goes on to the hand-in.
+  player.x, player.y = 0.5, 0.95
+  here = ns.Geo.PlayerNode()
+  local fresh = ns.Journey.QuestStops(4600, here)
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge Stew", stops = fresh }), true)
+  check(ns.Nav.CurrentStep().via and at(ns.Nav.CurrentStep().to, 0.5, 0.5), "heading through the goretusks at 50,50")
+  player.x, player.y = 0.84, 0.85
+  ns.HUD.Update()
+  local freshGather
+  for _, s in ipairs(fresh) do if s.action.kind == "complete" then freshGather = s end end
+  local visited = 0
+  for _ in pairs(freshGather.worked or {}) do visited = visited + 1 end
+  check(not ns.Nav.CurrentStep().via and ns.Nav.HeadingFor().action.kind == "turnin" and visited == 1,
+    "in another of their areas (85,85): passed, that area visited, on to the hand-in")
   ns.JourneyOverview.EnsureFrame():Hide()
 
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives, time =
