@@ -4553,6 +4553,36 @@ do
   C_Map.GetUserWaypoint = nil
   end
   ns.db.settings.tomtom = true
+
+  -- TomTom's corpse waypoint comes down once you're alive, also when its
+  -- corpse search puts it back up a moment later.
+  do
+    local corpse = { 1433, 0.4, 0.4, title = "My Corpse", corpse = true }
+    local other = { 1433, 0.6, 0.6, title = "Elsewhere" }
+    local gone = {}
+    TomTom.waypoints = { [1433] = { c = corpse, o = other } }
+    TomTom.RemoveWaypoint = function(_, uid)
+      gone[uid] = true
+      for _, byKey in pairs(TomTom.waypoints) do
+        for k, v in pairs(byKey) do if v == uid then byKey[k] = nil end end
+      end
+    end
+    local wasDead = UnitIsDeadOrGhost
+    local deadNow = true
+    UnitIsDeadOrGhost = function() return deadNow end
+    fire("PLAYER_DEAD")
+    runTimers()
+    check(not gone[corpse], "dead: TomTom's corpse waypoint stays")
+    deadNow = false
+    fire("PLAYER_UNGHOST")
+    check(gone[corpse] and not gone[other], "alive again: TomTom's corpse waypoint comes down, other waypoints stay")
+    local again = { 1433, 0.4, 0.4, title = "My Corpse", corpse = true }
+    TomTom.waypoints[1433].c = again
+    runTimers()
+    check(gone[again], "and again, when TomTom's corpse search puts it back up")
+    UnitIsDeadOrGhost = wasDead
+    TomTom.waypoints = nil
+  end
   TomTom = nil
 
   -- Minimap button and addon compartment.
@@ -6139,6 +6169,30 @@ do
     ns.QuestLog.Info, GetQuestLogSelection, QuestLogFrame = savedInfo, nil, nil
   end
 
+  -- Forever: the quests are a tab of the world map; the buttons go by the
+  -- selected quest's details there.
+  do
+    local QLB = ns.QuestLogButtons
+    local savedLog = C_QuestLog
+    local selected = 1
+    C_QuestLog = setmetatable({ GetSelectedQuest = function() return selected end }, { __index = savedLog })
+    WorldMapFrame = newObj()
+    QuestMapFrame = newObj()
+    QuestMapFrame.DetailsFrame = newObj()
+    QuestMapFrame.DetailsFrame.AbandonButton = newObj()
+    local id = QLB.Selected()
+    check(id == 1 and QLB.Mode(1) == "start", "map quest tab: the quest whose details are open, offered a journey")
+    QLB.Sync()
+    check(QLB.NewJourney(1) and ns.Nav.active and ns.Nav.TripHasQuest(1) and QLB.Mode(1) == "new",
+      "map quest tab: starts a journey for the quest")
+    ns.Nav.Stop()
+    selected = 0
+    check(QLB.Selected() == nil, "map quest tab: no quest open, no buttons")
+    WorldMapFrame:Hide()
+    QLB.Sync()
+    C_QuestLog, WorldMapFrame, QuestMapFrame = savedLog, nil, nil
+  end
+
   -- Nav.Progress: the one count for the directions box and the home screen.
   local p1, p2, p3 = visit(0.53, "P1"), visit(0.56, "P2"), visit(0.59, "P3")
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Progress", kind = "custom", stops = { p1, p2, p3 } }))
@@ -6162,6 +6216,40 @@ do
   check(p and p.directions and p.total == 1 and p.done == 0 and p.stopText == "Somewhere", "plain directions: one stop, the destination")
   ns.Nav.Stop()
   check(ns.Nav.Progress() == nil, "nothing on: no progress")
+
+  -- The last stop done before the others: it's done, and the journey goes on
+  -- round the stops still open instead of ending.
+  do
+    player.mapID, player.x, player.y = 1433, 0.5, 0.5
+    local fanfare = ns.Fanfare.lastTrip
+    local l1, l2 = visit(0.53, "L1"), visit(0.56, "L2")
+    local l3 = { node = ns.Geo.Node(1433, 0.59, 0.5, "L3"), text = "Hand in L", action = { kind = "turnin", questID = 883 } }
+    ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Last first", kind = "custom", stops = { l1, l2, l3 } }))
+    check(labels() == "L1,L2,L3", "planned in order: " .. labels())
+    fire("QUEST_TURNED_IN", 883)
+    check(ns.Nav.active and ns.Nav.active.title == "Last first" and l3.done and labels() == "L1,L2"
+      and ns.Fanfare.lastTrip == fanfare,
+      "the last stop's quest handed in first: it's done, the journey goes on with the rest: " .. labels())
+    goTo(l1)
+    goTo(l2)
+    check(ns.Nav.active == nil and ns.Fanfare.lastTrip ~= fanfare, "with nothing left, the journey has arrived")
+
+    -- Getting to the last stop's place first (another way round): the same.
+    player.x = 0.5
+    fanfare = ns.Fanfare.lastTrip
+    local m1, m2, m3 = visit(0.53, "M1"), visit(0.56, "M2"), visit(0.59, "M3")
+    ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Far end first", kind = "custom",
+      stops = { m1, m2, m3 } }))
+    goTo(m3)
+    local left = labels()
+    check(ns.Nav.active and ns.Nav.active.title == "Far end first" and m3.done and not m1.done and not m2.done
+      and (left == "M2,M1" or left == "M1,M2") and ns.Fanfare.lastTrip == fanfare,
+      "at the last stop before the others: it's done, the journey goes on with the rest: " .. left)
+    goTo(m2)
+    goTo(m1)
+    check(ns.Nav.active == nil, "and arrives once they're done too")
+    player.x = 0.5
+  end
 
   -- Set aside, resume, forget.
   local lastFanfare = ns.Fanfare.lastTrip

@@ -389,6 +389,24 @@ function Nav.Recalculate()
   adopt(a, route, journey)
 end
 
+-- The last step of the plan is done. A journey with stops still open (ones
+-- before it you haven't done yet) goes on: re-planned from here round them.
+-- Only with nothing left to do (or nothing left that can be reached) has
+-- the journey arrived.
+local function lastStepDone(a)
+  if a.journey and ns.Journey.HasOpenStops(a.journey.root or a.journey.def) then
+    local here = ns.Geo.PlayerNode()
+    local route, journey
+    if here then route, journey = planFrom(a, here) end
+    if route then
+      adopt(a, route, journey)
+      return true
+    end
+  end
+  arrive()
+  return true
+end
+
 local function onTaxi()
   return UnitOnTaxi and UnitOnTaxi("player") or false
 end
@@ -438,7 +456,7 @@ local function finishStop(matches)
     if stop and i >= a.index and matches(stop.action) then
       stop.done, stop.passed = true, nil
       if stop.action.kind == "train" then count("ranks") end
-      if i == #a.route.steps then return arrive() end
+      if i == #a.route.steps then return lastStepDone(a) end
       local relocate = false
       for k = i + 1, #a.route.steps do
         local later = a.route.steps[k].stop
@@ -1895,11 +1913,47 @@ ns.On("PLAYER_DEAD", function()
   if Nav.active then died(Nav.active) end
 end)
 
+-- TomTom's own waypoint to your corpse ("My Corpse") can outlast the
+-- resurrection: its search for the corpse goes on after you're alive and
+-- puts the waypoint back up. With TomTom showing Wayward's way, a corpse
+-- waypoint is taken down once you're alive: on resurrecting, again once its
+-- search has had a moment, and whenever TomTom adds one while you're alive.
+local CORPSE_SWEEPS = { 1, 3 }
+
+local function corpseWaypoint(uid)
+  return type(uid) == "table" and uid.corpse == true
+end
+
+local function clearCorpseWaypoints()
+  if not Nav.UsingTomTom() or Nav.Dead() or type(TomTom.waypoints) ~= "table" then return end
+  local corpses = {}
+  for _, byKey in pairs(TomTom.waypoints) do
+    if type(byKey) == "table" then
+      for _, uid in pairs(byKey) do
+        if corpseWaypoint(uid) then corpses[#corpses + 1] = uid end
+      end
+    end
+  end
+  for _, uid in ipairs(corpses) do pcall(TomTom.RemoveWaypoint, TomTom, uid) end
+end
+Nav.ClearCorpseWaypoints = clearCorpseWaypoints
+
+ns.On("PLAYER_LOGIN", function()
+  if not (Nav.TomTomInstalled() and type(TomTom.RegisterCallback) == "function") then return end
+  pcall(TomTom.RegisterCallback, Nav, "WaypointAdded", function(_, uid)
+    if corpseWaypoint(uid) and Nav.UsingTomTom() and not Nav.Dead() then
+      pcall(TomTom.RemoveWaypoint, TomTom, uid)
+    end
+  end)
+end)
+
 local function alive()
   dead = false
   local a = Nav.active
   -- Where you died and where you are now aren't a journey's distance or a stray.
   if a then a.died, a.lastHere, a.closest = nil, nil, nil end
+  clearCorpseWaypoints()
+  for _, delay in ipairs(CORPSE_SWEEPS) do ns.After(delay, clearCorpseWaypoints) end
 end
 ns.On("PLAYER_UNGHOST", alive)
 ns.On("PLAYER_ALIVE", function()
@@ -2005,7 +2059,8 @@ function Nav.Tick()
         end
       elseif k == #steps then
         if step.stop then step.stop.done, step.stop.passed = true, nil end
-        arrive()
+        lastStepDone(a)
+        if Nav.active then return here, Nav.CurrentStep() end
         return here, nil
       else
         if step.stop then step.stop.done, step.stop.passed = true, nil end

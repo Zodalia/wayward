@@ -3,8 +3,9 @@ local _, ns = ...
 -- Buttons by the game's quest log for the quest selected in it: start a
 -- journey for it, or, with a journey on, add it to that journey or start a
 -- new one for it (the one on now is set aside, to resume later). A quest
--- already in the journey can't be added again. Clients without the old quest
--- log (QuestLogFrame) get no buttons.
+-- already in the journey can't be added again. Classic Era has the old quest
+-- log window (QuestLogFrame); Forever has the quests as a tab of the world
+-- map, and the buttons go by a quest's details there (QuestMapFrame).
 
 local QuestLogButtons = {}
 ns.QuestLogButtons = QuestLogButtons
@@ -14,8 +15,33 @@ local QUEST_ICON = "Interface\\GossipFrame\\AvailableQuestIcon"
 local WIDTH, HEIGHT, GAP, BELOW = 112, 21, 4, -10
 local holder, add, new
 
+-- The quest details in the world map's quest tab (Forever), or nil. Classic
+-- Era has no QuestMapFrame; where a client has both, the map's is the log.
+local function mapDetails()
+  return QuestMapFrame and QuestMapFrame.DetailsFrame or nil
+end
+
+-- The frame the buttons sit by, or nil on a client with neither log.
+local function logFrame()
+  return mapDetails() or QuestLogFrame
+end
+
+local function visible(f)
+  if not (f and f:IsShown()) then return false end
+  -- The map's quest details stay "shown" while the map itself is closed.
+  if f == mapDetails() and WorldMapFrame and not WorldMapFrame:IsShown() then return false end
+  return true
+end
+
 -- The quest selected in the log, and its name; nil when none (or a header).
 function QuestLogButtons.Selected()
+  if mapDetails() and C_QuestLog and C_QuestLog.GetSelectedQuest then
+    local questID = C_QuestLog.GetSelectedQuest()
+    if not (questID and questID > 0) then return nil end
+    local index = ns.QuestLog.LogIndex(questID)
+    local info = index and ns.QuestLog.Info(index)
+    return questID, info and info.title or ns.QuestLog.Title(questID)
+  end
   local index = GetQuestLogSelection and GetQuestLogSelection()
   local info = index and index > 0 and ns.QuestLog.Info(index)
   if not (info and info.questID) then return nil end
@@ -82,8 +108,8 @@ local function button(label, onClick, tooltip)
   return b
 end
 
-local function create()
-  holder = CreateFrame("Frame", "WaywardQuestLogButtons", QuestLogFrame)
+local function create(log)
+  holder = CreateFrame("Frame", "WaywardQuestLogButtons", log)
   holder:SetSize(WIDTH * 2 + GAP, HEIGHT)
   add = button("Add to journey", QuestLogButtons.AddToJourney, function()
     return "Add this quest to your journey: " .. (ns.Nav.active and ns.Nav.active.title or "")
@@ -98,21 +124,29 @@ end
 
 -- A row of its own just under the log's buttons (Abandon, Share, Exit),
 -- lined up with Abandon; where there's no Abandon button, by the log's right
--- edge instead.
-local function place()
+-- edge instead. On a full-screen world map there's no room under its
+-- buttons, so the row goes just above them.
+local function place(log)
   holder:ClearAllPoints()
-  local abandon = QuestLogFrameAbandonButton
-  if abandon then
+  local details = mapDetails()
+  local abandon = details and details.AbandonButton or (not details and QuestLogFrameAbandonButton)
+  local maximized = details and WorldMapFrame and WorldMapFrame.IsMaximized and WorldMapFrame:IsMaximized()
+  if abandon and maximized then
+    holder:SetPoint("BOTTOMLEFT", abandon, "TOPLEFT", 0, GAP)
+  elseif abandon then
     holder:SetPoint("TOPLEFT", abandon, "BOTTOMLEFT", 0, BELOW)
+  elseif details then
+    holder:SetPoint("TOPRIGHT", log, "BOTTOMRIGHT", 0, BELOW)
   else
-    holder:SetPoint("TOPLEFT", QuestLogFrame, "TOPRIGHT", -28, -80)
+    holder:SetPoint("TOPLEFT", log, "TOPRIGHT", -28, -80)
   end
 end
 
 function QuestLogButtons.Sync()
-  if not QuestLogFrame then return end
-  if not holder then create() end
-  local id = QuestLogFrame:IsShown() and QuestLogButtons.Selected()
+  local log = logFrame()
+  if not log then return end
+  if not holder then create(log) end
+  local id = visible(log) and QuestLogButtons.Selected()
   if not id then return holder:Hide() end
   local mode = QuestLogButtons.Mode(id)
   new.mode = mode
@@ -127,15 +161,36 @@ function QuestLogButtons.Sync()
     add:SetEnabled(mode == "both")
     new:SetPoint("LEFT", add, "RIGHT", GAP, 0)
   end
-  place()
+  place(log)
   holder:Show()
 end
 
-ns.On("PLAYER_LOGIN", function()
-  if not QuestLogFrame then return end
-  if type(QuestLog_Update) == "function" then hooksecurefunc("QuestLog_Update", QuestLogButtons.Sync) end
-  QuestLogFrame:HookScript("OnShow", QuestLogButtons.Sync)
-  QuestLogFrame:HookScript("OnHide", QuestLogButtons.Sync)
+-- Hooked once the log is there: Classic Era's at login, the world map's
+-- when its addon loads (or at login, when it's loaded already).
+local hooked = false
+local function hook()
+  local log = logFrame()
+  if hooked or not log then return end
+  hooked = true
+  if log == mapDetails() then
+    -- Another quest picked while its details are open shows no OnShow.
+    if type(QuestMapFrame_ShowQuestDetails) == "function" then
+      hooksecurefunc("QuestMapFrame_ShowQuestDetails", QuestLogButtons.Sync)
+    end
+    if WorldMapFrame then
+      WorldMapFrame:HookScript("OnShow", QuestLogButtons.Sync)
+      WorldMapFrame:HookScript("OnHide", QuestLogButtons.Sync)
+    end
+  elseif type(QuestLog_Update) == "function" then
+    hooksecurefunc("QuestLog_Update", QuestLogButtons.Sync)
+  end
+  log:HookScript("OnShow", QuestLogButtons.Sync)
+  log:HookScript("OnHide", QuestLogButtons.Sync)
+end
+
+ns.On("PLAYER_LOGIN", hook)
+ns.On("ADDON_LOADED", function(name)
+  if name == "Blizzard_WorldMap" then hook() end
 end)
 ns.Listen("NAV_CHANGED", QuestLogButtons.Sync)
 ns.Listen("JOURNEY_EXTENDED", QuestLogButtons.Sync)
