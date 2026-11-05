@@ -217,7 +217,9 @@ local TRANSPORT_VERB = {
 function Router.Describe(route, index, travelOnly)
   local step, nextStep = route.steps[index], route.steps[index + 1]
   -- A journey stop says what to do there ("Pick up ... from ...").
-  if step.stop and step.stop.text and not travelOnly then return step.stop.text end
+  if step.stop and step.stop.text and not travelOnly then
+    return ns.Journey and ns.Journey.StopText(step.stop) or step.stop.text
+  end
   if step.mode == "fly" then return "Fly to " .. step.to.label end
   if step.mode == "hearth" then return "Hearth to " .. step.to.label end
   if step.mode == "transport" then

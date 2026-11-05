@@ -417,19 +417,38 @@ function Journey.HasGathering(journey)
   return false
 end
 
--- Whether a hand-in's quest is gathered as you go and still wants things
--- (the log says its objectives aren't done).
-function Journey.StillGathering(journey, stop)
+-- Whether a hand-in waits on gathering: its quest is gathered as you go (the
+-- stop it comes after, Journey.QuestStops) and the log says it still wants
+-- things. Such a hand-in is where the way heads, but it isn't ready: it
+-- doesn't say "Hand in" (Journey.StopText) or count as reached (Navigator).
+function Journey.WaitsOnGathering(stop)
   local action = stop and stop.action
   if not (action and action.kind == "turnin" and action.questID) then return false end
-  local root = journey and (journey.root or journey.def)
-  refresh()
-  for _, s in ipairs(root and root.stops or {}) do
-    if s.gather and not s.done and not s.skipped and s.action.questID == action.questID then
+  for _, s in ipairs(stop.after or {}) do
+    if s.gather and not s.done and not s.skipped and s.action and s.action.questID == action.questID then
+      refresh()
       return not objectivesDone(action.questID)
     end
   end
   return false
+end
+
+function Journey.StillGathering(_, stop)
+  return Journey.WaitsOnGathering(stop)
+end
+
+-- What a stop says on the directions box: its text, except a hand-in that
+-- waits on gathering ("Gather for The People's Militia, then hand in to
+-- Gryan Stoutmantle"): telling you to hand in a quest that isn't done reads
+-- as the wrong quest, or one you've handed in already.
+function Journey.StopText(stop)
+  if not stop then return nil end
+  if Journey.WaitsOnGathering(stop) then
+    local q = ns.Quests.Quest(stop.action.questID)
+    local name = q and q.name or ("quest " .. stop.action.questID)
+    return string.format("Gather for %s, then hand in%s", name, stop.npc and (" to " .. stop.npc) or "")
+  end
+  return stop.text or (stop.node and stop.node.label)
 end
 
 -- Whether `to` needs `g` done first (the quest's hand-in).

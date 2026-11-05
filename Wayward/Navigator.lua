@@ -1621,7 +1621,7 @@ function Nav.Progress()
     out.kind, out.icon = a.journey.kind, a.journey.icon
     out.done, out.total = ns.Journey.Progress(a.journey)
     local stop = Nav.HeadingFor()
-    out.stopText = stop and (stop.text or (stop.node and stop.node.label)) or a.title
+    out.stopText = stop and ns.Journey.StopText(stop) or a.title
     local before = 0
     for _, s in ipairs(a.journey.stops) do
       if s == stop then break end
@@ -2328,13 +2328,15 @@ function Nav.Tick()
       end
       if viaHere then ns.Journey.PassVia(viaHere) end
     end
-    -- A hand-in that can't be done yet, with an area to go through first: not reached.
-    local hold = pending and pending.action.kind == "turnin" and viaBefore(a, k)
-      and ns.Journey.StillGathering(a.journey, pending)
-    if not hold and (reached or inside or viaHere or (inside == nil and ns.Geo.Distance(here, step.to) <= radius)) then
-      if pending and pending.action.kind == "turnin" and sendOn(a, pending, here) then
-        return here, a.route.steps[a.index]
-      end
+    local near = reached or inside or viaHere or (inside == nil and ns.Geo.Distance(here, step.to) <= radius)
+    -- A hand-in that waits on gathering is never reached (nothing to hand in
+    -- yet): at it, the way goes on through an area, unless one comes first
+    -- already or you're in one of them.
+    if near and pending and ns.Journey.WaitsOnGathering(pending) then
+      if not viaBefore(a, k) and sendOn(a, pending, here) then return here, a.route.steps[a.index] end
+      near = false
+    end
+    if near then
       if ns.Journey.PendingAction(step) then
         a.waiting = true
         if a.index ~= k then

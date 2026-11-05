@@ -7840,6 +7840,48 @@ do
   for _ in pairs(freshGather.worked or {}) do visited = visited + 1 end
   check(not ns.Nav.CurrentStep().via and ns.Nav.HeadingFor().action.kind == "turnin" and visited == 1,
     "in another of their areas (85,85): passed, that area visited, on to the hand-in")
+
+  -- In one of its areas, objectives open: the way goes on to the hand-in
+  -- (no redirect), but it doesn't say "Hand in" (a chain of quests sharing
+  -- a name read as one handed in already) and arriving doesn't wait there.
+  -- A goretusk spawn beside Oslow puts the hand-in inside an area too.
+  NPCS[9602].spawns[44][3] = { 37, 31 }
+  refreshData()
+  ns.Nav.Stop()
+  player.x, player.y = 0.5, 0.52
+  here = ns.Geo.PlayerNode()
+  fresh = ns.Journey.QuestStops(4600, here)
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge Stew", stops = fresh }), true)
+  ns.HUD.Update()
+  local hudLines = ns.HUD.Lines()
+  check(not ns.Nav.CurrentStep().via and ns.Nav.HeadingFor().action.kind == "turnin",
+    "in one of its areas: straight on to the hand-in, no redirect")
+  check(hudLines[2] == "Gather for Redridge Stew, then hand in to Foreman Oslow",
+    "the box doesn't say hand in while there's gathering to do: " .. tostring(hudLines[2]))
+  check(hudLines[5]:find("Goretusk slain: 0/3", 1, true), "it shows what's still needed: " .. hudLines[5])
+  check(ns.Nav.Progress().stopText:find("^Gather for"), "nor does the stop text elsewhere (home screen, stops detail)")
+  local report = ns.PlanReport.Build()
+  check(report:find("(quest 4600: in log", 1, true) and report:find("waits on gathering", 1, true)
+    and report:find("Gathered as you go (not headed for): Do Redridge Stew", 1, true),
+    "the plan report says which quest (its ID and state), and that it's gathered as you go:\n" .. report)
+  player.x, player.y = 0.36, 0.3
+  ns.HUD.Update()
+  ns.HUD.Update()
+  check(not ns.Nav.Waiting() and ns.HUD.Lines()[2]:find("^Gather for") and ns.Nav.HeadingFor().action.kind == "turnin",
+    "at the hand-in, in an area, still gathering: not waiting there, still says gather")
+  -- All gathered: now it's a hand-in, and you're there.
+  objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
+  objectives[2] = { text = "Goretusk slain: 3/3", finished = true }
+  complete = true
+  fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
+  check(ns.Nav.Waiting() and ns.HUD.Lines()[2] == "Hand in Redridge Stew to Foreman Oslow",
+    "all gathered: hand it in, here: " .. tostring(ns.HUD.Lines()[2]))
+  objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }
+  objectives[2] = { text = "Goretusk slain: 0/3", finished = false }
+  complete = false
+  NPCS[9602].spawns[44][3] = nil
+  refreshData()
   ns.JourneyOverview.EnsureFrame():Hide()
 
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives, time =

@@ -23,6 +23,21 @@ local function yards(a, b)
   return d < math.huge and string.format("%.0f yd", d) or "another continent"
 end
 
+-- " (quest 13: in log, 2/10)" for a quest stop: quests in a chain often share
+-- a name, so the report says which one, and where it stands.
+local function questTag(stop)
+  local id = stop and stop.action and stop.action.questID
+  if not id then return "" end
+  local done, logged = ns.Quests.PlayerQuestState()
+  local state = done[id] and "done" or logged[id] and "in log" or "not taken"
+  if logged[id] then
+    local complete = ns.QuestLog.IsComplete(id)
+    local left = not complete and ns.Quests.ObjectivesLeft(id)
+    state = state .. (complete and ", ready to hand in" or left and (", " .. left .. " to go") or "")
+  end
+  return string.format(" (quest %d: %s)", id, state)
+end
+
 local function names(stops)
   local out = {}
   for _, s in ipairs(stops) do out[#out + 1] = ns.Nav.StopName(s) end
@@ -134,12 +149,15 @@ function PlanReport.Build()
         local tags = {}
         if s.pinned then tags[#tags + 1] = "pinned" end
         if s.later then tags[#tags + 1] = "you moved on from it" end
+        if ns.Journey.WaitsOnGathering(s) then tags[#tags + 1] = "waits on gathering" end
         if s.after then
           for _, before in ipairs(s.after) do
-            if not before.done and not before.skipped then tags[#tags + 1] = "after " .. ns.Nav.StopName(before) end
+            if not before.done and not before.skipped then
+              tags[#tags + 1] = "after " .. ns.Nav.StopName(before) .. questTag(before)
+            end
           end
         end
-        add("  %d. %s%s", i, ns.Nav.StopName(s), #tags > 0 and ("  [" .. table.concat(tags, "; ") .. "]") or "")
+        add("  %d. %s%s%s", i, ns.Nav.StopName(s), questTag(s), #tags > 0 and ("  [" .. table.concat(tags, "; ") .. "]") or "")
         local route = here and s.node and ns.Router.Plan(here, s.node, net)
         add("      at %s, %s, %s from here", place(s.node), here and yards(here, s.node) or "?",
           duration(route and route.seconds))
@@ -147,10 +165,14 @@ function PlanReport.Build()
           for _, line in ipairs(objectiveLines(s, here)) do add(line) end
         end
       end
-      local missing = {}
+      local missing, gathered = {}, {}
       for _, s in ipairs(ns.Journey.AllStops(journey)) do
-        if not planned[s] and not s.done and not s.skipped then missing[#missing + 1] = ns.Nav.StopName(s) end
+        if not planned[s] and not s.done and not s.skipped then
+          local list = s.gather and gathered or missing
+          list[#list + 1] = ns.Nav.StopName(s) .. questTag(s)
+        end
       end
+      if #gathered > 0 then add("Gathered as you go (not headed for): %s", table.concat(gathered, "; ")) end
       if #missing > 0 then add("Open but not in the plan (no route?): %s", table.concat(missing, "; ")) end
 
       -- A fresh plan from here, as a re-plan would make it, put back after.

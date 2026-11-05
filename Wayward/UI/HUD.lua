@@ -540,7 +540,9 @@ function HUD.Update()
   frame.sub:SetText(sub)
 
   -- A quest's objectives get their own lines between the step and the status.
-  local objectives = step.stop and step.stop.action and step.stop.action.kind == "complete"
+  -- So does a hand-in still waiting on gathering: what it still needs.
+  local gathering = ns.Journey.WaitsOnGathering(step.stop)
+  local objectives = step.stop and step.stop.action and (step.stop.action.kind == "complete" or gathering)
     and HUD.Objectives(step.stop.action.questID) or {}
   local objective = objectives[1]
   local above = sub ~= "" and frame.sub or frame.step
@@ -564,7 +566,7 @@ function HUD.Update()
       frame.info:SetText("|cff7fd1aeIn the area|r"
         .. (left and ("  ·  " .. ns.FormatDuration(left) .. " left here") or "") .. "     " .. remaining)
     end
-  elseif objective then
+  elseif objective and not gathering then
     -- On the way from a spot you've cleared to the next, or back to one respawning.
     local respawn = ns.Journey.RespawnIn(step.stop)
     local lead = respawn > 0 and ("|cff9d9d9dRespawns in " .. ns.FormatDuration(respawn) .. "|r     ")
