@@ -198,6 +198,16 @@ function PlanReport.Build()
         for _, line in ipairs(spreadLines) do add(line) end
       end
       if #missing > 0 then add("Open but not in the plan (no route?): %s", table.concat(missing, "; ")) end
+      local hearth = journey.hearth
+      if hearth and hearth.cooldown then
+        add("Hearthstone (%s): would save %s before %s, but it's ready in %s", hearth.label, duration(hearth.saves),
+          ns.Nav.StopName(hearth.stop), duration(hearth.readyIn))
+      elseif hearth then
+        add("Hearthstone (%s): used before %s, saves %s", hearth.label, ns.Nav.StopName(hearth.stop),
+          duration(hearth.saves))
+      else
+        add("Hearthstone: not used (none known, or it saves under %s)", duration(ns.Journey.HEARTH_MIN_SAVING))
+      end
 
       -- A fresh plan from here, as a re-plan would make it, put back after.
       if here and not root.manual then

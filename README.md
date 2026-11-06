@@ -711,7 +711,9 @@ button, to add it to the journey you're on.
     minutes of travel or less, quest givers with quests for you, quests in
     your log ready to hand in and vendors you need, each with an Add button
     (a quest whose objectives and hand-in add under a minute more comes
-    whole, not asked about once you pick it up); then "Set aside", the
+    whole, not asked about once you pick it up; not when it's under a
+    minute only by spending your Hearthstone, which a journey uses only
+    where it saves 5 minutes or more); then "Set aside", the
     journeys you set aside, each with Resume and Forget; and a map of the
     rest of the journey; the mouse wheel scrolls the list when it doesn't all
     fit); a stop can be dropped there, together with the stops that need it,

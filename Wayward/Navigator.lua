@@ -570,7 +570,8 @@ local function stillPicking()
 end
 
 -- The offer for the quests picked up: { label, stops, alone (seconds), extra
--- (seconds more on the current journey, or nil without one) }, or nil.
+-- (seconds more on the current journey, or nil without one), extraNoHearth
+-- (the same if you keep your Hearthstone; on a journey only) }, or nil.
 function Nav.PickupOffer(questIDs)
   local here = ns.Geo.PlayerNode()
   if not here then return nil end
@@ -604,6 +605,8 @@ function Nav.PickupOffer(questIDs)
       for _, s in ipairs(stops) do open[#open + 1] = s end
       local with = base and ns.Journey.Plan(here, { stops = open })
       offer.extra = base and with and math.max(0, with.seconds - base.seconds) or nil
+      -- What it adds if you keep your Hearthstone (Journey.Plan's withoutHearth).
+      offer.extraNoHearth = offer.extra and math.max(0, with.withoutHearth - base.withoutHearth) or nil
     else
       local with = ns.Journey.Plan(here, { stops = { { node = a.goal, text = a.title } , unpack(stops) } })
       local remaining = Nav.RemainingSeconds(here)
@@ -611,6 +614,20 @@ function Nav.PickupOffer(questIDs)
     end
   end
   return offer
+end
+
+-- What an offer adds, for its question: "about ~3 min more", or, when it's
+-- that little only because the plan with it spends your Hearthstone (an
+-- hour's cooldown), that too: "about <1 min more, but only by using your
+-- Hearthstone: ~7 min without it".
+local HEARTH_NOTE = 60 -- seconds the Hearthstone must make up before it's worth saying
+
+function Nav.ExtraText(offer)
+  local text = "about " .. ns.FormatDuration(offer.extra) .. " more"
+  if offer.extraNoHearth and offer.extraNoHearth - offer.extra >= HEARTH_NOTE then
+    text = text .. ", but only by using your Hearthstone: " .. ns.FormatDuration(offer.extraNoHearth) .. " without it"
+  end
+  return text
 end
 
 -- What the quests picked up lead to, when it's worth knowing (a dungeon
@@ -668,9 +685,9 @@ local function askAbout(ids, what)
   local note = chainNote(offer)
   if Nav.active and offer.extra then
     askPlayer("WAYWARD_PICKUP_ADD", string.format(
-      "You %s %s.%s\n\nAdd it to your journey (about %s more), or start a new journey for it (%s)? "
+      "You %s %s.%s\n\nAdd it to your journey (%s), or start a new journey for it (%s)? "
       .. "A new journey sets the one on now aside, to resume later.",
-      what, offer.label, note, ns.FormatDuration(offer.extra), ns.FormatDuration(offer.alone)), offer)
+      what, offer.label, note, Nav.ExtraText(offer), ns.FormatDuration(offer.alone)), offer)
   else
     askPlayer("WAYWARD_PICKUP_NEW", string.format("You %s %s.%s\n\nStart a journey for it (%s)?",
       what, offer.label, note, ns.FormatDuration(offer.alone)), offer)
@@ -682,6 +699,8 @@ end
 -- fit, otherwise one by one while the time they add stays within it (each
 -- measured against the journey with the ones before it). Returns the quests
 -- left to ask about. Plain directions aren't a journey: those are asked.
+-- What they add counts as if you kept your Hearthstone too: one that only
+-- fits by spending its hour's cooldown is asked about (Nav.ExtraText says so).
 local AUTO_ADD_SLACK = 180
 
 local function autoAddLine(offer)
@@ -689,19 +708,26 @@ local function autoAddLine(offer)
     offer.label, ns.FormatDuration(offer.extra))
 end
 
+-- Seconds an offer adds for auto-adding: the more of with and without the Hearthstone.
+local function addsUnasked(offer)
+  return offer and offer.extra and math.max(offer.extra, offer.extraNoHearth or 0)
+end
+
 local function autoAddPickups(ids)
   local a = Nav.active
   if ns.db.settings.autoAddPickups == false or not (a and a.journey) then return ids end
   local offer = Nav.PickupOffer(ids)
-  if offer and offer.extra and offer.extra <= AUTO_ADD_SLACK then
+  local adds = addsUnasked(offer)
+  if adds and adds <= AUTO_ADD_SLACK then
     Nav.AddToTrip(offer.stops, offer.label, autoAddLine(offer))
     return {}
   end
   local rest, budget = {}, AUTO_ADD_SLACK
   for _, id in ipairs(ids) do
     local one = Nav.active and Nav.active.journey and Nav.PickupOffer({ id })
-    if one and one.extra and one.extra <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one)) then
-      budget = budget - one.extra
+    adds = addsUnasked(one)
+    if adds and adds <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one)) then
+      budget = budget - adds
     else
       rest[#rest + 1] = id
     end

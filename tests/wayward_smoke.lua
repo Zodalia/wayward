@@ -1259,7 +1259,7 @@ do
   GetTime = function() return 1000 end
   ns.charDB.hearth = { name = "Stormwind City", mapID = 1453, x = 0.52, y = 0.5 }
   local function plan()
-    local pickup = stopAt(1433, 0.52, 0.52, "Lakeshire camp", 104)
+    local pickup = stopAt(player.mapID, 0.52, 0.52, "Lakeshire camp", 104)
     return ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Hearth run", stops = { pickup },
       finish = stopAt(1453, 0.5, 0.5, "Test Dungeon") })
   end
@@ -1268,15 +1268,28 @@ do
     for _, st in ipairs(j.steps) do out[#out + 1] = st.mode end
     return table.concat(out, ",")
   end
+  -- With the flight it saves under HEARTH_MIN_SAVING: not worth an hour's cooldown.
+  local flying = plan()
+  check(not flying.hearth and not modes(flying):find("hearth", 1, true) and flying.withoutHearth == flying.seconds,
+    string.format("a flight gets you there in %.0f s: the Hearthstone isn't spent on what's left (%s)",
+      flying.seconds, modes(flying)))
+  -- Walking all the way from the Wetlands, it saves minutes.
+  local savedTaxi = ns.charDB.knownTaxi
+  ns.charDB.knownTaxi = {}
+  player.mapID = 1437
   local with = plan()
   bags[6948] = nil
   local without = plan()
   bags[6948] = 1
   check(with.hearth and not with.hearth.cooldown and with.hearth.stop.node.label == "Test Dungeon"
-    and with.hearth.label == "Stormwind City" and modes(with):find("hearth", 1, true),
-    "a Hearthstone home stands in for the leg into Stormwind (" .. modes(with) .. ")")
+    and with.hearth.label == "Stormwind City" and modes(with):find("hearth", 1, true)
+    and with.hearth.saves >= ns.Journey.HEARTH_MIN_SAVING,
+    "a Hearthstone home stands in for the long walk into Stormwind (" .. modes(with) .. ")")
   check(not without.hearth and not modes(without):find("hearth", 1, true) and with.seconds < without.seconds,
     string.format("without one in your bags it's the long way (%.0f s vs %.0f s)", with.seconds, without.seconds))
+  check(math.abs(with.withoutHearth - without.seconds) < 1,
+    string.format("the plan knows what it takes if you keep the Hearthstone (%.0f s vs %.0f s)", with.withoutHearth,
+      without.seconds))
   local index
   for i, st in ipairs(with.steps) do if st.mode == "hearth" then index = i end end
   check(ns.Router.Describe(with, index) == "Hearth to Stormwind City", "the step says to hearth")
@@ -1287,6 +1300,7 @@ do
   cooldownStart = 0
   ns.charDB.hearth.name = "Goldshire"
   check(not plan().hearth, "bound somewhere else since: we don't know where it takes you")
+  ns.charDB.knownTaxi, player.mapID = savedTaxi, 1433
   GetItemCount, GetBindLocation, GetItemCooldown, GetTime = savedCount, nil, nil, nil
   ns.charDB.hearth = nil
 end
@@ -2934,6 +2948,21 @@ do
   check(ns.Nav.TripHasQuest(48) and not ns.Nav.TripHasQuest(47), "the near quest goes in, the far one doesn't")
   check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("You picked up Murloc Courier.", 1, true),
     "the one that adds more than 3 min is asked about, on its own: " .. tostring(shown and shown.text))
+  -- Under 3 min only because the plan with it spends your Hearthstone: asked,
+  -- and the question says so.
+  ns.Nav.PickupOffer = function(ids)
+    local offer = realOffer(ids)
+    if offer and offer.extra then offer.extraNoHearth = offer.extra + 400 end
+    return offer
+  end
+  shown = nil
+  fire("QUEST_ACCEPTED", 47)
+  runTimers()
+  check(not ns.Nav.TripHasQuest(47) and shown and shown.which == "WAYWARD_PICKUP_ADD"
+    and shown.text:find("but only by using your Hearthstone: ~", 1, true) and shown.text:find("without it), or start", 1, true),
+    "fitting only by hearthing: asked, not added, and the question says why: " .. tostring(shown and shown.text))
+  check(not ns.Nav.ExtraText({ extra = 100, extraNoHearth = 130 }):find("Hearthstone", 1, true),
+    "a hearth that makes up under a minute isn't mentioned")
   ns.Nav.PickupOffer = realOffer
   shown = nil
   ns.Nav.RemoveQuest(48)
@@ -7682,6 +7711,30 @@ do
   check(step.via and not step.stop and at(step.to, 0.5, 0.5), "through the area on the way (50,50)")
   local text = ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index)
   check(text:find("^Through"), "the step says so: " .. text)
+
+  -- From far off, with your Hearthstone bound beside Oslow: the hearth
+  -- still goes through an area on the way to the hand-in, as the walk did
+  -- (leaving out the gathering isn't time saved).
+  do
+    local savedCount, savedTaxi, savedPos = GetItemCount, ns.charDB.knownTaxi, { player.mapID, player.x, player.y }
+    GetItemCount = function(id) return id == 6948 and 1 or 0 end
+    GetBindLocation = function() return "Lakeshire" end
+    ns.charDB.knownTaxi = {}
+    ns.charDB.hearth = { name = "Lakeshire", mapID = 1433, x = 0.36, y = 0.32 }
+    player.mapID, player.x, player.y = 1437, 0.5, 0.5
+    local far = ns.Geo.PlayerNode()
+    local j = ns.Journey.Plan(far, { title = "Redridge Stew", stops = ns.Journey.QuestStops(4600, far) })
+    local modes, hearthAt, viaAt = {}, nil, nil
+    for i, st in ipairs(j.steps) do
+      modes[i] = st.mode .. (st.via and "(via)" or "")
+      if st.mode == "hearth" then hearthAt = i end
+      if st.via then viaAt = i end
+    end
+    check(j.hearth and hearthAt and viaAt and viaAt > hearthAt and j.withoutHearth > j.seconds,
+      "hearthing to the hand-in still goes through an area on the way: " .. table.concat(modes, ","))
+    GetItemCount, GetBindLocation, ns.charDB.knownTaxi, ns.charDB.hearth = savedCount, nil, savedTaxi, nil
+    player.mapID, player.x, player.y = savedPos[1], savedPos[2], savedPos[3]
+  end
 
   -- The Journey window lists the objectives as a row gathered as you go.
   ns.JourneyOverview.Show()

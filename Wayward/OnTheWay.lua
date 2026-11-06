@@ -151,11 +151,14 @@ end
 
 -- A pickup's quest done and handed in, when that adds under AUTO_ADD seconds
 -- of travel to the journey with the pickup: added with it rather than asked
--- about once you pick it up. `stops` are the suggestion's pickups; returns
--- the stops to add, and the names of the quests that came whole.
+-- about once you pick it up. Under AUTO_ADD only by spending your
+-- Hearthstone (Journey.Plan's withoutHearth) doesn't count: those are left
+-- to ask about. `stops` are the suggestion's pickups; returns the stops to
+-- add, the names of the quests that came whole, and of those left out for
+-- the Hearthstone.
 local function withHandIns(stops)
   local a, here = ns.Nav.active, ns.Geo.PlayerNode()
-  if not (a and here) then return stops, {} end
+  if not (a and here) then return stops, {}, {} end
   local root = a.journey and (a.journey.root or a.journey.def)
   local open = {}
   if root then
@@ -170,9 +173,9 @@ local function withHandIns(stops)
     for _, st in ipairs(list) do all[#all + 1] = st end
     return ns.Journey.Plan(here, { stops = all })
   end
-  local out, whole = { unpack(stops) }, {}
+  local out, whole, hearthOnly = { unpack(stops) }, {}, {}
   local base = plan(out)
-  if not base then return stops, whole end
+  if not base then return stops, whole, hearthOnly end
   for i, pickup in ipairs(stops) do
     local id = pickup.action and pickup.action.questID
     local qs = id and ns.Journey.QuestStops(id, here) or {}
@@ -183,28 +186,37 @@ local function withHandIns(stops)
       candidate[i] = qs[1]
       for k = 2, #qs do candidate[#candidate + 1] = qs[k] end
       local with = plan(candidate)
+      local q = ns.Quests.Quest(id)
+      local name = q and q.name or ("quest " .. id)
       if with and #with.skipped <= #base.skipped and with.seconds - base.seconds < AUTO_ADD then
-        out, base = candidate, with
-        local q = ns.Quests.Quest(id)
-        whole[#whole + 1] = q and q.name or ("quest " .. id)
+        if with.withoutHearth - base.withoutHearth < AUTO_ADD then
+          out, base = candidate, with
+          whole[#whole + 1] = name
+        else
+          hearthOnly[#hearthOnly + 1] = name
+        end
       end
     end
   end
-  return out, whole
+  return out, whole, hearthOnly
 end
 
 -- Adds a detour to the journey.
 function OnTheWay.Add(s)
   cache = nil
-  local stops, whole = s.stops, {}
+  local stops, whole, hearthOnly = s.stops, {}, {}
   if s.kind == "pickup" then
     -- An error still adds the pickups (and is reported).
-    local ok, a, b = pcall(withHandIns, s.stops)
-    if ok then stops, whole = a, b else geterrorhandler()(a) end
+    local ok, a, b, c = pcall(withHandIns, s.stops)
+    if ok then stops, whole, hearthOnly = a, b, c else geterrorhandler()(a) end
   end
   local added = ns.Nav.AddToTrip(stops, s.label)
   if added and #whole > 0 then
     ns.print(string.format("handing in %s adds under a minute: added too.", table.concat(whole, ", ")))
+  end
+  if added and #hearthOnly > 0 then
+    ns.print(string.format("handing in %s adds under a minute only by using your Hearthstone, so it isn't "
+      .. "added unasked.", table.concat(hearthOnly, ", ")))
   end
   return added
 end

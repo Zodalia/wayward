@@ -971,13 +971,19 @@ end
 -- Your Hearthstone (Hearth.lua) can stand in for a leg: hearth, then travel
 -- on from the inn. It has an hour's cooldown, so a journey uses it once, on
 -- the leg where it saves the most, any cooldown left by then counted as a
--- wait. That leg's route becomes the hearth and the rest. Returns
+-- wait, and only when that's HEARTH_MIN_SAVING or more: spending an hour's
+-- cooldown on a minute or two leaves you without it when it would have
+-- saved a lot. A leg through an area gathered as you go (stop.via) still
+-- goes through it after the hearth: skipping the gathering isn't a saving.
+-- That leg's route becomes the hearth and the rest (leg.plain keeps what it
+-- took without). Returns
 --   { stop, label, saves }                    used before `stop`, or
 --   { stop, label, saves, readyIn, cooldown = true }  it would save `saves`
 --     if it were ready, but it's `readyIn` seconds away, or
---   nil (no Hearthstone, or it doesn't help).
+--   nil (no Hearthstone, or it doesn't help enough).
 -- Stop order is found without it.
-local HEARTH_MIN_SAVING = 60
+local HEARTH_MIN_SAVING = 300
+Journey.HEARTH_MIN_SAVING = HEARTH_MIN_SAVING
 
 local function viaHearth(net, node, goal)
   -- Kept on the network (rebuilt when what it's made of changes), per inn and goal.
@@ -997,7 +1003,10 @@ local function hearthLeg(legs, net)
   local best, blocked
   for _, leg in ipairs(legs) do
     if leg.route.seconds >= cast + HEARTH_MIN_SAVING then
-      local via = viaHearth(net, hearth.node, leg.stop.node)
+      -- Through the leg's gathering area too; nil from throughVia means the
+      -- area is at the inn or the stop (or out of reach), and the plain way passes it.
+      local via = leg.stop.via and throughVia(hearth.node, leg.stop.via, leg.stop.node, net)
+        or viaHearth(net, hearth.node, leg.stop.node)
       local saves = via and leg.route.seconds - (cast + via.seconds) or 0
       local wait = math.max(0, hearth.readyIn - leg.at)
       if saves - wait >= HEARTH_MIN_SAVING then
@@ -1020,6 +1029,7 @@ local function hearthLeg(legs, net)
     -- The inn is the stop: a step to carry its action.
     steps[#steps + 1] = { mode = "walk", from = hearth.node, to = leg.stop.node, seconds = 0 }
   end
+  leg.plain = leg.route.seconds
   leg.route = { steps = steps, seconds = cast + best.wait + best.via.seconds }
   return { stop = leg.stop, label = hearth.node.label, saves = best.saves }
 end
@@ -1189,8 +1199,12 @@ end
 
 -- Plans a journey from `start`. Returns
 --   { title, kind, icon, def, root, stops = ordered stops, skipped = unreachable stops,
---     steps = route steps (the last step of each leg carries .stop), seconds }
--- where seconds counts travel and any waits for a cleared camp to respawn.
+--     steps = route steps (the last step of each leg carries .stop), seconds,
+--     withoutHearth, hearth }
+-- where seconds counts travel and any waits for a cleared camp to respawn,
+-- and withoutHearth the same if you kept your Hearthstone (what a stop
+-- adds is measured with it, Nav.PickupOffer: a stop that only fits by
+-- spending an hour's cooldown is asked about, not added unasked).
 -- or nil when no stop is reachable. `root` is the original definition, kept
 -- across re-plans so the overview can show stops already done; the journey's
 -- kind and icon live on it too.
@@ -1253,7 +1267,7 @@ function Journey.Plan(start, def, net)
   if not root.manual then ordered = joinTogether(ordered) end
 
   local journey = { title = def.title, kind = def.kind, icon = def.icon, def = def, root = root, stops = {},
-    skipped = {}, steps = {}, seconds = 0 }
+    skipped = {}, steps = {}, seconds = 0, withoutHearth = 0 }
   local legs, from, clock = {}, start, 0
   refresh()
   local picked = {} -- quests picked up earlier on the journey: their areas count as vias after
@@ -1286,6 +1300,7 @@ function Journey.Plan(start, def, net)
     end
     -- Getting to a camp before it respawns means waiting there.
     journey.seconds = math.max(journey.seconds + route.seconds, Journey.RespawnIn(stop))
+    journey.withoutHearth = math.max(journey.withoutHearth + (leg.plain or route.seconds), Journey.RespawnIn(stop))
     journey.stops[#journey.stops + 1] = stop
   end
   if #journey.stops == 0 then return nil end
