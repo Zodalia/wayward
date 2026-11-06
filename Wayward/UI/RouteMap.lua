@@ -224,6 +224,179 @@ local function hideFrom(pool, n)
   for i = n, #pool do pool[i]:Hide() end
 end
 
+-- The part of segment (x1, y1)-(x2, y2) inside the box 0..w across and
+-- 0..-h down (Liang-Barsky), or nil when none of it is.
+local function clipped(x1, y1, x2, y2, w, h)
+  local t0, t1 = 0, 1
+  local dx, dy = x2 - x1, y2 - y1
+  for _, e in ipairs({ { -dx, x1 }, { dx, w - x1 }, { -dy, y1 + h }, { dy, -y1 } }) do
+    local p, q = e[1], e[2]
+    if p == 0 then
+      if q < 0 then return nil end
+    else
+      local t = q / p
+      if p < 0 then
+        if t > t1 then return nil elseif t > t0 then t0 = t end
+      else
+        if t < t0 then return nil elseif t < t1 then t1 = t end
+      end
+    end
+  end
+  return x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy
+end
+
+-- Draws the route through `points` (`steps`' legs, start first) in view `v`:
+-- the legs with their chevrons and travel icons, you, and the numbered stops.
+-- `at(node)` places a node on v's canvas (x right, y down as negative), or
+-- nil when it isn't there. `opts`:
+--   size  everything this many times its size on the small maps (1)
+--   clip  { w, h }: legs are cut at this box, and nothing outside it marked
+--         (for an `at` that places nodes beyond what shows)
+--   you   false: no arrow or start badge (a map that shows you already)
+-- Returns what it drew (lines, chevrons, marks, numbers, ...), also kept as
+-- v.stats, for tests.
+function RouteMap.DrawRoute(v, steps, points, at, opts)
+  opts = opts or {}
+  local k = opts.size or 1
+  local box = opts.clip
+  local function inside(x, y)
+    return x and (not box or (x >= 0 and x <= box.w and y <= 0 and y >= -box.h))
+  end
+
+  -- A stroke from (ax, ay) to (bx, by) in colour c over its outline; the
+  -- route's legs are on sublevels 1-2, chevrons over them on 3-4.
+  local function stroke(edges, cores, i, sublevel, ax, ay, bx, by, c)
+    local edge, core = line(v, edges, i, sublevel), line(v, cores, i, sublevel + 1)
+    if not core then return end
+    edge:SetThickness((LINE_THICKNESS + 2 * OUTLINE) * k)
+    edge:SetVertexColor(unpack(OUTLINE_COLOR))
+    core:SetThickness(LINE_THICKNESS * k)
+    core:SetVertexColor(c[1], c[2], c[3], 1)
+    for _, seg in ipairs({ edge, core }) do
+      seg:SetStartPoint("TOPLEFT", v.canvas, ax, ay)
+      seg:SetEndPoint("TOPLEFT", v.canvas, bx, by)
+    end
+  end
+
+  -- Each leg, with chevrons along it pointing the way you go.
+  local drawn, chevrons, icons = 0, 0, 0
+  local stats = { hearthShown = false, iconFiles = {} }
+  local iconSize = MODE_ICON_SIZE * k
+  for _, step in ipairs(steps) do
+    local x1, y1 = at(step.from)
+    local x2, y2 = at(step.to)
+    if x1 and x2 and box then x1, y1, x2, y2 = clipped(x1, y1, x2, y2, box.w, box.h) end
+    if x1 and x2 then
+      drawn = drawn + 1
+      local c = LINE_COLOR[step.mode] or LINE_COLOR.walk
+      stroke(v.edges, v.lines, drawn, 1, x1, y1, x2, y2, c)
+      local dx, dy = x2 - x1, y2 - y1
+      local length = math.sqrt(dx * dx + dy * dy)
+      -- A flight, hearthstone or boat says so with its icon mid-leg; its
+      -- chevrons go either side of it.
+      local icon = RouteMap.TravelIcon(step)
+      if icon then
+        icons = icons + 1
+        local ic = modeIcon(v, icons)
+        ic.border:SetSize(iconSize + 2, iconSize + 2)
+        ic.icon:SetSize(iconSize, iconSize)
+        ic.icon:SetTexture(icon)
+        -- Icons have a border baked in to trim; the gossip one doesn't.
+        if icon:find(ICONS, 1, true) then ic.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        else ic.icon:SetTexCoord(0, 1, 0, 1) end
+        stats.iconFiles[icons] = icon
+        ic.border:ClearAllPoints()
+        ic.border:SetPoint("CENTER", v.pins, "TOPLEFT", x1 + dx / 2, y1 + dy / 2)
+        if step.mode == "hearth" then stats.hearthShown = true end
+      end
+      local n = math.floor(length / (CHEVRON_EVERY * k))
+      if length >= CHEVRON_MIN * k then n = math.max(n, icon and 2 or 1) end
+      if n > 0 then
+        local ux, uy = dx / length, dy / length -- along the leg
+        local nx, ny = -uy, ux                  -- across it
+        local depth, spread = CHEVRON_LENGTH * k, CHEVRON_SPREAD * k
+        for j = 1, n do
+          local along = length * (j - 0.5) / n
+          if not (icon and math.abs(along - length / 2) < iconSize) then
+            local px, py = x1 + ux * along, y1 + uy * along
+            local tx, ty = px + ux * depth, py + uy * depth
+            local bx, by = px - ux * depth, py - uy * depth
+            for _, side in ipairs({ 1, -1 }) do
+              chevrons = chevrons + 1
+              stroke(v.chevronEdges, v.chevronLines, chevrons, 3,
+                bx + nx * spread * side, by + ny * spread * side, tx, ty, c)
+            end
+          end
+        end
+      end
+    end
+  end
+  for i = icons + 1, #v.modeIcons do v.modeIcons[i].border:Hide(); v.modeIcons[i].icon:Hide() end
+  hideFrom(v.edges, drawn + 1)
+  hideFrom(v.lines, drawn + 1)
+  hideFrom(v.chevronEdges, chevrons + 1)
+  hideFrom(v.chevronLines, chevrons + 1)
+
+  -- You (the minimap arrow, facing your way), then each stop numbered in
+  -- order (a journey's stops are on their last step) up to the destination.
+  local marked, numbers = 0, {}
+  local fontSize = math.floor(9 * k + 0.5)
+  local function mark(node, kind, number)
+    local x, y = at(node)
+    if not inside(x, y) then return end
+    marked = marked + 1
+    numbers[marked] = number or false
+    local b = badge(v, marked)
+    local c = MARK_COLOR[kind]
+    b.disc:SetSize(BADGE_DISC_SIZE * k, BADGE_DISC_SIZE * k)
+    b.disc:SetVertexColor(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 1)
+    b.ring:SetSize(RING_SIZE * k, RING_SIZE * k)
+    b.ring:ClearAllPoints()
+    b.ring:SetPoint("TOPLEFT", v.pins, "TOPLEFT", x - RING_CENTER_X * RING_SIZE * k, y + RING_CENTER_Y * RING_SIZE * k)
+    b.disc:ClearAllPoints()
+    b.disc:SetPoint("CENTER", v.pins, "TOPLEFT", x, y)
+    if b.fontSize ~= fontSize and b.number.SetFont and STANDARD_TEXT_FONT then
+      b.number:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
+      b.fontSize = fontSize
+    end
+    b.number:SetText(number and tostring(number) or "")
+    b.number:ClearAllPoints()
+    b.number:SetPoint("CENTER", v.pins, "TOPLEFT", x + 0.5 * k, y)
+  end
+  v.you = v.you or v.pins:CreateTexture(nil, "OVERLAY")
+  v.you:Hide()
+  if opts.you ~= false then
+    local facing = points[1].label == "You" and GetPlayerFacing and GetPlayerFacing()
+    local yx, yy = at(points[1])
+    if facing and inside(yx, yy) then
+      v.you:SetTexture(PLAYER_ARROW)
+      v.you:SetSize(18 * k, 18 * k)
+      if v.you.SetRotation then v.you:SetRotation(facing) end
+      v.you:ClearAllPoints()
+      v.you:SetPoint("CENTER", v.pins, "TOPLEFT", yx, yy)
+      v.you:Show()
+    else
+      mark(points[1], "start")
+    end
+  end
+  local number = 0
+  for i, step in ipairs(steps) do
+    if step.stop and i < #steps then
+      number = number + 1
+      mark(step.to, "stop", number)
+    end
+  end
+  mark(points[#points], "goal", number > 0 and number + 1 or nil)
+  for i = marked + 1, #v.marks do
+    local b = v.marks[i]
+    b.disc:Hide(); b.ring:Hide(); b.number:Hide()
+  end
+  stats.lines, stats.chevrons, stats.modeIcons, stats.marks, stats.numbers = drawn, chevrons / 2, icons, marked, numbers
+  stats.youShown = v.you:IsShown()
+  v.stats = stats
+  return stats
+end
+
 -- Draws `r`'s route (its journey or route) in view `v`; returns the map's
 -- height when it did, else nil.
 function RouteMap.Draw(v, r)
@@ -327,128 +500,12 @@ function RouteMap.Draw(v, r)
     if px < 0 or px > WIDTH or py < 0 or py > height then return nil end
     return px, -py
   end
-
-  -- A stroke from (ax, ay) to (bx, by) in colour c over its outline; the
-  -- route's legs are on sublevels 1-2, chevrons over them on 3-4.
-  local function stroke(edges, cores, i, sublevel, ax, ay, bx, by, c)
-    local edge, core = line(v, edges, i, sublevel), line(v, cores, i, sublevel + 1)
-    if not core then return end
-    edge:SetThickness(LINE_THICKNESS + 2 * OUTLINE)
-    edge:SetVertexColor(unpack(OUTLINE_COLOR))
-    core:SetThickness(LINE_THICKNESS)
-    core:SetVertexColor(c[1], c[2], c[3], 1)
-    for _, seg in ipairs({ edge, core }) do
-      seg:SetStartPoint("TOPLEFT", v.canvas, ax, ay)
-      seg:SetEndPoint("TOPLEFT", v.canvas, bx, by)
-    end
-  end
-
-  -- Each leg, with chevrons along it pointing the way you go.
-  local drawn, chevrons, icons = 0, 0, 0
-  RouteMap.hearthShown, RouteMap.iconFiles = false, {}
-  for _, step in ipairs(steps) do
-    local x1, y1 = at(step.from)
-    local x2, y2 = at(step.to)
-    if x1 and x2 then
-      drawn = drawn + 1
-      local c = LINE_COLOR[step.mode] or LINE_COLOR.walk
-      stroke(v.edges, v.lines, drawn, 1, x1, y1, x2, y2, c)
-      local dx, dy = x2 - x1, y2 - y1
-      local length = math.sqrt(dx * dx + dy * dy)
-      -- A flight, hearthstone or boat says so with its icon mid-leg; its
-      -- chevrons go either side of it.
-      local icon = RouteMap.TravelIcon(step)
-      if icon then
-        icons = icons + 1
-        local ic = modeIcon(v, icons)
-        ic.icon:SetTexture(icon)
-        -- Icons have a border baked in to trim; the gossip one doesn't.
-        if icon:find(ICONS, 1, true) then ic.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        else ic.icon:SetTexCoord(0, 1, 0, 1) end
-        RouteMap.iconFiles[icons] = icon
-        ic.border:ClearAllPoints()
-        ic.border:SetPoint("CENTER", v.pins, "TOPLEFT", x1 + dx / 2, y1 + dy / 2)
-        if step.mode == "hearth" then RouteMap.hearthShown = true end
-      end
-      local n = math.floor(length / CHEVRON_EVERY)
-      if length >= CHEVRON_MIN then n = math.max(n, icon and 2 or 1) end
-      if n > 0 then
-        local ux, uy = dx / length, dy / length -- along the leg
-        local nx, ny = -uy, ux                  -- across it
-        for k = 1, n do
-          local along = length * (k - 0.5) / n
-          if not (icon and math.abs(along - length / 2) < MODE_ICON_SIZE) then
-            local px, py = x1 + ux * along, y1 + uy * along
-            local tx, ty = px + ux * CHEVRON_LENGTH, py + uy * CHEVRON_LENGTH
-            local bx, by = px - ux * CHEVRON_LENGTH, py - uy * CHEVRON_LENGTH
-            for _, side in ipairs({ 1, -1 }) do
-              chevrons = chevrons + 1
-              stroke(v.chevronEdges, v.chevronLines, chevrons, 3,
-                bx + nx * CHEVRON_SPREAD * side, by + ny * CHEVRON_SPREAD * side, tx, ty, c)
-            end
-          end
-        end
-      end
-    end
-  end
-  for i = icons + 1, #v.modeIcons do v.modeIcons[i].border:Hide(); v.modeIcons[i].icon:Hide() end
-  RouteMap.modeIcons = icons
-  hideFrom(v.edges, drawn + 1)
-  hideFrom(v.lines, drawn + 1)
-  hideFrom(v.chevronEdges, chevrons + 1)
-  hideFrom(v.chevronLines, chevrons + 1)
-  chevrons = chevrons / 2
-
-  -- You (the minimap arrow, facing your way), then each stop numbered in
-  -- order (a journey's stops are on their last step) up to the destination.
-  local marked, numbers = 0, {}
-  local function mark(node, kind, number)
-    local x, y = at(node)
-    if not x then return end
-    marked = marked + 1
-    numbers[marked] = number or false
-    local b = badge(v, marked)
-    local c = MARK_COLOR[kind]
-    b.disc:SetVertexColor(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 1)
-    b.ring:ClearAllPoints()
-    b.ring:SetPoint("TOPLEFT", v.pins, "TOPLEFT", x - RING_CENTER_X * RING_SIZE, y + RING_CENTER_Y * RING_SIZE)
-    b.disc:ClearAllPoints()
-    b.disc:SetPoint("CENTER", v.pins, "TOPLEFT", x, y)
-    b.number:SetText(number and tostring(number) or "")
-    b.number:ClearAllPoints()
-    b.number:SetPoint("CENTER", v.pins, "TOPLEFT", x + 0.5, y)
-  end
-  local facing = points[1].label == "You" and GetPlayerFacing and GetPlayerFacing()
-  v.you = v.you or v.pins:CreateTexture(nil, "OVERLAY")
-  v.you:Hide()
-  local yx, yy = at(points[1])
-  if facing and yx then
-    v.you:SetTexture(PLAYER_ARROW)
-    v.you:SetSize(18, 18)
-    if v.you.SetRotation then v.you:SetRotation(facing) end
-    v.you:ClearAllPoints()
-    v.you:SetPoint("CENTER", v.pins, "TOPLEFT", yx, yy)
-    v.you:Show()
-  else
-    mark(points[1], "start")
-  end
-  local number = 0
-  for i, step in ipairs(steps) do
-    if step.stop and i < #steps then
-      number = number + 1
-      mark(step.to, "stop", number)
-    end
-  end
-  mark(points[#points], "goal", number > 0 and number + 1 or nil)
-  for i = marked + 1, #v.marks do
-    local b = v.marks[i]
-    b.disc:Hide(); b.ring:Hide(); b.number:Hide()
-  end
-  RouteMap.youShown, RouteMap.chevrons, RouteMap.numbers = v.you:IsShown(), chevrons, numbers
-
+  local stats = RouteMap.DrawRoute(v, steps, points, at)
+  RouteMap.hearthShown, RouteMap.iconFiles, RouteMap.modeIcons = stats.hearthShown, stats.iconFiles, stats.modeIcons
+  RouteMap.youShown, RouteMap.chevrons, RouteMap.numbers = stats.youShown, stats.chevrons, stats.numbers
 
   v.label:SetText(ns.MapName(mapID) or "")
-  RouteMap.mapID, RouteMap.lines, RouteMap.marks, RouteMap.view = mapID, drawn, marked, view
+  RouteMap.mapID, RouteMap.lines, RouteMap.marks, RouteMap.view = mapID, stats.lines, stats.marks, view
   RouteMap.overlays = overlays
   return height
 end

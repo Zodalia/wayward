@@ -140,6 +140,12 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   but addons may not set them. `/ww marker` or the options turn the star and
   the tooltip line off. Quests handed in to (or started from) an object, like
   Buzzbox 323, say "use" instead, with nothing to target.
+- **Your journey on the world map**: open the map and the rest of your
+  journey (or your directions) is drawn on it as on the route maps: white
+  for walking, blue for flights and boats, purple for the hearthstone,
+  chevrons pointing the way and the stops numbered in order. It shows on
+  whichever map you look at, as far as that map goes, and a walk starts
+  from the map's own arrow. `/ww worldmap` or the options turn it off.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are, and so does opening a mailbox. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.

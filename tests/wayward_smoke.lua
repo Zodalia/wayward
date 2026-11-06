@@ -5423,6 +5423,88 @@ do
   ns.RouteMap.Hide()
 end
 ---------------------------------------------------------------- route map (end)
+---------------------------------------------------------------- world map route (begin)
+do
+  io.write("world map route\n")
+  local W = ns.WorldMapRoute
+  local savedMap, savedMixin, savedCreate = WorldMapFrame, MapCanvasDataProviderMixin, CreateFromMixins
+  WorldMapFrame = nil
+  check(W.Hook() == false and W.Refresh() == nil, "no world map: nothing hooked, no error")
+
+  -- A world map like the game's: a canvas with a size, the map being looked
+  -- at, and data providers.
+  local providers, shownMap = {}, 1433
+  local canvas = newObj()
+  canvas.GetWidth = function() return 1000 end
+  canvas.GetHeight = function() return 667 end
+  WorldMapFrame = newObj()
+  WorldMapFrame.AddDataProvider = function(_, p) providers[#providers + 1] = p end
+  WorldMapFrame.GetCanvas = function() return canvas end
+  WorldMapFrame.GetMapID = function() return shownMap end
+  WorldMapFrame.GetCanvasScale = function() return 0.5 end
+  MapCanvasDataProviderMixin = { OnAdded = function() end, RefreshAllData = function() end }
+  CreateFromMixins = function(...)
+    local o = {}
+    for _, m in ipairs({ ... }) do for k, v in pairs(m) do o[k] = v end end
+    return o
+  end
+  check(W.Hook() and #providers == 1, "joins the world map as a data provider")
+  W.Hook()
+  check(#providers == 1, "joins it once")
+
+  ns.Nav.Stop()
+  providers[1]:RefreshAllData()
+  check(W.Stats() == nil, "no journey: nothing on the world map")
+
+  -- Two stops in Redridge, then one in the Wetlands.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local stops = {
+    { node = ns.Geo.Node(1433, 0.6, 0.5, "East camp"), text = "Visit the east camp" },
+    { node = ns.Geo.Node(1433, 0.6, 0.7, "South camp"), text = "Visit the south camp" },
+    { node = ns.Geo.Node(1437, 0.5, 0.5, "Wetlands camp"), text = "Visit the Wetlands camp" },
+  }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "World map", kind = "custom", stops = stops }), true)
+  providers[1]:RefreshAllData()
+  local s = W.Stats()
+  check(s and s.lines >= 2 and s.marks >= 2,
+    string.format("the journey is drawn on the zone map: %s lines, %s stops marked",
+      tostring(s and s.lines), tostring(s and s.marks)))
+  check(s and not s.youShown, "no arrow of ours: the world map shows you")
+  check(s and s.chevrons >= 1, "chevrons point the way")
+  local legs = s and s.lines or 0
+
+  shownMap = 1415
+  providers[1]:OnMapChanged()
+  local c = W.Stats()
+  check(c and c.lines >= legs and W.mapID == 1415,
+    "on the continent the rest of it shows too: " .. tostring(c and c.lines) .. " lines")
+  check(c and c.numbers[#c.numbers] ~= false and c.numbers[1] == 1, "the stops are numbered in order")
+
+  -- The other continent's map holds none of it.
+  shownMap = 1414
+  providers[1]:OnMapChanged()
+  local other = W.Stats()
+  check(other and other.lines == 0 and other.marks == 0, "a map with none of the journey on it shows none of it")
+
+  -- Lines and badges keep their size on screen as the map zooms.
+  shownMap = 1433
+  WorldMapFrame.GetCanvasScale = function() return 2 end
+  providers[1]:OnCanvasScaleChanged()
+  check(W.Stats() and W.Stats().lines >= 1, "zooming in redraws it")
+
+  WorldMapFrame:Show()
+  ns.SetSetting("worldMapRoute", false)
+  check(W.Stats() == nil, "the option takes it off the map")
+  ns.commands.worldmap.run("")
+  check(ns.db.settings.worldMapRoute == true and W.Stats() ~= nil, "/ww worldmap puts it back")
+
+  ns.Nav.Stop()
+  check(W.Stats() == nil, "the journey ended: it's gone from the map")
+  WorldMapFrame:Hide()
+  WorldMapFrame, MapCanvasDataProviderMixin, CreateFromMixins = savedMap, savedMixin, savedCreate
+end
+---------------------------------------------------------------- world map route (end)
 ---------------------------------------------------------------- speed (begin)
 do
   io.write("speed\n")
