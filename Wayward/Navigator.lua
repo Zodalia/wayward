@@ -794,6 +794,12 @@ ns.On("QUEST_ACCEPTED", function(...)
 end)
 ns.On("QUEST_TURNED_IN", function(questID)
   count("quests")
+  -- Handed in before the pickup was asked about (an addon that accepts and
+  -- completes for you): nothing left to add. A repeatable would otherwise be
+  -- planned all over again, its stops on the journey being done.
+  for i = #picked, 1, -1 do
+    if picked[i] == questID then table.remove(picked, i) end
+  end
   questAction("turnin", questID)
   syncStops()
 end)

@@ -2970,6 +2970,27 @@ do
   QUESTS[47], QUESTS[48] = nil, nil
   refreshData()
 
+  -- An addon that accepts and hands in for you (like Thunderbrew): a
+  -- repeatable picked up and handed in before the pickup is looked at isn't
+  -- planned all over again.
+  local savedFlagsKey = questKeys.specialFlags
+  questKeys.specialFlags = 24
+  QUESTS[49] = { name = "Murloc Brew", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 344 } }, objectives = { { { 9101 } } }, specialFlags = 1 }
+  refreshData()
+  check(ns.Quests.IsRepeatable(49), "Murloc Brew is repeatable")
+  shown = nil
+  log[3] = 49
+  fire("QUEST_ACCEPTED", 49)
+  log[3] = nil
+  fire("QUEST_TURNED_IN", 49)
+  runTimers()
+  check(shown == nil and not ns.Nav.TripHasQuest(49),
+    "a repeatable handed in straight after picking it up isn't added again, nor asked about")
+  questKeys.specialFlags = savedFlagsKey
+  QUESTS[49] = nil
+  refreshData()
+
   -- The option off: asked about like any other pickup.
   shown = nil
   ns.Nav.RemoveQuest(40)
