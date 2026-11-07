@@ -5582,6 +5582,116 @@ do
   WorldMapFrame, MapCanvasDataProviderMixin, CreateFromMixins = savedMap, savedMixin, savedCreate
 end
 ---------------------------------------------------------------- world map route (end)
+---------------------------------------------------------------- minimap route (begin)
+do
+  io.write("minimap route\n")
+  local M = ns.MinimapRoute
+  local savedMinimap, savedGetCVar, savedShape = Minimap, GetCVar, GetMinimapShape
+  Minimap = nil
+  check(M.Update() == nil and M.Refresh() == nil, "no minimap: nothing drawn, no error")
+
+  -- A 140-wide minimap at zoom 0 outdoors: 466 2/3 yards across, so 0.3
+  -- pixels a yard.
+  local zoom, cvars = 0, { minimapZoom = "0", minimapInsideZoom = "2", rotateMinimap = "0" }
+  Minimap = CreateFrame("Frame")
+  Minimap.GetWidth = function() return 140 end
+  Minimap.GetHeight = function() return 140 end
+  Minimap.GetZoom = function() return zoom end
+  GetCVar = function(name) return cvars[name] end
+  check(math.abs(M.Yards() - 466.67) < 0.01, "zoomed out outdoors it sees 466 yards across")
+  zoom = 2
+  check(M.Yards() == 180, "at the indoor zoom it's the indoor view: " .. M.Yards())
+  zoom = 0
+
+  ns.Nav.Stop()
+  check(M.Update() == nil and M.Stats() == nil, "no journey: nothing on the minimap")
+
+  -- A stop 60 yards north, then one 60 yards east of it, then one far off
+  -- south. (Redridge's map is 640 yards across and 960 down.)
+  player.mapID, player.x, player.y, player.facing = 1433, 0.5, 0.5, 0
+  local here = ns.Geo.PlayerNode()
+  local function at(north, east, label)
+    return ns.Geo.Node(1433, 0.5 + east / 640, 0.5 - north / 960, label)
+  end
+  local north, northEast = at(60, 0, "North post"), at(60, 60, "East post")
+  local far = at(-300, 0, "Far post")
+  local stops = {
+    { node = north, text = "Visit the north post" },
+    { node = northEast, text = "Visit the east post" },
+    { node = far, text = "Visit the far post" },
+  }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Minimap", kind = "custom", stops = stops }), true)
+  local s = M.Stats()
+  check(s and s.lines >= 2 and not s.youShown, string.format(
+    "a journey is drawn on the minimap, without an arrow of ours: %s lines", tostring(s and s.lines)))
+  -- The first leg runs from the middle (you) straight up, 60 yards = 18 px.
+  local first = s and s.legs[1]
+  check(first and math.abs(first[1] - 70) < 0.5 and math.abs(first[2] + 70) < 0.5
+    and math.abs(first[3] - 70) < 0.5 and math.abs(first[4] + 52) < 0.5,
+    string.format("north is up, from you in the middle: (%.1f, %.1f) to (%.1f, %.1f)",
+      first and first[1] or -1, first and first[2] or -1, first and first[3] or -1, first and first[4] or -1))
+  -- The far stop is off the minimap: its leg is cut at the rim, its badge not shown.
+  local cut = true
+  for _, l in ipairs(s and s.legs or {}) do
+    for _, p in ipairs({ { l[1], l[2] }, { l[3], l[4] } }) do
+      if (p[1] - 70) ^ 2 + (p[2] + 70) ^ 2 > 67.01 ^ 2 then cut = false end
+    end
+  end
+  check(cut and s.marks == 2, "legs are cut at the round rim, and only the stops on it marked: " .. tostring(s and s.marks))
+
+  -- A square minimap (an addon's) cuts at its corners instead.
+  GetMinimapShape = function() return "SQUARE" end
+  check(M.Tick(1), "a new shape draws it again")
+  local corner = false
+  for _, l in ipairs(M.Stats().legs) do
+    if math.abs(l[4] + 140) < 0.01 then corner = true end
+  end
+  check(corner, "square: the far leg runs to the minimap's edge")
+  GetMinimapShape = savedShape
+
+  -- Standing still, nothing is drawn again; walking a few yards, it is.
+  M.Tick(1)
+  check(not M.Tick(1), "standing still: not drawn again")
+  player.y = player.y - 0.0005
+  check(M.Tick(1), "walking on: drawn again from where you are")
+  check(not M.Tick(0.001), "but no more than 30 times a second")
+  player.y = 0.5
+
+  -- A minimap that turns with you: facing west (a quarter turn left), the
+  -- stop to the north is off to the right.
+  cvars.rotateMinimap, player.facing = "1", math.pi / 2
+  M.Tick(1)
+  first = M.Stats().legs[1]
+  local second = M.Stats().legs[2]
+  check(first[3] > 85 and math.abs(first[4] + 70) < 0.5 and math.abs(second[3] - 88) < 0.5
+    and math.abs(second[4] + 88) < 0.5,
+    string.format("turning with you: north is to the right facing west (%.1f, %.1f), east is down (%.1f, %.1f)",
+      first[3], first[4], second[3], second[4]))
+  cvars.rotateMinimap, player.facing = "0", 0
+
+  -- Zooming in draws it bigger.
+  zoom = 5
+  M.Tick(1)
+  first = M.Stats().legs[1]
+  check(math.abs(first[4] + 70 - 63) < 0.5, string.format("zoomed in, 60 yards is 63 px: %.1f", first[4] + 70))
+  zoom = 0
+
+  -- The option, and /ww minimap journey.
+  local choice
+  for _, c in ipairs(ns.Options.Choices()) do
+    if c.name == "Your journey on the minimap" then choice = c end
+  end
+  check(choice and choice.section == "Maps" and choice.get() == true, "the option is under maps, on by default")
+  choice.set(false)
+  check(M.Stats() == nil, "the option takes it off the minimap")
+  ns.commands.minimap.run("journey")
+  check(ns.db.settings.minimapRoute == true and M.Stats() ~= nil, "/ww minimap journey puts it back")
+
+  ns.Nav.Stop()
+  check(M.Stats() == nil, "the journey ended: it's gone from the minimap")
+  Minimap, GetCVar = savedMinimap, savedGetCVar
+end
+---------------------------------------------------------------- minimap route (end)
 ---------------------------------------------------------------- speed (begin)
 do
   io.write("speed\n")

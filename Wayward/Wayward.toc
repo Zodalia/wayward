@@ -62,6 +62,7 @@ UI\ChainPicker.lua
 UI\ErrandPicker.lua
 UI\RouteMap.lua
 UI\WorldMapRoute.lua
+UI\MinimapRoute.lua
 UI\Cards.lua
 UI\JourneyBox.lua
 UI\QuestLogButtons.lua

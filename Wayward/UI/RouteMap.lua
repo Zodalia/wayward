@@ -249,13 +249,57 @@ local function clipped(x1, y1, x2, y2, w, h)
   return x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy
 end
 
+-- The part of segment (x1, y1)-(x2, y2) inside the circle of radius r round
+-- (cx, cy), or nil when none of it is.
+local function clippedRound(x1, y1, x2, y2, cx, cy, r)
+  local dx, dy = x2 - x1, y2 - y1
+  local fx, fy = x1 - cx, y1 - cy
+  local a = dx * dx + dy * dy
+  local c = fx * fx + fy * fy - r * r
+  if a == 0 then
+    if c > 0 then return nil end
+    return x1, y1, x2, y2
+  end
+  local b = 2 * (fx * dx + fy * dy)
+  local d = b * b - 4 * a * c
+  if d < 0 then return nil end
+  d = math.sqrt(d)
+  local t0, t1 = math.max(0, (-b - d) / (2 * a)), math.min(1, (-b + d) / (2 * a))
+  if t0 > t1 then return nil end
+  return x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy
+end
+
+-- The steps of the active journey (or directions) still to go, from the one
+-- you're on, and whether they start from `here` (where you stand): a walk
+-- you're on starts where you stand, not where the step began. Nil when
+-- there's nothing to go.
+function RouteMap.Rest(here)
+  local a = ns.Nav.active
+  local steps = a and a.route and a.route.steps
+  if not steps then return nil end
+  local out = {}
+  for k = a.index or 1, #steps do out[#out + 1] = steps[k] end
+  if #out == 0 then return nil end
+  local first = out[1]
+  if first.mode == "walk" and here and first.from and here.instance == first.from.instance then
+    local copy = {}
+    for key, value in pairs(first) do copy[key] = value end
+    copy.from = here
+    out[1] = copy
+    return out, true
+  end
+  return out, false
+end
+
 -- Draws the route through `points` (`steps`' legs, start first) in view `v`:
 -- the legs with their chevrons and travel icons, you, and the numbered stops.
 -- `at(node)` places a node on v's canvas (x right, y down as negative), or
 -- nil when it isn't there. `opts`:
 --   size  everything this many times its size on the small maps (1)
 --   clip  { w, h }: legs are cut at this box, and nothing outside it marked
---         (for an `at` that places nodes beyond what shows)
+--         (for an `at` that places nodes beyond what shows); with `radius`,
+--         at the circle that wide round the box's middle instead (a round
+--         minimap)
 --   you   false: no arrow or start badge (a map that shows you already)
 --   alpha function(i): how opaque steps[i]'s leg, chevrons and icon are (1);
 --         a stop's badge fades less (the square root of its step's)
@@ -266,8 +310,11 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   opts = opts or {}
   local k = opts.size or 1
   local box = opts.clip
+  local cx, cy = box and box.w / 2, box and -box.h / 2
   local function inside(x, y)
-    return x and (not box or (x >= 0 and x <= box.w and y <= 0 and y >= -box.h))
+    if not (x and box) then return x ~= nil end
+    if box.radius then return (x - cx) ^ 2 + (y - cy) ^ 2 <= box.radius ^ 2 end
+    return x >= 0 and x <= box.w and y <= 0 and y >= -box.h
   end
 
   local function alphaOf(i)
@@ -349,7 +396,8 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
       if lane then
         x1, y1, x2, y2 = x1 + lane.dx, y1 + lane.dy, x2 + lane.dx, y2 + lane.dy
       end
-      if box then x1, y1, x2, y2 = clipped(x1, y1, x2, y2, box.w, box.h) end
+      if box and box.radius then x1, y1, x2, y2 = clippedRound(x1, y1, x2, y2, cx, cy, box.radius)
+      elseif box then x1, y1, x2, y2 = clipped(x1, y1, x2, y2, box.w, box.h) end
     end
     if x1 and x2 then
       drawn = drawn + 1

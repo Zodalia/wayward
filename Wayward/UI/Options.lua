@@ -38,10 +38,6 @@ local SECTIONS = {
         .. "Per character; /ww detail steps|stops changes it too.",
       function() return ns.Nav.Detail() ~= "stops" end,
       function(v) ns.Nav.SetDetail(v and "steps" or "stops") end },
-    { "WAYWARD_WORLD_MAP", "Your journey on the world map",
-      "The rest of your journey (or your directions) drawn on the world map when you open it: the way to go, how you travel each part, and the stops numbered in order. /ww worldmap turns it on or off too.",
-      function() return ns.db.settings.worldMapRoute ~= false end,
-      function(v) ns.SetSetting("worldMapRoute", v) end },
   },
   { "NPCs",
     { "WAYWARD_MARKER", "Star over the NPC you're heading for",
@@ -75,7 +71,15 @@ local SECTIONS = {
       function() return ns.db.settings.suggestNext ~= false end,
       function(v) ns.SetSetting("suggestNext", v) end },
   },
-  { "Minimap",
+  { "Maps",
+    { "WAYWARD_WORLD_MAP", "Your journey on the world map",
+      "The rest of your journey (or your directions) drawn on the world map when you open it: the way to go, how you travel each part, and the stops numbered in order. /ww worldmap turns it on or off too.",
+      function() return ns.db.settings.worldMapRoute ~= false end,
+      function(v) ns.SetSetting("worldMapRoute", v) end },
+    { "WAYWARD_MINIMAP_ROUTE", "Your journey on the minimap",
+      "The rest of your journey (or your directions) drawn on the minimap while you travel, round its arrow: the way to go and the stops on it, cut at the minimap's edge. /ww minimap journey turns it on or off too.",
+      function() return ns.db.settings.minimapRoute ~= false end,
+      function(v) ns.SetSetting("minimapRoute", v) end },
     { "WAYWARD_MINIMAP", "Minimap button",
       "The Wayward button on the minimap. Right-click it for these options; /ww minimap brings it back.",
       minimapShown, setMinimapShown },
@@ -163,7 +167,7 @@ function Options.Open()
   if category and Settings.OpenToCategory then
     Settings.OpenToCategory(category:GetID())
   else
-    ns.print("options: /ww compass, /ww tomtom, /ww toasts, /ww marker, /ww worldmap and /ww minimap turn those on or off; "
+    ns.print("options: /ww compass, /ww tomtom, /ww toasts, /ww marker, /ww worldmap, /ww minimap journey and /ww minimap turn those on or off; "
       .. "/ww detail steps|stops sets what the directions box shows.")
   end
 end

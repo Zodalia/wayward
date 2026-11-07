@@ -8,7 +8,8 @@ local _, ns = ...
 -- stand and follows you while the map is open. The next few steps are drawn
 -- in full and the ones after fade, step by step, so the next part of the way
 -- stands out. Plain directions show too.
--- The options or /ww worldmap turn it off.
+-- The options or /ww worldmap turn it off. UI/MinimapRoute.lua draws the
+-- same on the minimap.
 
 local WorldMapRoute = {}
 ns.WorldMapRoute = WorldMapRoute
@@ -34,24 +35,11 @@ local function enabled()
   return ns.db and ns.db.settings.worldMapRoute ~= false
 end
 
--- The steps still to go, and where you are. A walk you're on starts where
--- you stand, not where the step began.
+-- The steps still to go, and where you are when they start from you.
 local function remaining()
-  local a = ns.Nav.active
-  local steps = a and a.route and a.route.steps
-  if not steps then return nil end
-  local out = {}
-  for k = a.index or 1, #steps do out[#out + 1] = steps[k] end
-  if #out == 0 then return nil end
   local here = ns.Geo.PlayerNodeExact()
-  local first = out[1]
-  if first.mode == "walk" and here and first.from and here.instance == first.from.instance then
-    local copy = {}
-    for key, value in pairs(first) do copy[key] = value end
-    copy.from = here
-    out[1] = copy
-  end
-  return out, out[1].from == here and here or nil
+  local steps, fromHere = ns.RouteMap.Rest(here)
+  return steps, fromHere and here or nil
 end
 
 -- The map's own layers: over the explored terrain, under the game's pins

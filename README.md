@@ -74,7 +74,8 @@ character, `/ww detail steps|stops`), **NPCs** (the
 star over the NPC you are heading for, and the game's friendly nameplates it
 needs), **Journeys and quests** (the question when you pick up a quest, whether
 the journey overview opens by itself when a journey starts, the new-journey
-toasts), **Minimap** (the button), and **Windows and help** (reset window
+toasts), **Maps** (your journey on the world map and on the minimap, and
+the minimap button), and **Windows and help** (reset window
 positions, show the welcome again, list the slash commands). Right-click the
 minimap button or the addon compartment entry, or click Options in the
 window's title bar, to open them.
@@ -149,6 +150,11 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   by side with their chevrons between each other's. It shows on whichever
   map you look at, as far as that map goes, and a walk starts from the
   map's own arrow. `/ww worldmap` or the options turn it off.
+- **Your journey on the minimap**: the same lines, chevrons and numbered
+  stops, smaller, round the minimap's arrow while a journey or directions
+  are on. They follow you as you walk, turn with a minimap set to rotate,
+  keep to its zoom (indoors too) and stop at its edge, round or square.
+  `/ww minimap journey` or the options turn it off.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are, and so does opening a mailbox. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.

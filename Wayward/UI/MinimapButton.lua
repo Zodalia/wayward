@@ -134,7 +134,11 @@ end
 
 ns.On("PLAYER_LOGIN", MinimapButton.Setup)
 
-ns.RegisterCommand("minimap", "/ww minimap - show or hide the minimap button", function()
+ns.RegisterCommand("minimap", "/ww minimap - show or hide the minimap button; /ww minimap journey - your journey drawn on the minimap, on or off", function(rest)
+  if rest and rest:lower():match("^%s*journey") and ns.MinimapRoute then
+    ns.MinimapRoute.Toggle()
+    return
+  end
   local settings = ns.db.settings.minimapIcon
   settings.hide = not settings.hide
   MinimapButton.Refresh()
