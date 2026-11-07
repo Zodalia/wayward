@@ -8405,6 +8405,69 @@ do
   refreshData()
   ns.JourneyOverview.EnsureFrame():Hide()
 
+  -- Quests in your log that aren't on the journey: what they still want is
+  -- listed when it's on the way, spread or not, and the journey isn't
+  -- changed for it. The smugglers crowd one spot (not spread) right on the
+  -- walk to the docks; the dust devils are off in a corner, not on the way.
+  NPCS[9604] = { name = "Defias Smuggler", minLevel = 16, maxLevel = 17, spawns = { [44] = {
+    { 60, 60 }, { 61, 62 }, { 63, 61 }, { 62, 64 }, { 64, 63 }, { 15, 15 }, { 85, 15 }, { 15, 85 } } } }
+  NPCS[9607] = { name = "Dust Devil", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 95, 95 } } } }
+  QUESTS[4601] = { name = "Smuggler Sweep", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9604 } } } }
+  QUESTS[4605] = { name = "Dust Devils", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9607 } } } }
+  refreshData()
+  check(not ns.Journey.Spread(4601), "the smugglers aren't spread")
+  log = { 4601, 4605 }
+  local sweepLog = { { text = "Defias Smuggler slain: 0/6", finished = false } }
+  local devils = { { text = "Dust Devil slain: 0/2", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4601 and sweepLog or id == 4605 and devils or {} end
+  ns.Nav.Stop()
+  player.x, player.y = 0.62, 0.9
+  here = ns.Geo.PlayerNode()
+  local docks3 = { node = ns.Geo.Node(1433, 0.62, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Docks", stops = { docks3 } }), true)
+  ns.charDB.shopOpen = nil
+  ns.HUD.Update()
+  lines = ns.HUD.ShopLines()
+  check(#lines == 1 and lines[1].entry.name == "Defias Smuggler" and lines[1].entry.fromLog
+    and lines[1].entry.quest == "Smuggler Sweep" and lines[1].text:find("0/6", 1, true),
+    "a log quest off the journey, its smugglers on the way: listed, though not spread; the dust devils aren't: "
+    .. #lines)
+  check(ns.HUD.Shop().toggle and ns.HUD.Shop().count == "1", "the box shows the toggle for it: " .. ns.HUD.Shop().count)
+  check(ns.Nav.HeadingFor() == docks3 and not ns.Nav.CurrentStep().via, "the journey isn't changed for it")
+  -- Walked on past the docks' way to the dust devils: around you, so listed.
+  player.x, player.y = 0.94, 0.94
+  lines = ns.HUD.ShopLines()
+  local names = {}
+  for i, l in ipairs(lines) do names[i] = l.entry and l.entry.name or "?" end
+  check(#lines == 2 and lines[1].entry.name == "Dust Devil" and lines[1].entry.near,
+    "among the dust devils: listed first, around you: " .. table.concat(names, ", "))
+  -- Done with the dust devils: off the list.
+  devils[1] = { text = "Dust Devil slain: 2/2", finished = true }
+  lines = ns.HUD.ShopLines()
+  check(#lines == 1 and lines[1].entry.name == "Defias Smuggler", "the dust devils done: off the list: " .. #lines)
+  devils[1] = { text = "Dust Devil slain: 0/2", finished = false }
+
+  -- On the journey, the sweep is a stop you head for: not on the list. Set
+  -- aside, it stays off it.
+  ns.Nav.Stop()
+  player.x, player.y = 0.62, 0.9
+  here = ns.Geo.PlayerNode()
+  local withSweep = ns.Journey.QuestStops(4601, here)
+  withSweep[#withSweep + 1] = { node = ns.Geo.Node(1433, 0.62, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Sweep", stops = withSweep }), true)
+  check(#ns.HUD.ShopLines() == 0, "the sweep on the journey (headed for): not listed; the dust devils still not on the way")
+  local sweepStop
+  for _, s in ipairs(withSweep) do if s.action and s.action.kind == "complete" then sweepStop = s end end
+  sweepStop.skipped = true
+  check(#ns.HUD.ShopLines() == 0, "set aside on the journey: still not listed")
+  ns.Nav.Stop()
+  log = { 4600 }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
+  QUESTS[4601], QUESTS[4605], NPCS[9604], NPCS[9607] = nil, nil, nil, nil
+  refreshData()
+
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives, time =
     saved[1], saved[2], saved[3], saved[4], saved[5]
   QUESTS[4600], NPCS[9601], NPCS[9602] = nil, nil, nil

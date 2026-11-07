@@ -5,8 +5,9 @@ local _, ns = ...
 -- the box gets narrower), and a + button to add a detour (repair, mail, ...).
 -- Blizzard's on-screen navigation is off by default in Forever
 -- (showInGameNavigation = 0), so we don't rely on it.
--- Prototype: a bag button for the shopping list (quests gathered as you go)
--- with the count of what's left; open, the list pops up above the box.
+-- Prototype: a bag button for the shopping list (quests gathered as you go,
+-- and quests in your log with something on the way) with the count of
+-- what's left; open, the list pops up above the box.
 -- Detail on demand (Nav.Detail): "steps" shows each step to the next stop
 -- with a count; "stops" shows only the stop you're heading for and the
 -- compass, and the step when you hover the box.
@@ -176,8 +177,8 @@ local function create()
   f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
     "Skip this stop")
   f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
-  -- PROTOTYPE: the shopping list's toggle, shown while the journey gathers
-  -- something as you go. Hidden list: the button says how many things are
+  -- PROTOTYPE: the shopping list's toggle, shown while there's something to
+  -- gather as you go. Hidden list: the button says how many things are
   -- still wanted. Open: the list pops up above the box (HUD.ToggleShop).
   f.shopToggle = squareButton(f, nil, SHOP_ICON, "$", function() HUD.ToggleShop() end, "Shopping list")
   f.shopToggle:SetPoint("RIGHT", f.skip, "LEFT", -2, 0)
@@ -185,8 +186,12 @@ local function create()
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText(HUD.ShopOpen() and "Hide the shopping list" or "Show the shopping list")
     local n = frame and frame.shopCount or 0
-    GameTooltip:AddLine(string.format("%d thing%s to gather as you go on this journey", n, n == 1 and "" or "s"),
-      0.6, 0.6, 0.6, true)
+    local fromLog = frame and frame.shopFromLog or 0
+    GameTooltip:AddLine(string.format("%d thing%s to gather as you go", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
+    if fromLog > 0 then
+      GameTooltip:AddLine(string.format("%s for quests in your log, on the way", fromLog == n and "All" or fromLog),
+        0.6, 0.6, 0.6, true)
+    end
     GameTooltip:Show()
   end)
   f.shopToggle.count = f.shopToggle:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
@@ -397,6 +402,13 @@ local function shopText(e)
     count and (count .. "  ·  ") or "", e.quest, where)
 end
 
+-- The list for what you're following now: the journey's things gathered as
+-- you go, and its way ahead for the quests in your log that aren't on it.
+local function currentList(a)
+  if not a then return {} end
+  return ns.Journey.ShoppingList(a.journey, ns.Geo.PlayerNode(), a.route, a.index)
+end
+
 -- Whether the list is open (per character; hidden until you open it).
 function HUD.ShopOpen()
   return ns.charDB ~= nil and ns.charDB.shopOpen == true
@@ -404,13 +416,10 @@ end
 
 -- The list as lines, top to bottom: { text, entry } for up to SHOP_ROWS
 -- things (around you first, then nearest: Journey.ShoppingList's order),
--- then { text, entries } for the rest. Empty when the journey gathers
--- nothing as you go.
+-- then { text, entries } for the rest. Empty when there's nothing to
+-- gather as you go.
 function HUD.ShopLines(list)
-  if not list then
-    local a = ns.Nav.active
-    list = a and a.journey and ns.Journey.ShoppingList(a.journey, ns.Geo.PlayerNode()) or {}
-  end
+  list = list or currentList(ns.Nav.active)
   local lines, rest = {}, {}
   for _, e in ipairs(list) do
     if #lines < SHOP_ROWS then
@@ -432,9 +441,13 @@ local function refreshShop(a, force)
   local now = GetTime and GetTime()
   if not force and now and frame.shopAt and now - frame.shopAt < SHOP_EVERY then return end
   frame.shopAt = now
-  local list = a and a.journey and ns.Journey.ShoppingList(a.journey, ns.Geo.PlayerNode()) or {}
+  local list = currentList(a)
   local open = #list > 0 and HUD.ShopOpen()
   frame.shopCount = #list
+  frame.shopFromLog = 0
+  for _, e in ipairs(list) do
+    if e.fromLog then frame.shopFromLog = frame.shopFromLog + 1 end
+  end
   frame.shopToggle:SetShown(#list > 0)
   frame.shopToggle.count:SetText((#list > 0 and not open) and tostring(#list) or "")
   if open and frame.shopToggle.LockHighlight then
@@ -495,22 +508,33 @@ function HUD.ShowShopTooltip(owner)
   if #lines == 0 or not GameTooltip then return end
   GameTooltip:SetOwner(owner, "ANCHOR_TOP")
   GameTooltip:SetText("Shopping list", 1, 1, 1)
+  local onJourney, fromLog = false, false
+  local function note(e)
+    if e.fromLog then fromLog = true else onJourney = true end
+    return e.fromLog and "  ·  not on this journey" or ""
+  end
   for _, line in ipairs(lines) do
     if line.entry then
       local e = line.entry
       local place = not e.near and placeOf(e.node)
-      GameTooltip:AddLine(string.format("%s  %s%s|r", e.name, GREY, e.near and "around you" or place and ("near " .. place)
-        or "farther off"), 0.9, 0.9, 0.9, true)
+      GameTooltip:AddLine(string.format("%s  %s%s%s|r", e.name, GREY, e.near and "around you" or place and ("near " .. place)
+        or "farther off", note(e)), 0.9, 0.9, 0.9, true)
     elseif line.entries then
       for _, e in ipairs(line.entries) do
         local place = placeOf(e.node)
-        GameTooltip:AddLine(string.format("%s%s  %s%s|r", e.name, countText(e) and (" " .. countText(e)) or "", GREY,
-          place and ("near " .. place) or "elsewhere"), 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine(string.format("%s%s  %s%s%s|r", e.name, countText(e) and (" " .. countText(e)) or "", GREY,
+          place and ("near " .. place) or "elsewhere", note(e)), 0.8, 0.8, 0.8, true)
       end
     end
   end
-  GameTooltip:AddLine("The journey takes you through these when they're on the way; it carries on whenever you do.",
-    0.5, 0.82, 0.68, true)
+  if onJourney then
+    GameTooltip:AddLine("The journey takes you through these when they're on the way; it carries on whenever you do.",
+      0.5, 0.82, 0.68, true)
+  end
+  if fromLog then
+    GameTooltip:AddLine("Quests in your log that aren't on this journey show here when they're on the way. "
+      .. "The journey doesn't change for them.", 0.5, 0.82, 0.68, true)
+  end
   GameTooltip:Show()
 end
 

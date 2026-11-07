@@ -731,41 +731,107 @@ function Journey.PassVia(via)
   g.worked[via.index] = time()
 end
 
--- What the journey's gathered-as-you-go quests still want, around you first,
--- then nearest first:
---   { {questID, quest, name, have, need, node, distance, near}, ... }
--- `have`/`need` from the quest log (nil when it doesn't say).
-function Journey.ShoppingList(journey, here)
+-- Quests in your log that aren't on the journey (spread or not) put their
+-- open objectives on the list when some of their places are on the way:
+-- going through one adds VIA_YARDS or less to a walk still ahead, or it's
+-- around you. They're only listed: the journey isn't sent through them. A
+-- quest on the journey keeps to the rule above (a stop you head for isn't
+-- listed, nor one you set aside).
+local function walksAhead(route, index, here)
+  local legs = {}
+  for k = index or 1, #(route and route.steps or {}) do
+    local step = route.steps[k]
+    local from = (k == index and here) or step.from
+    if step.mode == "walk" and from and step.to and from.instance == step.to.instance then
+      legs[#legs + 1] = { from, step.to }
+    end
+  end
+  return legs
+end
+
+local function addsLittle(nodes, legs, first)
+  for k = first or 1, #legs do
+    local a, b = legs[k][1], legs[k][2]
+    local direct = ns.Geo.Distance(a, b)
+    for _, n in ipairs(nodes) do
+      if n.instance == a.instance and ns.Geo.Distance(a, n) + ns.Geo.Distance(n, b) - direct <= VIA_YARDS then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+-- The walks after the one you're on don't move as you do: what's on their
+-- way is kept per route and step (route -> { index, groups = {[group] = on
+-- the way} }).
+local wayCache = setmetatable({}, { __mode = "k" })
+
+-- Whether some of a group's places are on the walks ahead (`legs`, the
+-- first from where you are when `fromHere`).
+local function onTheWay(group, legs, route, index, fromHere)
+  if fromHere and addsLittle(group.nodes, { legs[1] }) then return true end
+  local c = route and wayCache[route]
+  if not (c and c.index == index and c.fromHere == fromHere) then
+    c = { index = index, fromHere = fromHere, groups = setmetatable({}, { __mode = "k" }) }
+    if route then wayCache[route] = c end
+  end
+  if c.groups[group] == nil then c.groups[group] = addsLittle(group.nodes, legs, fromHere and 2 or 1) end
+  return c.groups[group]
+end
+
+-- What's still wanted: the journey's gathered-as-you-go quests, and the
+-- quests in your log off the journey with something on the way. Around you
+-- first, then nearest first:
+--   { {questID, quest, name, have, need, node, distance, near, fromLog}, ... }
+-- `have`/`need` from the quest log (nil when it doesn't say); `fromLog`: the
+-- quest isn't on the journey. `route`/`index`: the way ahead (Nav.active's).
+function Journey.ShoppingList(journey, here, route, index)
   refresh()
   local root = journey and (journey.root or journey.def)
   local out, seen = {}, {}
-  for _, stop in ipairs(root and root.stops or {}) do
-    local id = gatherable(stop) and not stop.done and not stop.skipped and stop.action.questID
-    if id and not seen[id] and inLog(id) and not objectivesDone(id) then
-      seen[id] = true
-      local q = ns.Quests.Quest(id)
-      local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(id) or {}
-      for _, group in ipairs(ns.Quests.ObjectiveGroups(id)) do
-        local entry, finished = { questID = id, quest = q and q.name or ("quest " .. id), name = group.name or "?" }, false
-        for _, o in ipairs(objectives) do
-          if group.name and type(o.text) == "string" and o.text:find(group.name, 1, true) then
-            finished = o.finished and true or false
-            local have, need = o.numFulfilled, o.numRequired
-            if not (type(have) == "number" and type(need) == "number") then
-              local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
-              have, need = tonumber(a), tonumber(b)
-            end
-            entry.have, entry.need = have, need
+  local function add(id, keep)
+    seen[id] = true
+    local q = ns.Quests.Quest(id)
+    local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(id) or {}
+    for _, group in ipairs(ns.Quests.ObjectiveGroups(id)) do
+      local entry, finished = { questID = id, quest = q and q.name or ("quest " .. id), name = group.name or "?" }, false
+      for _, o in ipairs(objectives) do
+        if group.name and type(o.text) == "string" and o.text:find(group.name, 1, true) then
+          finished = o.finished and true or false
+          local have, need = o.numFulfilled, o.numRequired
+          if not (type(have) == "number" and type(need) == "number") then
+            local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
+            have, need = tonumber(a), tonumber(b)
           end
-        end
-        if not finished then
-          local node, d = ns.Data.Nearest(group.nodes, here)
-          entry.node, entry.distance = node, d or math.huge
-          entry.near = here ~= nil and entry.distance <= NEAR_YARDS
-          out[#out + 1] = entry
+          entry.have, entry.need = have, need
         end
       end
+      if not finished then
+        local node, d = ns.Data.Nearest(group.nodes, here)
+        entry.node, entry.distance = node, d or math.huge
+        entry.near = here ~= nil and entry.distance <= NEAR_YARDS
+        if not keep or keep(group, entry) then out[#out + 1] = entry end
+      end
     end
+  end
+  local onJourney = {}
+  for _, stop in ipairs(root and root.stops or {}) do
+    local id = stop.action and stop.action.questID
+    if id then onJourney[id] = true end
+    id = gatherable(stop) and not stop.done and not stop.skipped and id
+    if id and not seen[id] and inLog(id) and not objectivesDone(id) then add(id) end
+  end
+  -- The walk you're on is measured from where you are; the rest are cached.
+  local legs = walksAhead(route, index, here)
+  local fromHere = here ~= nil and legs[1] ~= nil and legs[1][1] == here
+  local function keep(group, entry)
+    entry.fromLog = true
+    return entry.near or onTheWay(group, legs, route, index, fromHere)
+  end
+  for _, info in ns.QuestLog.Entries() do
+    local id = not info.isHeader and info.questID
+    if id and not onJourney[id] and not seen[id] and inLog(id) and not objectivesDone(id) then add(id, keep) end
   end
   table.sort(out, function(x, y)
     if x.near ~= y.near then return x.near end
