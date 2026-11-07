@@ -527,6 +527,17 @@ ns.Listen("FLIGHTS_CHANGED", function()
   end
 end)
 
+-- Whether a stop on the route from step `from` on is done already (the quest
+-- log said so while you were on another): the route has to be planned again
+-- without it, or the way would lead to a place with nothing left to do.
+local function doneAhead(a, from)
+  for k = from, #a.route.steps do
+    local stop = a.route.steps[k].stop
+    if stop and stop.done then return true end
+  end
+  return false
+end
+
 -- A journey stop's quest was accepted / handed in (or its item collected:
 -- `matches` picks the stop). At the current stop the journey moves on; done
 -- ahead of time, the rest is re-planned without it. Returns true if a stop was.
@@ -540,7 +551,7 @@ local function finishStop(matches)
       note("done: %s", stopName(stop))
       if stop.action.kind == "train" then count("ranks") end
       if i == #a.route.steps then return lastStepDone(a) end
-      local relocate = false
+      local relocate = doneAhead(a, i + 1)
       for k = i + 1, #a.route.steps do
         local later = a.route.steps[k].stop
         if later and later.resolve and not later.done then relocate = true end
@@ -549,7 +560,8 @@ local function finishStop(matches)
         a.index = i + 1
         showStep()
       else
-        -- Done ahead of time, or a later stop's place is now known better.
+        -- Done ahead of time, a later stop done already, or a later stop's
+        -- place is now known better.
         Nav.Recalculate()
       end
       return true
@@ -564,22 +576,24 @@ end
 
 -- Every other stop of the journey that the quest log, your bags or the
 -- completed quests say is done now: skipped stops you did anyway, and steps
--- of a quest whose objectives are complete. The journey is re-planned if the
--- stop you were heading for is among them.
+-- of a quest whose objectives are complete. The journey is re-planned if any
+-- stop still ahead on the route is among them (the one you were heading for,
+-- or one later on: two quests done on the same spots, the second finished
+-- first by a loot).
 local function syncStops()
   local a = Nav.active
   if not (a and a.journey) then return end
-  local current = Nav.CurrentStep()
-  local pending = current and current.stop and not current.stop.done and current.stop
-  if ns.Journey.SyncQuestState(a.journey.root or a.journey.def) == 0 then return end
+  local changed = ns.Journey.SyncQuestState(a.journey.root or a.journey.def)
+  if changed == 0 then return end
+  note("the quest log says %d more stop%s done", changed, changed == 1 and "" or "s")
   -- Everything gathered for a quest: no more going through its areas.
   local gathered = false
   for k = a.index, #a.route.steps do
     local via = a.route.steps[k].via
     if via and via.stop.done then gathered = true end
   end
-  if (pending and pending.done) or gathered then
-    Nav.Recalculate()
+  if doneAhead(a, a.index) or gathered then
+    if ns.Journey.HasOpenStops(a.journey.root or a.journey.def) then Nav.Recalculate() else arrive() end
   else
     showStep()
   end

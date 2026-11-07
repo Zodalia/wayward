@@ -8368,6 +8368,33 @@ do
   ns.HUD.Update()
   check(ns.Nav.CurrentStep().stop == bandanaDo and ns.Nav.InArea() and ns.HUD.Lines()[2] == "Do Bandana Hunt",
     "the sweep done: the bandanas on their own, still in the area: " .. tostring(ns.HUD.Lines()[2]))
+  -- The other way round: the bandanas finished on a loot (the bags change
+  -- before the log is looked at), then the sweep. The way goes on to a
+  -- hand-in, not to the bandanas' spot with nothing left to do there.
+  ns.Nav.Stop()
+  sweep[1] = { text = "Defias Smuggler slain: 0/6", finished = false }
+  bandanas[1] = { text = "Defias Smuggler slain: 0/4", finished = false }
+  doneIds = {}
+  pair = ns.Journey.QuestStops(4601, here)
+  for _, s in ipairs(ns.Journey.QuestStops(4603, here)) do pair[#pair + 1] = s end
+  sweepDo, bandanaDo = pair[1], pair[3]
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Smugglers", stops = pair }), true)
+  check(ns.Nav.active.journey.stops[2] == bandanaDo and bandanaDo.joined == sweepDo,
+    "planned again with the bandanas joined to the sweep")
+  -- In the camp, but not on the spot it's aimed at.
+  player.x, player.y = bandanaDo.node.x + 0.04, bandanaDo.node.y
+  local offSpot = ns.Geo.Distance(ns.Geo.PlayerNode(), bandanaDo.node)
+  check(offSpot > 15 and offSpot < 60, string.format("in the camp, %.0f yd off the spot", offSpot))
+  bandanas[1] = { text = "Defias Smuggler slain: 4/4", finished = true }
+  doneIds[4603] = true
+  fire("BAG_UPDATE_DELAYED")
+  sweep[1] = { text = "Defias Smuggler slain: 6/6", finished = true }
+  doneIds[4601] = true
+  fire("QUEST_LOG_UPDATE")
+  ns.HUD.Update()
+  local onTo = ns.Nav.CurrentStep() and ns.Nav.CurrentStep().stop
+  check(bandanaDo.done and onTo and not onTo.done and onTo.action.kind == "turnin",
+    "both done, the bandanas first: on to a hand-in, not the bandanas' spot: " .. tostring(onTo and onTo.text))
   ns.Nav.Stop()
   ns.JourneyOverview.EnsureFrame():Hide()
   log = { 4600 }
