@@ -624,8 +624,8 @@ button, to add it to the journey you're on.
   - A stop can list `after = { otherStop }` (it must come later), and
     `resolve = { kind = "objectives", questID }` to find its place at planning
     time. Action kinds: `pickup`, `complete` (the objectives; done when the game
-    reports the quest complete), `turnin`, `item` (collect an item a quest
-    needs; done when it's in your bags), `manual` (a quest step only you can
+    reports the quest complete), `turnin`, `item` (collect or buy an item a
+    quest needs; done when your bags hold as many as its log asks for), `manual` (a quest step only you can
     tell is done; the directions box's move on button confirms it there),
     `talk { npc }` (done when you talk to them), `train { profession, cap,
     npc }` (a profession rank; done when the cap goes up), `explore { mapID }`
@@ -653,8 +653,16 @@ button, to add it to the journey you're on.
     area marker once it's in your log, else the quest data's objective mobs, objects,
     item drops and explore points), hand it in. Before the objectives come
     what the quest data says the quest needs first: its source items you don't have
-    (where they drop or lie) and its extra objectives in order (e.g.
-    "Fill the bowl at the moonwell").
+    (where they drop or lie, or the nearest vendor of your faction that sells
+    them) and its extra objectives in order (e.g. "Fill the bowl at the
+    moonwell"). Objective items nothing drops are got any time between the pickup and
+    the hand-in: when another quest you can do rewards one (Dry Times' Keg of
+    Thunderbrew, from the repeatable Thunderbrew Lager), that quest's stops come
+    in, its hand-in "for Keg of Thunderbrew"; otherwise, when a vendor sells it
+    (the data's sellers and vendors you visited), a "Buy 5 Rhapsody Malt from
+    Innkeeper Firebrew" stop. A quest that asks only for those has no "Do"
+    stop: the getting is the doing. A repeatable quest is never done for good,
+    so it's planned again after you've handed it in.
   - A quest's objectives are an area, not a point: every spawn of what you
     still need (the quest data's creatures, objects and item sources). Within 80
     yards of any of them you're in the area: the compass and waypoints step

@@ -726,11 +726,75 @@ function Quests.ObjectiveNode(questID, here)
   return Data.Nearest(nodes, here), "data"
 end
 
+-- The quest log's objective for an item a quest wants (matched by the
+-- item's name in the objective text), or nil when the quest isn't in your
+-- log or names it some other way.
+local function itemObjective(questID, itemID)
+  if not (questID and C_QuestLog.GetQuestObjectives) then return nil end
+  local item = Data.Item(itemID)
+  local name = (GetItemInfo and GetItemInfo(itemID)) or (item and item.name)
+  if not name then return nil end
+  for _, o in ipairs(C_QuestLog.GetQuestObjectives(questID) or {}) do
+    if type(o.text) == "string" and o.text:find(name, 1, true) then return o end
+  end
+  return nil
+end
+
+-- How many of an item a quest wants, from your log (1 when it doesn't say).
+function Quests.ItemsWanted(questID, itemID)
+  local o = itemObjective(questID, itemID)
+  return o and tonumber(o.numRequired) or 1
+end
+
+-- Do you hold what a quest wants of an item? Its log objective is finished,
+-- or your bags have as many as it asks for.
+function Quests.HasEnough(questID, itemID)
+  local o = itemObjective(questID, itemID)
+  if o and o.finished then return true end
+  return ns.ItemCount(itemID) >= (o and tonumber(o.numRequired) or 1)
+end
+
+-- A quest you can do again once it's handed in (the data's repeatable flag).
+function Quests.IsRepeatable(questID)
+  local q = Quests.Quest(questID)
+  local flags = q and tonumber(q.specialFlags)
+  return flags ~= nil and math.floor(flags) % 2 == 1
+end
+
+-- A quest that rewards an item and that you can do now, other than
+-- `forQuest`: one in your log first, then one you can pick up (a repeatable
+-- you did before counts), then a grey one. nil when there's none.
+local REWARD_PREFERENCE = { inLog = 1, available = 2, low = 3 }
+local function rewardQuest(item, forQuest)
+  local best, bestRank
+  for _, id in ipairs(type(item.questRewards) == "table" and item.questRewards or {}) do
+    local status = id ~= forQuest and Quests.RewardStatus(id)
+    if status == "done" and Quests.IsRepeatable(id) then status = "available" end
+    local rank = status and REWARD_PREFERENCE[status]
+    if rank and (not bestRank or rank < bestRank) then best, bestRank = id, rank end
+  end
+  return best
+end
+
+-- "Buy Rhapsody Malt from Innkeeper Firebrew" (with how many, once the log says).
+local function buyText(questID, itemID, name, vendor)
+  local wanted = Quests.ItemsWanted(questID, itemID)
+  return string.format("Buy %s%s from %s", wanted > 1 and (wanted .. " ") or "", name, vendor or "a vendor")
+end
+
 -- What a quest needs before its objectives can be done, from the data, in
 -- order: items to collect first (its source items that drop or lie somewhere,
--- and that you don't have yet), then its extra objectives (e.g. "Fill the
--- bowl at the moonwell"), each with its nearest place:
---   { {kind = "item", itemID, text, node} | {kind = "event", text, node}, ... }
+-- or that a vendor sells, and that you don't have yet), then its extra
+-- objectives (e.g. "Fill the bowl at the moonwell"), each with its nearest
+-- place. Objective items nothing drops come, to get any time before the
+-- hand-in, as "earn" when another quest you can do rewards them (Keg of
+-- Thunderbrew: the repeatable Thunderbrew Lager), else as "buy" when a vendor
+-- of your faction sells them:
+--   { {kind = "item", itemID, text, node, npc?} | {kind = "event", text, node}
+--     | {kind = "buy", itemID, text, node, npc} | {kind = "earn", itemID, questID}, ... },
+--   onlyBuying
+-- `onlyBuying`: buying or earning those is all the quest's objectives ask,
+-- so there's nothing else to go and do.
 function Quests.QuestPrep(questID, here)
   if not Quests.Available() then return {} end
   local q = Quests.Quest(questID)
@@ -738,15 +802,51 @@ function Quests.QuestPrep(questID, here)
   local out, objectiveItems = {}, {}
   local groups = type(q.objectives) == "table" and q.objectives or {}
   for _, item in ipairs(groups[3] or {}) do objectiveItems[item[1]] = true end
+  local function seller(itemID)
+    if not ns.Vendors then return nil end
+    return ns.Vendors.NearestSeller(itemID, here)
+  end
   for _, itemID in ipairs(type(q.requiredSourceItems) == "table" and q.requiredSourceItems or {}) do
     local have = ns.ItemCount(itemID) > 0
     if type(itemID) == "number" and not objectiveItems[itemID] and not have then
       local item = Data.Item(itemID)
       local name = item and item.name or ("item " .. itemID)
       local node = Data.Nearest(itemNodes(itemID, name), here)
-      if node then out[#out + 1] = { kind = "item", itemID = itemID, text = "Collect " .. name, node = node } end
+      if node then
+        out[#out + 1] = { kind = "item", itemID = itemID, text = "Collect " .. name, node = node }
+      else
+        local vendor, at = seller(itemID)
+        if at then out[#out + 1] = { kind = "item", itemID = itemID, text = buyText(nil, itemID, name, vendor), node = at, npc = vendor } end
+      end
     end
   end
+  local bought, objectiveCount = 0, 0
+  for _, entry in ipairs(groups[3] or {}) do
+    local itemID = entry[1]
+    objectiveCount = objectiveCount + 1
+    local item = type(itemID) == "number" and Data.Item(itemID)
+    local name = item and item.name or ("item " .. tostring(itemID))
+    if item and #itemNodes(itemID, name) == 0 then
+      -- A quest reward is how it's really had: a vendor in the data that
+      -- "sells" it too is most likely the reward quest's giver.
+      local source = rewardQuest(item, questID)
+      local vendor, at
+      if not source then vendor, at = seller(itemID) end
+      if source or at then
+        bought = bought + 1
+        if Quests.HasEnough(questID, itemID) then
+          -- got it already
+        elseif source then
+          out[#out + 1] = { kind = "earn", itemID = itemID, questID = source }
+        else
+          out[#out + 1] = { kind = "buy", itemID = itemID, text = buyText(questID, itemID, name, vendor), node = at, npc = vendor }
+        end
+      end
+    end
+  end
+  local function none(list) return type(list) ~= "table" or next(list) == nil end
+  local onlyBuying = bought > 0 and bought == objectiveCount and none(groups[1]) and none(groups[2])
+    and none(groups[4]) and none(groups[5]) and q.triggerEnd == nil
   for _, extra in ipairs(type(q.extraObjectives) == "table" and q.extraObjectives or {}) do
     local positions, text = extra[1], extra[3]
     if type(positions) == "table" and type(text) == "string" then
@@ -754,7 +854,7 @@ function Quests.QuestPrep(questID, here)
       if node then out[#out + 1] = { kind = "event", text = text, node = node } end
     end
   end
-  return out
+  return out, onlyBuying
 end
 
 -- The quests that follow `questID` in its chain (the data's links, quests

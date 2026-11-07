@@ -305,6 +305,60 @@ local function npcInfo(id)
   return npcCache[id] or nil
 end
 
+-- [itemID] = { npcID, ... }: vendors you visited, by what they sold. Built
+-- once until a vendor is recorded or the data changes.
+local visitedGoods
+local function visitedSellers(itemID)
+  if not visitedGoods then
+    visitedGoods = {}
+    for id, npc in pairs(ns.Harvest.AllNPCs()) do
+      if npc.kinds and npc.kinds.vendor then
+        for _, goodID in ipairs(npc.goods or {}) do
+          visitedGoods[goodID] = visitedGoods[goodID] or {}
+          table.insert(visitedGoods[goodID], id)
+        end
+      end
+    end
+  end
+  return visitedGoods[itemID] or {}
+end
+ns.Listen("DATA_CHANGED", function() visitedGoods = nil end)
+ns.Listen("SOURCES_CHANGED", function() visitedGoods = nil end)
+
+-- The nearest vendor of your faction that sells an item, from the data's
+-- sellers and the vendors you visited (their measured position wins):
+-- name, node, npcID, or nil when nobody you can trade with sells it.
+function Vendors.NearestSeller(itemID, here)
+  local faction = UnitFactionGroup("player")
+  local nodes, byNode = {}, {}
+  local function add(id, name, node)
+    if node and not byNode[node] then
+      nodes[#nodes + 1] = node
+      byNode[node] = { id = id, name = name }
+    end
+  end
+  local visited = ns.Harvest.AllNPCs()
+  local seen = {}
+  for _, id in ipairs(visitedSellers(itemID)) do
+    local npc = visited[id]
+    local friendly = npc and (npc.faction == nil or npc.faction == faction or npc.faction == "Neutral")
+    if friendly then
+      seen[id] = true
+      add(id, npc.name, ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name))
+    end
+  end
+  if ns.Data.Has("Npc") then
+    for _, id in ipairs(itemSellers(itemID)) do
+      local info = not seen[id] and npcInfo(id)
+      if info and ns.Data.FriendlyTo(info.faction, faction) then add(id, info.name, (ns.Data.Nearest(info.nodes, here))) end
+    end
+  end
+  if #nodes == 0 then return nil end
+  local node = ns.Data.Nearest(nodes, here)
+  local seller = byNode[node]
+  return seller.name, node, seller.id
+end
+
 -- { [npcID] = { name, node, goods = {[itemID] = true}, sells, repairs } } for your faction.
 local function sourceVendors(p, faction, here)
   local out = {}

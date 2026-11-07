@@ -8367,6 +8367,136 @@ do
   F.Invalidate()
 end
 -- ===== home screen feedback (end) =====
+-- ===== journey: buying what a quest wants (begin) =====
+do
+  io.write("journey: buying what a quest wants\n")
+  ns.Nav.Stop()
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete,
+    C_QuestLog.GetQuestObjectives }
+  local savedCount, savedInfo = GetItemCount, GetItemInfo
+  GetItemInfo = nil
+  local qs
+  -- Rhapsody Malt: nothing drops it; an innkeeper in Redridge sells it, and a
+  -- Horde vendor nearer by too.
+  NPCS[7010] = { name = "Innkeeper Firebrew", subName = "Innkeeper", npcFlags = 4, friendlyToFaction = "A",
+    spawns = { [44] = { { 40.0, 40.0 } } } }
+  NPCS[7011] = { name = "Horde Brewer", subName = "Food & Drink", npcFlags = 4, friendlyToFaction = "H",
+    spawns = { [44] = { { 50.5, 50.5 } } } }
+  ITEMS[520] = { name = "Rhapsody Malt", vendors = { 7010, 7011 } }
+  ITEMS[521] = { name = "Flask of Oil", vendors = { 7010 } }
+  ITEMS[522] = { name = "Murloc Fin", npcDrops = { 9101 }, vendors = { 7010 } }
+  QUESTS[60] = { name = "Thirst for Malt", questLevel = 18, requiredLevel = 14, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { nil, nil, { { 520 } } } }
+  QUESTS[61] = { name = "Malt and Murlocs", questLevel = 18, requiredLevel = 14, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } }, nil, { { 520 } } } }
+  QUESTS[62] = { name = "Oil the Torches", questLevel = 18, requiredLevel = 14, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9101 } } }, requiredSourceItems = { 521 } }
+  QUESTS[63] = { name = "Fins", questLevel = 18, requiredLevel = 14, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { nil, nil, { { 522 } } } }
+  refreshData()
+  local bags = {}
+  GetItemCount = function(id) return bags[id] or 0 end
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local function kindsOf(qs)
+    local out = {}
+    for _, st in ipairs(qs) do out[#out + 1] = st.action.kind end
+    return table.concat(out, ",")
+  end
+  local function has(list, stop)
+    for _, s in ipairs(list or {}) do if s == stop then return true end end
+    return false
+  end
+
+  qs = ns.Journey.QuestStops(60, here)
+  check(kindsOf(qs) == "pickup,item,turnin",
+    "a quest that wants something you buy: pick up, buy it, hand in (nothing else to do): " .. kindsOf(qs))
+  check(qs[2].text == "Buy Rhapsody Malt from Innkeeper Firebrew for Thirst for Malt" and qs[2].npc == "Innkeeper Firebrew",
+    "the vendor of your faction, not the nearer Horde one: " .. tostring(qs[2].text))
+  check(qs[2].after[1] == qs[1] and has(qs[3].after, qs[2]), "bought after the pickup, before the hand-in")
+
+  qs = ns.Journey.QuestStops(61, here)
+  check(kindsOf(qs) == "pickup,item,complete,turnin", "kill and buy: both stops: " .. kindsOf(qs))
+  check(not has(qs[3].after, qs[2]) and has(qs[4].after, qs[2]) and has(qs[4].after, qs[3]),
+    "the buying and the killing in either order; both before the hand-in")
+
+  qs = ns.Journey.QuestStops(62, here)
+  check(kindsOf(qs) == "pickup,item,complete,turnin" and qs[2].text == "Buy Flask of Oil from Innkeeper Firebrew for Oil the Torches"
+    and has(qs[3].after, qs[2]), "an item the quest starts you with that you buy: bought before the objectives")
+
+  qs = ns.Journey.QuestStops(63, here)
+  check(kindsOf(qs) == "pickup,complete,turnin", "an item that drops is fought for, not bought: " .. kindsOf(qs))
+
+  -- In the log: the objective says how many. Three aren't enough; five are.
+  local log = { 60 }
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  C_QuestLog.GetQuestObjectives = function(id)
+    return id == 60 and { { text = "Rhapsody Malt: " .. (bags[520] or 0) .. "/5", type = "item",
+      numFulfilled = bags[520] or 0, numRequired = 5, finished = (bags[520] or 0) >= 5 } } or {}
+  end
+  qs = ns.Journey.QuestStops(60, here)
+  check(kindsOf(qs) == "item,turnin" and qs[1].text == "Buy 5 Rhapsody Malt from Innkeeper Firebrew for Thirst for Malt",
+    "in your log: how many to buy: " .. tostring(qs[1] and qs[1].text))
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Malt", stops = qs }))
+  check(ns.Nav.CurrentStep().stop == qs[1], "first: the innkeeper")
+  bags[520] = 3
+  fire("BAG_UPDATE_DELAYED")
+  check(not qs[1].done and ns.Nav.CurrentStep().stop == qs[1], "three of five: still buying")
+  bags[520] = 5
+  fire("BAG_UPDATE_DELAYED")
+  check(qs[1].done and ns.Nav.CurrentStep().stop == qs[2], "five of five: on to the hand-in")
+  ns.Nav.Stop()
+  check(kindsOf(ns.Journey.QuestStops(60, here)) == "turnin", "already bought: nothing to buy again")
+  ns.JourneyOverview.Toggle()
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete, C_QuestLog.GetQuestObjectives =
+    savedLog[1], savedLog[2], savedLog[3], savedLog[4]
+
+  -- Like Dry Times: the Keg of Thunderbrew is the reward of a repeatable
+  -- quest (5 Hops), from Grimbooze Thunderbrew, whom the data also lists as
+  -- selling it. Earned, not bought.
+  NPCS[7012] = { name = "Grimbooze Thunderbrew", npcFlags = 4 + 2, friendlyToFaction = "A",
+    spawns = { [44] = { { 45.0, 80.0 } } } }
+  ITEMS[530] = { name = "Keg of Thunderbrew", vendors = { 7012 }, questRewards = { 65 } }
+  ITEMS[531] = { name = "Hops", vendors = { 7012 } }
+  QUESTS[64] = { name = "Dry Times", questLevel = 18, requiredLevel = 14, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { nil, nil, { { 530 } } } }
+  QUESTS[65] = { name = "Thunderbrew Lager", questLevel = 14, requiredLevel = 10, startedBy = { { 7012 } },
+    finishedBy = { { 7012 } }, objectives = { nil, nil, { { 531 } } }, specialFlags = 1 }
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  local savedFlagsKey = questKeys.specialFlags
+  questKeys.specialFlags = 24
+  refreshData()
+  qs = ns.Journey.QuestStops(64, here)
+  local texts = {}
+  for _, st in ipairs(qs) do texts[#texts + 1] = st.text end
+  check(kindsOf(qs) == "pickup,pickup,item,turnin,turnin" and not table.concat(texts, "|"):find("Buy Keg", 1, true),
+    "an item another quest rewards: that quest's stops, not a vendor: " .. table.concat(texts, " | "))
+  check(qs[2].text == "Pick up Thunderbrew Lager from Grimbooze Thunderbrew" and qs[2].after[1] == qs[1]
+    and qs[3].text == "Buy Hops from Grimbooze Thunderbrew for Thunderbrew Lager"
+    and qs[4].text == "Hand in Thunderbrew Lager to Grimbooze Thunderbrew for Keg of Thunderbrew"
+    and has(qs[4].after, qs[3]) and has(qs[5].after, qs[4]) and qs[5].action.questID == 64,
+    "pick up the lager quest, buy the hops, hand it in for the keg, then hand in Dry Times")
+
+  -- Done the lager quest before: it's repeatable, so it's planned again.
+  local savedCompleted = C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 65 } end
+  check(kindsOf(ns.Journey.QuestStops(64, here)) == "pickup,pickup,item,turnin,turnin",
+    "a repeatable done before can be done again")
+  C_QuestLog.GetAllCompletedQuestIDs = savedCompleted
+  bags[530] = 1
+  check(kindsOf(ns.Journey.QuestStops(64, here)) == "pickup,turnin", "keg in your bags: straight to the hand-in")
+  bags[530] = nil
+  questKeys.specialFlags = savedFlagsKey
+
+  GetItemCount, GetItemInfo = savedCount, savedInfo
+  QUESTS[60], QUESTS[61], QUESTS[62], QUESTS[63], QUESTS[64], QUESTS[65] = nil, nil, nil, nil, nil, nil
+  ITEMS[520], ITEMS[521], ITEMS[522], NPCS[7010], NPCS[7011] = nil, nil, nil, nil, nil
+  ITEMS[530], ITEMS[531], NPCS[7012] = nil, nil, nil
+  refreshData()
+end
+-- ===== journey: buying what a quest wants (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

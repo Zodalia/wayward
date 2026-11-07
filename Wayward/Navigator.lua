@@ -1008,9 +1008,9 @@ for _, event in ipairs({ "SKILL_LINES_CHANGED", "TRAINER_UPDATE", "CHAT_MSG_SKIL
   ns.On(event, function() ns.After(0.2, trainedCheck) end)
 end
 
--- Collecting an item a quest needs.
+-- Collecting or buying an item a quest needs.
 ns.On("BAG_UPDATE_DELAYED", function()
-  finishStop(function(action) return action.kind == "item" and ns.ItemCount(action.itemID) > 0 end)
+  finishStop(function(action) return action.kind == "item" and ns.Quests.HasEnough(action.questID, action.itemID) end)
   syncStops()
 end)
 

@@ -19,7 +19,8 @@ local _, ns = ...
 --     node = route node (ns.Geo.Node),
 --     text = "Pick up Red Silk Bandanas from Scout Riell",  -- shown on arrival
 --     action = { kind = "pickup" | "complete" | "turnin", questID = 123 },  -- optional; also
---       { kind = "item", itemID, questID } (collect an item a quest needs) and
+--       { kind = "item", itemID, questID } (collect or buy an item a quest needs: done once
+--       you hold as many as its log asks for, Quests.HasEnough) and
 --       { kind = "manual", questID } (a step of a quest you confirm with next) and
 --       { kind = "talk", npc } (done when you talk to them: a trainer, a vendor) and
 --       { kind = "train", profession, cap, npc } (done when that profession's skill
@@ -72,16 +73,13 @@ local function inLog(questID)
   return logged[questID] == true
 end
 
+-- A repeatable quest is never done for good: it can always be picked up again.
 local function completed(questID)
-  return done[questID] == true
+  return done[questID] == true and not ns.Quests.IsRepeatable(questID)
 end
 
 local function objectivesDone(questID)
   return inLog(questID) and ns.QuestLog.IsComplete(questID) or false
-end
-
-local function hasItem(itemID)
-  return ns.ItemCount(itemID) > 0
 end
 
 -- Marks quest stops done when the quest has already moved past them (e.g.
@@ -100,7 +98,7 @@ function Journey.SyncQuestState(def)
     elseif action.kind == "complete" or action.kind == "manual" then
       now = completed(id) or objectivesDone(id)
     elseif action.kind == "item" then
-      now = completed(id) or objectivesDone(id) or hasItem(action.itemID)
+      now = completed(id) or objectivesDone(id) or ns.Quests.HasEnough(id, action.itemID)
     elseif action.kind == "turnin" then
       now = completed(id)
     end
@@ -116,7 +114,10 @@ end
 
 -- The stops for doing a whole quest from where it stands now: pick it up,
 -- do the objectives, hand it in. Returns { stops } (empty if done).
-function Journey.QuestStops(questID, here)
+-- `seen`: quests already being planned (a quest that rewards what another
+-- needs is planned inside it, once).
+function Journey.QuestStops(questID, here, seen)
+  seen = seen or {}
   local q = ns.Quests.Quest(questID)
   local name = q and q.name or ("quest " .. questID)
   refresh()
@@ -132,37 +133,64 @@ function Journey.QuestStops(questID, here)
     stops[#stops + 1] = previous
   end
 
+  local bought, waitFor = {}, nil
   if not objectivesDone(questID) then
     -- What the quest needs first: items to collect (any order), then its
-    -- extra steps in order (e.g. fill a bowl, place it at a bonfire).
+    -- extra steps in order (e.g. fill a bowl, place it at a bonfire). Items
+    -- it wants that you buy can be bought any time before the hand-in.
     local gate = previous and { previous } or nil
     local items = {}
-    for _, p in ipairs(ns.Quests.QuestPrep(questID, here)) do
+    local prep, onlyBuying = ns.Quests.QuestPrep(questID, here)
+    for _, p in ipairs(prep) do
       local stop
-      if p.kind == "item" then
-        stop = { node = p.node, text = string.format("%s for %s", p.text, name), after = previous and { previous } or nil,
-          action = { kind = "item", itemID = p.itemID, questID = questID } }
+      if p.kind == "earn" then
+        -- Another quest rewards it: that quest's stops, its hand-in before this one's.
+        seen[questID] = true
+        local sub = not seen[p.questID] and Journey.QuestStops(p.questID, here, seen) or {}
+        local item = ns.Data.Item(p.itemID)
+        for _, s in ipairs(sub) do
+          if s.action.kind == "pickup" and not s.after then s.after = previous and { previous } or nil end
+          if s.action.kind == "turnin" and s.action.questID == p.questID then
+            s.text = string.format("%s for %s", s.text, item and item.name or "what you need")
+            bought[#bought + 1] = s
+          end
+          stops[#stops + 1] = s
+        end
+      elseif p.kind == "buy" then
+        stop = { node = p.node, npc = p.npc, text = string.format("%s for %s", p.text, name),
+          after = previous and { previous } or nil, action = { kind = "item", itemID = p.itemID, questID = questID } }
+        bought[#bought + 1] = stop
+      elseif p.kind == "item" then
+        stop = { node = p.node, npc = p.npc, text = string.format("%s for %s", p.text, name),
+          after = previous and { previous } or nil, action = { kind = "item", itemID = p.itemID, questID = questID } }
         items[#items + 1] = stop
       else
         if #items > 0 then gate, items = items, {} end
         stop = { node = p.node, text = p.text, after = gate, action = { kind = "manual", questID = questID } }
         gate = { stop }
       end
-      stops[#stops + 1] = stop
+      if stop then stops[#stops + 1] = stop end
     end
     if #items > 0 then gate = items end
-    local node = ns.Quests.ObjectiveNode(questID, here)
+    -- A quest that only asks for things you buy has nowhere else to go:
+    -- the shopping is the doing.
+    local node = not onlyBuying and ns.Quests.ObjectiveNode(questID, here)
     if node then
       previous = { node = node, text = "Do " .. name, after = gate,
         action = { kind = "complete", questID = questID }, resolve = { kind = "objectives", questID = questID } }
       stops[#stops + 1] = previous
+    elseif onlyBuying and gate then
+      waitFor = gate
     end
   end
 
   local finisher, node = ns.Quests.QuestFinisher(questID, here)
   if node then
+    local after = {}
+    for _, s in ipairs(waitFor or { previous }) do after[#after + 1] = s end
+    for _, s in ipairs(bought) do after[#after + 1] = s end
     stops[#stops + 1] = { node = node, npc = finisher, text = string.format("Hand in %s to %s", name, finisher or "the quest giver"),
-      after = previous and { previous } or nil, action = { kind = "turnin", questID = questID } }
+      after = #after > 0 and after or nil, action = { kind = "turnin", questID = questID } }
   end
   return stops
 end
