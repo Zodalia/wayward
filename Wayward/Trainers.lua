@@ -159,6 +159,10 @@ end
 -- sources ("data"), or nil without either.
 function Trainers.Services()
   local cs = ns.charDB.classSpells
+  -- A weapon master's list once taken for your class trainer's: dropped.
+  if cs and ns.Harvest.IsWeaponList(cs.services) then
+    ns.charDB.classSpells, cs = nil, nil
+  end
   if cs then return fromTrainer(cs), "trainer", cs end
   local services = fromData().services
   if #services > 0 then return services, "data" end
@@ -322,7 +326,7 @@ local function collect(kind, fits, fromSources)
   local trainers, seen = {}, {}
   local faction = UnitFactionGroup("player")
   for id, npc in pairs(ns.Harvest.AllNPCs()) do
-    if npc.kinds[kind] and (npc.faction == nil or npc.faction == faction) and (not fits or fits(npc)) then
+    if npc.kinds[kind] and (npc.faction == nil or npc.faction == faction) and (not fits or fits(npc, id)) then
       local node = ns.Geo.Node(npc.mapID, npc.x, npc.y, npc.name)
       if node then
         seen[id] = true
@@ -378,7 +382,14 @@ function Trainers.Results()
   local start = ns.Geo.PlayerNode()
   if not start then return {}, "Can't read your position here." end
   local net = ns.Network.Build()
-  local trainers = collect("classTrainer", function(npc) return npc.class == class end,
+  -- Not an NPC the data knows as something else: a weapon master recorded as
+  -- your class trainer by an older Wayward (Woo Ping in Stormwind).
+  local function isClassTrainer(npc, id)
+    if npc.class ~= class or ns.Harvest.IsWeaponMaster(id) then return false end
+    local known = ns.Data.TrainerKind and ns.Data.TrainerKind(id)
+    return known == nil or known == "classTrainer"
+  end
+  local trainers = collect("classTrainer", isClassTrainer,
     ns.Data.NearestOfKind("classTrainer", UnitFactionGroup("player"), start, function(t) return t.class == class end))
   local rows = results(trainers, (className or class):lower() .. " trainers", start, net)
   local spells, nextLevel = Trainers.Learnable()

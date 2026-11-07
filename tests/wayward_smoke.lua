@@ -4067,7 +4067,7 @@ do
   local finishRow = find(list, "Finish ")
   check(handin and hi == 1 and handin.role == "continue" and handin.relevance_parts.progression == 1 and finishRow,
     "quests ready to hand in are the continuation (" .. titles(list) .. ")")
-  check(handin and handin.why:find("^Quests in your log are ready to hand in") and not handin.why:find("XP"),
+  check(handin and handin.why:find("^Quests ready to hand in") and not handin.why:find("XP"),
     "and the card says so, not XP per minute: " .. tostring(handin and handin.why))
   check(handin and handin.subtitle:find("2 quests ready", 1, true) and xpOf(handin) == 2300,
     "hand-ins: 1,200 + 1,100 XP in the tooltip: " .. estimate(handin))
@@ -6879,7 +6879,7 @@ do
   local handin = find(list, "Hand in 1 quest to Watcher Dodds")
   check(handin and handin.role == "continue" and handin.lead == "progression" and handin.relevance_parts.progression == 1,
     "a quest ready to hand in leads with progression and is the continuation: " .. tostring(handin and handin.role))
-  check(handin and handin.why == "Quests in your log are ready to hand in, close to where you are",
+  check(handin and handin.why == "Quests ready to hand in, close by",
     "its why names its two strongest parts in words: " .. tostring(handin and handin.why))
   local deadmines = find(list, "Run The Deadmines")
   check(deadmines and deadmines.relevance_parts.novelty >= 0.9 and deadmines.role == "explore"
@@ -8232,7 +8232,7 @@ do
   -- no ranking, and the second reason joins the first without a second "with".
   F.Invalidate()
   local list = F.Results()
-  local plainWhys, seen = #list > 0, {}
+  local plainWhys, fits, seen = #list > 0, #list > 0, {}
   for _, r in ipairs(list) do
     local why = r.why or ""
     seen[#seen + 1] = why
@@ -8240,8 +8240,43 @@ do
       or select(2, why:gsub(" with ", "")) > 1 then
       plainWhys = false
     end
+    local card = r.whyCard or ""
+    if card == "" or (card ~= why and card ~= r.whyShort) or (card ~= r.whyShort and #card > 54) then fits = false end
   end
   check(plainWhys, "every why is a plain reason: " .. table.concat(seen, " | "))
+  check(fits, "on the card, the whole why when it fits two lines, else its first reason alone")
+  local long = { title = "Long", why = "A quest line that stands out a lot, with a reward you'd use",
+    whyCard = "A quest line that stands out a lot", whyShort = "A quest line that stands out a lot" }
+  check(ns.Cards.WhyFor(long) == "A quest line that stands out a lot", "the card draws the short form")
+
+  -- A weapon master is never your class trainer: Woo Ping (11867) is in the
+  -- bundled weapon master list.
+  check(ns.Harvest.IsWeaponMaster(11867)
+    and ns.Harvest.IsWeaponList({ { name = "One-Handed Swords" }, { name = "Staves" } })
+    and not ns.Harvest.IsWeaponList({ { name = "Staves" }, { name = "Life Tap" } }),
+    "the bundled list knows Woo Ping; One-Handed Swords is a weapon skill; a class spell isn't")
+  local here = ns.Geo.PlayerNode()
+  local savedSpells, savedGUID = ns.charDB.classSpells, UnitGUID
+  -- What an older Wayward saved: Woo Ping as a warlock trainer, his list as your spells.
+  ns.db.npcs[11867] = { name = "Woo Ping", kinds = { classTrainer = true }, class = "WARLOCK",
+    mapID = here.mapID, x = here.x + 0.005, y = here.y }
+  ns.charDB.classSpells = { updated = 0, level = 20,
+    services = { { name = "Staves", type = "available", cost = 1000 }, { name = "Swords", type = "used" } } }
+  local trainers = {}
+  for _, r in ipairs(ns.Trainers.Results()) do trainers[#trainers + 1] = r.title end
+  local woo = ns.db.npcs[11867]
+  check(not table.concat(trainers, ","):find("Woo Ping", 1, true) and woo.kinds.weaponMaster and not woo.kinds.classTrainer
+    and woo.class == nil and ns.charDB.classSpells == nil,
+    "the old record is put right, and his list isn't your class spells: " .. table.concat(trainers, ", "))
+  -- Talking to him again, whatever his list looks like: a weapon master.
+  UnitGUID = function() return "Creature-0-1-0-2-11867-AB" end
+  fire("TRAINER_SHOW")
+  runTimers()
+  fire("TRAINER_CLOSED")
+  check(woo.kinds.weaponMaster and not woo.kinds.classTrainer and ns.charDB.classSpells == nil,
+    "a visit records him as a weapon master, not a class trainer")
+  UnitGUID, ns.charDB.classSpells, ns.db.npcs[11867] = savedGUID, savedSpells, nil
+  ns.charDB.skippedSpells = nil
 
   -- Spells to train now and more at the next level: one tile for the one trainer.
   local savedSpells = ns.charDB.classSpells

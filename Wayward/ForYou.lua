@@ -1464,32 +1464,32 @@ end
 -- library that says why it might appeal, never the score itself. `tail` is
 -- the form that follows the first phrase ("A new place to explore, with 6
 -- quests at your level"). Distance is said in words: the card's facts row
--- already has the minutes.
+-- already has the minutes. Short, so two fit in a card's two lines.
 local function phraseFor(name, option, parts, ctx, tail)
   local k = option.kind
   if name == "proximity" then
     local travel = travelTo(option)
-    if travel and travel <= NEAR_SECONDS then return "close to where you are" end
-    if travel and travel <= MID_SECONDS then return "a short trip from here" end
-    return "a little further afield"
+    if travel and travel <= NEAR_SECONDS then return "close by" end
+    if travel and travel <= MID_SECONDS then return "a short trip away" end
+    return "further afield"
   end
   if name == "progression" then
-    if k == "handin" then return "quests in your log are ready to hand in" end
+    if k == "handin" then return "quests ready to hand in" end
     if k == "finish" then return "picks up where your log left off" end
     if k == "dungeon" then
       if #(option.inLog or {}) > 0 then return "continues quests in your log" end
-      return "its quests are waiting at their givers"
+      return "its quests are waiting"
     end
     if k == "notable" or k == "quest" then
       local q = option.quests[1]
-      if q.handin then return "ready to hand in from your log" end
+      if q.handin then return "ready to hand in" end
       if q.inLog then return "already in your log" end
       if option.chained then return "continues a chain you started" end
       return "a quest line to start"
     end
     if k == "zone" then
-      if ctx.journeyMap and option.mapID == ctx.journeyMap then return "where your journey already is" end
-      if option.mapID == ctx.hereMap then return tail and "right where you are" or "carry on questing where you are" end
+      if ctx.journeyMap and option.mapID == ctx.journeyMap then return "where your journey is" end
+      if option.mapID == ctx.hereMap then return tail and "right here" or "carry on questing here" end
       if #(option.later or {}) > 0 then return "its quest chains lead on" end
       return "somewhere new to quest"
     end
@@ -1505,6 +1505,8 @@ local function phraseFor(name, option, parts, ctx, tail)
       return "familiar ground"
     end
     if k == "dungeon" then return parts.novelty >= 0.8 and "a dungeon you haven't run" or "a dungeon you know" end
+    -- Notable's own reason (it can be long: the length check in whyFor
+    -- keeps it alone then).
     if k == "notable" then
       local reason = option.reasons and option.reasons[1] and option.reasons[1].text
       if reason then return (reason:gsub("%.$", "")) end
@@ -1518,20 +1520,20 @@ local function phraseFor(name, option, parts, ctx, tail)
     local n = #(option.quests or option.now or {})
     local with = tail and "with " or ""
     if k == "zone" then return with .. plural(n, "quest") .. " at your level" end
-    if k == "handin" then return tail and "with their rewards waiting" or "rewards waiting for " .. plural(n, "quest") end
-    if k == "finish" then return with .. plural(n, "quest") .. " already part done" end
+    if k == "handin" then return tail and "rewards waiting" or "rewards waiting for " .. plural(n, "quest") end
+    if k == "finish" then return with .. plural(n, "quest") .. " part done" end
     if k == "dungeon" then
       if n > 0 then return with .. plural(n, "quest") .. " at your level" end
       return "a good fit for your level"
     end
-    if k == "profession" then return tail and "and you can train it now" or "something you can train right now" end
-    local reward = rewardFit(option) >= 1 and ", with a reward you'd use" or ""
+    if k == "profession" then return tail and "ready to train now" or "something to train right now" end
+    local reward = rewardFit(option) >= 1 and ", a reward you'd use" or ""
     return (tail and "at your level" or "a quest at your level") .. reward
   end
   if name == "intent" then
     local w = option.intentWhy
     if w == "preference" then return "the kind you asked for" end
-    if w == "kind" then return "the kind of journey you often pick" end
+    if w == "kind" then return "your kind of journey" end
     if w == "zone" then return "in your journey's zone" end
     if w == "budget" then return string.format("fits your %d min", ctx.budget / 60) end
     return "a change of pace"
@@ -1540,8 +1542,11 @@ local function phraseFor(name, option, parts, ctx, tail)
 end
 
 -- One plain sentence naming the two strongest parts: "Picks up where your
--- log left off, close to where you are". The zone you're in already says
--- where it is, so its distance isn't one of the two.
+-- log left off, close by". The zone you're in already says where it is, so
+-- its distance isn't one of the two. Returns the sentence, and what the card
+-- shows: the sentence, or the first part alone when both won't fit in its
+-- two lines (over WHY_MAX characters). The tooltip keeps the sentence.
+local WHY_MAX = 54
 local function whyFor(option, parts, ctx)
   local here = option.kind == "zone" and option.mapID ~= nil and option.mapID == ctx.hereMap
   local names = {}
@@ -1554,9 +1559,10 @@ local function whyFor(option, parts, ctx)
   end)
   local top = { names[1], names[2] }
   table.sort(top, function(a, b) return PART_ORDER[a.name] < PART_ORDER[b.name] end)
-  local first = phraseFor(top[1].name, option, parts, ctx) or ""
+  local first = capitalize(phraseFor(top[1].name, option, parts, ctx) or "")
   local second = phraseFor(top[2].name, option, parts, ctx, true)
-  return capitalize(first) .. (second and (", " .. second) or "")
+  local both = first .. (second and (", " .. second) or "")
+  return both, #both > WHY_MAX and first or both, first
 end
 
 -- How many refreshes a card has been shown on (CheckNew keeps the count).
@@ -1586,7 +1592,7 @@ local function scoreRow(row, option, ctx)
   row.relevance_parts = parts
   row.relevance = math.floor(relevanceOf(parts) * 1000 + 0.5) / 1000
   row.lead = lead(parts)
-  row.why = whyFor(option, parts, ctx)
+  row.why, row.whyCard, row.whyShort = whyFor(option, parts, ctx)
   row.zoneKey = option.mapID or firstPart(option.zone or row.zone or "")
   row.travel = travelTo(option)
   table.insert(row.details, 1, { text = row.why .. ".", color = GOLD })

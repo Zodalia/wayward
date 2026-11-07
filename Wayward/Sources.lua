@@ -292,6 +292,22 @@ local CLASS_BY_TRAINER_TITLE = {
   ["Mage Trainer"] = "MAGE", ["Warlock Trainer"] = "WARLOCK", ["Druid Trainer"] = "DRUID",
 }
 
+-- What kind of trainer the data sources say an NPC is, from its subtitle
+-- ("Warlock Trainer", "Weapon Master", "Expert Tailor"...): "classTrainer"
+-- (and the class), "weaponMaster", "professionTrainer", or nil when the
+-- sources don't know the NPC or its subtitle says none of these.
+function Data.TrainerKind(id)
+  local npc = id and Data.Npc(id)
+  local subName = npc and npc.subName
+  if type(subName) ~= "string" or subName == "" then return nil end
+  if CLASS_BY_TRAINER_TITLE[subName] then return "classTrainer", CLASS_BY_TRAINER_TITLE[subName] end
+  if subName == "Weapon Master" then return "weaponMaster" end
+  if ns.Professions and ns.Professions.FromSubtitle and ns.Professions.FromSubtitle(subName) then
+    return "professionTrainer"
+  end
+  return nil
+end
+
 local function now()
   return debugprofilestop and debugprofilestop() or 0
 end

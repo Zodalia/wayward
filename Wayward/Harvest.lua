@@ -14,13 +14,44 @@ local KIND_BY_INTERACTION = {
   Auctioneer = "auctioneer", StableMaster = "stableMaster", Trainer = "trainer",
 }
 
--- English names only; a weapon master on other locales is stored as a class trainer.
+-- English names only (other locales fall back on the shape of the list, see
+-- classify). "One-Handed Swords" and the like are the same skills.
 local WEAPON_SKILLS = {
   ["Axes"] = true, ["Two-Handed Axes"] = true, ["Swords"] = true, ["Two-Handed Swords"] = true,
   ["Maces"] = true, ["Two-Handed Maces"] = true, ["Polearms"] = true, ["Staves"] = true,
   ["Daggers"] = true, ["Fist Weapons"] = true, ["Bows"] = true, ["Guns"] = true,
-  ["Crossbows"] = true, ["Thrown"] = true,
+  ["Crossbows"] = true, ["Thrown"] = true, ["Wands"] = true,
 }
+
+-- The kinds of trainer: an NPC is only ever one of them.
+local TRAINER_KINDS = { classTrainer = true, weaponMaster = true, professionTrainer = true, petTrainer = true }
+
+local function weaponSkill(name)
+  if type(name) ~= "string" then return false end
+  return WEAPON_SKILLS[name] or WEAPON_SKILLS[(name:gsub("^One%-Handed ", ""))] or false
+end
+
+-- Whether a trainer's list is a weapon master's: every service a weapon
+-- skill. On other locales the names don't match: a class trainer lists your
+-- whole class (a hundred and more services), a weapon master a dozen.
+local MIN_CLASS_SERVICES = 20
+function Harvest.IsWeaponList(services)
+  if type(services) ~= "table" or #services == 0 then return false end
+  local allWeapons = true
+  for _, s in ipairs(services) do
+    if not weaponSkill(s.name) then allWeapons = false break end
+  end
+  if allWeapons then return true end
+  local locale = GetLocale and GetLocale()
+  return locale ~= nil and locale ~= "enUS" and locale ~= "enGB" and #services < MIN_CLASS_SERVICES
+end
+
+-- Whether the bundled trainer data (Data/ClassSpells.lua, from WhatsTraining)
+-- lists this NPC as a weapon master.
+function Harvest.IsWeaponMaster(id)
+  local masters = ns.data and ns.data.weaponMasters
+  return id ~= nil and masters ~= nil and masters[id] ~= nil
+end
 
 local SERVICE_TYPES = { available = true, unavailable = true, used = true, header = true }
 
@@ -57,6 +88,13 @@ function Harvest.RecordNPC(kind, extra)
   end
   local subZone = GetSubZoneText and GetSubZoneText()
   npc.subZone = subZone ~= "" and subZone or nil
+  -- One kind of trainer per NPC: a new reading replaces an old (or wrong) one.
+  if TRAINER_KINDS[kind] then
+    for other in pairs(TRAINER_KINDS) do
+      if other ~= kind and npc.kinds[other] then npc.kinds[other], changed = nil, true end
+    end
+    if kind ~= "classTrainer" then npc.class = nil end
+  end
   npc.kinds[kind] = true
   npc.seen = time()
   for k, v in pairs(extra or {}) do npc[k] = v end
@@ -98,7 +136,14 @@ function Harvest.AllNPCs()
   if ns.IsForever() then
     for id, npc in pairs(ns.data.seedNPCs) do all[id] = npc end
   end
-  for id, npc in pairs(ns.db.npcs) do all[id] = npc end
+  for id, npc in pairs(ns.db.npcs) do
+    -- A weapon master an older Wayward took for a class trainer: put right.
+    if npc.kinds and npc.kinds.classTrainer and Harvest.IsWeaponMaster(id) then
+      npc.kinds.classTrainer, npc.class = nil, nil
+      npc.kinds.weaponMaster = true
+    end
+    all[id] = npc
+  end
   return all
 end
 
@@ -132,8 +177,6 @@ local function readService(index)
   return s
 end
 
-local MIN_CLASS_SERVICES = 20
-
 local function classify(services)
   local trainerType = C_Trainer and C_Trainer.GetTrainerType and C_Trainer.GetTrainerType()
   local T = Enum.TrainerType or {}
@@ -143,15 +186,14 @@ local function classify(services)
   end
   -- Recipes and "Journeyman Tailoring": a profession trainer.
   if ns.Professions and ns.Professions.FromServices(services) then return "professionTrainer" end
-  local allWeapons = true
-  for _, s in ipairs(services) do
-    if not WEAPON_SKILLS[s.name] then allWeapons = false break end
-  end
-  if allWeapons then return "weaponMaster" end
-  -- On other locales the weapon names don't match: a class trainer lists
-  -- your whole class (a hundred and more services), a weapon master a dozen.
-  local locale = GetLocale and GetLocale()
-  if locale and locale ~= "enUS" and locale ~= "enGB" and #services < MIN_CLASS_SERVICES then return "weaponMaster" end
+  -- What the data says this NPC is wins over guessing from the list: the
+  -- bundled weapon master list, then the data sources' subtitle ("Weapon
+  -- Master", "Warlock Trainer").
+  local id = npcID()
+  if Harvest.IsWeaponMaster(id) then return "weaponMaster" end
+  local known = ns.Data and ns.Data.TrainerKind and ns.Data.TrainerKind(id)
+  if known == "weaponMaster" or known == "classTrainer" then return known end
+  if Harvest.IsWeaponList(services) then return "weaponMaster" end
   return "classTrainer"
 end
 

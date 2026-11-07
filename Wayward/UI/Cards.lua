@@ -34,8 +34,10 @@ local FACT_GAP = 12          -- between one fact and the next
 -- Ink on parchment, darkest for titles.
 local TITLE_COLOR = { 0.20, 0.10, 0.02 }
 local TEXT_COLOR = { 0.22, 0.14, 0.06 }
-local DETAIL_COLOR = { 0.28, 0.19, 0.09 }
-local TAG_COLOR = { 0.62, 0.12, 0.03 } -- the role tag, a red that reads on parchment
+local TAG_COLOR = { 0.62, 0.12, 0.03 } -- a time over the budget, in red
+-- The tag and the light actions: the darkest ink, as the title is. Red and
+-- mid-brown sink into the Adventure Guide art.
+local LINK_COLOR = TITLE_COLOR
 local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local RULE = { 0.35, 0.22, 0.08, 0.35 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
@@ -128,7 +130,7 @@ end
 -- A result's own action ("Flight only"): secondary, so lighter than Start
 -- journey.
 local function extra(card)
-  local b = ns.Skin.LinkButton(card, 80, "", nil, TAG_COLOR, 11)
+  local b = ns.Skin.LinkButton(card, 80, "", nil, LINK_COLOR, 12, true)
   b:Hide()
   b:SetScript("OnClick", function()
     local r = card.result
@@ -144,7 +146,7 @@ end
 -- While a journey is on: add the card's stops to it, without the question
 -- Start journey asks. Secondary: Start journey stays the strong button.
 local function add(card)
-  local b = ns.Skin.LinkButton(card, 84, "Add detour", nil, TAG_COLOR, 11)
+  local b = ns.Skin.LinkButton(card, 84, "Add detour", nil, LINK_COLOR, 12, true)
   b:Hide()
   b:SetScript("OnClick", function() if card.result then ns.Panel.AddDetour(card.result) end end)
   b:SetScript("OnEnter", function(self)
@@ -195,31 +197,38 @@ end
 
 -- Facts one after the other, each as wide as its text ("Level 8-10",
 -- "Nearby", "11 quests"), so a short one leaves room for a longer one; an
--- equal share each where the text can't be measured.
+-- equal share each where the text can't be measured. A fact after the first
+-- that doesn't fit whole is left out (it's in the tooltip) rather than cut
+-- to "0...".
 local function fillFacts(row, stats)
   local count = math.min(#stats, MAX_FACTS)
   local share = row.width / math.max(count, 1)
-  local x = 0
+  local x, full = 0, false
   for i, fact in ipairs(row.facts) do
     local stat = stats[i]
-    local shown = stat ~= nil and i <= count
-    fact.icon:SetShown(shown)
-    fact.value:SetShown(shown)
+    local shown = stat ~= nil and i <= count and not full
     if shown then
-      fact.icon:ClearAllPoints()
-      fact.icon:SetPoint("LEFT", row, "LEFT", x, 0)
-      fact.icon:SetTexture(factIcon(stat[1]))
-      fact.value:ClearAllPoints()
-      fact.value:SetPoint("LEFT", fact.icon, "RIGHT", 4, 0)
       fact.value:SetWidth(0)
       fact.value:SetText(stat[2])
-      fact.label = stat[1]
       local measured = fact.value.GetStringWidth and fact.value:GetStringWidth()
-      local textWidth = type(measured) == "number" and measured > 0 and measured or (share - 18 - FACT_GAP)
-      textWidth = math.min(textWidth, math.max(row.width - x - 18, 20))
-      fact.value:SetWidth(textWidth)
-      x = x + 18 + textWidth + FACT_GAP
+      local room = row.width - x - 18
+      if i > 1 and type(measured) == "number" and measured > room then
+        shown, full = false, true
+      else
+        fact.icon:ClearAllPoints()
+        fact.icon:SetPoint("LEFT", row, "LEFT", x, 0)
+        fact.icon:SetTexture(factIcon(stat[1]))
+        fact.value:ClearAllPoints()
+        fact.value:SetPoint("LEFT", fact.icon, "RIGHT", 4, 0)
+        fact.label = stat[1]
+        local textWidth = type(measured) == "number" and measured > 0 and measured or (share - 18 - FACT_GAP)
+        textWidth = math.min(textWidth, math.max(room, 20))
+        fact.value:SetWidth(textWidth)
+        x = x + 18 + textWidth + FACT_GAP
+      end
     end
+    fact.icon:SetShown(shown)
+    fact.value:SetShown(shown)
   end
 end
 
@@ -238,7 +247,7 @@ local function makeCard(parent, width)
   card.badge:SetPoint("TOPRIGHT", -PAD - 2, -PAD)
   card.badge:SetJustifyH("RIGHT")
 
-  card.tag = text(card, "GameFontNormalSmall", 11, TAG_COLOR)
+  card.tag = text(card, "GameFontNormalSmall", 11, LINK_COLOR)
   card.tag:SetPoint("TOPLEFT", left, -TAG_TOP)
   card.tag:SetWidth(textWidth)
   card.tag:SetJustifyH("LEFT")
@@ -266,8 +275,6 @@ local function makeCard(parent, width)
   card.rule:SetPoint("BOTTOMLEFT", INSET, 54)
 
   card.stats = factRow(card, width - 2 * INSET)
-  -- The facts in the lighter ink, so the title and the why lead.
-  for _, fact in ipairs(card.stats.facts) do fact.value:SetTextColor(DETAIL_COLOR[1], DETAIL_COLOR[2], DETAIL_COLOR[3]) end
   card.stats:SetPoint("TOPLEFT", card.rule, "BOTTOMLEFT", 0, -6)
 
   card.button = button(card, 120, 22)
@@ -348,8 +355,10 @@ function Cards.TagFor(r)
   return "SUGGESTION"
 end
 
--- The why line: the row's own, else its first detail (the ranking, today).
+-- The why line: the row's card form (one reason when two are too long), its
+-- whole why, else its first detail.
 function Cards.WhyFor(r)
+  if r.whyCard and r.whyCard ~= "" then return plain(r.whyCard) end
   if r.why and r.why ~= "" then return plain(r.why) end
   local first = r.details and r.details[1]
   return first and plain(first.text) or ""
@@ -407,6 +416,9 @@ local function fill(card, r)
   local ink = r.over and TAG_COLOR or TITLE_COLOR
   card.badge:SetTextColor(ink[1], ink[2], ink[3])
   card.detail:SetText(Cards.WhyFor(r))
+  -- Two reasons that still don't fit in two lines (a wide font): the first
+  -- one alone (the tooltip has the whole sentence).
+  if r.whyShort and card.detail.IsTruncated and card.detail:IsTruncated() then card.detail:SetText(r.whyShort) end
   local facts = Cards.FactsFor(r)
   fillFacts(card.stats, facts)
   card.stats:SetShown(#facts > 0)

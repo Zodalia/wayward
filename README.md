@@ -306,7 +306,10 @@ learn there and a journey that ends with learning them; Weapons: one row per
 weapon your class can learn and you don't know,
 "Polearms (Woo Ping)", with the nearest weapon master who teaches it to your
 class and the cost against your purse; weapon masters list what they teach
-when you visit, so ones not seen yet point to a master you haven't visited;
+when you visit, so ones not seen yet point to a master you haven't visited.
+A weapon master is never taken for your class trainer: the bundled trainer
+data and the data sources' subtitles say who is which, and a record an
+older version got wrong is put right;
 Professions: each of your professions with its skill, the next rank and the
 nearest trainer for it, then the ones you could still learn),
 **Dungeons** and **Items** are icon tabs inside its right edge that open a
@@ -377,10 +380,11 @@ other zones and quests). Below level 10, another race's starting
 zone across the sea (Teldrassil from Dun Morogh) is never suggested; a
 neighbour by road or tram (Elwynn Forest) can be. Each card says in one sentence
 why it might appeal, from its two strongest parts, in a small phrase library
-rather than the scores ("Picks up where your log left off, close to where
-you are"; "A new place to explore, with 6 quests at your level"). Distance
-is said in words (the facts row has the minutes) and isn't named for the
-zone you're in. The tooltip has the estimate underneath (XP, the travel and
+rather than the scores ("Picks up where your log left off, close by"; "A
+new place to explore, with 6 quests at your level"). Distance is said in
+words (the facts row has the minutes) and isn't named for the zone you're
+in. When both reasons won't fit the card's two lines, the card shows the
+first and the tooltip the whole sentence. The tooltip has the estimate underneath (XP, the travel and
 the time per quest). XP comes
 from a data source's quest XP table, with the vanilla penalty for quests
 below your level; quests it has no XP for (Forever-only ones) get the

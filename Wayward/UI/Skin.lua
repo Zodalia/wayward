@@ -183,11 +183,13 @@ function Skin.Text(fs) add("text", fs) end
 -- A secondary action: its label as plain text, no button frame, underlined
 -- while the mouse is over it, so it reads lighter than the primary button
 -- beside it ("View details" next to "Continue journey"). `color` is the
--- text's colour (gold when nil); `size` the font size (11 when nil). The
--- label is centred in `width`. Not handed to a UI suite: a suite would give
--- it a button frame again.
+-- text's colour (gold when nil); `size` the font size (11 when nil);
+-- `underlined` keeps a faint underline on all the time (on busy art, where
+-- plain text alone doesn't read as something to click). The label is
+-- centred in `width`. Not handed to a UI suite: a suite would give it a
+-- button frame again.
 local LINK_FONT = "Fonts\\FRIZQT__.TTF"
-function Skin.LinkButton(parent, width, label, onClick, color, size)
+function Skin.LinkButton(parent, width, label, onClick, color, size, underlined)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(width, 20)
   local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -205,6 +207,13 @@ function Skin.LinkButton(parent, width, label, onClick, color, size)
   line:SetHeight(1)
   line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -1)
   line:SetPoint("TOPRIGHT", fs, "BOTTOMRIGHT", 0, -1)
+  if underlined then
+    local always = b:CreateTexture(nil, "ARTWORK")
+    always:SetColorTexture(c[1], c[2], c[3], 0.5)
+    always:SetHeight(1)
+    always:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -1)
+    always:SetPoint("TOPRIGHT", fs, "BOTTOMRIGHT", 0, -1)
+  end
   b:SetText(label or "")
   if onClick then b:SetScript("OnClick", onClick) end
   return b
