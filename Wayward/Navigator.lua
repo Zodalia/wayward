@@ -386,18 +386,49 @@ end
 
 local UP_NEXT_DELAY = 4 -- seconds after a journey's fanfare before "Up next"
 
+-- What journey `a` came to, for its fanfare (`ended`: you ended it before
+-- the end), or nil when it has no stats.
+local function fanfareStats(a, ended)
+  local stats = a.stats
+  if not stats then return nil end
+  local done = ended and a.journey and (ns.Journey.Progress(a.journey)) or nil
+  return { title = a.title, kind = a.journey and a.journey.kind, icon = a.journey and a.journey.icon,
+    xp = stats.xp, seconds = time() - stats.started, distance = stats.distance, quests = stats.quests,
+    picked = stats.picked, levels = stats.levels, money = stats.money, flights = stats.flights,
+    ranks = stats.ranks, stops = done, ended = ended or nil }
+end
+
+local function fanfare(stats)
+  if not (stats and ns.Fanfare) then return end
+  local ok, err = pcall(ns.Fanfare.TripDone, stats)
+  if not ok then ns.print("couldn't show the journey's fanfare: " .. tostring(err)) end
+end
+
+-- Whether a journey ended early came to anything: a stop done, or something
+-- to show besides the time and distance it took.
+local function accomplished(stats)
+  if not stats then return false end
+  if (stats.stops or 0) > 0 then return true end
+  for _, key in ipairs({ "quests", "picked", "levels", "ranks", "flights", "money", "xp" }) do
+    if (tonumber(stats[key]) or 0) >= 1 then return true end
+  end
+  return false
+end
+
+-- Ends the journey before its end (the directions box's x, the last stops
+-- skipped or abandoned): what it came to, if anything, then navigation stops.
+local function endEarly()
+  local a = Nav.active
+  local stats = a and a.journey and fanfareStats(a, true)
+  if accomplished(stats) then fanfare(stats) end
+  return Nav.Stop()
+end
+
 local function arrive()
   local a = Nav.active
   ns.print("you have arrived: " .. a.title)
   -- The end of a journey (or plain directions): its fanfare.
-  if a.stats and ns.Fanfare then
-    local stats = a.stats
-    local ok, err = pcall(ns.Fanfare.TripDone, { title = a.title, kind = a.journey and a.journey.kind,
-      icon = a.journey and a.journey.icon, xp = stats.xp, seconds = time() - stats.started,
-      distance = stats.distance, quests = stats.quests, picked = stats.picked, levels = stats.levels,
-      money = stats.money, flights = stats.flights, ranks = stats.ranks })
-    if not ok then ns.print("couldn't show the journey's fanfare: " .. tostring(err)) end
-  end
+  fanfare(fanfareStats(a))
   -- A journey done: what next, once the fanfare has had a moment.
   if a.journey and ns.ForYou then
     local title = a.title
@@ -1027,7 +1058,7 @@ function Nav.Drop(stop)
   local journey = here and ns.Journey.Replan(a.journey, here)
   if not journey then
     ns.print("no stops left.")
-    return Nav.Stop()
+    return endEarly()
   end
   adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
 end
@@ -2049,7 +2080,7 @@ function Nav.QuestAbandoned(questID)
   local planned = here and ns.Journey.Replan(a.journey, here)
   if not planned then
     ns.print(string.format("you abandoned %s: nothing left on the journey, so it's cancelled.", questName(questID)))
-    return Nav.Stop()
+    return endEarly()
   end
   ns.print(string.format("you abandoned %s: dropped from your journey.", questName(questID)))
   a.title = planned.title or a.title
@@ -2135,18 +2166,19 @@ end
 function Nav.End()
   local a = Nav.active
   if not a then return end
-  if not (a.journey and StaticPopupDialogs and StaticPopup_Show) then return Nav.Stop() end
+  if not a.journey then return Nav.Stop() end
+  if not (StaticPopupDialogs and StaticPopup_Show) then return endEarly() end
   StaticPopupDialogs.WAYWARD_END = StaticPopupDialogs.WAYWARD_END or {
     text = "%s",
     button1 = "End journey", button2 = "Keep going",
     -- Only the journey you were asked about: not one started since.
-    OnAccept = function(_, data) if Nav.active == data.active then Nav.Stop() end end,
+    OnAccept = function(_, data) if Nav.active == data.active then endEarly() end end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   local done, total = ns.Journey.Progress(a.journey)
   local text = string.format("End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone.",
     a.title or "this journey", done, total)
-  if not askPlayer("WAYWARD_END", text, { active = a }) then Nav.Stop() end
+  if not askPlayer("WAYWARD_END", text, { active = a }) then endEarly() end
 end
 
 -- True while you're in the area of the stop you're working on.

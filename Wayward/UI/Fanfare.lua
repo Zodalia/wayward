@@ -4,6 +4,8 @@ local _, ns = ...
 --   * when a journey is done: what it came to, as the 2 to 4 stats that
 --     stand out most (levels, quests handed in, gold, XP, ... ; time and
 --     distance fill in when there's little else), under its title and icon;
+--     the same, headed "Journey ended", when you end one that came to
+--     something before its end;
 --   * when For you has a new major suggestion (a questing zone, a dungeon,
 --     new spells, a profession's next rank): "New journey available", which
 --     you click to start it (or add it as a detour, or switch to it: the
@@ -76,6 +78,7 @@ local STATS = {
   { "flights", "Flight paths", 55, 1, tostring },
   { "money", "Money", 50, 10000, function(n) return ns.FormatMoney(n) end },
   { "picked", "Quests taken", 45, 3, tostring },
+  { "stops", "Stops done", 42, 3, tostring }, -- only for a journey ended early
   { "xp", "XP earned", 40, xpRef, number },
   { "distance", "Distance", 12, 500, function(n) return number(n) .. " yd" end },
   { "seconds", "Time", 10, 300, function(n) return ns.FormatDuration(n) end },
@@ -134,7 +137,7 @@ end
 -- `sound`: a sound kit instead of the chosen one (for /ww sounds test).
 local function showTrip(stats, sound)
   trip = trip or createTrip()
-  trip.heading:SetText("Journey complete!")
+  trip.heading:SetText(stats.ended and "Journey ended" or "Journey complete!")
   -- The journey's icon (its kind) before its title.
   trip.title:SetText((stats.icon and ("|T" .. stats.icon .. ":16:16|t ") or "") .. (stats.title or ""))
   local shown = Fanfare.Highlights(stats)
@@ -163,7 +166,8 @@ end
 function Fanfare.TripFrame() return trip end
 
 -- stats: { title, kind, icon, xp, seconds, distance (yards), quests (handed
--- in), picked, levels, money (copper), flights, ranks }
+-- in), picked, levels, money (copper), flights, ranks }; a journey ended
+-- before its end also has `ended` and `stops` (the stops done).
 function Fanfare.TripDone(stats)
   showTrip(stats)
   Fanfare.lastTrip = stats

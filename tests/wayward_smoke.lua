@@ -5130,9 +5130,42 @@ do
       "ending a journey asks first, and nothing changes until you answer: " .. tostring(asked and asked.text))
     StaticPopupDialogs.WAYWARD_END.OnAccept(nil, { active = {} })
     check(ns.Nav.active == journey, "a stale yes (another journey since) ends nothing")
+    local fanfare = ns.Fanfare.lastTrip
     StaticPopupDialogs.WAYWARD_END.OnAccept(nil, asked.data)
     check(ns.Nav.active == nil, "yes ends the journey")
+    check(ns.Fanfare.lastTrip == fanfare, "nothing done on it: no fanfare")
     StaticPopupDialogs, StaticPopup_Show = nil, nil
+
+    -- Ended once it came to something: what it came to, headed "Journey ended".
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Cut short", stops = { stopAt(0.62, "A1"), stopAt(0.64, "A2") } }))
+    ns.Nav.active.stats.picked = 2
+    ns.Nav.End()
+    local last = ns.Fanfare.lastTrip
+    local keys = {}
+    for _, h in ipairs(ns.Fanfare.lastShown or {}) do keys[#keys + 1] = h.key end
+    check(ns.Nav.active == nil and last ~= fanfare and last.title == "Cut short" and last.ended and last.stops == 0
+      and ns.Fanfare.TripFrame().heading:GetText() == "Journey ended"
+      and table.concat(keys, ","):find("picked", 1, true),
+      "ended after picking up quests: its fanfare, headed Journey ended: " .. table.concat(keys, ","))
+    ns.Fanfare.TripFrame():Hide()
+    local b1, b2 = stopAt(0.62, "B1"), stopAt(0.64, "B2")
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Half done", stops = { b1, b2 } }))
+    for _, st in ipairs(ns.Journey.AllStops(ns.Nav.active.journey)) do
+      if st.node.label == "B1" then st.done = true end
+    end
+    ns.Nav.End()
+    keys = {}
+    for _, h in ipairs(ns.Fanfare.lastShown or {}) do keys[#keys + 1] = h.key end
+    check(ns.Fanfare.lastTrip.title == "Half done" and ns.Fanfare.lastTrip.stops == 1 and keys[1] == "stops",
+      "ended with a stop done: the stops done show: " .. table.concat(keys, ","))
+    ns.Fanfare.TripFrame():Hide()
+    fanfare = ns.Fanfare.lastTrip
+    ns.Nav.Start("Somewhere", stopAt(0.66, "Plain").node,
+      ns.Router.Plan(here, stopAt(0.66, "Plain").node, ns.Network.Build()))
+    ns.Nav.active.stats.picked = 1
+    ns.Nav.End()
+    check(ns.Nav.active == nil and ns.Fanfare.lastTrip == fanfare, "plain directions stopped: no fanfare")
+
     ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { pickup, turnin, far } }))
     ns.HUD.Update()
   end
@@ -5425,6 +5458,39 @@ do
     .. tostring(ns.RouteMap.modeIcons))
   C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
   ns.RouteMap.Hide()
+
+  -- There and back on one flight path: the two legs side by side, their
+  -- chevrons and icons apart, not on top of each other.
+  do
+    local v = ns.RouteMap.NewView(UIParent, 280)
+    local A, B, C = { px = 20, py = -50 }, { px = 240, py = -50 }, { px = 240, py = -150 }
+    local steps = { { mode = "fly", from = A, to = B }, { mode = "fly", from = B, to = A },
+      { mode = "walk", from = A, to = C } }
+    local s = ns.RouteMap.DrawRoute(v, steps, { A, B, A, C }, function(n) return n.px, n.py end, { you = false })
+    local l1, l2, l3 = s.legs[1], s.legs[2], s.legs[3]
+    check(s.lanes == 2 and l1[2] ~= l2[2] and math.abs(l1[2] - l2[2]) >= 6 and l1[1] == 20 and l2[1] == 240
+      and l3[1] == 20 and l3[2] == -50,
+      string.format("there and back: two lanes side by side (y %.1f and %.1f), the walk on its own line",
+        l1[2], l2[2]))
+    -- The two flights' chevrons: the ones along y = -50 (the walk heads off down).
+    local closest, flights = math.huge, 0
+    for _, p in ipairs(s.chevronAt) do
+      if math.abs(p[2] + 50) < 5 then flights = flights + 1 end
+    end
+    for i = 1, flights do
+      for j = i + 1, flights do
+        local p, q = s.chevronAt[i], s.chevronAt[j]
+        closest = math.min(closest, math.sqrt((p[1] - q[1]) ^ 2 + (p[2] - q[2]) ^ 2))
+      end
+    end
+    local i1, i2 = s.iconAt[1], s.iconAt[2]
+    check(flights >= 4 and closest > 15 and i1 and i2 and math.abs(i1[1] - i2[1]) >= 14,
+      string.format("their chevrons fall between each other's (closest %.1f px) and the icons apart (%.1f px)",
+        closest, i1 and i2 and math.abs(i1[1] - i2[1]) or -1))
+    s = ns.RouteMap.DrawRoute(v, { steps[1], steps[3] }, { A, B, C }, function(n) return n.px, n.py end, { you = false })
+    check(s.lanes == 0 and s.legs[1][2] == -50 and s.alphas[1] == 1, "a leg of its own stays on its line, in full")
+    v.canvas:Hide()
+  end
 end
 ---------------------------------------------------------------- route map (end)
 ---------------------------------------------------------------- world map route (begin)
@@ -5502,6 +5568,13 @@ do
   check(W.Stats() == nil, "the option takes it off the map")
   ns.commands.worldmap.run("")
   check(ns.db.settings.worldMapRoute == true and W.Stats() ~= nil, "/ww worldmap puts it back")
+
+  -- The next few steps in full, the ones after fading step by step.
+  check(W.Alpha(1) == 1 and W.Alpha(3) == 1 and W.Alpha(4) < 1 and W.Alpha(5) < W.Alpha(4) and W.Alpha(40) > 0.2,
+    string.format("steps fade the further ahead they are: %.2f %.2f %.2f", W.Alpha(4), W.Alpha(5), W.Alpha(40)))
+  s = W.Refresh()
+  check(s and s.alphas[1] == 1 and (s.lines < 4 or s.alphas[s.lines] < 1),
+    "drawn so: the step you're on in full, the last ones faded")
 
   ns.Nav.Stop()
   check(W.Stats() == nil, "the journey ended: it's gone from the map")

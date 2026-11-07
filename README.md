@@ -143,9 +143,12 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
 - **Your journey on the world map**: open the map and the rest of your
   journey (or your directions) is drawn on it as on the route maps: white
   for walking, blue for flights and boats, purple for the hearthstone,
-  chevrons pointing the way and the stops numbered in order. It shows on
-  whichever map you look at, as far as that map goes, and a walk starts
-  from the map's own arrow. `/ww worldmap` or the options turn it off.
+  chevrons pointing the way and the stops numbered in order. The next three
+  steps are drawn in full and the ones after fade, so the next part of the
+  way stands out. There and back on the same path, the two lines sit side
+  by side with their chevrons between each other's. It shows on whichever
+  map you look at, as far as that map goes, and a walk starts from the
+  map's own arrow. `/ww worldmap` or the options turn it off.
 - **Learning as you play**: talking to a trainer, vendor, flight master,
   innkeeper or banker records where they are, and so does opening a mailbox. Opening a flight map records
   which flight paths you know. Your class spell list is read at the trainer.
@@ -459,7 +462,9 @@ priority (levels, quests handed in, profession ranks trained, flight paths
 learned, money in, quests taken, XP across level-ups) and scores more the
 more of it you got, so 4 gold can beat 3 quests taken; nothing you got none
 of is shown. Distance and time only make up the numbers when a journey
-achieved less than two things. When For you has a new major suggestion (a questing
+achieved less than two things. Ending a journey early (the directions box's
+x, or skipping or abandoning what was left) shows the same frame, headed
+"Journey ended" and with the stops done, when it came to anything. When For you has a new major suggestion (a questing
 zone, a dungeon, a profession's next rank) a short "New
 journey available" toast pops up; click it to start the journey, or to add
 it to the journey you're on (the usual question). Both fade after a few seconds,

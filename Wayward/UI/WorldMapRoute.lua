@@ -5,7 +5,9 @@ local _, ns = ...
 -- travel, chevrons pointing the way, travel icons, the stops numbered in
 -- order) on whichever map you're looking at, as much of it as that map
 -- holds. The map's own arrow is you, so a walk you're on starts where you
--- stand and follows you while the map is open. Plain directions show too.
+-- stand and follows you while the map is open. The next few steps are drawn
+-- in full and the ones after fade, step by step, so the next part of the way
+-- stands out. Plain directions show too.
 -- The options or /ww worldmap turn it off.
 
 local WorldMapRoute = {}
@@ -15,6 +17,14 @@ local AZEROTH = 947
 local SIZE = 1.3       -- lines and badges this much bigger on screen than on the small maps
 local MOVED = 5         -- yards you walk before the line's start catches up with you
 local CHECK_EVERY = 0.5 -- seconds between looks at where you are while the map is open
+local CLEAR_STEPS = 3   -- steps drawn in full, the one you're on first
+local FADE_PER_STEP = 0.15
+local FAINTEST = 0.3    -- the furthest steps fade no further than this
+
+-- How opaque the i-th step still to go is drawn.
+function WorldMapRoute.Alpha(i)
+  return math.max(FAINTEST, 1 - FADE_PER_STEP * math.max(0, i - CLEAR_STEPS))
+end
 
 local map, view
 local drawnFrom -- where you stood when the line was last drawn from you
@@ -109,7 +119,7 @@ function WorldMapRoute.Refresh()
   if not (scale and scale > 0) then scale = 1 end
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
-    { size = SIZE / scale, clip = { w = w, h = h }, you = false })
+    { size = SIZE / scale, clip = { w = w, h = h }, you = false, alpha = WorldMapRoute.Alpha })
   drawnFrom = from
   since = 0
   WorldMapRoute.mapID = mapID

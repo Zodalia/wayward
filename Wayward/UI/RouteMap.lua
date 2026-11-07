@@ -66,6 +66,10 @@ local OUTLINE_COLOR = { 0, 0, 0, 0.85 }
 local CHEVRON_EVERY = 45 -- pixels of line per chevron
 local CHEVRON_MIN = 20   -- legs shorter than this get none
 local CHEVRON_LENGTH, CHEVRON_SPREAD = 4, 5 -- a chevron's depth and half width
+-- Legs that run between the same two places (there and back on one flight
+-- path) sit side by side this far apart, their chevrons and icons staggered.
+local LANE_GAP = LINE_THICKNESS + 2 * OUTLINE + 1
+local SAME_PLACE = 3     -- pixels apart at most for two ends to be one place
 local PLAYER_ARROW = "Interface\\Minimap\\MinimapArrow"
 local BADGE_DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local BADGE_RING = "Interface\\Minimap\\MiniMap-TrackingBorder"
@@ -253,8 +257,11 @@ end
 --   clip  { w, h }: legs are cut at this box, and nothing outside it marked
 --         (for an `at` that places nodes beyond what shows)
 --   you   false: no arrow or start badge (a map that shows you already)
--- Returns what it drew (lines, chevrons, marks, numbers, ...), also kept as
--- v.stats, for tests.
+--   alpha function(i): how opaque steps[i]'s leg, chevrons and icon are (1);
+--         a stop's badge fades less (the square root of its step's)
+-- Legs between the same two places, either way, are drawn side by side.
+-- Returns what it drew (lines, chevrons, marks, numbers, lanes, ...), also
+-- kept as v.stats, for tests.
 function RouteMap.DrawRoute(v, steps, points, at, opts)
   opts = opts or {}
   local k = opts.size or 1
@@ -263,39 +270,104 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
     return x and (not box or (x >= 0 and x <= box.w and y <= 0 and y >= -box.h))
   end
 
-  -- A stroke from (ax, ay) to (bx, by) in colour c over its outline; the
-  -- route's legs are on sublevels 1-2, chevrons over them on 3-4.
-  local function stroke(edges, cores, i, sublevel, ax, ay, bx, by, c)
+  local function alphaOf(i)
+    local a = opts.alpha and opts.alpha(i) or 1
+    return math.max(0, math.min(1, a))
+  end
+
+  -- A stroke from (ax, ay) to (bx, by) in colour c over its outline, `a`
+  -- opaque; the route's legs are on sublevels 1-2, chevrons over them on 3-4.
+  local function stroke(edges, cores, i, sublevel, ax, ay, bx, by, c, a)
     local edge, core = line(v, edges, i, sublevel), line(v, cores, i, sublevel + 1)
     if not core then return end
     edge:SetThickness((LINE_THICKNESS + 2 * OUTLINE) * k)
-    edge:SetVertexColor(unpack(OUTLINE_COLOR))
+    edge:SetVertexColor(OUTLINE_COLOR[1], OUTLINE_COLOR[2], OUTLINE_COLOR[3], OUTLINE_COLOR[4] * a)
     core:SetThickness(LINE_THICKNESS * k)
-    core:SetVertexColor(c[1], c[2], c[3], 1)
+    core:SetVertexColor(c[1], c[2], c[3], a)
     for _, seg in ipairs({ edge, core }) do
       seg:SetStartPoint("TOPLEFT", v.canvas, ax, ay)
       seg:SetEndPoint("TOPLEFT", v.canvas, bx, by)
     end
   end
 
-  -- Each leg, with chevrons along it pointing the way you go.
-  local drawn, chevrons, icons = 0, 0, 0
-  local stats = { hearthShown = false, iconFiles = {} }
-  local iconSize = MODE_ICON_SIZE * k
-  for _, step in ipairs(steps) do
+  -- Where each leg runs, before any clipping.
+  local ends = {}
+  for i, step in ipairs(steps) do
     local x1, y1 = at(step.from)
     local x2, y2 = at(step.to)
-    if x1 and x2 and box then x1, y1, x2, y2 = clipped(x1, y1, x2, y2, box.w, box.h) end
+    if x1 and x2 then ends[i] = { x1, y1, x2, y2 } end
+  end
+
+  -- Legs between the same two places, either way round, share the way in
+  -- lanes side by side: each has its lane's offset across the first one's
+  -- direction, a `shift` (-0.5..0.5 of the chevron spacing) and a `spread`
+  -- (in icon widths) to stagger its chevrons and icon along its own way.
+  local near = SAME_PLACE * k
+  local function same(ax, ay, bx, by)
+    return math.abs(ax - bx) <= near and math.abs(ay - by) <= near
+  end
+  local lanes, laned = {}, 0
+  for i = 1, #steps do
+    local e = ends[i]
+    if e and not lanes[i] and not same(e[1], e[2], e[3], e[4]) then
+      local group = { { i = i, flip = false } }
+      for j = i + 1, #steps do
+        local o = ends[j]
+        if o and not lanes[j] then
+          if same(e[1], e[2], o[1], o[2]) and same(e[3], e[4], o[3], o[4]) then
+            group[#group + 1] = { i = j, flip = false }
+          elseif same(e[1], e[2], o[3], o[4]) and same(e[3], e[4], o[1], o[2]) then
+            group[#group + 1] = { i = j, flip = true }
+          end
+        end
+      end
+      if #group > 1 then
+        local dx, dy = e[3] - e[1], e[4] - e[2]
+        local length = math.sqrt(dx * dx + dy * dy)
+        local nx, ny = -dy / length, dx / length
+        local n = #group
+        for m, g in ipairs(group) do
+          local place = m - (n + 1) / 2
+          local sign = g.flip and -1 or 1
+          lanes[g.i] = { dx = nx * place * LANE_GAP * k, dy = ny * place * LANE_GAP * k,
+            shift = sign * (m / (n + 1) - 0.5), spread = sign * place }
+          laned = laned + 1
+        end
+      end
+    end
+  end
+
+  -- Each leg, with chevrons along it pointing the way you go.
+  local drawn, chevrons, icons = 0, 0, 0
+  local stats = { hearthShown = false, iconFiles = {}, alphas = {}, legs = {}, iconAt = {}, chevronAt = {} }
+  local iconSize = MODE_ICON_SIZE * k
+  for i, step in ipairs(steps) do
+    local e, lane = ends[i], lanes[i]
+    local x1, y1, x2, y2
+    if e then
+      x1, y1, x2, y2 = e[1], e[2], e[3], e[4]
+      if lane then
+        x1, y1, x2, y2 = x1 + lane.dx, y1 + lane.dy, x2 + lane.dx, y2 + lane.dy
+      end
+      if box then x1, y1, x2, y2 = clipped(x1, y1, x2, y2, box.w, box.h) end
+    end
     if x1 and x2 then
       drawn = drawn + 1
+      local a = alphaOf(i)
+      stats.alphas[drawn], stats.legs[drawn] = a, { x1, y1, x2, y2 }
       local c = LINE_COLOR[step.mode] or LINE_COLOR.walk
-      stroke(v.edges, v.lines, drawn, 1, x1, y1, x2, y2, c)
+      stroke(v.edges, v.lines, drawn, 1, x1, y1, x2, y2, c, a)
       local dx, dy = x2 - x1, y2 - y1
       local length = math.sqrt(dx * dx + dy * dy)
-      -- A flight, hearthstone or boat says so with its icon mid-leg; its
-      -- chevrons go either side of it.
+      -- A flight, hearthstone or boat says so with its icon mid-leg (legs
+      -- sharing the way have theirs a little apart); its chevrons go either
+      -- side of it.
       local icon = RouteMap.TravelIcon(step)
-      if icon then
+      local iconAt = length / 2
+      if lane then
+        iconAt = math.max(0, math.min(length, iconAt + lane.spread * (iconSize + 4)))
+      end
+      if icon and length > 0 then
         icons = icons + 1
         local ic = modeIcon(v, icons)
         ic.border:SetSize(iconSize + 2, iconSize + 2)
@@ -306,7 +378,11 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
         else ic.icon:SetTexCoord(0, 1, 0, 1) end
         stats.iconFiles[icons] = icon
         ic.border:ClearAllPoints()
-        ic.border:SetPoint("CENTER", v.pins, "TOPLEFT", x1 + dx / 2, y1 + dy / 2)
+        local ix, iy = x1 + dx * iconAt / length, y1 + dy * iconAt / length
+        ic.border:SetPoint("CENTER", v.pins, "TOPLEFT", ix, iy)
+        stats.iconAt[icons] = { ix, iy }
+        ic.border:SetAlpha(a)
+        ic.icon:SetAlpha(a)
         if step.mode == "hearth" then stats.hearthShown = true end
       end
       local n = math.floor(length / (CHEVRON_EVERY * k))
@@ -315,16 +391,19 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
         local ux, uy = dx / length, dy / length -- along the leg
         local nx, ny = -uy, ux                  -- across it
         local depth, spread = CHEVRON_LENGTH * k, CHEVRON_SPREAD * k
+        -- Sharing the way, each lane's chevrons fall between the others'.
+        local shift = lane and lane.shift or 0
         for j = 1, n do
-          local along = length * (j - 0.5) / n
-          if not (icon and math.abs(along - length / 2) < iconSize) then
+          local along = length * (j - 0.5 + shift) / n
+          if not (icon and math.abs(along - iconAt) < iconSize) then
             local px, py = x1 + ux * along, y1 + uy * along
             local tx, ty = px + ux * depth, py + uy * depth
             local bx, by = px - ux * depth, py - uy * depth
+            stats.chevronAt[#stats.chevronAt + 1] = { px, py }
             for _, side in ipairs({ 1, -1 }) do
               chevrons = chevrons + 1
               stroke(v.chevronEdges, v.chevronLines, chevrons, 3,
-                bx + nx * spread * side, by + ny * spread * side, tx, ty, c)
+                bx + nx * spread * side, by + ny * spread * side, tx, ty, c, a)
             end
           end
         end
@@ -341,12 +420,14 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   -- order (a journey's stops are on their last step) up to the destination.
   local marked, numbers = 0, {}
   local fontSize = math.floor(9 * k + 0.5)
-  local function mark(node, kind, number)
+  local function mark(node, kind, number, a)
     local x, y = at(node)
     if not inside(x, y) then return end
     marked = marked + 1
     numbers[marked] = number or false
     local b = badge(v, marked)
+    a = a or 1
+    b.disc:SetAlpha(a); b.ring:SetAlpha(a); b.number:SetAlpha(a)
     local c = MARK_COLOR[kind]
     b.disc:SetSize(BADGE_DISC_SIZE * k, BADGE_DISC_SIZE * k)
     b.disc:SetVertexColor(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 1)
@@ -383,15 +464,16 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   for i, step in ipairs(steps) do
     if step.stop and i < #steps then
       number = number + 1
-      mark(step.to, "stop", number)
+      mark(step.to, "stop", number, math.sqrt(alphaOf(i)))
     end
   end
-  mark(points[#points], "goal", number > 0 and number + 1 or nil)
+  mark(points[#points], "goal", number > 0 and number + 1 or nil, math.sqrt(alphaOf(#steps)))
   for i = marked + 1, #v.marks do
     local b = v.marks[i]
     b.disc:Hide(); b.ring:Hide(); b.number:Hide()
   end
   stats.lines, stats.chevrons, stats.modeIcons, stats.marks, stats.numbers = drawn, chevrons / 2, icons, marked, numbers
+  stats.lanes = laned
   stats.youShown = v.you:IsShown()
   v.stats = stats
   return stats
