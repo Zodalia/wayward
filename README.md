@@ -257,22 +257,26 @@ The main window is the home screen: under a header with your portrait,
 with their own jobs:
 
 - **Your journey**: the journey you're on, with its icon, title, the current
-  stop ("Stop 3 of 5 · Find Shimmerweed in Dun Morogh"), stops done and the
-  time remaining (travel plus the objectives still to do, at your time per
+  stop on a line of its own ("Find Shimmerweed in Dun Morogh"; the stop, not
+  the step: the directions box has the steps), then where that is with the
+  stops done and the time remaining ("Stop 3 of 5 · 2 complete · ~6 min
+  remaining": travel plus the objectives still to do, at your time per
   quest), a progress bar, what comes next ("Then: Do Frostmane Hold, and 3
-  more stops"), a map of what's left, **Continue journey** (closes the window
-  and makes sure the directions box is up) and **View details** (the journey
-  overview). A detour never renames a journey: one started from a suggestion
+  more stops"), a map of what's left, **Continue journey** (the main button:
+  closes the window and makes sure the directions box is up) and the lighter
+  **View details** (the journey overview, where you reorder, skip, add a
+  detour or set the journey aside; its tooltip says so). A detour never renames a journey: one started from a suggestion
   keeps its name, and one you put together yourself is named after its
   quests ("The Perfect Stout and 2 more quests"). On plain directions it shows the
   destination and "Directions"; with nothing on it is one line, and the
   suggestions move up.
 - **Something to do next**: the suggestions as three equal cards per page,
-  each with its icon, a tag for its role (QUESTING, EXPLORE, ALTERNATIVE), the
-  title, a line of why in plain words, a line on what starting it does, up
-  to three facts in one order ("Level 8-10", "Nearby" or "~4 min away",
-  "11 quests"; XP is in the tooltip) and **Start journey** (**Directions**
-  when there is only a route). The card art comes from the client when it has the Adventure
+  each showing only what a glance needs: its icon, a tag for the kind of
+  activity (QUESTING, EXPLORE, DUNGEON, RAID, PROFESSION), the title, one or
+  two lines of why in plain words, up to three facts in one order ("Level
+  8-10", "Nearby" or "~4 min away", "11 quests"; XP is in the tooltip) and
+  **Start journey** (**Directions** when there is only a route). What
+  starting it does, the quests and the stops are in the tooltip. The card art comes from the client when it has the Adventure
   Guide textures (Forever does); otherwise the cards are plain parchment.
   Hover a card for every detail, its stops and steps; the tooltip of a card,
   or of any row with directions or a journey, has a small map under it with
@@ -281,12 +285,14 @@ with their own jobs:
   boats and the like deeper blue, a hearthstone purple with its icon where
   you use it). The arrows under the cards (or the mouse
   wheel) page through the rest, three at a time (back to page 1 when the
-  cards change). Shift-click adds a card to your journey as a detour; while a
-  journey is on, Start journey asks instead: **Add as detour**, **Switch
-  journey** (the journey you're on is set aside) or Cancel.
-- **Good to know**: up to four small observations (new abilities at the next
-  level, gear wearing out, a quest ready to hand in, vendors nearby...), the
-  numbers in gold, each with at most one button: **Add detour** (the stop
+  cards change). While a journey is on, a lighter **Add detour** beside Start
+  journey adds the card to it straight away, and Start journey asks: **Add as
+  detour**, **Switch journey** (the journey you're on is set aside, to resume
+  later) or Cancel.
+- **Good to know**: up to four small observations, each there because it is
+  useful now (new abilities at the next level, gear wearing out, a quest
+  ready to hand in, bags filling up with a vendor close by...), the numbers
+  in gold, each with at most one light button: **Add detour** (the stop
   joins your journey, or starts one), **Show ...** (a side page) or **Go**
   (plain directions). Hover one for the full text.
 
@@ -364,15 +370,18 @@ learned per character, and the zone of the journey you're on). Each page of
 three cards mixes kinds rather than ranking them on one number: the most
 relevant card that carries on with something, the most relevant new thing in
 another zone or of another kind, and the most relevant of a third kind; later
-pages repeat that over what is left. A card's tag says what it is about,
-whichever place it got: QUESTING when its strongest part is progression,
-EXPLORE when it is novelty, ALTERNATIVE otherwise. Distance counts in the
-relevance but never picks the tag. Below level 10, another race's starting
+pages repeat that over what is left. The roles stay inside Wayward: a card's
+tag says what kind of activity it is, whichever place it got (DUNGEON, RAID,
+PROFESSION; EXPLORE for a zone whose strongest part is novelty; QUESTING for
+other zones and quests). Below level 10, another race's starting
 zone across the sea (Teldrassil from Dun Morogh) is never suggested; a
 neighbour by road or tram (Elwynn Forest) can be. Each card says in one sentence
-what its two strongest parts are ("Picks up where your log left off, right
-nearby"; "A zone you haven't seen, 6 quests at your level"), and the tooltip
-has the estimate underneath (XP, the travel and the time per quest). XP comes
+why it might appeal, from its two strongest parts, in a small phrase library
+rather than the scores ("Picks up where your log left off, close to where
+you are"; "A new place to explore, with 6 quests at your level"). Distance
+is said in words (the facts row has the minutes) and isn't named for the
+zone you're in. The tooltip has the estimate underneath (XP, the travel and
+the time per quest). XP comes
 from a data source's quest XP table, with the vanilla penalty for quests
 below your level; quests it has no XP for (Forever-only ones) get the
 average for their level. Without that table quests count by level fit, and
@@ -382,7 +391,8 @@ only the time left for them; a dungeon's quests in your log count toward it.
 A card with a quest your journey already has isn't shown until the journey
 is done, and neither is one with a quest from a journey you set aside: a
 Good to know tile offers to resume that journey instead. Tiles leave out
-what the journey already does (a hand-in that is one of its stops). The Quests page has every hub and your whole log. `/ww debug` shows
+what the journey already does (a hand-in that is one of its stops) and what
+a card on the first page already offers (a hand-in card's quests). The Quests page has every hub and your whole log. `/ww debug` shows
 how long a refresh took; `/ww debug cards` prints each card's role,
 relevance and parts, and each observation.
 
@@ -391,7 +401,9 @@ fact and at most one action (**Add detour** adds a stop to your journey,
 **Show** opens a side page, **Go** gives directions). Most urgent first:
 some gear broken or at 50% durability or lower (repair at the nearest
 repairer), no ammo or under 200, no food and drink or under 5 (not mages,
-from level 6), full or nearly full bags (the nearest vendor to sell at),
+from level 6), full or nearly full bags (the nearest vendor to sell at; when
+a repair, ammo or food tile already sends you to a vendor, the bags join
+that tile: "sell there too"),
 spells you can train and afford (listed with rank and cost; after one
 trainer visit; spells you could have learned when you last closed the
 trainer's window and didn't are left out, and only the Class page still
@@ -401,7 +413,10 @@ gear at 75% or lower with a repairer under 2 minutes away, your class
 trainer at an even level before your first visit or two levels after the
 last one, spells you can't afford yet, new spells coming at the next level
 or two (naming your trainer, with the Trainers page to look at rather than
-directions there), and a vendor under 2 minutes away. The
+directions there; when you have spells to train now too, they are one tile:
+"Then 2 new spells at level 22"), and a vendor under 2 minutes away while
+your bags are filling up (6 free slots or fewer; a vendor nearby with
+nothing to sell isn't worth a tile). The
 time budget doesn't filter them.
 
 **Notable quests.** XP isn't everything: Wayward also asks "am I missing

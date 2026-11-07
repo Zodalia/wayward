@@ -4075,14 +4075,18 @@ do
     "the hand-in trip waits for each quest to be handed in (" .. actions(handin and handin.journey) .. ")")
   check(handin and estimate(handin):find("2 x 30 s per hand-in", 1, true),
     "tooltip times hand-ins: " .. estimate(handin))
-  local readyObs
-  for _, o in ipairs(ns.ForYou.Observations()) do
-    if o.kind == "handin" and o.text:find("^2 quests ready to hand in to Watcher Dodds") then readyObs = o end
+  local function readyIn(list)
+    for _, o in ipairs(list) do
+      if o.kind == "handin" and o.text:find("^2 quests ready to hand in to Watcher Dodds") then return o end
+    end
   end
+  local readyObs = readyIn(ns.ForYou.Observations(true))
   check(readyObs and readyObs.action.kind == "detour" and #readyObs.action.stops == 2
     and readyObs.action.stops[1].action.kind == "turnin" and readyObs.action.stop == readyObs.action.stops[1],
     "quests ready to hand in are an observation too, with the hand-in stops as a detour: "
       .. tostring(readyObs and readyObs.text))
+  check(not readyIn(ns.ForYou.Observations()),
+    "but while the hand-in card is on the first page, Good to know doesn't repeat it")
 
   -- One hand-in card (the best group); the hub card just picks up.
   local handinCards = 0
@@ -5259,15 +5263,15 @@ do
   suggestions[2].goal = goal
   ns.Nav.Stop()
 
-  -- The card's one line of why: the row's, else its first detail (the
-  -- ranking line, today); the rest is in the tooltip.
+  -- The card's one line of why: the row's, else its first detail; the rest
+  -- is in the tooltip, not on the card.
   ns.Cards.Show({ { title = "Noted", subtitle = "s", route = route, details = { { text = "|cffffd200rank|r" },
     { text = "Quests in your log count at full XP; ...", more = true }, { text = "shown" } } } }, "", true)
   check(ns.Cards.Detail(1) == "rank", "without a why, a card shows its first detail: " .. tostring(ns.Cards.Detail(1)))
-  check(ns.Cards.More(1) == "shown", "under it, the next detail that isn't held for the tooltip: " .. tostring(ns.Cards.More(1)))
+  check(ns.Cards.More == nil, "and nothing more on the card itself: the other details are for the tooltip")
   ns.Cards.Show({ { title = "Facts", route = route, why = "A zone you haven't seen", stats = { { "XP", "~900" } },
     facts = { { "Level", "Level 8-10" }, { "Nearby", "Nearby" }, { "Quests", "11 quests" } } } }, "", true)
-  check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=Level 8-10,NEARBY=Nearby,QUESTS=11 quests" and ns.Cards.More(1) == "",
+  check(table.concat(ns.Cards.Stats(1), ",") == "LEVEL=Level 8-10,NEARBY=Nearby,QUESTS=11 quests",
     "a row's facts come before its stats: " .. table.concat(ns.Cards.Stats(1), ","))
   ns.Cards.Show(suggestions, "", true)
 
@@ -6875,7 +6879,7 @@ do
   local handin = find(list, "Hand in 1 quest to Watcher Dodds")
   check(handin and handin.role == "continue" and handin.lead == "progression" and handin.relevance_parts.progression == 1,
     "a quest ready to hand in leads with progression and is the continuation: " .. tostring(handin and handin.role))
-  check(handin and handin.why == "Quests in your log are ready to hand in, right nearby",
+  check(handin and handin.why == "Quests in your log are ready to hand in, close to where you are",
     "its why names its two strongest parts in words: " .. tostring(handin and handin.why))
   local deadmines = find(list, "Run The Deadmines")
   check(deadmines and deadmines.relevance_parts.novelty >= 0.9 and deadmines.role == "explore"
@@ -6954,8 +6958,9 @@ do
       preferred.relevance_parts.intent))
   ns.charDB.preferKind = nil
 
-  -- Observations: ordered by urgency, each with one action.
-  local obs = F.Observations()
+  -- Observations: ordered by urgency, each with one action. (All of them: the
+  -- hand-in tile is held back while its card is on the first page.)
+  local obs = F.Observations(true)
   local sorted = #obs > 0
   for i = 2, #obs do if obs[i].urgency > obs[i - 1].urgency then sorted = false end end
   check(sorted, "observations come most urgent first: " .. kinds(obs))
@@ -6986,9 +6991,8 @@ do
   F.Invalidate()
   F.Observations()
   check(F.runs == runs + 1, "and rebuilt with them")
-  local vendor = obsFind(F.Observations(), "vendor")
-  check(vendor and vendor.urgency < 0.2 and vendor.action.kind == "detour" and vendor.text:find("^A vendor nearby: "),
-    "a vendor a couple of minutes away is worth a quiet tile: " .. tostring(vendor and vendor.text))
+  check(not obsFind(F.Observations(), "vendor"),
+    "a vendor a couple of minutes away, with nothing to sell, isn't worth a tile")
 
   -- Full bags: the nearest vendor to sell at.
   local free = 0
@@ -6997,7 +7001,17 @@ do
     GetContainerNumFreeSlots = function() return free end,
     GetContainerItemInfo = function() return nil end,
   }
+  -- Empty bags have no food in them either: the food tile already sends you
+  -- to a vendor, so full bags join it rather than taking a tile of their own.
+  F.Invalidate()
   obs = F.Observations()
+  local food = obsFind(obs, "food")
+  check(food and food.text:find("Bags full: sell there too.", 1, true) and food.action.stop.text:find(" and sell$")
+    and food.urgency >= 0.85 and not obsFind(obs, "bags") and not obsFind(obs, "vendor"),
+    "full bags and no food: one tile for the one vendor: " .. tostring(food and food.text))
+  -- Enough food: the bags tile stands on its own.
+  local hadBagCount = ns.Vendors.BagCount
+  ns.Vendors.BagCount = function() return 20 end
   F.Invalidate()
   obs = F.Observations()
   local bags = obsFind(obs, "bags")
@@ -7009,9 +7023,18 @@ do
   bags = obsFind(F.Observations(), "bags")
   check(bags and bags.urgency == 0.45 and bags.text:find("^Bags nearly full %(2 of 16 slots free%)"),
     "nearly full: a quieter tile: " .. tostring(bags and bags.text))
+  free = 5
+  F.Invalidate()
+  obs = F.Observations()
+  local vendor = obsFind(obs, "vendor")
+  check(vendor and vendor.urgency < 0.3 and vendor.action.kind == "detour" and vendor.action.stop.text:find("^Sell at ")
+    and vendor.text:find("^Bags filling up %(5 of 16 slots free%), and ") and vendor.highlights[1] == "5 of 16"
+    and not obsFind(obs, "bags"),
+    "bags filling up and a vendor close by: a quiet tile with the reason: " .. tostring(vendor and vendor.text))
   free = 10
   F.Invalidate()
-  check(not obsFind(F.Observations(), "bags"), "room in the bags: nothing to say")
+  check(not obsFind(F.Observations(), "bags") and not obsFind(F.Observations(), "vendor"), "room in the bags: nothing to say")
+  ns.Vendors.BagCount = hadBagCount
   C_Container = nil
 
   -- New spells at the next even level, and where the trainer is.
@@ -7141,9 +7164,10 @@ do
   ns.Nav.StartJourney(ns.Journey.Plan(here, def))
   if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
   lines = Box.Lines()
-  check(Box.State() == "journey" and lines[1] == "The Perfect Stout" and lines[2] == "Stop 1 of 3  ·  Talk to the innkeeper"
-    and lines[3]:find("^0 of 3 stops complete  ·  .* remaining$") and lines[4] == "Then: Find Shimmerweed, and 1 more stop.",
-    "a journey: title, the current stop, stops done and time left, what comes next (" .. table.concat(lines, " / ") .. ")")
+  check(Box.State() == "journey" and lines[1] == "The Perfect Stout" and lines[2] == "Talk to the innkeeper"
+    and lines[3]:find("^Stop 1 of 3  ·  0 complete  ·  .* remaining$") and lines[4] == "Then: Find Shimmerweed, and 1 more stop.",
+    "a journey: title, the current stop on its own line, where it is with stops done and time left, what comes next ("
+      .. table.concat(lines, " / ") .. ")")
   continue, details = Box.Buttons()
   check(continue == "Continue journey" and details == "View details", "with Continue journey and View details")
   local a = ns.Nav.active
@@ -7156,7 +7180,7 @@ do
   end
   ns.Fire("NAV_CHANGED")
   lines = Box.Lines()
-  check(lines[2] == "Stop 2 of 3  ·  Find Shimmerweed" and lines[3]:find("^1 of 3 stops complete"),
+  check(lines[2] == "Find Shimmerweed" and lines[3]:find("^Stop 2 of 3  ·  1 complete  ·  "),
     "a stop done: the box moves on (" .. lines[2] .. " / " .. lines[3] .. ")")
   -- The navigator's own Nav.Progress wins when it exists.
   local hadProgress = ns.Nav.Progress
@@ -7165,7 +7189,7 @@ do
   end
   ns.Panel.Layout()
   lines = Box.Lines()
-  check(lines[2] == "Stop 3 of 5  ·  Find Shimmerweed in Dun Morogh" and lines[3] == "2 of 5 stops complete  ·  ~6 min remaining",
+  check(lines[2] == "Find Shimmerweed in Dun Morogh" and lines[3] == "Stop 3 of 5  ·  2 complete  ·  ~6 min remaining",
     "with Nav.Progress, its numbers (" .. lines[2] .. " / " .. lines[3] .. ")")
   ns.Nav.Progress = hadProgress
   -- Continue journey closes the window and brings up the directions box.
@@ -7191,8 +7215,9 @@ do
     { title = "Nothing known", goal = goal, route = route },
   }
   ns.Cards.Show(rows, "", true)
-  check(ns.Cards.Tag(1) == "QUESTING" and ns.Cards.Tag(2) == "EXPLORE" and ns.Cards.Tag(3) == "ALTERNATIVE",
-    "the role tags: QUESTING, EXPLORE, ALTERNATIVE (" .. ns.Cards.Tag(1) .. ", " .. ns.Cards.Tag(2) .. ", " .. ns.Cards.Tag(3) .. ")")
+  check(ns.Cards.Tag(1) == "QUESTING" and ns.Cards.Tag(2) == "EXPLORE" and ns.Cards.Tag(3) == "DUNGEON",
+    "the tags say the activity, not the role: QUESTING, EXPLORE, DUNGEON (" .. ns.Cards.Tag(1) .. ", " .. ns.Cards.Tag(2)
+      .. ", " .. ns.Cards.Tag(3) .. ")")
   check(ns.Cards.Why(1) == rows[1].why and ns.Cards.Why(3) == "#3 of 5 by XP per minute",
     "the why line, or the first detail without one: " .. tostring(ns.Cards.Why(3)))
   check(table.concat(ns.Cards.Stats(1), ",") == "WHERE=Nearby,LEVEL=8-10,TRAVEL=~4 min away",
@@ -7200,8 +7225,8 @@ do
   check(ns.Cards.Drawn()[1] == "Continue questing in Redridge|Start journey" and ns.Cards.Drawn()[2] == "Explore Loch Modan|Directions",
     "Start journey for a journey, Directions for a route: " .. table.concat(ns.Cards.Drawn(), ","))
   ns.Cards.Step(-1)
-  check(ns.Cards.Tag(1) == "DUE NOW" and ns.Cards.Tag(2) == "QUESTING ZONE" and ns.Cards.Tag(3) == "ALTERNATIVE",
-    "continue on a non-quest kind, or no role: today's category; nothing at all: ALTERNATIVE ("
+  check(ns.Cards.Tag(1) == "DUE NOW" and ns.Cards.Tag(2) == "QUESTING ZONE" and ns.Cards.Tag(3) == "SUGGESTION",
+    "a kind without a tag of its own: its category; nothing at all: SUGGESTION ("
     .. ns.Cards.Tag(1) .. ", " .. ns.Cards.Tag(2) .. ", " .. ns.Cards.Tag(3) .. ")")
   check(ns.Cards.Stats(3)[1] ~= nil and (ns.Cards.Stats(3)[1]:find("^TRAVEL=") or ns.Cards.Stats(3)[1] == "NEARBY=Nearby"),
     "without stats, the facts come from the route: " .. table.concat(ns.Cards.Stats(3), ","))
@@ -8184,6 +8209,56 @@ do
   runTimers()
 end
 -- ===== proto: shopping list (end) =====
+-- ===== home screen feedback: activity tags, why lines, fewer tiles =====
+do
+  io.write("home screen feedback\n")
+  ns.Nav.Stop()
+  runTimers()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local F = ns.ForYou
+  local function obsFind(list, kind)
+    for i, o in ipairs(list) do if o.kind == kind then return o, i end end
+  end
+
+  -- A card's tag is the activity, whichever role slot it filled.
+  check(ns.Cards.TagFor({ kind = "dungeon", raid = true, role = "explore" }) == "RAID"
+    and ns.Cards.TagFor({ kind = "profession", role = "continue", category = "Profession" }) == "PROFESSION"
+    and ns.Cards.TagFor({ kind = "zone", lead = "novelty", role = "alternative" }) == "EXPLORE"
+    and ns.Cards.TagFor({ kind = "zone", role = "alternative" }) == "QUESTING"
+    and ns.Cards.TagFor({ kind = "handin", role = "explore" }) == "QUESTING",
+    "tags: RAID, PROFESSION, EXPLORE for a zone that's new, QUESTING for quest things")
+
+  -- Why lines read as reasons: no minutes (the facts row has those), no XP,
+  -- no ranking, and the second reason joins the first without a second "with".
+  F.Invalidate()
+  local list = F.Results()
+  local plainWhys, seen = #list > 0, {}
+  for _, r in ipairs(list) do
+    local why = r.why or ""
+    seen[#seen + 1] = why
+    if why == "" or why:find("%d+ min") or why:find("XP") or why:find("#%d") or why:find("best")
+      or select(2, why:gsub(" with ", "")) > 1 then
+      plainWhys = false
+    end
+  end
+  check(plainWhys, "every why is a plain reason: " .. table.concat(seen, " | "))
+
+  -- Spells to train now and more at the next level: one tile for the one trainer.
+  local savedSpells = ns.charDB.classSpells
+  ns.charDB.classSpells = { updated = 0, level = 20, services = {
+    { name = "Fireball", rank = "Rank 4", type = "available", levelReq = 20, cost = 100 },
+    { name = "Shadow Bolt", rank = "Rank 5", type = "unavailable", levelReq = 22, cost = 2000 },
+    { name = "Curse of Weakness", rank = "Rank 3", type = "unavailable", levelReq = 22, cost = 1500 } } }
+  F.Invalidate()
+  local obs = F.Observations()
+  local train = obsFind(obs, "train")
+  check(train and train.text:find("Then 2 new spells at level 22.", 1, true) and not obsFind(obs, "abilities")
+    and train.highlights[#train.highlights] == "level 22",
+    "training now and new spells at level 22: one tile (" .. tostring(train and train.text) .. ")")
+  ns.charDB.classSpells = savedSpells
+  F.Invalidate()
+end
+-- ===== home screen feedback (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

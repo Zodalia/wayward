@@ -16,7 +16,8 @@ local _, ns = ...
 -- UI files call these on their frames as they create them:
 --   Skin.Window(f), Skin.Box(f), Skin.Inset(f.Inset), Skin.Button(b),
 --   Skin.CloseButton(b), Skin.EditBox(e), Skin.Tab(t), Skin.ScrollBar(s),
---   Skin.Text(fontString),
+--   Skin.Text(fontString), Skin.LinkButton(parent, width, label, onClick) for
+--   a secondary action,
 --   Skin.SetTabSelected(tab, selected) when the selected tab changes.
 -- Call Window and Box after SetScript("OnShow"), which would drop our hook.
 
@@ -178,6 +179,36 @@ function Skin.EditBox(e) add("editbox", e) end
 function Skin.Tab(t) add("tab", t) end
 function Skin.ScrollBar(s) add("scrollbar", s) end
 function Skin.Text(fs) add("text", fs) end
+
+-- A secondary action: its label as plain text, no button frame, underlined
+-- while the mouse is over it, so it reads lighter than the primary button
+-- beside it ("View details" next to "Continue journey"). `color` is the
+-- text's colour (gold when nil); `size` the font size (11 when nil). The
+-- label is centred in `width`. Not handed to a UI suite: a suite would give
+-- it a button frame again.
+local LINK_FONT = "Fonts\\FRIZQT__.TTF"
+function Skin.LinkButton(parent, width, label, onClick, color, size)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(width, 20)
+  local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  local ok, set = pcall(fs.SetFont, fs, LINK_FONT, size or 11, "")
+  if not ok or set == false then fs:SetFontObject("GameFontNormalSmall") end
+  fs:SetPoint("CENTER")
+  fs:SetJustifyH("CENTER")
+  local c = color or { 1, 0.82, 0 }
+  fs:SetTextColor(c[1], c[2], c[3])
+  if not color then fs:SetShadowOffset(1, -1) else fs:SetShadowOffset(0, 0) end
+  b:SetFontString(fs)
+  b.label = fs
+  local line = b:CreateTexture(nil, "HIGHLIGHT")
+  line:SetColorTexture(c[1], c[2], c[3], 0.8)
+  line:SetHeight(1)
+  line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -1)
+  line:SetPoint("TOPRIGHT", fs, "BOTTOMRIGHT", 0, -1)
+  b:SetText(label or "")
+  if onClick then b:SetScript("OnClick", onClick) end
+  return b
+end
 
 function Skin.SetTabSelected(tab, selected)
   if suite and suite.select and painted[tab] and enabled() then pcall(suite.select, tab, selected) end

@@ -1,13 +1,16 @@
 local _, ns = ...
 
 -- "Your journey", the top region of the main window: what the player chose.
--- On a journey: its icon, title, the current stop ("Stop 3 of 5 · Find
--- Shimmerweed in Dun Morogh"), stops done and time remaining, a progress bar,
--- a line of description, Continue journey (closes the window and makes sure
--- the directions box shows) and View details (the journey overview), with a
--- map of the rest of the journey on the right. With plain directions: the
--- destination and "Directions", and Continue. With nothing active the region
--- is one line, so the suggestions move up.
+-- On a journey, most prominent first: its icon and title, the current stop
+-- ("Find Shimmerweed in Dun Morogh"; the stop, not the step: the directions
+-- box has the steps), where that is in the journey with stops done and time
+-- remaining ("Stop 3 of 5 · 2 complete · ~6 min remaining"), a progress bar,
+-- a line of what comes next, then Continue journey (the primary action:
+-- closes the window and makes sure the directions box shows) and the lighter
+-- View details (the journey overview, where it can be reordered, added to or
+-- set aside), with a map of the rest of the journey on the right. With plain
+-- directions: the destination and "Directions", and Continue. With nothing
+-- active the region is one line, so the suggestions move up.
 
 local Box = {}
 ns.JourneyBox = Box
@@ -19,7 +22,8 @@ local MAP_WIDTH = 220
 local PAD = 10
 local LEFT = PAD + ICON + 14
 local GOLD = { 1, 0.82, 0 }
-local GREY = { 0.62, 0.62, 0.62 }
+local GREY = { 0.72, 0.72, 0.72 }
+local WHITE = { 1, 1, 1 }
 local NONE_TEXT = "No journey on the go. Pick something below."
 local LAST_STOP = "The last stop. View details to reorder, add a detour or set it aside."
 local DIRECTIONS_DESCRIPTION = "Directions to one place. Starting a journey folds it in as a stop."
@@ -120,11 +124,22 @@ end
 
 local function actionButton(parent, width, text, onClick)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  b:SetSize(width, 22)
+  b:SetSize(width, 24)
   b:SetText(text)
   b:SetScript("OnClick", onClick)
   ns.Skin.Button(b)
   return b
+end
+
+-- A line or two on hover: what a button does (guidance on demand).
+local function explain(b, title, line)
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText(title)
+    GameTooltip:AddLine(line, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 -- Closes the window and makes sure the directions box is up for the
@@ -170,10 +185,12 @@ function Box.Create(parent, width)
 
   f.title = label(f, "GameFontNormalLarge", 16, GOLD)
   f.title:SetPoint("TOPLEFT", LEFT, -PAD - 2)
-  f.stop = label(f, "GameFontHighlight", 12)
-  f.stop:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
+  -- The current stop is the line to read; where it sits in the journey is
+  -- the quieter line under it.
+  f.stop = label(f, "GameFontHighlight", 13, WHITE)
+  f.stop:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -6)
   f.done = label(f, "GameFontHighlightSmall", 11, GREY)
-  f.done:SetPoint("TOPLEFT", f.stop, "BOTTOMLEFT", 0, -3)
+  f.done:SetPoint("TOPLEFT", f.stop, "BOTTOMLEFT", 0, -4)
 
   f.bar = CreateFrame("StatusBar", nil, f)
   f.bar:SetHeight(8)
@@ -188,10 +205,12 @@ function Box.Create(parent, width)
   f.description = label(f, "GameFontDisableSmall", 11)
   f.description:SetPoint("TOPLEFT", f.bar, "BOTTOMLEFT", 0, -6)
 
-  f.continue = actionButton(f, 130, "Continue journey", continueJourney)
+  f.continue = actionButton(f, 140, "Continue journey", continueJourney)
   f.continue:SetPoint("BOTTOMLEFT", LEFT - 2, PAD)
-  f.details = actionButton(f, 100, "View details", function() ns.JourneyOverview.Show() end)
-  f.details:SetPoint("LEFT", f.continue, "RIGHT", 6, 0)
+  explain(f.continue, "Continue journey", "Closes this window; the directions box shows the next step to your current stop.")
+  f.details = ns.Skin.LinkButton(f, 96, "View details", function() ns.JourneyOverview.Show() end)
+  f.details:SetPoint("LEFT", f.continue, "RIGHT", 8, 0)
+  explain(f.details, "View details", "Every stop of the journey. Reorder or skip stops, add a detour, or set the journey aside and resume it later: Wayward plans again around you.")
 
   -- The map of what's left, at the right.
   f.map = ns.RouteMap.NewView(f, MAP_WIDTH)
@@ -246,15 +265,14 @@ function Box.Update()
   if a.journey then
     f.state = "journey"
     local p = Box.Progress() or { done = 0, total = #a.journey.stops }
-    if p.stopIndex and p.stopText then
-      f.stop:SetText(string.format("Stop %d of %d  ·  %s", p.stopIndex, p.total, p.stopText))
-    elseif p.stopText then
-      f.stop:SetText(p.stopText)
+    f.stop:SetText(p.stopText or string.format("%d stop%s", p.total, p.total == 1 and "" or "s"))
+    if p.stopIndex then
+      f.done:SetText(string.format("Stop %d of %d  ·  %d complete  ·  %s remaining", p.stopIndex, p.total, p.done,
+        ns.FormatDuration(p.seconds)))
     else
-      f.stop:SetText(string.format("%d stops", p.total))
+      f.done:SetText(string.format("%d of %d stop%s complete  ·  %s remaining", p.done, p.total,
+        p.total == 1 and "" or "s", ns.FormatDuration(p.seconds)))
     end
-    f.done:SetText(string.format("%d of %d stop%s complete  ·  %s remaining", p.done, p.total,
-      p.total == 1 and "" or "s", ns.FormatDuration(p.seconds)))
     f.bar:SetValue(p.total > 0 and p.done / p.total or 0)
     f.bar:Show()
     local def = a.journey.root or a.journey.def

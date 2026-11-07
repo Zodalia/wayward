@@ -2,11 +2,13 @@ local _, ns = ...
 
 -- "Something to do next": suggestion cards, three equal ones per page, arrows
 -- under them to page through the rest (so no suggestion shows twice); hover a
--- card for every detail, its stops and the route map. Each card: the round
--- icon, its role tag (QUESTING / EXPLORE / ALTERNATIVE), the title, one or
--- two lines of why, a row of up to three facts, and Start journey (or
--- Directions when the row has only a route), with Add detour beside it while
--- a journey is on.
+-- card for every detail, its stops and the route map. Each card shows only
+-- what a glance needs: the round icon, a tag saying what kind of activity it
+-- is (QUESTING / EXPLORE / DUNGEON / PROFESSION...; the role that picked it
+-- stays internal), the title, one or two lines of why, a row of up to three
+-- facts, and Start journey (or Directions when the row has only a route),
+-- with a lighter Add detour beside it while a journey is on. Everything else
+-- (what starting it does, the quests, the stops) is in the tooltip.
 -- The card art is the Adventure Guide pane where the client has that atlas
 -- (Forever does); otherwise plain parchment.
 --
@@ -38,10 +40,11 @@ local PARCHMENT = { 0.86, 0.78, 0.6, 0.97 }
 local RULE = { 0.35, 0.22, 0.08, 0.35 }
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
 
--- The tag for a role, or for "continue" when the kind isn't a quest thing,
--- the kind itself; with no role, today's category.
+-- The tag says what the activity is, never which role slot it filled: the
+-- roles (continue / explore / alternative) are how the three cards are
+-- picked, not something a player chooses by.
 local QUEST_KINDS = { quest = true, hub = true, handin = true, finish = true, zone = true, notable = true }
-local ROLE_TAGS = { explore = "EXPLORE", alternative = "ALTERNATIVE" }
+local KIND_TAGS = { dungeon = "DUNGEON", raid = "RAID", profession = "PROFESSION", pvp = "PVP" }
 
 -- Small icons for the facts row, by what the fact is about.
 local FACT_ICONS = {
@@ -122,10 +125,10 @@ local function button(card, width, height)
   return b
 end
 
--- Small button for a result's own action ("Flight only").
+-- A result's own action ("Flight only"): secondary, so lighter than Start
+-- journey.
 local function extra(card)
-  local b = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-  b:SetSize(80, 20)
+  local b = ns.Skin.LinkButton(card, 80, "", nil, TAG_COLOR, 11)
   b:Hide()
   b:SetScript("OnClick", function()
     local r = card.result
@@ -139,17 +142,15 @@ local function extra(card)
 end
 
 -- While a journey is on: add the card's stops to it, without the question
--- Start journey asks.
+-- Start journey asks. Secondary: Start journey stays the strong button.
 local function add(card)
-  local b = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
-  b:SetSize(84, 22)
-  b:SetText("Add detour")
+  local b = ns.Skin.LinkButton(card, 84, "Add detour", nil, TAG_COLOR, 11)
   b:Hide()
   b:SetScript("OnClick", function() if card.result then ns.Panel.AddDetour(card.result) end end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText("Add detour")
-    GameTooltip:AddLine("Adds this to the journey you're on; the order is planned again from where you are.", 1, 1, 1, true)
+    GameTooltip:AddLine("Adds this to the journey you're on as a detour; the order is planned again from where you are, and you can drop it later.", 1, 1, 1, true)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -223,7 +224,7 @@ local function fillFacts(row, stats)
 end
 
 -- A card, top to bottom: the icon with the tag and title beside it; the why;
--- a rule; the facts; the button. Fixed gaps, so every card lines up the same.
+-- a rule; the facts; the buttons. Fixed gaps, so every card lines up the same.
 local function makeCard(parent, width)
   local card = CreateFrame("Frame", nil, parent)
   card:SetSize(width, CARD_H)
@@ -243,7 +244,7 @@ local function makeCard(parent, width)
   card.tag:SetJustifyH("LEFT")
   card.tag:SetWordWrap(false)
 
-  card.title = text(card, "GameFontNormalLarge", 14, TITLE_COLOR)
+  card.title = text(card, "GameFontNormalLarge", 15, TITLE_COLOR)
   card.title:SetPoint("TOPLEFT", card.tag, "BOTTOMLEFT", 0, -3)
   card.title:SetWidth(textWidth)
   card.title:SetJustifyH("LEFT")
@@ -251,20 +252,13 @@ local function makeCard(parent, width)
   if card.title.SetMaxLines then card.title:SetMaxLines(2) end
 
   -- The why, under the icon too: the card's width, clear of the art's border.
-  card.detail = text(card, "GameFontHighlightSmall", 11, TEXT_COLOR)
+  -- Two lines at most; the rest of the detail is in the tooltip.
+  card.detail = text(card, "GameFontHighlight", 12, TEXT_COLOR)
   card.detail:SetPoint("TOPLEFT", INSET, -PAD - ICON - 16)
   card.detail:SetWidth(width - 2 * INSET)
   card.detail:SetJustifyH("LEFT")
-  card.detail:SetSpacing(2)
+  card.detail:SetSpacing(3)
   if card.detail.SetMaxLines then card.detail:SetMaxLines(2) end
-
-  -- Under the why, what starting it does ("Start at Kharanos: the journey
-  -- picks up its 4 quests."): the row's next detail, lighter.
-  card.more = text(card, "GameFontHighlightSmall", 10, DETAIL_COLOR)
-  card.more:SetPoint("TOPLEFT", card.detail, "BOTTOMLEFT", 0, -4)
-  card.more:SetWidth(width - 2 * INSET)
-  card.more:SetJustifyH("LEFT")
-  if card.more.SetMaxLines then card.more:SetMaxLines(2) end
 
   card.rule = card:CreateTexture(nil, "ARTWORK")
   card.rule:SetColorTexture(RULE[1], RULE[2], RULE[3], RULE[4])
@@ -272,6 +266,8 @@ local function makeCard(parent, width)
   card.rule:SetPoint("BOTTOMLEFT", INSET, 54)
 
   card.stats = factRow(card, width - 2 * INSET)
+  -- The facts in the lighter ink, so the title and the why lead.
+  for _, fact in ipairs(card.stats.facts) do fact.value:SetTextColor(DETAIL_COLOR[1], DETAIL_COLOR[2], DETAIL_COLOR[3]) end
   card.stats:SetPoint("TOPLEFT", card.rule, "BOTTOMLEFT", 0, -6)
 
   card.button = button(card, 120, 22)
@@ -338,15 +334,18 @@ local function plain(text)
   return ((text or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
--- The role tag drawn on a card.
+-- The tag drawn on a card: what kind of activity it is. A dungeon, a raid,
+-- a profession by their kind; a zone you'd be exploring (picked as the
+-- exploration, or new to you) is EXPLORE, any other quest thing QUESTING;
+-- anything else its category, else a plain SUGGESTION.
 function Cards.TagFor(r)
-  if r.role == "continue" then
-    if QUEST_KINDS[r.kind] then return "QUESTING" end
-    return string.upper(r.category or r.kind or "CONTINUE")
-  end
-  if ROLE_TAGS[r.role] then return ROLE_TAGS[r.role] end
+  if r.kind == "dungeon" and r.raid then return KIND_TAGS.raid end
+  if KIND_TAGS[r.kind] then return KIND_TAGS[r.kind] end
+  if r.kind == "zone" and (r.role == "explore" or r.lead == "novelty") then return "EXPLORE" end
+  if QUEST_KINDS[r.kind] then return "QUESTING" end
   if r.category then return string.upper(r.category) end
-  return r.role == nil and "ALTERNATIVE" or string.upper(r.role)
+  if r.role == "explore" then return "EXPLORE" end
+  return "SUGGESTION"
 end
 
 -- The why line: the row's own, else its first detail (the ranking, today).
@@ -354,17 +353,6 @@ function Cards.WhyFor(r)
   if r.why and r.why ~= "" then return plain(r.why) end
   local first = r.details and r.details[1]
   return first and plain(first.text) or ""
-end
-
--- The line under the why: the first detail after it that isn't held back
--- for the tooltip (`more`), without colour codes; "" when there is none.
-function Cards.MoreFor(r)
-  local why = Cards.WhyFor(r)
-  for i, d in ipairs(r.details or {}) do
-    local line = plain(d.text)
-    if i > 1 and not d.more and line ~= "" and line ~= why and line ~= why .. "." then return line end
-  end
-  return ""
 end
 
 -- Up to three facts for the row, each a label and a text that says what it
@@ -419,7 +407,6 @@ local function fill(card, r)
   local ink = r.over and TAG_COLOR or TITLE_COLOR
   card.badge:SetTextColor(ink[1], ink[2], ink[3])
   card.detail:SetText(Cards.WhyFor(r))
-  card.more:SetText(Cards.MoreFor(r))
   local facts = Cards.FactsFor(r)
   fillFacts(card.stats, facts)
   card.stats:SetShown(#facts > 0)
@@ -520,12 +507,6 @@ end
 function Cards.Badge(index)
   local c = card(index)
   return c and c.badge:IsShown() and c.badge:GetText() or nil
-end
-
--- The line under a card's why, as drawn (1 = leftmost), for tests.
-function Cards.More(index)
-  local c = card(index)
-  return c and c.more:GetText()
 end
 
 -- A card's Add detour button while it shows (1 = leftmost), else nil, for tests.

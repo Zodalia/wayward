@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- "Good to know", the bottom region of the main window: up to four tiles
 -- from ForYou.Observations(), each an icon, a short text with its numbers in
--- gold, and at most one button: Add detour (the observation's stop joins the
+-- gold, and at most one light action: Add detour (the observation's stop joins the
 -- journey; Start journey when none is on), Show ... (a side page) or Go (plain directions).
 -- Hover a tile for the full text. Until ForYou has observations, the region
 -- says so in one line.
@@ -99,11 +99,10 @@ local function makeTile(parent, width)
   tile.text:SetWordWrap(true)
   if tile.text.SetMaxLines then tile.text:SetMaxLines(3) end
   ns.Skin.Text(tile.text)
-  tile.button = CreateFrame("Button", nil, tile, "UIPanelButtonTemplate")
-  tile.button:SetSize(90, 18)
-  tile.button:SetPoint("BOTTOMRIGHT", -PAD, PAD - 2)
-  tile.button:SetScript("OnClick", function() Obs.Run(tile.observation) end)
-  ns.Skin.Button(tile.button)
+  -- A light action, not a button frame: a tile is a fact first, and its
+  -- action weighs less than a suggestion's Start journey.
+  tile.button = ns.Skin.LinkButton(tile, 90, "", function() Obs.Run(tile.observation) end)
+  tile.button:SetPoint("BOTTOMRIGHT", -PAD + 4, PAD - 4)
   tile:EnableMouse(true)
   tile:SetScript("OnEnter", tooltip)
   tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
