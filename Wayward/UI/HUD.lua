@@ -29,6 +29,7 @@ local HOME = { "TOP", "TOP", 0, -140 }
 local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the journey gains stops
 local FLASH_PULSES = 3
 local MAX_OBJECTIVES = 4 -- lines of objectives under the step; past that, "+N more"
+local OTHER_WIDTH, OTHER_HEIGHT = 92, 20 -- the Another spot button, right of the objectives
 -- PROTOTYPE: the shopping list (quests gathered as you go, Journey.ShoppingList).
 local SHOP_ICON = "Interface\\Icons\\INV_Misc_Bag_07"
 local SHOP_ROWS = 4        -- things listed, around you first, then nearest; the rest is one "+N more"
@@ -228,6 +229,23 @@ local function create()
     "Add a detour: repair, vendor, mailbox, bank...")
   f.add:SetSize(ADD_SIZE, ADD_SIZE)
   f.add:SetPoint("BOTTOMRIGHT", -6, 6)
+  -- Beside the objectives, when they're in more than one area: another spot
+  -- for them (this one's camped, respawning, too busy). A labelled button,
+  -- since it's the one you reach for in a hurry. Placed by HUD.Update.
+  f.otherArea = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.otherArea:SetSize(OTHER_WIDTH, OTHER_HEIGHT)
+  f.otherArea:SetText("Another spot")
+  f.otherArea:SetScript("OnClick", function() ns.Nav.OtherArea() end)
+  f.otherArea:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Another spot")
+    GameTooltip:AddLine("Camped, respawning or too busy? Head for another place to do this quest. "
+      .. "This one's left alone for a while, like a camp you've cleared.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  f.otherArea:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(f.otherArea)
+  f.otherArea:Hide()
 
   -- With the detail on "stops", the step is in a tooltip over the box.
   f:SetScript("OnEnter", function(self)
@@ -603,13 +621,26 @@ function HUD.Update()
   end
   local objective = objectives[1]
   local above = sub ~= "" and frame.sub or frame.step
+  -- Another spot, right of the objectives (or of where they'd be).
+  local other = trip and not gatherHere and step.stop ~= nil and step.stop == ns.Nav.HeadingFor() and ns.Nav.CanOtherArea()
+  frame.otherArea:SetShown(other)
+  frame.otherArea:ClearAllPoints()
+  frame.otherArea:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT", 0, -3)
   frame.objectives:SetText(objectiveLines(objectives))
   frame.objectives:SetShown(objective ~= nil)
   frame.objectives:ClearAllPoints()
   frame.objectives:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -5)
-  frame.objectives:SetPoint("RIGHT", -PADDING, 0)
+  if other then
+    frame.objectives:SetPoint("RIGHT", frame.otherArea, "LEFT", -6, 0)
+  else
+    frame.objectives:SetPoint("RIGHT", -PADDING, 0)
+  end
+  local function height(fs) return fs:GetStringHeight() or 12 end
+  -- The objectives' lines, or the button beside them when that's taller.
+  local besideHeight = objective and height(frame.objectives) or 0
+  if other then besideHeight = math.max(besideHeight, OTHER_HEIGHT - 2) end
   frame.info:ClearAllPoints()
-  frame.info:SetPoint("TOPLEFT", objective and frame.objectives or above, "BOTTOMLEFT", 0, -5)
+  frame.info:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -5 - besideHeight - (besideHeight > 0 and 5 or 0))
   frame.info:SetPoint("RIGHT", INFO_RIGHT, 0)
 
   local distance = here and ns.Geo.Distance(here, step.to) or math.huge
@@ -659,9 +690,8 @@ function HUD.Update()
   end
 
   -- Grow to fit the text (titles and steps can wrap).
-  local function height(fs) return fs:GetStringHeight() or 12 end
   local subHeight = sub ~= "" and (3 + height(frame.sub)) or 0
-  local objectivesHeight = objective and (5 + height(frame.objectives)) or 0
+  local objectivesHeight = besideHeight > 0 and (5 + besideHeight) or 0
   frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + (trip and 16 or 5) + height(frame.step)
     + subHeight + objectivesHeight + 5 + height(frame.info)))
 

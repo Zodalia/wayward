@@ -3837,6 +3837,45 @@ do
   ns.HUD.Update()
   check(ns.Nav.InArea(), "walk out and back: it's the area again")
 
+  -- Another spot (the directions box's button, beside the objectives): the
+  -- spot it's headed for is left alone for a while, on to another.
+  ns.Nav.Stop()
+  clock = clock + 1000
+  player.x, player.y = 0.5, 0.5
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Murloc Sweep", stops = ns.Journey.QuestStops(43, here) }))
+  ns.HUD.Update()
+  local hud = ns.HUD.Frame()
+  local sweep = ns.Nav.CurrentStep().stop
+  check(sweep.action.kind == "complete" and ns.Nav.CanOtherArea() and hud.otherArea:IsShown()
+    and hud.otherArea:GetText() == "Another spot" and ns.HUD.Lines()[5] ~= "",
+    "a quest in three spots: Another spot shows beside its objectives")
+  local spots, aimed = {}, ns.Journey.AimedArea(sweep)
+  spots[aimed] = true
+  before = #chat
+  hud.otherArea.scripts.OnClick(hud.otherArea)
+  check(ns.Nav.CurrentStep().stop == sweep and ns.Journey.Cleared(sweep, aimed) and not spots[ns.Journey.AimedArea(sweep)]
+    and table.concat(chat, "\n", before + 1):find("another spot for Murloc Sweep", 1, true),
+    "click it: the same stop, at another spot, and it says so")
+  spots[ns.Journey.AimedArea(sweep)] = true
+  clock = clock + 5
+  hud.otherArea.scripts.OnClick(hud.otherArea)
+  check(ns.Nav.CurrentStep().stop == sweep and not spots[ns.Journey.AimedArea(sweep)], "again: the third spot")
+  -- In one: it counts as cleared, and isn't the area till you've walked out.
+  local third = ns.Journey.AimedArea(sweep)
+  local node = sweep.node
+  player.x, player.y = node.x, node.y
+  ns.HUD.Update()
+  check(ns.Nav.InArea() and hud.otherArea:IsShown(), "in the third spot: the button's still there")
+  clock = clock + 5
+  ns.Nav.OtherArea()
+  check(not ns.Nav.InArea() and ns.Journey.Cleared(sweep, third) and ns.Nav.CurrentStep().stop == sweep
+    and ns.Journey.AimedArea(sweep) ~= third, "click it there: cleared, on to the spot cleared longest ago")
+  -- One spot only: no button.
+  ns.Nav.Stop()
+  local oneSpot = { node = ns.Geo.Node(1433, 0.3, 0.3), text = "Do one", action = { kind = "complete", questID = 99999 } }
+  check(ns.Journey.AimedArea(oneSpot) == nil, "a quest with no other spot: nothing to switch to")
+
   -- The game's own quest marker (Forever) wins over stray spawns in the
   -- data: only the areas near it count, wherever the others are.
   ns.Nav.Stop()
@@ -5240,11 +5279,60 @@ do
   ns.Nav.MoveStop(c, a)
   check(labels() == "C,A,B", "your order: " .. labels())
   ns.Nav.MoveOn()
-  check(labels() == "A,C,B" and ns.Nav.active.journey.root.manual and c.later == nil, "move on keeps it: " .. labels())
+  check(labels() == "A,C,B" and ns.Nav.active.journey.root.manual and c.later == nil and c.laterUntil == nil,
+    "move on keeps it: " .. labels())
+
+  -- Do this stop later moves it down the list: behind whatever fits in the
+  -- next LATER_SECONDS, not just the next stop, and it stays there when you
+  -- walk elsewhere or pick up another quest, till the wait runs down.
+  ns.Nav.Stop()
+  local savedTime, clock = time, 200000
+  time = function() return clock end
+  player.x = 0.5
+  local d1, d2, d3, d4 = stopAt(0.56, "D1"), stopAt(0.6, "D2"), stopAt(0.64, "D3"), stopAt(0.68, "D4")
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Down", stops = { d1, d2, d3, d4 } }))
+  check(labels() == "D1,D2,D3,D4", "nearest first: " .. labels() .. " in " .. ns.Nav.active.journey.seconds .. " s")
+  before = #chat
+  ns.Nav.MoveOn()
+  check(labels() == "D2,D3,D4,D1" and chat[before + 1] == "|cff7fd1aeWayward:|r later: Visit D1, after 3 other stops.",
+    "later: to the end of the list, not just past the next stop: " .. labels() .. " / " .. tostring(chat[before + 1]))
+  check(d1.laterUntil == clock + ns.Journey.LATER_SECONDS, "it waits a while")
+  player.x = 0.54
+  ns.Nav.Recalculate()
+  check(labels() == "D2,D3,D4,D1", "walked back beside it: still later: " .. labels())
+  local d5 = stopAt(0.58, "D5")
+  ns.Journey.Extend(ns.Nav.active.journey, { d5 })
+  ns.Nav.Recalculate()
+  check(ns.Nav.active.journey.stops[#ns.Nav.active.journey.stops] == d1 and labels():find("D5", 1, true),
+    "a stop added beside it: that one fits in, it's still later: " .. labels())
+  local reloaded = ns.Journey.Load(ns.Journey.Save(ns.Nav.active.journey))
+  local savedWait
+  for _, s in ipairs(reloaded.stops) do if s.text == "Visit D1" then savedWait = s.laterUntil end end
+  check(savedWait == d1.laterUntil, "the wait is saved with the journey")
+  clock = clock + ns.Journey.LATER_SECONDS / 2
+  local next = ns.Nav.HeadingFor()
+  ns.Nav.MoveOn()
+  check(next ~= d1 and next.laterUntil == clock + ns.Journey.LATER_SECONDS and d1.laterUntil < next.laterUntil,
+    "the newer choice waits longer: " .. labels())
+  ns.Journey.Postpone(ns.Nav.active.journey, d1)
+  check(d1.laterUntil == clock + ns.Journey.LATER_SECONDS * 3 / 2, "postponed again: its wait grows")
+  clock = clock + ns.Journey.LATER_SECONDS * 3
+  -- The wait over, only the first rule holds (after D2, the stop it was put
+  -- behind): it's back on the way, not at the end. (A fresh plan: re-plans
+  -- as you go keep the order you're on unless another saves the padding.)
+  local fresh = ns.Journey.Plan(ns.Geo.PlayerNode(), { stops = ns.Journey.OpenStops(ns.Nav.active.journey) })
+  local freshLabels, position = {}, {}
+  for i, s in ipairs(fresh.stops) do
+    freshLabels[i] = s.node.label
+    position[s] = i
+  end
+  check(ns.Journey.LaterIn(d1) == 0 and position[d1] > position[d2] and position[d1] < position[d3], "the wait over: it's back where it fits: " .. table.concat(freshLabels, ","))
+  time = savedTime
 
   -- Skip asks first, then takes the stop off with what needs it.
   ns.Nav.Stop()
   pickup.later, far.later, pickup.skipped, turnin.skipped = nil, nil, nil, nil
+  pickup.laterUntil, far.laterUntil = nil, nil
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = { pickup, turnin, far } }))
   local shown, popup = nil, nil
   StaticPopupDialogs = {}

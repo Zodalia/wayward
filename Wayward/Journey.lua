@@ -31,6 +31,7 @@ local _, ns = ...
 --       trainer once one of those, or any new spell, is learned; Navigator.lua)
 --     after = { stop, ... },   -- optional: stops that must come first
 --     later = { stop, ... },   -- set by Journey.Postpone: stops you chose to do first
+--     laterUntil = time,       -- set by Journey.Postpone: behind other stops till then (Journey.LaterIn)
 --     resolve = { kind = "objectives", questID = 123 },  -- optional: node found at planning time
 --       (objectives in several areas: the area that fits the trip, see Journey.PickArea)
 --     worked = { [area index] = time },  -- set on the way: objective areas you've cleared
@@ -43,6 +44,15 @@ local Journey = {}
 ns.Journey = Journey
 
 local MAX_SWAP_PASSES = 6
+
+-- Do this stop later (Journey.Postpone): besides coming after the next stop,
+-- the stop waits LATER_SECONDS in the plans after, the way a cleared camp
+-- waits to respawn: whatever else fits in that time goes first, wherever you
+-- walk and whatever quest you pick up meanwhile. The wait runs down as time
+-- passes, so the stop drifts back to where it fits; postponing it again adds
+-- more. Doing it anyway (its objectives, on the way) ends the wait.
+local LATER_SECONDS = 600
+Journey.LATER_SECONDS = LATER_SECONDS
 
 -- Padding for re-plans as you go: a new order (or another of a quest's
 -- areas) has to save the time to walk STICK_YARDS, or the plan keeps the one
@@ -328,6 +338,39 @@ function Journey.ClearArea(stop)
   return true
 end
 
+-- The area a stop's objectives are headed for: the one you're in, else the
+-- one nearest its node (the area the plan picked). Nil with fewer than two
+-- open areas (there's no other to go to).
+function Journey.AimedArea(stop)
+  local action = stop and stop.action
+  if not (action and action.kind == "complete" and action.questID) or stop.gather then return nil end
+  local areas = Journey.OpenAreas(action.questID)
+  if #areas < 2 then return nil end
+  if stop.inArea and stop.areaAt then return stop.areaAt end
+  if not stop.node then return nil end
+  local best, bestDistance
+  for _, area in ipairs(areas) do
+    local _, d = ns.Data.Nearest(area.nodes, stop.node)
+    if d and d < (bestDistance or math.huge) then best, bestDistance = area.index, d end
+  end
+  return best
+end
+
+-- Another of a stop's areas (the directions box's "Another spot": camped,
+-- respawning, too busy): the one it's headed for counts as worked just now,
+-- so the plan after picks another (Journey.PickArea), and it's left alone
+-- for a while like a cleared camp. Returns false when there's no other area.
+-- Re-plan afterwards.
+function Journey.OtherArea(stop)
+  local index = Journey.AimedArea(stop)
+  if not index then return false end
+  if stop.inArea and stop.areaAt == index then return Journey.ClearArea(stop) end
+  stop.worked = stop.worked or {}
+  stop.worked[index] = time()
+  stop.aimArea = nil
+  return true
+end
+
 -- Where to do a stop's objectives from `from` when they're in more than one
 -- area: the one you're in; else one you haven't cleared lately, the least out
 -- of the way on to `toward` (the stop after it); else the one cleared longest
@@ -571,6 +614,12 @@ end
 -- hand-in waiting on gathering (GatherSeconds). Getting there sooner means
 -- waiting, so the planner fits other stops in first: a stop with someone to
 -- see now goes ahead of a hand-in that isn't ready.
+-- Seconds left of a postponed stop's wait (LATER_SECONDS), 0 when none.
+function Journey.LaterIn(stop)
+  local untilAt = stop and stop.laterUntil
+  return untilAt and math.max(0, untilAt - time()) or 0
+end
+
 function Journey.ReadyIn(stop)
   local respawn = Journey.RespawnIn(stop)
   if Journey.WaitsOnGathering(stop) then return math.max(respawn, Journey.GatherSeconds(stop.action.questID)) end
@@ -913,9 +962,10 @@ local function orderStops(start, stops, net, keep)
   end
   local cost = costTable(points, net)
   -- Seconds until a stop can be done (its camps respawning, or a hand-in
-  -- waiting on gathering): getting there sooner means waiting, so other stops fit in first.
+  -- waiting on gathering), or until one you postponed is due: getting there
+  -- sooner means waiting, so other stops fit in first.
   local readyIn = {}
-  for i, stop in ipairs(stops) do readyIn[i + 1] = Journey.ReadyIn(stop) end
+  for i, stop in ipairs(stops) do readyIn[i + 1] = math.max(Journey.ReadyIn(stop), Journey.LaterIn(stop)) end
   local function arrive(t, from, i)
     return math.max(t + cost(from, i), readyIn[i])
   end
@@ -1341,6 +1391,8 @@ function Journey.Plan(start, def, net)
       break
     end
   end
+  -- Doing it now: it isn't for later any more.
+  if def.first and ordered[1] == def.first then def.first.laterUntil = nil end
   if root.manual then
     -- Keep the root in this order, so later re-plans start from it.
     if root.stops and root.stops ~= def.stops then
@@ -1493,9 +1545,10 @@ end
 -- Puts an open stop after the next one in the current plan that doesn't need
 -- it (the directions box's move on: do that one first). In a journey you
 -- ordered yourself it moves there (Journey.Move); otherwise it becomes a rule
--- for the plans after (stop.later), so the rest is still ordered for you.
--- Returns the stop it now comes after, or nil when there's none. Re-plan
--- afterwards.
+-- for the plans after (stop.later), so the rest is still ordered for you,
+-- and it waits behind whatever else fits in the next LATER_SECONDS
+-- (stop.laterUntil; again, and the wait grows). Returns the stop it now
+-- comes after at least, or nil when there's none. Re-plan afterwards.
 function Journey.Postpone(journey, stop)
   local root = journey.root or journey.def
   if not open(stop) then return nil end
@@ -1534,6 +1587,8 @@ function Journey.Postpone(journey, stop)
       table.insert(s.pinAfter, stop)
     end
     if pinned then Journey.Pin(journey, stop) end
+  elseif not root.manual then
+    stop.laterUntil = math.max(time(), stop.laterUntil or 0) + LATER_SECONDS
   end
   return target
 end
@@ -1703,7 +1758,7 @@ function Journey.Save(journey)
     end
     return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, npc = stop.npc, action = stop.action, resolve = stop.resolve,
       done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = links.after,
-      later = links.later, pinned = stop.pinned, pinAfter = links.pinAfter, pinnedBy = links.pinnedBy }
+      later = links.later, laterUntil = stop.laterUntil, pinned = stop.pinned, pinAfter = links.pinAfter, pinnedBy = links.pinnedBy }
   end
   local saved = { title = root.title, kind = root.kind, icon = root.icon, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
@@ -1750,7 +1805,7 @@ function Journey.Load(saved)
   local def = { title = saved.title, kind = saved.kind, icon = saved.icon, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, giver = s.giver, npc = s.npc, action = s.action, resolve = s.resolve, done = s.done,
-      passed = s.passed, skipped = s.skipped, worked = s.worked, pinned = s.pinned }
+      passed = s.passed, skipped = s.skipped, worked = s.worked, laterUntil = s.laterUntil, pinned = s.pinned }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end
   for i, s in ipairs(saved.stops or {}) do

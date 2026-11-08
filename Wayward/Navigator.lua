@@ -2224,9 +2224,41 @@ function Nav.MoveOn()
     end
     local journey = ns.Journey.Replan(a.journey, here)
     if not journey then return end
-    ns.print(string.format("later: %s, after %s.", stop.text or "that stop", first.text or "the next stop"))
+    -- Where it is now: after the one stop, or after however many fit in first.
+    local ahead
+    for i, s in ipairs(journey.stops) do
+      if s == stop then ahead = i - 1 end
+    end
+    if ahead and ahead > 1 then
+      ns.print(string.format("later: %s, after %d other stops.", stop.text or "that stop", ahead))
+    else
+      ns.print(string.format("later: %s, after %s.", stop.text or "that stop", first.text or "the next stop"))
+    end
     adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
   end
+end
+
+-- Whether the stop you're heading for has another spot to go to (its
+-- objectives are in more than one area): the directions box's Another spot.
+function Nav.CanOtherArea()
+  return ns.Journey.AimedArea(Nav.HeadingFor()) ~= nil
+end
+
+-- Another spot for the stop you're heading for (the one it's headed for is
+-- camped, respawning, too busy): the journey from here, on to another of its
+-- areas, still next. False when there's none.
+function Nav.OtherArea()
+  local a = Nav.active
+  local stop = Nav.HeadingFor()
+  local here = ns.Geo.PlayerNodeExact()
+  if not (a and stop and here) or not ns.Journey.OtherArea(stop) then return false end
+  note("you asked for another spot for %s", stopName(stop))
+  local journey = ns.Journey.Replan(a.journey, here, nil, stop)
+  if not journey then return false end
+  a.lastReplan = GetTime and GetTime()
+  ns.print(string.format("another spot for %s.", questName(stop.action.questID)))
+  adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+  return true
 end
 
 -- Takes the stop you're heading for off the journey, with the stops that need
