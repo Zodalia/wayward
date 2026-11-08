@@ -674,9 +674,11 @@ function HUD.Update()
     frame.info:SetText("|cff7fd1aeYou're here:|r go in     " .. remaining)
   elseif ns.Nav.Interaction() == "talk" and not (step.stop and step.stop.action and step.stop.action.kind == "manual") then
     local name = ns.Nav.TargetNPC()
-    local kind = step.stop and step.stop.action and step.stop.action.kind
+    local action = step.stop and step.stop.action
+    local kind = action and action.kind
     frame.info:SetText(string.format("|cff7fd1aeYou're here:|r talk to %s%s     %s", name or "them",
-      kind == "train" and " and train it" or kind == "learn" and " and train your spells" or "", remaining))
+      kind == "train" and (action.book and ", buy the book and read it" or " and train it")
+        or kind == "learn" and " and train your spells" or "", remaining))
   elseif ns.Nav.Waiting() then
     -- A quest step only you can tell is done; spells to train.
     local kind = step.stop and step.stop.action and step.stop.action.kind

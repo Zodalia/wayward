@@ -23,8 +23,9 @@ local _, ns = ...
 --       you hold as many as its log asks for, Quests.HasEnough) and
 --       { kind = "manual", questID } (a step of a quest you confirm with next) and
 --       { kind = "talk", npc } (done when you talk to them: a trainer, a vendor) and
---       { kind = "train", profession, cap, npc } (done when that profession's skill
---       cap is over `cap`: you bought the next rank) and
+--       { kind = "train", profession, cap, npc, book? } (done when that profession's
+--       skill cap is over `cap`: you bought the next rank, or read `book`, the
+--       item ID of the book that teaches it) and
 --       { kind = "explore", mapID } (done once you're in that zone, or a subzone of it) and
 --       { kind = "enter", dungeon = "The Deadmines" } (done when you load into it) and
 --       { kind = "learn", spells = { spellID or name, ... }, npc } (class training: done at the

@@ -491,36 +491,55 @@ local function professionNeeds(start, net)
   for _, p in ipairs(ns.Professions.LIST) do
     local have = mine[p.name]
     local rank, state = nil, nil
-    if have then rank, state = ns.Professions.NextRank(have) end
+    if have then rank, state = ns.Professions.NextRank(have, p.name) end
     if rank and state == "ready" then
-      local trainer, route, sure = ns.Professions.NearestTrainer(p.name, rank.name, start, net)
+      local trainer, route, sure = ns.Professions.WhereToLearn(p.name, rank.name, start, net)
       if trainer and route then
         local capped = have.rank >= have.cap
         local place = placeName(trainer.node, ns.MapName(trainer.node.mapID))
+        local book, quest = trainer.book, trainer.quest
         trainer.node.npc = trainer.name
-        local details = { { text = string.format("Trainer: %s, %s.", trainer.name, place) } }
+        local details = { { text = book
+          and string.format("%s comes from a book, not a trainer: %s, sold by %s, %s.", rank.name, book.name, trainer.name, place)
+          or quest and not quest.done
+          and string.format("%s comes from a quest, not a trainer: %s, from %s, %s, who teaches it once you hand it in.",
+            rank.name, quest.name, trainer.name, place)
+          or string.format("Trainer: %s, %s.", trainer.name, place) } }
         if not sure then
           details[#details + 1] = { text = "Not every trainer teaches " .. rank.name .. "; if this one doesn't, the Professions tab lists others.", more = true }
         end
-        -- The journey: go there and buy the rank (done when your skill cap goes up).
-        local title = string.format("Train %s %s in %s", rank.name, p.name, place)
+        -- The journey: go there and buy the rank, or the book that teaches it,
+        -- or do the quest that leads to it first (done when your skill cap goes up).
+        local title = quest and not quest.done and string.format("Learn %s %s: %s", rank.name, p.name, quest.name)
+          or string.format("%s %s %s in %s", book and "Learn" or "Train", rank.name, p.name, place)
         local stop = { node = trainer.node, npc = trainer.name,
-          text = string.format("Train %s %s at %s", rank.name, p.name, trainer.name),
-          action = { kind = "train", profession = p.name, cap = have.cap, npc = trainer.name } }
-        local journey = plan(start, { title = title, stops = { stop } }, net, "profession")
+          text = book and string.format("Buy %s from %s and read it", book.name, trainer.name)
+            or string.format("Train %s %s at %s", rank.name, p.name, trainer.name),
+          action = { kind = "train", profession = p.name, cap = have.cap, npc = trainer.name, book = book and book.id } }
+        local stops = {}
+        if quest and not quest.done then
+          for _, s in ipairs(ns.Journey.QuestStops(quest.id, start)) do
+            stops[#stops + 1] = s
+            if s.action and s.action.kind == "turnin" and s.action.questID == quest.id then stop.after = { s } end
+          end
+        end
+        stops[#stops + 1] = stop
+        local journey = plan(start, { title = title, stops = stops }, net, "profession")
         out[#out + 1] = {
           kind = "profession", capped = capped, icon = p.icon, journey = journey, profession = p.name,
           title = title, urgency = 0.6,
           zone = ns.MapName(trainer.node.mapID), goal = trainer.node, route = route,
           trip = journey and journey.seconds or route.seconds,
           why = string.format("%s %d/%d%s", p.name, have.rank, have.cap, capped and ", at your cap" or ""),
-          text = string.format("%s is at its cap (%d/%d): %s lets it go up to %d, at %s in %s, %s away.", p.name,
-            have.rank, have.cap, rank.name, rank.cap, trainer.name, place, ns.FormatDuration(route.seconds)),
+          text = string.format("%s is at its cap (%d/%d): %s lets it go up to %d, %s %s in %s, %s away.", p.name,
+            have.rank, have.cap, rank.name, rank.cap, book and ("from " .. book.name .. ", sold by")
+              or quest and not quest.done and ("after " .. quest.name .. ", from") or "at",
+            trainer.name, place, ns.FormatDuration(route.seconds)),
           highlights = { string.format("%d/%d", have.rank, have.cap), rank.name },
           stats = { { "Skill", string.format("%d/%d", have.rank, have.cap) }, { "Next", rank.name },
             { "Travel", ns.FormatDuration(route.seconds) } },
           details = details,
-          stop = copyStop(stop),
+          stop = copyStop(stop), stops = #stops > 1 and copyStops(stops) or nil,
           rankName = rank.name, rankCap = rank.cap, have = have,
         }
       end

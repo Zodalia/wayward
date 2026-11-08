@@ -338,8 +338,13 @@ observations ("Good to know"). The suggestions come from these providers:
   whatever its XP. The card says why in plain words.
 - **Profession**: the next rank of a profession you can train now
   (Journeyman at 50 skill and level 10, Expert at 125 and 20, Artisan at 200
-  and 35), at the nearest trainer known to teach it. Its journey ends with
-  buying the rank: done when the game raises that profession's skill cap,
+  and 35), at the nearest trainer known to teach it. Expert Cooking, First
+  Aid and Fishing come from a book instead, so those go to the nearest vendor
+  selling it (Old Man Heminway's "Expert Fishing - The Bass and You"), and
+  their Artisan comes from a quest (at 225 skill), whose giver teaches it
+  once you hand it in: Nat Pagle, Angler Extreme; Clamlette Surprise; Triage.
+  That journey does the whole quest first. It ends with buying the rank (or
+  reading the book): done when the game raises that profession's skill cap,
   not just on talking. At your cap it is an observation too.
 - **Hand in**: the best group of quests ready to hand in, grouped by where you
   hand them in (30 seconds each).

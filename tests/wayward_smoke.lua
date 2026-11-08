@@ -2253,8 +2253,93 @@ do
   check(ns.Nav.active == nil and ns.Fanfare.lastTrip.title:find("Journeyman Tailoring", 1, true),
     "buying Journeyman (the cap goes to 150) finishes it")
 
+  -- Expert Fishing comes from a book, not a trainer: a fishing trainer close
+  -- by is passed over for whoever sells the book.
+  skills[#skills + 1] = { "Fishing", false, 150, 150 }
+  NPCS[990012] = { name = "Lakeshire Angler", subName = "Fishing Trainer", npcFlags = 16, friendlyToFaction = "A",
+    spawns = { [44] = { { 51, 51 } } } }
+  refreshData()
+  ns.ForYou.Invalidate()
+  local function fishingCard()
+    for _, r in ipairs(ns.ForYou.Results()) do if r.title:find("Fishing", 1, true) then return r end end
+  end
+  local function fishingRow()
+    for _, r in ipairs(P.Results()) do if r.id == "professionFishing" then return r end end
+  end
+  local row = fishingRow()
+  check(fishingCard() == nil and row and not row.goal and row.subtitle:find("no seller known yet", 1, true)
+    and row.details[1].text:find("Expert Fishing - The Bass and You", 1, true),
+    "Expert Fishing with no seller known: no trainer offered, the book named: " .. tostring(row and row.subtitle))
+  NPCS[990013] = { name = "Old Man Heminway", subName = "Fishing Supplies", npcFlags = 4, friendlyToFaction = "AH",
+    spawns = { [1519] = { { 40, 60 } } } }
+  ITEMS[16083] = { name = "Expert Fishing - The Bass and You", vendors = { 990013 } }
+  refreshData()
+  ns.ForYou.Invalidate()
+  card = fishingCard()
+  stop = card and card.journey and card.journey.stops[1]
+  check(card and card.title:find("^Learn Expert Fishing") and card.goal.npc == "Old Man Heminway"
+    and stop and stop.text == "Buy Expert Fishing - The Bass and You from Old Man Heminway and read it"
+    and stop.action.kind == "train" and stop.action.book == 16083,
+    "Expert Fishing: a card to buy the book from its seller, not a trainer: " .. tostring(card and card.title))
+  row = fishingRow()
+  check(row and row.title:find("Old Man Heminway", 1, true) and row.subtitle:find("learn Expert now", 1, true),
+    "Professions tab: Expert Fishing at the book's seller: " .. tostring(row and row.title))
+  check(P.Book("Fishing", "Journeyman") == nil and P.Book("Cooking", "Expert").id == 16072
+    and P.Book("First Aid", "Expert").id == 16084 and P.Book("Tailoring", "Expert") == nil,
+    "only Expert in the secondary professions is a book")
+  ns.Nav.StartJourney(card.journey)
+  player.mapID, player.x, player.y = stop.node.mapID, stop.node.x, stop.node.y
+  ns.HUD.Update()
+  check(ns.Nav.Waiting() and ns.HUD.Lines()[4]:find("talk to Old Man Heminway, buy the book and read it", 1, true),
+    "at the seller: buy the book and read it: " .. tostring(ns.HUD.Lines()[4]))
+  skills[#skills][4] = 225
+  fire("SKILL_LINES_CHANGED")
+  runTimers()
+  check(ns.Nav.active == nil, "reading the book (the cap goes to 225) finishes it")
+
+  -- Artisan Fishing comes from Nat Pagle's quest (at 225 skill, not 200),
+  -- and Nat Pagle teaches it once you hand it in.
+  local savedLevel, savedCompleted = UnitLevel, C_QuestLog.GetAllCompletedQuestIDs
+  UnitLevel = function() return 35 end
+  skills[#skills][3] = 210
+  local r3, s3, need3 = P.NextRank({ rank = 210, cap = 225 }, "Fishing")
+  check(r3.name == "Artisan" and s3 == "skill" and need3 == 225 and P.Quest("Fishing", "Artisan") == 6607
+    and P.Quest("Fishing", "Expert") == nil, "Artisan Fishing: a quest that needs 225 skill")
+  row = fishingRow()
+  check(row and row.subtitle:find("Artisan at 225 skill", 1, true) and row.subtitle:find("no quest giver known yet", 1, true),
+    "Professions tab: Artisan Fishing at 225, no quest data yet: " .. tostring(row and row.subtitle))
+  skills[#skills][3] = 225
+  NPCS[990014] = { name = "Nat Pagle", npcFlags = 2, friendlyToFaction = "AH", spawns = { [1519] = { { 45, 55 } } } }
+  QUESTS[6607] = { name = "Nat Pagle, Angler Extreme", questLevel = 45, requiredLevel = 35,
+    requiredSkill = { 356, 225 }, startedBy = { { 990014 } }, finishedBy = { { 990014 } } }
+  refreshData()
+  ns.ForYou.Invalidate()
+  card = fishingCard()
+  local kinds = {}
+  for _, s in ipairs(card and card.journey and card.journey.stops or {}) do kinds[#kinds + 1] = s.action and s.action.kind end
+  local last = card and card.journey.stops[#card.journey.stops]
+  check(card and card.title == "Learn Artisan Fishing: Nat Pagle, Angler Extreme" and kinds[1] == "pickup"
+    and kinds[#kinds] == "train" and last.npc == "Nat Pagle" and last.after and last.after[1].action.kind == "turnin",
+    "Artisan Fishing: do Nat Pagle's quest, then train it with them: " .. tostring(card and card.title)
+      .. " (" .. table.concat(kinds, ", ") .. ")")
+  row = fishingRow()
+  check(row and row.title:find("Nat Pagle", 1, true) and row.subtitle:find("learn Artisan now", 1, true)
+    and row.details[1].text:find("once you hand it in", 1, true),
+    "Professions tab: Artisan Fishing from Nat Pagle's quest: " .. tostring(row and row.details and row.details[1].text))
+  C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 6607 } end
+  fire("QUEST_TURNED_IN", 6607)
+  refreshData()
+  ns.ForYou.Invalidate()
+  card = fishingCard()
+  check(card and card.title:find("^Train Artisan Fishing in") and #card.journey.stops == 1
+    and card.journey.stops[1].action.kind == "train",
+    "quest handed in: just train Artisan Fishing with Nat Pagle: " .. tostring(card and card.title))
+
+  UnitLevel, C_QuestLog.GetAllCompletedQuestIDs = savedLevel, savedCompleted
+  skills[#skills] = nil
   GetNumSkillLines, GetSkillLineInfo = savedNum, savedInfo
-  ns.db.npcs[990010], NPCS[990011] = nil, nil
+  ns.db.npcs[990010], NPCS[990011], NPCS[990012], NPCS[990013], ITEMS[16083] = nil, nil, nil, nil, nil
+  NPCS[990014], QUESTS[6607] = nil, nil
   refreshData()
   ns.ForYou.Invalidate()
 end
