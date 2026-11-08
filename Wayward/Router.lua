@@ -212,10 +212,40 @@ local TRANSPORT_VERB = {
   tram = "Ride the Deeprun Tram to %s", portal = "Take the portal to %s",
 }
 
+-- Where the arrow points for a step: its own end, except a walk through an
+-- area to gather in on the way (Journey: gathering as you go) that the next
+-- stop doesn't need: that's passed through, not headed for, so the arrow
+-- points on to the next stop (or the flight master or boat on the way
+-- there), past any zone borders. A needed area (step.via.needed) is the
+-- point of the walk: heading for a hand-in that can't be done yet would
+-- only send you back out. Returns the node and its step's index.
+function Router.Aim(route, index)
+  local step = route.steps[index]
+  if not (step and step.via and not step.via.needed) then return step and step.to, index end
+  local k = index
+  while route.steps[k + 1] and route.steps[k + 1].mode == "walk" do
+    k = k + 1
+    local nextStep = route.steps[k + 1]
+    if route.steps[k].stop or not nextStep or nextStep.mode ~= "walk" then break end
+  end
+  return route.steps[k].to, k
+end
+
 -- Player-facing text for a step; walking is described by where it leads.
 -- `travelOnly` describes the travel even when the step ends at a journey stop.
 function Router.Describe(route, index, travelOnly)
   local step, nextStep = route.steps[index], route.steps[index + 1]
+  -- Passing through an area on the way: said with where the arrow points
+  -- ("Hand in Rare Books to Brother Paxton, through Goldshire (An Enticing Offer)").
+  if step.via and not step.via.needed then
+    local _, aim = Router.Aim(route, index)
+    if aim ~= index then
+      local place = ns.Places and ns.Places.NameFor(step.to)
+      local through = place and place ~= step.to.label and string.format("through %s (%s)", place, step.to.label)
+        or "through the area for " .. step.to.label
+      return Router.Describe(route, aim, travelOnly) .. ", " .. through
+    end
+  end
   -- A journey stop says what to do there ("Pick up ... from ...").
   if step.stop and step.stop.text and not travelOnly then
     return ns.Journey and ns.Journey.StopText(step.stop) or step.stop.text

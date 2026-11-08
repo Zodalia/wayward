@@ -125,6 +125,10 @@ function PlanReport.Build()
     if step then
       add("Step %d of %d: %s, %s to %s%s", a.index, #a.route.steps, ns.Router.Describe(a.route, a.index) or "?",
         tostring(step.mode), place(step.to), here and (", " .. yards(here, step.to)) or "")
+      local aim = ns.Router.Aim(a.route, a.index)
+      if aim and aim ~= step.to then
+        add("  the arrow points past it, on to %s%s", place(aim), here and (", " .. yards(here, aim)) or "")
+      end
     end
     local flags = {}
     if a.waiting then flags[#flags + 1] = "waiting at the stop" end

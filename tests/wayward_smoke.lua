@@ -8256,6 +8256,8 @@ do
   check(step.via and not step.stop and at(step.to, 0.5, 0.5), "through the area on the way (50,50)")
   local text = ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index)
   check(text:find("^Through"), "the step says so: " .. text)
+  check(step.via.needed and ns.Nav.Aim() == step.to,
+    "the hand-in needs it: the arrow points at the area, not at a hand-in that can't be done yet")
 
   -- From far off, with your Hearthstone bound beside Oslow: the hearth
   -- still goes through an area on the way to the hand-in, as the walk did
@@ -8425,6 +8427,28 @@ do
   planned = ns.Journey.Plan(here, { title = "Redridge", stops = stops })
   check(planned.stops[1] == docks and not docks.via,
     "a stop that doesn't need it, no area close to the way: no detour through one")
+
+  -- A stop that doesn't need it, an area right on the way: the step goes
+  -- through it, but the arrow, the compass and the step point on to the
+  -- stop (the area is passed, not headed for).
+  player.x, player.y = 0.5, 0.95
+  here = ns.Geo.PlayerNode()
+  local onWay = {}
+  for _, s in ipairs(ns.Journey.QuestStops(4600, here)) do
+    if s.action.kind == "complete" then onWay[#onWay + 1] = s end
+  end
+  local north = { node = ns.Geo.Node(1433, 0.5, 0.2, "Redridge north"), text = "Go to Redridge north" }
+  onWay[#onWay + 1] = north
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge", stops = onWay }), true)
+  step = ns.Nav.CurrentStep()
+  check(step.via and not step.via.needed and at(step.to, 0.5, 0.5),
+    "a stop that doesn't need it, an area on the way: through the goretusks at 50,50")
+  check(at(ns.Nav.Aim(), 0.5, 0.2), "the arrow points on to the stop, not at the area")
+  text = ns.Router.Describe(ns.Nav.active.route, ns.Nav.active.index)
+  check(text:find("^Go to Redridge north, through"), "the step says where it points, and what it's through: " .. text)
+  check(ns.PlanReport.Build():find("the arrow points past it, on to", 1, true),
+    "the plan report says where the arrow points")
+  ns.Nav.Stop()
 
   -- Heading for one area, you walk into another of theirs: you're
   -- gathering already, so the arrow goes on to the hand-in.

@@ -643,7 +643,9 @@ function HUD.Update()
   frame.info:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -5 - besideHeight - (besideHeight > 0 and 5 or 0))
   frame.info:SetPoint("RIGHT", INFO_RIGHT, 0)
 
-  local distance = here and ns.Geo.Distance(here, step.to) or math.huge
+  -- To where the arrow points (past an area gathered in on the way).
+  local aim = ns.Nav.Aim() or step.to
+  local distance = here and ns.Geo.Distance(here, aim) or math.huge
   local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
   if gatherHere then
     -- Nothing waits for you here: walk on whenever you like.
@@ -701,7 +703,7 @@ function HUD.Update()
   -- The compass points the way while you walk; otherwise its circle shows what's ahead.
   if step.mode == "walk" and distance < math.huge and heading and not ns.Nav.Waiting() and not ns.Nav.Flying()
       and not gatherHere then
-    frame.arrow:SetRotation(ns.Geo.Bearing(here, step.to) - heading)
+    frame.arrow:SetRotation(ns.Geo.Bearing(here, aim) - heading)
     frame.arrow:Show()
     frame.icon:Hide()
   else

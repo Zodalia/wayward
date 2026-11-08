@@ -104,6 +104,13 @@ function Nav.CurrentStep()
   return a and a.route.steps[a.index]
 end
 
+-- Where the arrow points for the current step (Router.Aim): past an area
+-- gathered in on the way, on to the next stop.
+function Nav.Aim()
+  local a = Nav.active
+  return a and (ns.Router.Aim(a.route, a.index))
+end
+
 -- The journey is saved per character so it survives logging out (see Resume).
 local function save()
   local a = Nav.active
@@ -168,7 +175,7 @@ end
 
 local function showStep()
   local step = Nav.CurrentStep()
-  if step then setWaypoint(step.to, ns.Router.Describe(Nav.active.route, Nav.active.index)) end
+  if step then setWaypoint(Nav.Aim(), ns.Router.Describe(Nav.active.route, Nav.active.index)) end
   if Nav.active then Nav.active.closest = nil end
   save()
   ns.Fire("NAV_CHANGED")
@@ -1844,7 +1851,9 @@ end
 local function checkRoute(a, here, previous)
   local step = a.route.steps[a.index]
   if not step or onTaxi() then return false end
-  local distance = ns.Geo.Distance(here, step.to)
+  -- Measured to where the arrow points: walking straight past an area on the
+  -- way isn't going another way.
+  local distance = ns.Geo.Distance(here, ns.Router.Aim(a.route, a.index))
   if previous and ns.Geo.Distance(previous, here) > JUMP_YARDS then
     return autoReplan(a, here, "you moved a long way")
   end

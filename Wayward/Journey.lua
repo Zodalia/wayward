@@ -743,7 +743,8 @@ Journey.ShortOf = shortOf
 -- short of what it needs (shortOf), whatever it adds, and with every area
 -- visited lately, the one visited longest ago (it respawns first): the way
 -- doesn't end at a hand-in that can't be done yet. Returns { stop, index,
--- node } or nil.
+-- node, needed } or nil; `needed` when the stop can't be done without it
+-- (shortOf): only then does the arrow point at the area itself (Router.Aim).
 local function pickVia(gathers, from, to, picked, atStart)
   if not (from and to and to.node and #gathers > 0) then return nil end
   -- Already in one of their areas: the way isn't turned aside to another.
@@ -761,14 +762,14 @@ local function pickVia(gathers, from, to, picked, atStart)
         local cleared = visitedAt and now - visitedAt < CLEARED_FOR
         local node, d = ns.Data.Nearest(area.nodes, from)
         if node and cleared and needed and d > VIA_RADIUS and (not oldestAt or visitedAt < oldestAt) then
-          oldest, oldestAt = { stop = g, index = area.index, node = node }, visitedAt
+          oldest, oldestAt = { stop = g, index = area.index, node = node, needed = true }, visitedAt
         end
         if node and not cleared and d > VIA_RADIUS then
           local extra = d + ns.Geo.Distance(node, to.node) - direct
           local last = to.via
           if last and last.stop == g and last.index == area.index then extra = extra - STICK_YARDS end
           if (needed or extra <= VIA_YARDS) and (not bestExtra or extra < bestExtra) then
-            best, bestExtra = { stop = g, index = area.index, node = node }, extra
+            best, bestExtra = { stop = g, index = area.index, node = node, needed = needed or nil }, extra
           end
         end
       end
