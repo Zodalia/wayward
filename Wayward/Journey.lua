@@ -433,7 +433,14 @@ function Journey.SpreadInfo(questID)
     if count > info.busiest then info.busiest = count end
   end
   if #nodes > 0 then info.share = info.busiest / #nodes end
-  info.spread = info.areas >= SPREAD_AREAS and info.span >= SPREAD_YARDS and info.share < BUSY_SHARE
+  -- A place to explore (How Big a Threat?: find a furbolg camp, one of a few
+  -- across Darkshore) isn't picked up in passing: you go to one of its places.
+  -- However its places lie, the quest is a stop.
+  for _, group in ipairs(questID and ns.Quests.ObjectiveGroups(questID) or {}) do
+    if group.explore then info.explore = true end
+  end
+  info.spread = not info.explore and info.areas >= SPREAD_AREAS and info.span >= SPREAD_YARDS
+    and info.share < BUSY_SHARE
   spreadCache[areas] = info
   return info
 end

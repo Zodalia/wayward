@@ -8318,6 +8318,38 @@ do
   QUESTS[4601], NPCS[9604] = nil, nil
   refreshData()
 
+  -- A place to explore, one of four across the zone (How Big a Threat?:
+  -- find a furbolg camp): as many areas and as wide as Redridge Stew, one
+  -- spawn in each, but you don't pick it up in passing. It's a stop.
+  QUESTS[4602] = { name = "Camp Count", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, triggerEnd = { "Locate a camp", { [44] = { { 15, 15 }, { 85, 15 }, { 15, 85 }, { 85, 85 } } } } }
+  refreshData()
+  info = ns.Journey.SpreadInfo(4602)
+  check(info.areas == 4 and info.span >= 400 and info.share < 0.4 and info.explore and not info.spread,
+    string.format("a place to explore over the zone: a stop, not gathered (%d areas, %.0f yd, %.0f%% round the busiest)",
+      info.areas, info.span, info.share * 100))
+  log = { 4600, 4602 }
+  local camp = { { text = "Locate a camp", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or id == 4602 and camp or {} end
+  local withCamp = ns.Journey.QuestStops(4600, here)
+  for _, s in ipairs(ns.Journey.QuestStops(4602, here)) do withCamp[#withCamp + 1] = s end
+  planned = ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Redridge", stops = withCamp })
+  local campDo
+  for _, s in ipairs(withCamp) do
+    if s.action.kind == "complete" and s.action.questID == 4602 then campDo = s end
+  end
+  local campPlanned = false
+  for _, s in ipairs(planned.stops) do if s == campDo then campPlanned = true end end
+  check(campDo and campPlanned and not campDo.gather, "the camp is a stop on the plan, not gathered as you go")
+  ns.Nav.StartJourney(planned, true)
+  check(ns.PlanReport.Build():find("Do Camp Count: 4 areas over %d+ yd.-a place to explore: a stop"),
+    "the plan report says why it's a stop")
+  ns.Nav.Stop()
+  log = { 4600 }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
+  QUESTS[4602] = nil
+  refreshData()
+
   -- Two quests on the same spots (the Militia's Defias drop the Bandanas
   -- too): one stop, "Do X and Y", both quests' objectives on the box.
   NPCS[9604] = { name = "Defias Smuggler", minLevel = 16, maxLevel = 17, spawns = { [44] = {

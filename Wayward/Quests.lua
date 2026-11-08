@@ -668,10 +668,10 @@ local function itemNodes(itemID, label, nodes)
   return nodes
 end
 
--- A quest's objectives as named groups of places: { {name, nodes}, ... } —
+-- A quest's objectives as named groups of places: { {name, nodes, explore?}, ... } —
 -- creatures to kill (their spawns), objects to use, items (where they drop or
--- lie) and places to explore. `name` is matched against the quest log's
--- objective text to tell which are finished.
+-- lie) and places to explore (explore: any one of its places does it). `name`
+-- is matched against the quest log's objective text to tell which are finished.
 local function objectiveGroups(q, label)
   local groups = {}
   local objectives = type(q.objectives) == "table" and q.objectives or {}
@@ -689,7 +689,7 @@ local function objectiveGroups(q, label)
   end
   if type(q.triggerEnd) == "table" then
     groups[#groups + 1] = { name = type(q.triggerEnd[1]) == "string" and q.triggerEnd[1] or nil,
-      nodes = Data.Nodes(q.triggerEnd[2], label) }
+      nodes = Data.Nodes(q.triggerEnd[2], label), explore = true }
   end
   local out = {}
   for _, g in ipairs(groups) do

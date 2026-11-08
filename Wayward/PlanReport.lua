@@ -190,7 +190,8 @@ function PlanReport.Build()
           spreadLines[#spreadLines + 1] = string.format(
             "  %s: %d areas over %.0f yd, %d of %d spawns (%.0f%%) round the busiest spot, %d around you  >  %s",
             ns.Nav.StopName(s), info.areas, info.span, info.busiest, info.total, info.share * 100,
-            here and ns.Journey.SpawnsAround(id, here) or 0, info.spread and "spread: gathered as you go" or "a stop")
+            here and ns.Journey.SpawnsAround(id, here) or 0, info.spread and "spread: gathered as you go"
+              or info.explore and "a place to explore: a stop" or "a stop")
         end
       end
       if #spreadLines > 0 then
