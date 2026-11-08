@@ -192,6 +192,13 @@ function PlanReport.Build()
             ns.Nav.StopName(s), info.areas, info.span, info.busiest, info.total, info.share * 100,
             here and ns.Journey.SpawnsAround(id, here) or 0, info.spread and "spread: gathered as you go"
               or info.explore and "a place to explore: a stop" or "a stop")
+          -- With more than one objective, each is judged on its own spawns.
+          if #info.objectives > 1 then
+            for _, o in ipairs(info.objectives) do
+              spreadLines[#spreadLines + 1] = string.format("      %s: %d of %d spawns (%.0f%%) round its busiest spot",
+                o.name or "?", o.busiest, o.total, o.share * 100)
+            end
+          end
         end
       end
       if #spreadLines > 0 then

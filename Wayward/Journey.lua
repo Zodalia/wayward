@@ -448,43 +448,71 @@ Journey.VIA_YARDS, Journey.VIA_RADIUS, Journey.NEAR_YARDS = VIA_YARDS, VIA_RADIU
 -- Keyed by the quest's area list (Quests.ObjectiveAreas), so new data re-checks.
 local spreadCache = setmetatable({}, { __mode = "k" })
 
--- How a quest's objective spawns lie: { areas, span (yards end to end),
--- total (spawns), busiest (spawns in the busiest BUSY_YARDS circle), share
--- (busiest / total), spread }. Built once per quest's data.
-function Journey.SpreadInfo(questID)
-  local areas = questID and ns.Quests.ObjectiveAreas(questID) or {}
-  if spreadCache[areas] then return spreadCache[areas] end
-  local nodes, instance, x0, x1, y0, y1 = {}, nil, nil, nil, nil, nil
-  for _, area in ipairs(areas) do
-    for _, m in ipairs(area) do
-      local n = m.node
-      instance = instance or n.instance
-      if n.instance == instance then
-        nodes[#nodes + 1] = n
-        x0, x1 = math.min(x0 or n.wx, n.wx), math.max(x1 or n.wx, n.wx)
-        y0, y1 = math.min(y0 or n.wy, n.wy), math.max(y1 or n.wy, n.wy)
-      end
-    end
-  end
-  local info = { areas = #areas, total = #nodes, span = x0 and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) or 0,
-    busiest = 0, share = 1 }
+-- The most of `nodes` in one BUSY_YARDS circle round one of them.
+local function busiestCircle(nodes)
+  local busiest = 0
   local every = math.max(1, math.ceil(#nodes / BUSY_CENTRES))
   for i = 1, #nodes, every do
     local count = 0
     for _, n in ipairs(nodes) do
       if ns.Geo.Distance(nodes[i], n) <= BUSY_YARDS then count = count + 1 end
     end
-    if count > info.busiest then info.busiest = count end
+    if count > busiest then busiest = count end
   end
+  return busiest
+end
+
+-- How a quest's objective spawns lie: { areas, span (yards end to end),
+-- total (spawns), busiest (spawns in the busiest BUSY_YARDS circle), share
+-- (busiest / total), objectives, spread }. objectives: each objective's own
+-- { name, total, busiest, share }. Built once per quest's data.
+--
+-- An objective that crowds a patch (An Enticing Offer's Duskweed Petals, 23
+-- in one corner of Elwynn) doesn't make one that's all over the zone (its
+-- Vials of Animal Blood, from every boar and young bear) a stop: pooled, the
+-- patch puts 46% of the spawns round one spot. So the quest also spreads
+-- when the objectives that don't crowd one spot, each judged on its own
+-- spawns, hold most of its spawns; a crowded one among them is still gone
+-- through on the way to the hand-in.
+function Journey.SpreadInfo(questID)
+  local areas = questID and ns.Quests.ObjectiveAreas(questID) or {}
+  if spreadCache[areas] then return spreadCache[areas] end
+  local groups = questID and ns.Quests.ObjectiveGroups(questID) or {}
+  local nodes, byGroup, instance, x0, x1, y0, y1 = {}, {}, nil, nil, nil, nil, nil
+  for _, area in ipairs(areas) do
+    for _, m in ipairs(area) do
+      local n = m.node
+      instance = instance or n.instance
+      if n.instance == instance then
+        nodes[#nodes + 1] = n
+        byGroup[m.group] = byGroup[m.group] or {}
+        table.insert(byGroup[m.group], n)
+        x0, x1 = math.min(x0 or n.wx, n.wx), math.max(x1 or n.wx, n.wx)
+        y0, y1 = math.min(y0 or n.wy, n.wy), math.max(y1 or n.wy, n.wy)
+      end
+    end
+  end
+  local info = { areas = #areas, total = #nodes, span = x0 and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) or 0,
+    busiest = busiestCircle(nodes), share = 1, objectives = {} }
   if #nodes > 0 then info.share = info.busiest / #nodes end
+  local loose = 0 -- spawns of objectives that don't crowd one spot
+  for g, group in ipairs(groups) do
+    local own = byGroup[g]
+    if own then
+      local busiest = busiestCircle(own)
+      local o = { name = group.name, total = #own, busiest = busiest, share = busiest / #own }
+      info.objectives[#info.objectives + 1] = o
+      if o.share < BUSY_SHARE then loose = loose + #own end
+    end
+  end
   -- A place to explore (How Big a Threat?: find a furbolg camp, one of a few
   -- across Darkshore) isn't picked up in passing: you go to one of its places.
   -- However its places lie, the quest is a stop.
-  for _, group in ipairs(questID and ns.Quests.ObjectiveGroups(questID) or {}) do
+  for _, group in ipairs(groups) do
     if group.explore then info.explore = true end
   end
   info.spread = not info.explore and info.areas >= SPREAD_AREAS and info.span >= SPREAD_YARDS
-    and info.share < BUSY_SHARE
+    and (info.share < BUSY_SHARE or loose * 2 > info.total)
   spreadCache[areas] = info
   return info
 end

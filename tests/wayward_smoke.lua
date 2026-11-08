@@ -8552,6 +8552,30 @@ do
   QUESTS[4601], NPCS[9604] = nil, nil
   refreshData()
 
+  -- One objective all over the zone, another crowded in one patch (An
+  -- Enticing Offer: animal blood from every boar in Elwynn, duskweed from one
+  -- corner). Pooled, the patch is over 40% of the spawns round one spot;
+  -- judged on their own, the boars are spread and hold most of the spawns:
+  -- spread.
+  NPCS[9605] = { name = "Field Boar", minLevel = 16, maxLevel = 17, spawns = { [44] = {
+    { 2, 2 }, { 98, 2 }, { 2, 98 }, { 98, 98 } } } }
+  NPCS[9606] = { name = "Bog Lurker", minLevel = 16, maxLevel = 17, spawns = { [44] = {
+    { 50, 50 }, { 51, 52 }, { 52, 51 } } } }
+  QUESTS[4604] = { name = "Blood and Bog", questLevel = 17, requiredLevel = 12, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9605 }, { 9606 } } } }
+  refreshData()
+  info = ns.Journey.SpreadInfo(4604)
+  local boars, lurkers = info.objectives[1] or { share = -1 }, info.objectives[2] or { share = -1 }
+  check(info.share >= 0.4 and #info.objectives == 2 and boars.share < 0.4 and lurkers.share == 1 and info.spread,
+    string.format("a crowded patch doesn't make the rest a stop (%.0f%% pooled; %.0f%% and %.0f%% each)",
+      info.share * 100, boars.share * 100, lurkers.share * 100))
+  -- A bigger patch: most of the spawns. A stop.
+  NPCS[9606].spawns[44] = { { 50, 50 }, { 51, 52 }, { 52, 51 }, { 50, 53 }, { 53, 50 } }
+  refreshData()
+  check(not ns.Journey.Spread(4604), "most of the spawns in the patch: a stop")
+  QUESTS[4604], NPCS[9605], NPCS[9606] = nil, nil, nil
+  refreshData()
+
   -- A place to explore, one of four across the zone (How Big a Threat?:
   -- find a furbolg camp): as many areas and as wide as Redridge Stew, one
   -- spawn in each, but you don't pick it up in passing. It's a stop.
