@@ -261,14 +261,8 @@ end
 -- Sample moments for "test", each playing `kit` or the chosen sound.
 local TESTS = {
   popup = function(kit)
-    if not (StaticPopupDialogs and StaticPopup_Show) then return end
-    StaticPopupDialogs.WAYWARD_SOUND_TEST = StaticPopupDialogs.WAYWARD_SOUND_TEST or {
-      text = "%s",
-      button1 = "Start journey", button2 = "Not now",
-      OnAccept = function() ns.print("that was a sound test: nothing started.") end,
-      timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-    }
-    StaticPopup_Show("WAYWARD_SOUND_TEST", "You picked up Sample Quest.\n\nStart a journey for it (~4 min)?")
+    ns.Snackbar.Show({ question = true, text = "You picked up Sample Quest. Start a journey for it (~4 min)?",
+      actions = { { label = "Start journey", icon = "journey", run = function() ns.print("that was a sound test: nothing started.") end } } })
     Sounds.Play("popup", kit)
   end,
   step = function(kit)

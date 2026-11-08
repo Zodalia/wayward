@@ -73,7 +73,7 @@ box shows every step or just the stop you're heading for; that one is per
 character, `/ww detail steps|stops`), **NPCs** (the
 star over the NPC you are heading for, and the game's friendly nameplates it
 needs), **Journeys and quests** (the question when you pick up a quest, whether
-the journey overview opens by itself when a journey starts, the new-journey
+the journey overview opens by itself when a journey starts (off by default), the new-journey
 toasts), **Maps** (your journey on the world map and on the minimap, and
 the minimap button), and **Windows and help** (reset window
 positions, show the welcome again, list the slash commands). Right-click the
@@ -484,7 +484,19 @@ off.
 quest you picked up (or one that continues a chain), when a stop is added to
 your journey, when a journey starts, when it's done, and for the toast. When a journey
 starts or grows and asks about a follow-up quest, you hear the question's
-sound alone. `/ww sounds` lists each moment's shortlist;
+sound alone.
+
+**Notes over the directions box.** Picking up a quest outside your journey
+lays a short note over the directions box for a moment: "You picked up X.
+Add it to your journey (about ~4 min more)?" with a **+** (add to journey)
+and a map (new journey: the one on now is set aside), or just the map
+(start a journey) with nothing on. A quest that goes in by itself (3 min or
+less, or a follow-up on the way) gets a note too, with a curved arrow to
+undo it. Hover an icon for what it does. A bar behind the words drains as
+the note's time runs out (8 s, 15 s for a question); hovering holds it and
+shows the detail, and letting it run out, or its x, changes nothing and
+brings the directions back. One shows at a time; with no directions on, it
+sits where the directions box would. `/ww sounds` lists each moment's shortlist;
 `/ww sounds <moment> <n|next>` plays one to compare,
 `/ww sounds use <moment> <n|off|default>` keeps it, and
 `/ww sounds test <moment> [n]` shows the real banner, toast or question with
@@ -585,9 +597,10 @@ quest in its own order (pick up, objectives, hand in) but interleaved by
 travel time. "Hand in N completed quests" visits every finisher in one
 journey, and can be added to the current journey too. Quest matching and
 the rows are Find's (`ns.Search.Find(text, "quest")`,
-`ns.QuestsPage.RowFor(id, start, net)`). Adding or starting a journey for one quest that has a chain
-asks which of its next steps to add as well (ticked when on the way); a journey
-of several quests only asks about follow-ups on the way. Without quest data
+`ns.QuestsPage.RowFor(id, start, net)`). Adding or starting a journey for a quest whose
+next steps are on the way adds them too, with a note to Remove them; for one
+quest whose next steps are out of the way, the note asks instead. A journey of
+several quests only takes follow-ups on the way. Without quest data
 the log still lists, but without directions.
 
 **Where a chain leads:** every quest list (Quests tab log and search, For you

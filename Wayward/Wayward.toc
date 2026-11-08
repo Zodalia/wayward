@@ -58,7 +58,7 @@ UI\HUD.lua
 UI\TargetButton.lua
 UI\JourneyOverview.lua
 UI\Fanfare.lua
-UI\ChainPicker.lua
+UI\Snackbar.lua
 UI\ErrandPicker.lua
 UI\RouteMap.lua
 UI\WorldMapRoute.lua

@@ -676,7 +676,7 @@ function Nav.ExtraText(offer)
 end
 
 -- What the quests picked up lead to, when it's worth knowing (a dungeon
--- quest or a long chain, Quests.ChainHighlight): "\n" and a line each, or "".
+-- quest or a long chain, Quests.ChainHighlight): a line each, or nil.
 local function chainNote(offer)
   local lines = {}
   for i, id in ipairs(offer.ids or {}) do
@@ -686,7 +686,14 @@ local function chainNote(offer)
       lines[#lines + 1] = #offer.ids > 1 and (offer.names[i] .. ": " .. text .. ".") or (text .. ".")
     end
   end
-  return #lines > 0 and ("\n" .. table.concat(lines, "\n")) or ""
+  return #lines > 0 and table.concat(lines, "\n") or nil
+end
+
+-- { [questID] = true } for a snackbar's `quests`.
+local function questSet(ids)
+  local set = {}
+  for _, id in ipairs(ids or {}) do set[id] = true end
+  return set
 end
 
 -- Shows a question, with its sound; if the game can't, says so in chat rather
@@ -701,42 +708,34 @@ local function askPlayer(which, text, data)
   return true
 end
 
--- Asks about quests that aren't in the journey; `what` says how you came by
--- them ("picked up", "made progress on").
+-- Asks about quests that aren't in the journey, as a snackbar (UI/Snackbar.lua);
+-- `what` says how you came by them ("picked up", "made progress on"). Letting
+-- it fade, or its x, is "not now".
 local function askAbout(ids, what)
   local offer = Nav.PickupOffer(ids)
   if not offer then return end
   Nav.lastPickupOffer = offer
-  if not (StaticPopupDialogs and StaticPopup_Show) then return end
-  -- StaticPopup_Show takes two text arguments (then the data): the message is
-  -- built here and passed as one.
-  StaticPopupDialogs.WAYWARD_PICKUP_ADD = StaticPopupDialogs.WAYWARD_PICKUP_ADD or {
-    text = "%s",
-    button1 = "Add to journey", button2 = "Not now", button3 = "New journey",
-    OnAccept = function(_, data) Nav.AddToTrip(data.stops, data.label) end,
-    OnAlt = function(_, data)
-      -- A new journey never loses the one on now: it's set aside.
-      if Nav.active then Nav.SetAside() end
-      startJourney(data.journey)
-    end,
-    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-  }
-  StaticPopupDialogs.WAYWARD_PICKUP_NEW = StaticPopupDialogs.WAYWARD_PICKUP_NEW or {
-    text = "%s",
-    button1 = "Start journey", button2 = "Not now",
-    OnAccept = function(_, data) startJourney(data.journey) end,
-    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-  }
-  local note = chainNote(offer)
+  local item = { question = true, sound = "popup", quests = questSet(offer.ids), note = chainNote(offer),
+    title = offer.label, detail = #offer.names > 1 and offer.names or nil }
   if Nav.active and offer.extra then
-    askPlayer("WAYWARD_PICKUP_ADD", string.format(
-      "You %s %s.%s\n\nAdd it to your journey (%s), or start a new journey for it (%s)? "
-      .. "A new journey sets the one on now aside, to resume later.",
-      what, offer.label, note, Nav.ExtraText(offer), ns.FormatDuration(offer.alone)), offer)
+    item.text = string.format("You %s %s. Add it to your journey (%s)?", what, offer.label, Nav.ExtraText(offer))
+    item.actions = {
+      { label = "Add to journey", icon = "add", run = function() Nav.AddToTrip(offer.stops, offer.label) end },
+      { label = "New journey", icon = "journey",
+        tooltip = string.format("A journey for it alone (%s). The one on now is set aside, to resume later.",
+          ns.FormatDuration(offer.alone)),
+        run = function()
+          -- A new journey never loses the one on now: it's set aside.
+          if Nav.active then Nav.SetAside() end
+          startJourney(offer.journey)
+        end },
+    }
   else
-    askPlayer("WAYWARD_PICKUP_NEW", string.format("You %s %s.%s\n\nStart a journey for it (%s)?",
-      what, offer.label, note, ns.FormatDuration(offer.alone)), offer)
+    item.text = string.format("You %s %s. Start a journey for it (%s)?", what, offer.label,
+      ns.FormatDuration(offer.alone))
+    item.actions = { { label = "Start journey", icon = "journey", run = function() startJourney(offer.journey) end } }
   end
+  ns.Snackbar.Show(item)
 end
 
 -- Quests picked up on a journey that add AUTO_ADD_SLACK seconds or less to it
@@ -753,6 +752,12 @@ local function autoAddLine(offer)
     offer.label, ns.FormatDuration(offer.extra))
 end
 
+-- The snackbar for quests added without asking (Nav.AddToTrip's `notice`).
+local function autoAddNotice(offer)
+  return { text = string.format("Added %s to your journey (%s more).", offer.label, ns.FormatDuration(offer.extra)),
+    quests = questSet(offer.ids), detail = #offer.names > 1 and offer.names or nil }
+end
+
 -- Seconds an offer adds for auto-adding: the more of with and without the Hearthstone.
 local function addsUnasked(offer)
   return offer and offer.extra and math.max(offer.extra, offer.extraNoHearth or 0)
@@ -764,14 +769,14 @@ local function autoAddPickups(ids)
   local offer = Nav.PickupOffer(ids)
   local adds = addsUnasked(offer)
   if adds and adds <= AUTO_ADD_SLACK then
-    Nav.AddToTrip(offer.stops, offer.label, autoAddLine(offer))
+    Nav.AddToTrip(offer.stops, offer.label, autoAddLine(offer), autoAddNotice(offer))
     return {}
   end
   local rest, budget = {}, AUTO_ADD_SLACK
   for _, id in ipairs(ids) do
     local one = Nav.active and Nav.active.journey and Nav.PickupOffer({ id })
     adds = addsUnasked(one)
-    if adds and adds <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one)) then
+    if adds and adds <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one), autoAddNotice(one)) then
       budget = budget - adds
     else
       rest[#rest + 1] = id
@@ -1119,8 +1124,12 @@ end
 -- where you are; plain directions become a journey ("custom") with their
 -- destination as a stop. With no journey on, this starts one. Returns true
 -- when the journey changed. `message`, when given, is said in chat in place
--- of the usual "added ... to your journey" line.
-function Nav.AddToTrip(stops, label, message)
+-- of the usual "added ... to your journey" line. `notice`, when given, is a
+-- snackbar ({ text, quests?, detail? }) saying it went in without asking, with
+-- undo to take it out again (Nav.RemoveAdded).
+local addingFollowUps -- true while follow-ups go in after another addition: that one makes the sound
+
+function Nav.AddToTrip(stops, label, message, notice)
   local here = ns.Geo.PlayerNode()
   if not here or #stops == 0 then return false end
   local a = Nav.active
@@ -1155,8 +1164,46 @@ function Nav.AddToTrip(stops, label, message)
   ns.print(message or string.format("added %s to your journey: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
   ns.Fire("JOURNEY_EXTENDED")
+  if notice then
+    ns.Snackbar.Show({ text = notice.text, quests = notice.quests, detail = notice.detail,
+      actions = { { label = "Undo", icon = "undo", tooltip = "Takes it out of your journey again.",
+        run = function() Nav.RemoveAdded(stops, label) end } } })
+  end
   -- One sound: the follow-up question's, when it asks one.
-  if not offerFollowUps(stops) then ns.Sounds.Play("step") end
+  if not offerFollowUps(stops) and not addingFollowUps then ns.Sounds.Play("step") end
+  return true
+end
+
+-- A snackbar's undo: takes stops added a moment ago back out of the journey
+-- (with the stops that need them) and re-plans. The quests they're for aren't
+-- asked about when you make progress on them: you said no. Nothing happens
+-- when the journey on now isn't the one they went into.
+function Nav.RemoveAdded(stops, label)
+  local a = Nav.active
+  if not (a and a.journey) then return false end
+  local root = a.journey.root or a.journey.def
+  local inJourney = {}
+  for _, s in ipairs(root.stops or {}) do inJourney[s] = true end
+  ns.charDB.askedProgress = ns.charDB.askedProgress or {}
+  local removed = false
+  for _, stop in ipairs(stops) do
+    if inJourney[stop] and not stop.done and not stop.skipped then
+      stop.skipped, removed = true, true
+      for _, other in ipairs(dependents(a.journey, stop)) do other.skipped = true end
+      if stop.action and stop.action.questID then ns.charDB.askedProgress[stop.action.questID] = true end
+    end
+  end
+  if not removed then return false end
+  note("you removed %s", label or "a detour")
+  ns.print("took " .. (label or "it") .. " out of your journey.")
+  local here = ns.Geo.PlayerNode()
+  local journey = here and ns.Journey.Replan(a.journey, here)
+  if not journey then
+    ns.print("no stops left.")
+    endEarly()
+    return true
+  end
+  adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
   return true
 end
 
@@ -1164,14 +1211,14 @@ end
 Nav.AddDetour = Nav.AddToTrip
 
 -- Follow-up quests. When a journey gains a quest's hand-in, the quests that
--- follow it (Quests.FollowUps) are offered when adding them costs little
+-- follow it (Quests.FollowUps) go in too when adding them costs little
 -- travel (FOLLOW_UP_SLACK more seconds): you pick them up where you hand the
--- first in, often from the same NPC. The rest of the chain after them is
--- listed too (CHAIN_OFFER_DEPTH steps, CHAIN_OFFER_MAX quests), ticked when
--- it is on the way as well, for you to tick or untick (UI/ChainPicker.lua).
--- Adding one quest (from your log, a search, a pickup) lists its follow-ups
--- out of the way too, unticked: you chose that quest, so its chain is wanted;
--- a journey of several only asks about the ones on the way.
+-- first in, often from the same NPC. The rest of the chain after them goes in
+-- while it is on the way as well (CHAIN_OFFER_DEPTH steps, CHAIN_OFFER_MAX
+-- quests). A snackbar says so, with undo. Adding one quest (from your log, a
+-- search, a pickup) whose follow-ups are out of the way asks about them
+-- instead, with a snackbar: you chose that quest, so its chain may be wanted;
+-- a journey of several only takes the ones on the way.
 local FOLLOW_UP_SLACK = 180
 local CHAIN_OFFER_DEPTH = 4
 local CHAIN_OFFER_MAX = 8
@@ -1185,10 +1232,10 @@ end
 -- (a quest right after the one it follows):
 --   { quest (row), after (questID it follows), parent (entry index, nil for a
 --     first follow-up), depth, travel (seconds it adds), seconds (travel and
---     doing it), stops, checked }
--- `stops` and `extra` are the ticked ones' stops and travel.
--- `anyDistance`: first follow-ups out of the way are listed too (unticked).
--- `skip`: quest IDs not to list (ones you were just asked about).
+--     doing it), stops, checked (on the way: it goes in without asking) }
+-- `stops` and `extra` are the checked ones' stops and travel.
+-- `anyDistance`: first follow-ups out of the way are listed too (unchecked).
+-- `skip`: quest IDs not to list (ones just added or asked about).
 function Nav.FollowUpOffer(stops, anyDistance, skip)
   local a = Nav.active
   local here = ns.Geo.PlayerNode()
@@ -1253,28 +1300,7 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
   return offer
 end
 
--- Ticks or unticks a quest of the offer: a quest needs the one before it in
--- the chain, so ticking one ticks those before it, and unticking one unticks
--- those after it.
-function Nav.ToggleFollowUp(offer, index)
-  local entry = offer.quests[index]
-  if not entry then return end
-  entry.checked = not entry.checked
-  if entry.checked then
-    local p = entry.parent
-    while p do
-      offer.quests[p].checked = true
-      p = offer.quests[p].parent
-    end
-  else
-    for i = index + 1, #offer.quests do
-      local e = offer.quests[i]
-      if e.parent and not offer.quests[e.parent].checked then e.checked = false end
-    end
-  end
-end
-
--- The ticked quests: { stops, names, count, seconds (travel and doing them) }.
+-- The quests that go in: { stops, names, count, seconds (travel and doing them) }.
 function Nav.FollowUpChoice(offer)
   local choice = { stops = {}, names = {}, count = 0, seconds = 0 }
   for _, e in ipairs(offer.quests) do
@@ -1288,20 +1314,34 @@ function Nav.FollowUpChoice(offer)
   return choice
 end
 
--- Adds the ticked quests of the offer to the journey. The ones left unticked
--- aren't asked about again straight away; the chain past the offer can be.
+-- "Chain part 2: ~1 min more travel + ~5 min to do it (your average)", for a
+-- snackbar's hover.
+function Nav.FollowUpDetail(e)
+  local doing = ns.FormatDuration(e.seconds - e.travel) .. " to do it"
+  if ns.QuestTimes.Seconds() then doing = doing .. " (your average)" end
+  local name = e.quest.name or ("Quest " .. e.quest.id)
+  if e.travel < 1 then return name .. ": on the way; " .. doing end
+  return string.format("%s: %s more travel + %s", name, ns.FormatDuration(e.travel), doing)
+end
+
+-- Quests already added or asked about with an offer aren't offered again
+-- straight away (nor out of the way); the chain past them can be.
 local answered
 
-function Nav.AcceptFollowUps(offer)
-  local choice = Nav.FollowUpChoice(offer)
-  if choice.count == 0 then return false end
-  answered = {}
-  for _, e in ipairs(offer.quests) do answered[e.quest.id] = true end
-  local added = Nav.AddToTrip(choice.stops, table.concat(choice.names, ", "))
-  answered = nil
+-- Adds `stops` with `answered` set to `skip`; `quiet`: the addition that led
+-- to it makes the sound.
+local function addFollowUps(stops, label, skip, notice, quiet)
+  local before, adding = answered, addingFollowUps
+  answered, addingFollowUps = skip, quiet or adding
+  local added = Nav.AddToTrip(stops, label, nil, notice)
+  answered, addingFollowUps = before, adding
   return added
 end
 
+-- The journey just gained `stops`. Their follow-ups on the way go in, and a
+-- snackbar says so (with undo); for one quest whose follow-ups are all out
+-- of the way, a snackbar asks instead. True when it asked (the question has
+-- its own sound).
 function offerFollowUps(stops)
   local handIns = {}
   for _, stop in ipairs(stops) do
@@ -1312,17 +1352,53 @@ function offerFollowUps(stops)
   local offer = Nav.FollowUpOffer(stops, single and not answered, answered)
   if not offer then return end
   local firsts, seen = {}, {}
+  local skip, quests = {}, {}
+  for id in pairs(answered or {}) do skip[id] = true end
   for _, e in ipairs(offer.quests) do
+    skip[e.quest.id] = true
+    quests[e.after], quests[e.quest.id] = true, true
     if not e.parent and not seen[e.after] then
       seen[e.after] = true
       local q = ns.Quests.Quest(e.after)
       firsts[#firsts + 1] = q and q.name or ("quest " .. e.after)
     end
   end
-  offer.heading = table.concat(firsts, ", ") .. " continues with:"
+  local before = table.concat(firsts, ", ")
+  offer.heading = before .. " continues with:"
   Nav.pendingFollowUps = offer
-  if not (ns.ChainPicker and ns.ChainPicker.Show(offer)) then return end
-  ns.Sounds.Play("popup")
+
+  local choice = Nav.FollowUpChoice(offer)
+  if choice.count > 0 then
+    local label, detail = table.concat(choice.names, ", "), {}
+    for _, e in ipairs(offer.quests) do
+      if e.checked then detail[#detail + 1] = Nav.FollowUpDetail(e) end
+    end
+    addFollowUps(choice.stops, label, skip, { quests = quests, detail = detail,
+      text = string.format("%s continues: added %s to your journey (%s more).", before, label,
+        ns.FormatDuration(choice.seconds)) }, true)
+    return false
+  end
+
+  -- All out of the way: ask about the first ones. Their chain, when it's on
+  -- the way from there, goes in with them.
+  local ask, names, seconds, detail = {}, {}, 0, {}
+  for _, e in ipairs(offer.quests) do
+    if not e.parent then
+      for _, st in ipairs(e.stops) do ask[#ask + 1] = st end
+      names[#names + 1] = e.quest.name or ("quest " .. e.quest.id)
+      seconds = seconds + e.seconds
+      detail[#detail + 1] = Nav.FollowUpDetail(e)
+    end
+  end
+  local label = table.concat(names, ", ")
+  ns.Snackbar.Show({ question = true, sound = "popup", quests = quests, detail = detail,
+    text = string.format("%s continues with %s (%s more). Add %s to your journey?", before, label,
+      ns.FormatDuration(seconds), #names == 1 and "it" or "them"),
+    actions = { { label = "Add to journey", icon = "add", run = function()
+      local only = {}
+      for _, e in ipairs(offer.quests) do if not e.parent then only[e.quest.id] = true end end
+      addFollowUps(ask, label, only)
+    end } } })
   return true
 end
 
@@ -2069,22 +2145,14 @@ ns.On("QUEST_REMOVED", function(questID)
 end)
 
 -- Abandoning a quest (Quests.lua): it isn't asked about if just picked up,
--- an open follow-up question about its chain closes, and its open stops
+-- a snackbar about it (or its chain) goes, and its open stops
 -- leave the journey with the stops that need them (a follow-up picked up
 -- where you'd have handed it in). A journey with nothing left ends.
 function Nav.QuestAbandoned(questID)
   for i = #picked, 1, -1 do
     if picked[i] == questID then table.remove(picked, i) end
   end
-  local offer = ns.ChainPicker and ns.ChainPicker.current
-  if offer then
-    for _, e in ipairs(offer.quests) do
-      if e.after == questID then
-        ns.ChainPicker.Cancel()
-        break
-      end
-    end
-  end
+  ns.Snackbar.Drop(questID)
   local a = Nav.active
   if not (a and a.journey) then return end
   local root = a.journey.root or a.journey.def

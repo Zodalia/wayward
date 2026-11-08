@@ -284,7 +284,11 @@ local function create()
     row.resume:SetSize(54, 16)
     row.resume:SetPoint("RIGHT", row.forget, "LEFT", -4, 0)
     row.resume:SetText("Resume")
-    row.resume:SetScript("OnClick", function() ns.Nav.ResumeSetAside(i) end)
+    -- Setting the journey on now aside closes the overview for a moment (no
+    -- journey); the one resumed from here comes back up in it.
+    row.resume:SetScript("OnClick", function()
+      if ns.Nav.ResumeSetAside(i) then Overview.Show() end
+    end)
     ns.Skin.Button(row.forget)
     ns.Skin.Button(row.resume)
     ns.Skin.Text(row.text)
@@ -666,13 +670,13 @@ end
 ns.Movers.Add({ key = "Journey", label = "Journey", posKey = "overviewPos", home = HOME,
   frame = Overview.EnsureFrame })
 
--- A new journey folds by the rule again, and opens the overview unless the
--- options say not to (the directions box's book button opens it any time).
+-- A new journey folds by the rule again. It opens the overview only when the
+-- options say so (off by default: the directions box's book button opens it any time).
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
   opened = setmetatable({}, { __mode = "k" })
   scroll = 0
-  if ns.db.settings.overviewOnStart ~= false then
+  if ns.db.settings.overviewOnStart == true then
     Overview.Show()
   elseif frame and frame:IsShown() then
     Overview.Refresh()

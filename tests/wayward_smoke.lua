@@ -2287,7 +2287,8 @@ do
   check(table.concat(kinds, ",") == "pickup,complete,turnin", "stop order rules hold even when given backwards")
 
   ns.Nav.StartJourney(journey)
-  check(ns.JourneyOverview.IsShown(), "a journey with several stops opens the overview")
+  check(not ns.JourneyOverview.IsShown(), "a journey with several stops doesn't open the overview by itself")
+  ns.JourneyOverview.Show()
   local rows = ns.JourneyOverview.Rows()
   check(#rows == 3 and rows[1].state == "now", "the overview lists every stop, the first one now")
   check(ns.charDB.nav and ns.charDB.nav.journey and #ns.charDB.nav.journey.stops == 3, "the trip is saved")
@@ -2682,23 +2683,22 @@ do
   check(tipOk and tipRow.tooltip, "hovering the stop shows that tooltip" .. (tipErr and (": " .. tostring(tipErr)) or ""))
 
   ns.Nav.Stop()
-  local shown
-  StaticPopupDialogs = {}
-  StaticPopup_Show = function(which, a, b, data)
-    shown = { which = which, text = string.format(StaticPopupDialogs[which].text, a, b), data = data }
-  end
+  ns.Snackbar.Clear()
   fire("QUEST_ACCEPTED", 501)
   runTimers()
-  check(shown and shown.text:find("You picked up Westfall Rumours.\nChain: 3 more quests (levels 20-24), ends in The Deadmines.\n\nStart a journey", 1, true),
-    "the pickup question says it leads to a long chain: " .. tostring(shown and shown.text))
-  shown = nil
+  local shown = ns.Snackbar.Current()
+  check(shown and shown.text:find("You picked up Westfall Rumours. Start a journey", 1, true)
+    and shown.note == "Chain: 3 more quests (levels 20-24), ends in The Deadmines.",
+    "the pickup question says it leads to a long chain: " .. tostring(shown and shown.note))
+  ns.Snackbar.Clear()
   log = { 98400 }
   fire("QUEST_ACCEPTED", 98400)
   runTimers()
-  check(shown and shown.text:find("You picked up Ledger Errand.\n\nStart a journey", 1, true),
-    "but not about one more quest: " .. tostring(shown and shown.text))
+  shown = ns.Snackbar.Current()
+  check(shown and shown.text:find("You picked up Ledger Errand. Start a journey", 1, true) and shown.note == nil,
+    "but not about one more quest: " .. tostring(shown and shown.note))
+  ns.Snackbar.Clear()
   ns.Nav.Stop()
-  StaticPopupDialogs, StaticPopup_Show = nil, nil
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
 
   -- /ww debug quest lists the steps.
@@ -2742,8 +2742,9 @@ do
     "at the object: use it, nothing to target: " .. ns.HUD.Lines()[4])
   ns.Nav.Stop()
 
-  -- Its follow-up is picked up where you hand it in: offered.
+  -- Its follow-up is picked up where you hand it in, on the way: it goes in, and a snackbar says so.
   check(#ns.Quests.FollowUps(14) == 1 and ns.Quests.FollowUps(14)[1].id == 13, "Chain part 1 is followed by Chain part 2")
+  ns.Snackbar.Clear()
   local shown
   StaticPopupDialogs = {}
   StaticPopup_Show = function(which, a, b, data)
@@ -2753,25 +2754,31 @@ do
   local played = {}
   PlaySound = function(id) played[#played + 1] = id end
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
-  local offer = ns.ChainPicker.current
-  check(shown == nil and ns.ChainPicker.IsShown() and offer and offer.heading == "Chain part 1 continues with:"
-    and #offer.quests == 1 and offer.quests[1].quest.id == 13 and offer.quests[1].checked,
-    "handing in a quest offers its follow-up, ticked, when it's on the way")
-  check(#played == 1 and played[1] == ns.Sounds.Kit("popup"),
-    "one sound: the question's, not the trip's start sound too: " .. table.concat(played, ","))
+  local offer = ns.Nav.pendingFollowUps
+  local snack = ns.Snackbar.Current()
+  check(shown == nil and offer and offer.heading == "Chain part 1 continues with:"
+    and #offer.quests == 1 and offer.quests[1].quest.id == 13 and offer.quests[1].checked and ns.Nav.TripHasQuest(13),
+    "handing in a quest adds its follow-up, unasked, when it's on the way")
+  check(snack and not snack.question and snack.text:find("Chain part 1 continues: added Chain part 2 to your journey (~", 1, true)
+    and snack.actions[1].label == "Undo" and snack.actions[1].icon == "undo" and #snack.actions == 1
+    and snack.quests[13] and snack.quests[14],
+    "a snackbar says so, with undo: " .. tostring(snack and snack.text))
+  check(#played == 1 and played[1] == ns.Sounds.Kit("start"),
+    "one sound: the journey's start, not the added stop's too: " .. table.concat(played, ","))
   PlaySound = nil
   local e = offer.quests[1]
-  check(e.seconds == e.travel + offer.perQuest and ns.ChainPicker.TotalText(offer) ==
-    "Total: " .. ns.FormatDuration(e.seconds) .. " for 1 quest",
-    "each quest has its time (travel + doing it) and the total is at the bottom: " .. ns.ChainPicker.TotalText(offer))
-  ns.ChainPicker.Toggle(1)
-  check(not e.checked and ns.ChainPicker.TotalText(offer) == "Nothing ticked", "unticking it leaves nothing")
-  ns.ChainPicker.Toggle(1)
-  ns.ChainPicker.Confirm()
-  check(not ns.ChainPicker.IsShown(), "Confirm closes it")
+  check(e.seconds == e.travel + offer.perQuest and snack.detail and #snack.detail == 1
+    and snack.detail[1]:find("Chain part 2: ", 1, true) and snack.detail[1]:find("to do it", 1, true),
+    "each quest has its time (travel + doing it), on hover: " .. tostring(snack.detail and snack.detail[1]))
   local kinds = {}
   for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind .. st.action.questID end
-  check(table.concat(kinds, ",") == "turnin14,pickup13", "Confirm puts it after the hand-in: " .. table.concat(kinds, ","))
+  check(table.concat(kinds, ",") == "turnin14,pickup13", "it goes after the hand-in: " .. table.concat(kinds, ","))
+  ns.Snackbar.Click(1)
+  check(not ns.Nav.TripHasQuest(13) and ns.Nav.TripHasQuest(14) and ns.Snackbar.Current() == nil,
+    "Remove takes the follow-up out again; the hand-in stays")
+  ns.Nav.Stop()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  ns.Snackbar.Clear()
   -- Talking to the giver before handing in: the follow-up isn't offered yet, and that's expected.
   local turnin, pickup = ns.Nav.active.journey.stops[1], ns.Nav.active.journey.stops[2]
   player.x, player.y = pickup.node.x, pickup.node.y
@@ -2786,21 +2793,14 @@ do
   ns.Nav.Stop()
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
 
-  -- A chain: ticking a later quest ticks the ones it needs; unticking one unticks those after it.
+  -- A chain: the quests on the way go in, the rest of it doesn't.
   local chain = { quests = {
     { quest = { id = 1 }, depth = 1, travel = 0, seconds = 300, stops = {}, checked = true },
     { quest = { id = 2 }, parent = 1, depth = 2, travel = 60, seconds = 360, stops = {}, checked = true },
     { quest = { id = 3 }, parent = 2, depth = 3, travel = 600, seconds = 900, stops = {}, checked = false },
   } }
-  ns.Nav.ToggleFollowUp(chain, 1)
-  check(not chain.quests[1].checked and not chain.quests[2].checked and not chain.quests[3].checked,
-    "unticking a quest unticks the rest of its chain")
-  ns.Nav.ToggleFollowUp(chain, 3)
-  check(chain.quests[1].checked and chain.quests[2].checked and chain.quests[3].checked
-    and ns.Nav.FollowUpChoice(chain).seconds == 1560, "ticking a later quest ticks the ones before it, and adds up")
-  ns.ChainPicker.Show(offer)
-  ns.ChainPicker.Cancel()
-  check(not ns.ChainPicker.IsShown() and not ns.Nav.active, "Cancel adds nothing")
+  local choice = ns.Nav.FollowUpChoice(chain)
+  check(choice.count == 2 and choice.seconds == 660, "only the chain on the way goes in, and its time adds up")
 
   -- A follow-up out of the way (10 min more): listed, unticked, for one quest you chose; not for a bigger trip.
   local realPlan = ns.Journey.Plan
@@ -2814,17 +2814,25 @@ do
     end
     return planned
   end
-  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
-  offer = ns.ChainPicker.current
-  check(ns.ChainPicker.IsShown() and offer and #offer.quests == 1 and offer.quests[1].quest.id == 13
-    and not offer.quests[1].checked and offer.quests[1].travel > 180,
-    "one quest's follow-up out of the way is still offered, unticked")
-  ns.ChainPicker.Cancel()
   ns.Nav.Stop()
+  ns.Nav.pendingFollowUps = nil
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
+  offer, snack = ns.Nav.pendingFollowUps, ns.Snackbar.Current()
+  check(offer and #offer.quests == 1 and offer.quests[1].quest.id == 13 and not offer.quests[1].checked
+    and offer.quests[1].travel > 180 and not ns.Nav.TripHasQuest(13),
+    "one quest's follow-up out of the way isn't added unasked")
+  check(snack and snack.question and snack.text:find("Chain part 1 continues with Chain part 2 (~", 1, true)
+    and snack.text:find("Add it to your journey?", 1, true) and snack.actions[1].label == "Add to journey",
+    "a snackbar asks about it: " .. tostring(snack and snack.text))
+  ns.Snackbar.Click(1)
+  check(ns.Nav.TripHasQuest(13) and ns.Snackbar.Current() == nil, "Add to journey adds it")
+  ns.Nav.Stop()
+  ns.Snackbar.Clear()
   local both = ns.Journey.QuestStops(14, here)
   for _, st in ipairs(ns.Journey.QuestStops(44, here)) do both[#both + 1] = st end
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand ins", stops = both }))
-  check(not ns.ChainPicker.IsShown(), "a trip of several hand-ins only asks about follow-ups on the way")
+  check(ns.Snackbar.Current() == nil and not ns.Nav.TripHasQuest(13),
+    "a journey of several hand-ins only takes follow-ups on the way, and asks nothing")
   ns.Nav.Stop()
   ns.Journey.Plan = realPlan
 
@@ -2833,8 +2841,8 @@ do
   local stops = ns.Journey.QuestStops(14, here)
   stops[#stops + 1] = other
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Two things", stops = stops }))
-  ns.ChainPicker.Confirm()
   check(ns.Nav.TripHasQuest(13), "the follow-up is on the trip")
+  check(ns.Snackbar.Current() and ns.Snackbar.Current().quests[14], "with its snackbar up")
   log = { 44 }
   fire("QUEST_REMOVED", 14)
   runTimers()
@@ -2842,10 +2850,11 @@ do
   for _, st in ipairs(ns.Nav.active and ns.Nav.active.journey.stops or {}) do left[#left + 1] = st.text end
   check(ns.Nav.active and not ns.Nav.TripHasQuest(14) and not ns.Nav.TripHasQuest(13) and #left == 1
     and left[1] == "Visit Elsewhere", "an abandoned quest and its follow-up leave the trip: " .. table.concat(left, ","))
+  check(ns.Snackbar.Current() == nil, "and the snackbar about them goes: its Remove has nothing left to take out")
   ns.Nav.Stop()
   log = { 44, 14 }
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
-  ns.ChainPicker.Cancel()
+  ns.Snackbar.Clear()
   local abandoned = false
   ns.Listen("QUEST_ABANDONED", function() abandoned = true end)
   fire("QUEST_TURNED_IN", 14)
@@ -2856,7 +2865,7 @@ do
   ns.Nav.Stop()
   log = { 44, 14 }
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hand in", stops = ns.Journey.QuestStops(14, here) }))
-  ns.ChainPicker.Cancel()
+  ns.Snackbar.Clear()
   log = { 44 }
   fire("QUEST_REMOVED", 14)
   runTimers()
@@ -2885,13 +2894,13 @@ do
   C_QuestLog.GetNumQuestLogEntries = function() return #log end
   C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
   C_QuestLog.IsComplete = function() return false end
-  local shown
-  StaticPopupDialogs = {}
-  -- Like the game: two text arguments, then the data; the dialog's text is formatted with them.
-  StaticPopup_Show = function(which, a, b, data)
-    local text = string.format(StaticPopupDialogs[which].text, a, b)
-    shown = { which = which, text = text, data = data }
+  ns.Snackbar.Clear()
+  -- The newest snackbar, on screen or waiting behind the one that is.
+  local function newest()
+    local q = ns.Snackbar.Queued()
+    return q[#q] or ns.Snackbar.Current()
   end
+  local shown
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
 
   -- No trip on: start one for it?
@@ -2900,18 +2909,19 @@ do
   log[1] = 45
   fire("QUEST_ACCEPTED", 45)
   runTimers()
-  check(shown and shown.which == "WAYWARD_PICKUP_NEW" and shown.text:find("You picked up Murloc Count", 1, true)
-    and shown.text:find("min)?", 1, true) and shown.data,
-    "picking up a quest with no trip on offers a trip for it, with its time")
+  shown = newest()
+  check(shown and shown.question and shown.text:find("You picked up Murloc Count. Start a journey for it (~", 1, true)
+    and shown.text:find("min)?", 1, true) and #shown.actions == 1 and shown.actions[1].label == "Start journey",
+    "picking up a quest with no journey on offers one for it, with its time, in a snackbar: " .. tostring(shown and shown.text))
   check(#played == 1 and played[1] == ns.Sounds.Kit("popup"), "the question plays the popup sound")
   PlaySound = nil
-  StaticPopupDialogs.WAYWARD_PICKUP_NEW.OnAccept(nil, shown.data)
+  ns.Snackbar.Click(1)
   local kinds = {}
   for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind end
   check(table.concat(kinds, ",") == "complete,turnin", "Start trip: do it, hand it in: " .. table.concat(kinds, ","))
 
   -- On that trip, another quest: add it (and how much longer), or a new trip.
-  shown = nil
+  ns.Snackbar.Clear()
   log[2] = 40
   QUESTS[40] = { name = "Murloc Menace", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
     finishedBy = { { 345 } }, objectives = { { { 9101 } } } }
@@ -2920,11 +2930,22 @@ do
   local said = #chat
   fire("QUEST_ACCEPTED", 40)
   runTimers()
-  check(shown == nil and ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45),
+  shown = newest()
+  check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45) and shown and not shown.question,
     "a pickup that adds 3 min or less goes straight into the journey, unasked")
+  check(shown.text:find("Added Murloc Menace to your journey (", 1, true) and #shown.actions == 1
+    and shown.actions[1].label == "Undo" and shown.actions[1].icon == "undo" and shown.quests[40],
+    "a snackbar says so, with the time and Remove: " .. tostring(shown.text))
   check(chat[#chat]:find("picked up Murloc Menace: added to your journey (", 1, true)
     and chat[#chat]:find("x drops it", 1, true) and #chat == said + 1,
     "and chat says so, with the time and how to drop it: " .. tostring(chat[#chat]))
+  ns.Snackbar.Click(1)
+  check(not ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45) and ns.charDB.askedProgress[40]
+    and chat[#chat]:find("took Murloc Menace out of your journey.", 1, true),
+    "Remove takes it out again, and progress on it won't be asked about: " .. tostring(chat[#chat]))
+  check(not ns.Nav.RemoveAdded({}, "nothing"), "Remove with nothing left to take out does nothing")
+  ns.charDB.askedProgress[40] = nil
+  ns.Nav.AddToTrip(ns.Nav.PickupOffer({ 40 }).stops, "Murloc Menace")
 
   -- Picked up together, one that adds more than 3 min (made so here) and one
   -- that doesn't: the near one goes in, the far one is asked about.
@@ -2946,8 +2967,11 @@ do
   fire("QUEST_ACCEPTED", 47)
   runTimers()
   check(ns.Nav.TripHasQuest(48) and not ns.Nav.TripHasQuest(47), "the near quest goes in, the far one doesn't")
-  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("You picked up Murloc Courier.", 1, true),
-    "the one that adds more than 3 min is asked about, on its own: " .. tostring(shown and shown.text))
+  shown = newest()
+  check(shown and shown.question and shown.text:find("You picked up Murloc Courier. Add it to your journey (about ~", 1, true)
+    and ns.Snackbar.Current() and ns.Snackbar.Current().text:find("Added Murloc Scales", 1, true),
+    "the one that adds more than 3 min is asked about, on its own, after the note on the near one: "
+      .. tostring(shown and shown.text))
   -- Under 3 min only because the plan with it spends your Hearthstone: asked,
   -- and the question says so.
   ns.Nav.PickupOffer = function(ids)
@@ -2955,16 +2979,17 @@ do
     if offer and offer.extra then offer.extraNoHearth = offer.extra + 400 end
     return offer
   end
-  shown = nil
+  ns.Snackbar.Clear()
   fire("QUEST_ACCEPTED", 47)
   runTimers()
-  check(not ns.Nav.TripHasQuest(47) and shown and shown.which == "WAYWARD_PICKUP_ADD"
-    and shown.text:find("but only by using your Hearthstone: ~", 1, true) and shown.text:find("without it), or start", 1, true),
+  shown = newest()
+  check(not ns.Nav.TripHasQuest(47) and shown and shown.question
+    and shown.text:find("but only by using your Hearthstone: ~", 1, true) and shown.text:find("without it)?", 1, true),
     "fitting only by hearthing: asked, not added, and the question says why: " .. tostring(shown and shown.text))
   check(not ns.Nav.ExtraText({ extra = 100, extraNoHearth = 130 }):find("Hearthstone", 1, true),
     "a hearth that makes up under a minute isn't mentioned")
   ns.Nav.PickupOffer = realOffer
-  shown = nil
+  ns.Snackbar.Clear()
   ns.Nav.RemoveQuest(48)
   log[3], log[4] = nil, nil
   QUESTS[47], QUESTS[48] = nil, nil
@@ -2979,30 +3004,32 @@ do
     finishedBy = { { 344 } }, objectives = { { { 9101 } } }, specialFlags = 1 }
   refreshData()
   check(ns.Quests.IsRepeatable(49), "Murloc Brew is repeatable")
-  shown = nil
+  ns.Snackbar.Clear()
   log[3] = 49
   fire("QUEST_ACCEPTED", 49)
   log[3] = nil
   fire("QUEST_TURNED_IN", 49)
   runTimers()
-  check(shown == nil and not ns.Nav.TripHasQuest(49),
+  check(newest() == nil and not ns.Nav.TripHasQuest(49),
     "a repeatable handed in straight after picking it up isn't added again, nor asked about")
   questKeys.specialFlags = savedFlagsKey
   QUESTS[49] = nil
   refreshData()
 
   -- The option off: asked about like any other pickup.
-  shown = nil
+  ns.Snackbar.Clear()
   ns.Nav.RemoveQuest(40)
   ns.db.settings.autoAddPickups = false
   check(not ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Murloc Menace dropped from the journey")
   fire("QUEST_ACCEPTED", 40)
   runTimers()
-  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("Murloc Menace", 1, true)
-    and shown.text:find("more), or start a new journey", 1, true) and shown.data,
+  shown = newest()
+  check(shown and shown.question and shown.text:find("Murloc Menace", 1, true) and shown.text:find("more)?", 1, true)
+    and shown.actions[1].label == "Add to journey" and shown.actions[2].label == "New journey"
+    and shown.actions[2].tooltip:find("set aside", 1, true),
     "with a journey on and the option off: add it, with the time it adds, or a new journey: "
       .. tostring(shown and shown.text))
-  StaticPopupDialogs.WAYWARD_PICKUP_ADD.OnAccept(nil, shown.data)
+  ns.Snackbar.Click(1)
   check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Add to trip: both quests in it")
   ns.db.settings.autoAddPickups = nil
   local auto
@@ -3012,10 +3039,10 @@ do
   check(auto and auto.section == "Journeys and quests" and auto.get() == true, "the option is there, on by default")
 
   -- Already in the trip: nothing to ask.
-  shown = nil
+  ns.Snackbar.Clear()
   fire("QUEST_ACCEPTED", 40)
   runTimers()
-  check(shown == nil, "a quest already in the trip isn't asked about")
+  check(newest() == nil, "a quest already in the trip isn't asked about")
 
   -- Progress on a logged quest outside the journey: asked once, out of combat.
   QUESTS[46] = { name = "Murloc Hunt", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
@@ -3027,21 +3054,22 @@ do
   log[3] = 46
   fire("QUEST_LOG_UPDATE")
   runTimers()
-  check(shown == nil, "a quest just seen in the log isn't asked about")
+  check(newest() == nil, "a quest just seen in the log isn't asked about")
   hunt[1].numFulfilled = 1
   InCombatLockdown = function() return true end
   fire("QUEST_LOG_UPDATE")
   runTimers()
-  check(shown == nil, "progress isn't asked about in combat")
+  check(newest() == nil, "progress isn't asked about in combat")
   InCombatLockdown = nil
   fire("PLAYER_REGEN_ENABLED")
-  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and shown.text:find("You made progress on Murloc Hunt", 1, true),
+  shown = newest()
+  check(shown and shown.question and shown.text:find("You made progress on Murloc Hunt. Add it", 1, true),
     "progress on a quest outside the journey asks to add it, once out of combat: " .. tostring(shown and shown.text))
-  shown = nil
+  ns.Snackbar.Clear()
   hunt[1].numFulfilled = 2
   fire("QUEST_LOG_UPDATE")
   runTimers()
-  check(shown == nil, "Not now: more progress on it isn't asked about again")
+  check(newest() == nil, "Not now: more progress on it isn't asked about again")
   log[3] = nil
   C_QuestLog.GetQuestObjectives = savedObjectives
   QUESTS[46] = nil
@@ -3052,11 +3080,11 @@ do
   ns.Nav.Stop()
   fire("QUEST_ACCEPTED", 45)
   runTimers()
-  check(shown == nil, "the option turns the question off")
+  check(newest() == nil, "the option turns the question off")
   ns.db.settings.askOnPickup = nil
 
   ns.JourneyOverview.Toggle()
-  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  ns.Snackbar.Clear()
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
   QUESTS[45], QUESTS[40] = nil, nil
   refreshData()
@@ -3465,15 +3493,13 @@ do
     "test complete shows the banner with sound 2, and isn't a real trip")
   SlashCmdList.WAYWARD("sounds test toast")
   check(last() == 73280 and ns.Nav.active == nil, "test toast shows a toast now, with the chosen sound")
-  local shown
-  StaticPopupDialogs = {}
-  StaticPopup_Show = function(which, a1) shown = { which = which, text = string.format(StaticPopupDialogs[which].text, a1) } end
+  ns.Snackbar.Clear()
   SlashCmdList.WAYWARD("sounds test popup")
-  check(shown and shown.which == "WAYWARD_SOUND_TEST" and shown.text:find("You picked up Sample Quest", 1, true)
+  local shown = ns.Snackbar.Current()
+  check(shown and shown.question and shown.text:find("You picked up Sample Quest", 1, true)
     and last() == 7355, "test popup shows the question with its sound")
-  StaticPopupDialogs.WAYWARD_SOUND_TEST.OnAccept()
+  ns.Snackbar.Click(1)
   check(ns.Nav.active == nil, "and its button starts nothing")
-  StaticPopupDialogs, StaticPopup_Show = nil, nil
   before = #chat
   SlashCmdList.WAYWARD("sounds test step")
   check(chatSince(before):find("a sound test", 1, true) and last() == steps[1][1], "test step: a sample line and the click")
@@ -4697,6 +4723,7 @@ do
   ns.Nav.Stop()
   player.x = 0.66
   ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Spur", stops = { byStop, homeStop, farStop } }))
+  ns.JourneyOverview.Show()
   ns.HUD.Update()
   check(ns.Nav.active.journey.stops[2] == byStop and ns.Nav.TogglePin(byStop), "pin the near camp, second")
   stand(pad - 5)
@@ -6507,21 +6534,21 @@ do
     if chat[i]:find("/ww welcome", 1, true) then seenWelcome = i end
   end
   check(seenItem and seenWelcome and seenItem < seenWelcome, "an unknown command prints the help, commands in order")
-  -- The overview opens by itself when a trip starts, unless turned off.
+  -- The overview stays shut when a journey starts, unless turned on.
   ns.Nav.Stop()
   ns.JourneyOverview.EnsureFrame():Hide()
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   local here = ns.Geo.PlayerNode()
   local function stop(x, label) return { node = ns.Geo.Node(1433, x, 0.5, label), text = "Visit " .. label } end
   local function trip() return ns.Journey.Plan(here, { title = "Two stops", stops = { stop(0.6, "A"), stop(0.7, "B") } }) end
-  ns.db.settings.overviewOnStart = false
   ns.Nav.StartJourney(trip())
   check(ns.Nav.active and ns.Nav.active.journey and not ns.JourneyOverview.IsShown(),
-    "with the option off, a new trip doesn't open the overview")
+    "by default, a new journey doesn't open the overview (the directions box's View details does)")
   ns.Nav.Stop()
-  ns.db.settings.overviewOnStart = nil
+  ns.db.settings.overviewOnStart = true
   ns.Nav.StartJourney(trip())
-  check(ns.JourneyOverview.IsShown(), "by default it does")
+  check(ns.JourneyOverview.IsShown(), "with the option on, it does")
+  ns.db.settings.overviewOnStart = nil
   ns.Nav.Stop()
   ns.JourneyOverview.EnsureFrame():Hide()
   -- Reset positions.
@@ -6919,7 +6946,8 @@ do
     "the overview lists the set-aside journey: " .. tostring(rows[1]))
   local frame = ns.JourneyOverview.EnsureFrame()
   frame.aside[1].resume.scripts.OnClick(frame.aside[1].resume)
-  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Something new", "Resume swaps them")
+  check(ns.Nav.active.title == "On now" and ns.Nav.SetAsideList()[1].title == "Something new"
+    and ns.JourneyOverview.IsShown(), "Resume swaps them, and the overview stays up")
   frame.aside[1].forget.scripts.OnClick(frame.aside[1].forget)
   check(#ns.Nav.SetAsideList() == 0 and #ns.JourneyOverview.SetAsideRows() == 0, "Forget takes it off")
   -- The pickup question's New journey sets the one on aside too.
@@ -6930,14 +6958,15 @@ do
   C_QuestLog.IsComplete = function() return false end
   QUESTS[1].finishedBy = { { 345 } }
   refreshData()
-  shown = nil
+  ns.Snackbar.Clear()
   ns.db.settings.autoAddPickups = false -- asked, not added unasked
   fire("QUEST_ACCEPTED", 1)
   runTimers()
   ns.db.settings.autoAddPickups = nil
-  check(shown and shown.which == "WAYWARD_PICKUP_ADD" and StaticPopupDialogs.WAYWARD_PICKUP_ADD.button3 == "New journey",
+  local snack = ns.Snackbar.Current()
+  check(snack and snack.question and snack.actions[1].label == "Add to journey" and snack.actions[2].label == "New journey",
     "picking up a quest on a journey offers to add it or start a new journey")
-  StaticPopupDialogs.WAYWARD_PICKUP_ADD.OnAlt(nil, shown.data)
+  ns.Snackbar.Click(2)
   check(ns.Nav.active.title == "Redridge Goulash" and #ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "On now",
     "New journey sets the one on aside")
   C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
@@ -8782,6 +8811,56 @@ do
   refreshData()
 end
 -- ===== journey: buying what a quest wants (end) =====
+-- ===== journey: snackbars (begin) =====
+do
+  io.write("snackbars\n")
+  ns.Snackbar.Clear()
+  local ran = 0
+  ns.Snackbar.Show({ text = "First", actions = { { label = "Do it", run = function() ran = ran + 1 end } } })
+  ns.Snackbar.Show({ text = "Second", note = "A note" })
+  local f = ns.Snackbar.Frame()
+  check(f and f.content and f.text and f.content:GetFrameStrata() == "DIALOG" and f:GetFrameStrata() == "HIGH",
+    "the words and buttons sit a strata above the box, where no skin's frames can cover them")
+  check(f.buttons[1]:IsShown() and not f.buttons[2]:IsShown() and f.buttons[1].kind == nil,
+    "one action, one icon button (the add icon when it names none)")
+  check(f.text:GetText() == "First" and ns.Snackbar.Current().text == "First" and #ns.Snackbar.Queued() == 1,
+    "one at a time: the second waits")
+  ns.Snackbar.Click(1)
+  check(ran == 1 and f.text:GetText() == "Second" and f.note:GetText() == "A note",
+    "its action runs, and the next one takes its place, note and all")
+  ns.Snackbar.Click(1)
+  check(ns.Snackbar.Current().text == "Second", "a snackbar without that action ignores the click")
+  ns.Snackbar.Dismiss()
+  check(ns.Snackbar.Current() == nil and ran == 1, "the x closes it and does nothing")
+
+  -- Laid over the directions box, the bar behind the words draining as its time runs out.
+  local anchors = {}
+  rawset(f, "SetPoint", function(_, point, rel, relPoint)
+    anchors[#anchors + 1] = { point, rel, relPoint }
+  end)
+  rawset(f, "GetWidth", function() return 300 end)
+  ns.Snackbar.Show({ text = "Added X to your journey.", actions = {
+    { label = "Undo", icon = "undo", run = function() end },
+    { label = "New journey", icon = "journey", run = function() end } } })
+  local hud = ns.HUD.Frame()
+  check(#anchors == 2 and anchors[1][1] == "TOPLEFT" and anchors[1][2] == hud and anchors[2][1] == "TOPRIGHT"
+    and anchors[2][2] == hud, "it sits over the directions box, as wide as it")
+  check(f.buttons[1].kind == "undo" and f.buttons[2].kind == "journey" and f.buttons[2]:IsShown(),
+    "each action is an icon: undo, new journey")
+  check(ns.Snackbar.TimeLeft() == 1 and f.bar:IsShown(), "the bar starts full")
+  f.scripts.OnUpdate(f, 4)
+  local left = ns.Snackbar.TimeLeft()
+  check(left > 0.4 and left < 0.6 and ns.Snackbar.Current(), "halfway through a note's 8 s, half the bar is left: " .. left)
+  rawset(f, "IsMouseOver", function() return true end)
+  f.scripts.OnUpdate(f, 30)
+  check(ns.Snackbar.TimeLeft() == left and ns.Snackbar.Current(), "the mouse over it holds it, and the bar")
+  rawset(f, "IsMouseOver", nil)
+  f.scripts.OnUpdate(f, 5)
+  check(ns.Snackbar.Current() == nil, "then it runs out and goes, having done nothing")
+  rawset(f, "SetPoint", nil)
+  rawset(f, "GetWidth", nil)
+end
+-- ===== journey: snackbars (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
