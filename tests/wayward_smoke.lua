@@ -5659,16 +5659,22 @@ do
     end
   end
   check(cut and s.marks == 2, "legs are cut at the round rim, and only the stops on it marked: " .. tostring(s and s.marks))
+  -- Only the step you're on and the next: the far stop is the world map's to show.
+  check(s and s.lines == 2 and s.numbers[1] == 1 and s.numbers[2] == 2,
+    string.format("two steps on the minimap, numbered as on the journey: %s lines", tostring(s and s.lines)))
 
-  -- A square minimap (an addon's) cuts at its corners instead.
+  -- A square minimap (an addon's) cuts at its corners instead: zoomed in, the
+  -- east post (63 px up, 63 right) is past a round rim but inside the square.
+  zoom = 5
+  M.Tick(1)
+  local roundEnd = M.Stats().legs[2]
   GetMinimapShape = function() return "SQUARE" end
   check(M.Tick(1), "a new shape draws it again")
-  local corner = false
-  for _, l in ipairs(M.Stats().legs) do
-    if math.abs(l[4] + 140) < 0.01 then corner = true end
-  end
-  check(corner, "square: the far leg runs to the minimap's edge")
+  local squareEnd = M.Stats().legs[2]
+  check(roundEnd[3] < 120 and math.abs(squareEnd[3] - 133) < 0.5,
+    string.format("square: the leg runs on into the corner (%.1f, round %.1f)", squareEnd[3], roundEnd[3]))
   GetMinimapShape = savedShape
+  zoom = 0
 
   -- Standing still, nothing is drawn again; walking a few yards, it is.
   M.Tick(1)
@@ -5696,6 +5702,32 @@ do
   first = M.Stats().legs[1]
   check(math.abs(first[4] + 70 - 63) < 0.5, string.format("zoomed in, 60 yards is 63 px: %.1f", first[4] + 70))
   zoom = 0
+
+  -- The step you're on in full; every one after it fainter, to a floor.
+  check(M.Alpha(1) == 1 and M.Alpha(2) < 1 and M.Alpha(3) < M.Alpha(2) and M.Alpha(40) > 0.2,
+    string.format("minimap steps fade from the second on: %.2f %.2f %.2f", M.Alpha(2), M.Alpha(3), M.Alpha(40)))
+  M.Tick(1)
+  local faded = M.Stats()
+  check(faded.alphas[1] == 1 and faded.alphas[2] < 1,
+    string.format("drawn so: the leg you're on in full, the next faded (%.2f)", faded.alphas[2] or -1))
+
+  -- In the area of the stop you're on: no line to it, its badge and the way on stay.
+  M.Tick(1)
+  local before = M.Stats()
+  local current = ns.Nav.CurrentStep()
+  check(current and current.stop, "the step you're on leads to a stop")
+  current.stop.inArea = true
+  check(M.Tick(1), "walking into the stop's area draws it again")
+  local inside = M.Stats()
+  local fromYou = false
+  for _, l in ipairs(inside.legs) do
+    if math.abs(l[1] - 70) < 0.5 and math.abs(l[2] + 70) < 0.5 then fromYou = true end
+  end
+  check(not fromYou and inside.lines == before.lines - 1 and inside.marks == before.marks,
+    string.format("in its area, the line to it goes but the stops stay marked: %d lines (was %d), %d marks (was %d)",
+      inside.lines, before.lines, inside.marks, before.marks))
+  current.stop.inArea = nil
+  check(M.Tick(1) and M.Stats().lines == before.lines, "out of it again, the line is back")
 
   -- The option, and /ww minimap journey.
   local choice

@@ -1,12 +1,15 @@
 local _, ns = ...
 
--- Your journey on the minimap: the rest of it from the step you're on, drawn
+-- Your journey on the minimap: the step you're on and the next, drawn
 -- as on the world map (UI/WorldMapRoute.lua: a colour for each way of
 -- travel, chevrons pointing the way, travel icons, the stops numbered in
--- order, the far steps fading), smaller, round the minimap's own arrow. It
+-- order), smaller, round the minimap's own arrow; the next step fainter. The
+-- rest of the journey is the world map's to show. It
 -- follows you as you walk, turns with a minimap that turns, keeps to the
 -- minimap's zoom (indoors too) and is cut at its rim, round or square. Plain
--- directions show too.
+-- directions show too. Once you're in the area of the objectives you're on,
+-- the line there goes (you're there: the minimap shows the area); the stop's
+-- badge and the way on stay.
 -- The options or /ww minimap journey turn it off.
 
 local MinimapRoute = {}
@@ -17,6 +20,16 @@ local RIM = 3         -- pixels kept clear inside a round minimap's rim
 local EVERY = 1 / 30  -- seconds between looks at where you are
 local MOVED = 0.25    -- yards you move before it's drawn again
 local TURNED = 0.01   -- radians a turning minimap turns before it's drawn again
+local SHOWN = 2       -- steps drawn: the one you're on and the next
+local FADE_PER_STEP = 0.15 -- each step after the one you're on this much fainter
+local FAINTEST = 0.3       -- the furthest steps fade no further than this
+
+-- How opaque the i-th step still to go is drawn: the one you're on in full,
+-- the ones after fading step by step (sooner than on the world map: the
+-- minimap is small, and the step you're on is what it's for).
+function MinimapRoute.Alpha(i)
+  return math.max(FAINTEST, 1 - FADE_PER_STEP * math.max(0, i - 1))
+end
 
 -- How many yards across the minimap shows at each zoom, outdoors and in (as
 -- HereBeDragons measures it).
@@ -69,10 +82,17 @@ local function round()
   return shape ~= "SQUARE"
 end
 
--- The minimap as it is now: its size, how far it sees, which way up, its shape.
+-- Whether you're in the area of the stop you're on (Nav.InArea).
+local function inArea()
+  return ns.Nav and ns.Nav.InArea and ns.Nav.InArea() or false
+end
+
+-- The minimap as it is now: its size, how far it sees, which way up, its
+-- shape, and whether you're in the area of the stop you're on.
 local function look(here)
   local w, h = Minimap:GetWidth(), Minimap:GetHeight()
-  return { here = here, w = w, h = h, yards = MinimapRoute.Yards(), turn = turn(), round = round() }
+  return { here = here, w = w, h = h, yards = MinimapRoute.Yards(), turn = turn(), round = round(),
+    inArea = inArea() }
 end
 
 local function changed(now)
@@ -83,7 +103,7 @@ local function changed(now)
     return true
   end
   return math.abs(now.turn - was.turn) >= TURNED or now.yards ~= was.yards or now.w ~= was.w or now.h ~= was.h
-    or now.round ~= was.round
+    or now.round ~= was.round or now.inArea ~= was.inArea
 end
 
 local function newView()
@@ -132,7 +152,8 @@ local function draw(here)
   if now.round then clip.radius = math.min(w, h) / 2 - RIM end
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
-    { size = SIZE, clip = clip, you = false, alpha = ns.WorldMapRoute and ns.WorldMapRoute.Alpha })
+    { size = SIZE, clip = clip, you = false, alpha = MinimapRoute.Alpha,
+      skipLeg = now.inArea and 1 or nil, limit = SHOWN })
   drawn = now
   return stats
 end

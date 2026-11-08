@@ -303,6 +303,10 @@ end
 --   you   false: no arrow or start badge (a map that shows you already)
 --   alpha function(i): how opaque steps[i]'s leg, chevrons and icon are (1);
 --         a stop's badge fades less (the square root of its step's)
+--   skipLeg  steps[skipLeg]'s leg isn't drawn (its stop is still marked)
+--   limit    only the first `limit` steps are drawn and their stops marked
+--            (numbered as in the whole route; the destination only if it's
+--            among them)
 -- Legs between the same two places, either way, are drawn side by side.
 -- Returns what it drew (lines, chevrons, marks, numbers, lanes, ...), also
 -- kept as v.stats, for tests.
@@ -310,6 +314,7 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   opts = opts or {}
   local k = opts.size or 1
   local box = opts.clip
+  local limit = opts.limit or #steps
   local cx, cy = box and box.w / 2, box and -box.h / 2
   local function inside(x, y)
     if not (x and box) then return x ~= nil end
@@ -342,7 +347,7 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   for i, step in ipairs(steps) do
     local x1, y1 = at(step.from)
     local x2, y2 = at(step.to)
-    if x1 and x2 then ends[i] = { x1, y1, x2, y2 } end
+    if x1 and x2 and i ~= opts.skipLeg and i <= limit then ends[i] = { x1, y1, x2, y2 } end
   end
 
   -- Legs between the same two places, either way round, share the way in
@@ -512,10 +517,12 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   for i, step in ipairs(steps) do
     if step.stop and i < #steps then
       number = number + 1
-      mark(step.to, "stop", number, math.sqrt(alphaOf(i)))
+      if i <= limit then mark(step.to, "stop", number, math.sqrt(alphaOf(i))) end
     end
   end
-  mark(points[#points], "goal", number > 0 and number + 1 or nil, math.sqrt(alphaOf(#steps)))
+  if #steps <= limit then
+    mark(points[#points], "goal", number > 0 and number + 1 or nil, math.sqrt(alphaOf(#steps)))
+  end
   for i = marked + 1, #v.marks do
     local b = v.marks[i]
     b.disc:Hide(); b.ring:Hide(); b.number:Hide()
