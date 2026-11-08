@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "copy-editor",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-I", "tools/copy_editor.py", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}

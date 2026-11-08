@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayward Copy Editor</title>
+<style>
+:root {
+  --bg: #f6f4ef; --panel: #ffffff; --sunk: #efece5; --text: #1f1d1a; --muted: #6b665d;
+  --border: #ddd8cd; --accent: #2f8f6f; --accent-soft: #e2f2ea; --edited: #b26a00; --edited-soft: #fff1da;
+  --warn: #b3412f; --warn-soft: #fbe6e1; --mark: #fff3b0; --code: #2b2925;
+  --game-bg: #15130f; --game-text: #ece6d6; --game-border: #3b352a;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151412; --panel: #1e1d1a; --sunk: #191816; --text: #e9e5dc; --muted: #9a948a;
+    --border: #34312c; --accent: #6fcca6; --accent-soft: #1c3329; --edited: #f0a640; --edited-soft: #3a2a12;
+    --warn: #ef8a78; --warn-soft: #3d1f1a; --mark: #4a4220; --code: #dcd6cb;
+    --game-bg: #0d0c0a; --game-border: #34302a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151412; --panel: #1e1d1a; --sunk: #191816; --text: #e9e5dc; --muted: #9a948a;
+  --border: #34312c; --accent: #6fcca6; --accent-soft: #1c3329; --edited: #f0a640; --edited-soft: #3a2a12;
+  --warn: #ef8a78; --warn-soft: #3d1f1a; --mark: #4a4220; --code: #dcd6cb;
+  --game-bg: #0d0c0a; --game-border: #34302a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.mono, code, textarea.raw { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; }
+
+header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--border); }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 16px; }
+.brand { font-weight: 650; font-size: 15px; margin-right: 4px; }
+.progress { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.meter { width: 120px; height: 6px; border-radius: 3px; background: var(--sunk); overflow: hidden; border: 1px solid var(--border); }
+.meter i { display: block; height: 100%; background: var(--accent); width: 0; }
+.spacer { flex: 1; }
+input[type=search], select { background: var(--sunk); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+input[type=search] { width: 240px; max-width: 100%; }
+.btn { border: 1px solid var(--border); background: var(--panel); border-radius: 6px; padding: 5px 10px; }
+.btn:hover { background: var(--sunk); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+:root[data-theme="dark"] .btn.primary { color: #0e1a14; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #0e1a14; } }
+.btn.primary:disabled { opacity: .45; cursor: default; }
+.vocabbar { display: none; gap: 6px; flex-wrap: wrap; align-items: center; padding: 0 16px 10px; font-size: 12px; color: var(--muted); }
+.vocabbar.open { display: flex; }
+.chip { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; background: var(--sunk); font-size: 12px; }
+.chip.on { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - var(--hh, 90px)); }
+nav { border-right: 1px solid var(--border); padding: 10px 8px; position: sticky; top: var(--hh, 90px); height: calc(100vh - var(--hh, 90px)); overflow: auto; }
+nav button { display: flex; width: 100%; justify-content: space-between; gap: 8px; border: 0; background: none; text-align: left;
+  padding: 4px 8px; border-radius: 5px; font-size: 13px; }
+nav button:hover { background: var(--sunk); }
+nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+nav .n { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 400; }
+nav .n.done { color: var(--accent); }
+nav .n .ed { color: var(--edited); }
+main { padding: 14px 16px 120px; min-width: 0; }
+.filehead { margin: 22px 0 8px; font-size: 13px; font-weight: 650; color: var(--muted); letter-spacing: .02em; }
+.filehead:first-child { margin-top: 0; }
+.empty { color: var(--muted); padding: 40px 0; text-align: center; }
+
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; content-visibility: auto; contain-intrinsic-size: auto 160px; }
+.card.reviewed { opacity: .72; }
+.card.reviewed:focus-within, .card.reviewed:hover { opacity: 1; }
+.card.edited { border-color: var(--edited); box-shadow: inset 3px 0 0 var(--edited); }
+.chead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.chead a { color: inherit; }
+.loc { font-weight: 600; color: var(--text); text-decoration: none; }
+.loc:hover { text-decoration: underline; }
+.badge { border-radius: 4px; padding: 0 6px; background: var(--sunk); border: 1px solid var(--border); }
+.badge.vocab { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.chead label { display: inline-flex; gap: 5px; align-items: center; cursor: pointer; color: var(--text); }
+.chead .tog { border: 0; background: none; color: var(--muted); padding: 0 2px; }
+.chead .tog:hover { color: var(--text); }
+pre.ctx { margin: 0; padding: 6px 0; background: var(--sunk); overflow-x: auto; color: var(--code); border-bottom: 1px solid var(--border); font-size: 12px; line-height: 1.5; }
+pre.ctx div { padding: 0 12px; white-space: pre; }
+pre.ctx div.here { background: color-mix(in srgb, var(--mark) 45%, transparent); }
+pre.ctx .ln { display: inline-block; width: 4.5ch; color: var(--muted); text-align: right; margin-right: 1.5ch; user-select: none; }
+pre.ctx mark { background: var(--mark); color: inherit; border-radius: 2px; }
+pre.ctx .cm { color: var(--muted); font-style: italic; }
+pre.ctx .more { color: var(--accent); cursor: pointer; font-family: system-ui, sans-serif; user-select: none; }
+.strings { padding: 8px 12px 10px; display: grid; gap: 10px; }
+.str { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; }
+.str textarea { width: 100%; resize: vertical; min-height: 34px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg);
+  field-sizing: content; line-height: 1.45; }
+.str textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.str.edited textarea { border-color: var(--edited); background: var(--edited-soft); }
+.preview { background: var(--game-bg); color: var(--game-text); border: 1px solid var(--game-border); border-radius: 6px; padding: 6px 9px; min-height: 34px;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.preview .ph { background: #3a4452; color: #cfe0f5; border-radius: 3px; padding: 0 3px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.preview .ic { color: #9a8e74; font-size: 11px; }
+.preview .vw { text-decoration: underline wavy #ef8a78; text-underline-offset: 3px; }
+.strfoot { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); }
+.strfoot .was { font-family: ui-monospace, Consolas, monospace; text-decoration: line-through; overflow-wrap: anywhere; }
+.strfoot button { border: 0; background: none; color: var(--edited); padding: 0; text-decoration: underline; }
+.sentinel { height: 40px; }
+
+dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); width: min(1000px, calc(100vw - 32px)); max-height: 85vh; padding: 0; }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+dialog .dh { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 600; }
+dialog pre { margin: 0; padding: 10px 14px; overflow: auto; max-height: calc(85vh - 50px); font-size: 12px; white-space: pre-wrap; }
+dialog pre .add { color: var(--accent); } dialog pre .del { color: var(--warn); } dialog pre .hd { color: var(--muted); }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px;
+  max-width: calc(100vw - 32px); font-size: 13px; z-index: 10; display: none; white-space: pre-wrap; }
+.toast.show { display: block; }
+.toast.bad { background: var(--warn); color: #fff; }
+.help { color: var(--muted); font-size: 12px; padding: 0 16px 8px; }
+.help kbd { border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; background: var(--sunk); }
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { position: static; height: auto; max-height: 180px; border-right: 0; border-bottom: 1px solid var(--border); }
+  header { position: static; }
+  .help { display: none; }
+  .str { grid-template-columns: 1fr; }
+  input[type=search] { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="brand">Wayward copy</span>
+    <span class="progress"><span class="meter"><i id="meter"></i></span><span id="progress">loading…</span></span>
+    <span class="spacer"></span>
+    <input type="search" id="q" placeholder="Search text, file or function  ( / )">
+    <select id="kind" title="Where the string looks like it shows up (a guess from the code around it)"></select>
+    <select id="status">
+      <option value="all">Everything</option>
+      <option value="todo">To review</option>
+      <option value="reviewed">Reviewed</option>
+      <option value="edited">Unsaved edits</option>
+      <option value="vocab">Vocabulary flags</option>
+    </select>
+    <button class="btn" id="vocabBtn" title="Words the Vocabulary table in docs/DESIGN.md says not to use">Vocabulary</button>
+    <button class="btn" id="diffBtn" title="git diff of Wayward/">Diff</button>
+    <button class="btn" id="checkBtn" title="Run the three smoke tests from CLAUDE.md">Run tests</button>
+    <button class="btn primary" id="saveBtn" disabled>Save</button>
+  </div>
+  <div class="vocabbar" id="vocabbar"></div>
+  <div class="help">Edit the text as it's written in the Lua (escapes, <code>|cff…|r</code> colours and <code>%s</code> stay as typed; the dark box shows roughly how it reads in game).
+    <kbd>Ctrl</kbd>+<kbd>Enter</kbd> mark reviewed and go to the next · <kbd>Ctrl</kbd>+<kbd>S</kbd> save · <kbd>/</kbd> search</div>
+</header>
+<div class="layout">
+  <nav id="files"></nav>
+  <main id="list"><div class="empty">Loading copy…</div></main>
+</div>
+<dialog id="dlg"><div class="dh"><span id="dlgTitle"></span><button class="btn" id="dlgClose">Close</button></div><pre id="dlgBody"></pre></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const NOISY = new Set(["route", "run", "option", "need", "objective"]);  // off by default: too common to be drift
+
+let data = null, byId = new Map(), groups = [], fileOrder = [];
+let drafts = store.get("wayward-copy-drafts", {});      // id -> {old, new}
+let vocabOn = store.get("wayward-copy-vocab", null);    // word -> bool
+let view = Object.assign({ file: "", q: "", kind: "player", status: "all" }, store.get("wayward-copy-view", {}));
+let shown = [], rendered = 0, vocabRe = null, vocabTerm = {};
+
+// ------------------------------------------------------------ loading
+
+async function load(keepScroll) {
+  const y = window.scrollY;
+  const r = await fetch("/api/copy");
+  data = await r.json();
+  if (data.error) return toast(data.error, true);
+  byId = new Map(data.entries.map((e) => [e.id, e]));
+  for (const id of Object.keys(drafts)) {
+    const e = byId.get(id);
+    if (!e || e.raw !== drafts[id].old || drafts[id].new === e.raw) delete drafts[id];
+  }
+  saveDrafts();
+  const gmap = new Map();
+  fileOrder = [];
+  for (const e of data.entries) {
+    const k = e.file + ":" + e.line;
+    if (!gmap.has(k)) { gmap.set(k, { key: k, file: e.file, line: e.line, func: e.func, entries: [] }); }
+    gmap.get(k).entries.push(e);
+    if (!fileOrder.includes(e.file)) fileOrder.push(e.file);
+  }
+  groups = [...gmap.values()];
+  for (const g of groups) g.entries.sort((a, b) => a.col - b.col);
+  buildVocab();
+  buildKinds();
+  apply();
+  if (keepScroll) requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
+function buildVocab() {
+  vocabTerm = {};
+  for (const v of data.vocab) for (const a of v.avoid) {
+    const k = a.toLowerCase();
+    vocabTerm[k] = vocabTerm[k] ? vocabTerm[k] + " or " + v.term : v.term;  // trip: Journey or Directions
+  }
+  if (!vocabOn) vocabOn = {};
+  for (const w of Object.keys(vocabTerm)) if (!(w in vocabOn)) vocabOn[w] = !NOISY.has(w);
+  const words = Object.keys(vocabTerm).filter((w) => vocabOn[w]).sort((a, b) => b.length - a.length);
+  vocabRe = words.length ? new RegExp("\\b(" + words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(s|es)?\\b", "gi") : null;
+  $("vocabbar").innerHTML = "<span>Flag these words (from the Vocabulary table in docs/DESIGN.md):</span>" +
+    Object.keys(vocabTerm).map((w) => `<button class="chip ${vocabOn[w] ? "on" : ""}" data-w="${esc(w)}" title="Say “${esc(vocabTerm[w])}” instead">${esc(w)} → ${esc(vocabTerm[w])}</button>`).join("");
+}
+
+function buildKinds() {
+  const kinds = [...new Set(data.entries.map((e) => e.kind))].sort();
+  $("kind").innerHTML = `<option value="player">All but debug</option><option value="">All kinds</option>` +
+    kinds.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join("");
+  $("kind").value = view.kind;
+  $("status").value = view.status;
+  $("q").value = view.q;
+}
+
+// ------------------------------------------------------------ helpers
+
+const current = (e) => (drafts[e.id] ? drafts[e.id].new : e.raw);
+const isEdited = (e) => !!drafts[e.id];
+const vocabHits = (text) => {
+  if (!vocabRe) return [];
+  const out = new Set(); let m; vocabRe.lastIndex = 0;
+  while ((m = vocabRe.exec(text))) out.add(m[1].toLowerCase());
+  return [...out];
+};
+
+function matches(e, g) {
+  if (view.file && e.file !== view.file) return false;
+  if (view.kind === "player" ? e.kind === "Debug" : view.kind && e.kind !== view.kind) return false;
+  if (view.status === "todo" && e.reviewed) return false;
+  if (view.status === "reviewed" && !e.reviewed) return false;
+  if (view.status === "edited" && !isEdited(e)) return false;
+  if (view.status === "vocab" && !vocabHits(current(e)).length) return false;
+  if (view.q) {
+    const q = view.q.toLowerCase();
+    const hay = (current(e) + "\n" + e.raw + "\n" + e.file + ":" + e.line + "\n" + (e.func || "")).toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  return true;
+}
+
+// Lua escapes, then WoW's |c colour codes, |T textures, |H links and % placeholders.
+function renderGame(raw, quote) {
+  let s = raw;
+  if (quote) s = s.replace(/\\(\d{1,3}|.)/g, (_, c) => /^\d/.test(c) ? String.fromCharCode(+c) : ({ n: "\n", t: "\t", r: "" }[c] ?? c));
+  let out = "", open = 0, i = 0;
+  const text = (t) => {
+    let h = esc(t).replace(/%(?:\d+\$)?[-+ #0]*\d*(?:\.\d+)?[sdfiguxXcq]/g, (m) => `<span class="ph">${m}</span>`).replace(/%%/g, "%");
+    if (vocabRe) h = h.replace(vocabRe, (m, w) => `<span class="vw" title="Vocabulary: say “${esc(vocabTerm[w.toLowerCase()] || "")}”">${m}</span>`);
+    return h;
+  };
+  while (i < s.length) {
+    const j = s.indexOf("|", i);
+    if (j < 0) { out += text(s.slice(i)); break; }
+    out += text(s.slice(i, j));
+    const rest = s.slice(j);
+    let m;
+    if ((m = rest.match(/^\|c([0-9a-fA-F]{2})([0-9a-fA-F]{6})/))) { out += `<span style="color:#${m[2]}">`; open++; i = j + m[0].length; }
+    else if (rest.startsWith("|r")) { if (open) { out += "</span>"; open--; } i = j + 2; }
+    else if (rest.startsWith("|n")) { out += "\n"; i = j + 2; }
+    else if (rest.startsWith("||")) { out += "|"; i = j + 2; }
+    else if ((m = rest.match(/^\|T([^|]*)\|t/))) { out += `<span class="ic">[icon]</span>`; i = j + m[0].length; }
+    else if ((m = rest.match(/^\|H[^|]*\|h(.*?)\|h/))) { out += text(m[1]); i = j + m[0].length; }
+    else { out += "|"; i = j + 1; }
+  }
+  return out + "</span>".repeat(open);
+}
+
+function codeLine(src, n, marks) {
+  // marks: [{col, len}] string contents on this line to highlight (with their quotes)
+  let html = "", at = 0;
+  const sorted = [...marks].sort((a, b) => a.col - b.col);
+  for (const m of sorted) {
+    html += hl(src.slice(at, m.col - 1)) + "<mark>" + esc(src.slice(m.col - 1, m.col + m.len + 1)) + "</mark>";
+    at = m.col + m.len + 1;
+  }
+  html += hl(src.slice(at));
+  return `<span class="ln">${n}</span>${html}`;
+}
+function hl(code) {  // dim a trailing -- comment that isn't inside a string
+  let q = null;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (q) { if (c === "\\") i++; else if (c === q) q = null; }
+    else if (c === '"' || c === "'") q = c;
+    else if (c === "-" && code[i + 1] === "-") return esc(code.slice(0, i)) + `<span class="cm">${esc(code.slice(i))}</span>`;
+  }
+  return esc(code);
+}
+
+// ------------------------------------------------------------ rendering
+
+function apply() {
+  store.set("wayward-copy-view", view);
+  shown = groups.filter((g) => g.entries.some((e) => matches(e, g)));
+  rendered = 0;
+  const list = $("list");
+  list.innerHTML = shown.length ? "" : `<div class="empty">Nothing matches.</div>`;
+  renderMore();
+  renderFiles();
+  renderProgress();
+}
+
+function renderMore() {
+  const list = $("list");
+  const old = list.querySelector(".sentinel"); if (old) old.remove();
+  const end = Math.min(shown.length, rendered + 120);
+  const frag = document.createDocumentFragment();
+  let lastFile = rendered ? shown[rendered - 1].file : null;
+  for (; rendered < end; rendered++) {
+    const g = shown[rendered];
+    if (g.file !== lastFile && !view.file) {
+      const h = document.createElement("div"); h.className = "filehead"; h.textContent = g.file; frag.appendChild(h);
+      lastFile = g.file;
+    }
+    frag.appendChild(card(g));
+  }
+  list.appendChild(frag);
+  if (rendered < shown.length) {
+    const s = document.createElement("div"); s.className = "sentinel"; list.appendChild(s);
+    io.observe(s);
+  }
+}
+const io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); renderMore(); } }, { rootMargin: "800px" });
+
+function card(g) {
+  const el = document.createElement("section");
+  el.className = "card"; el.dataset.key = g.key;
+  fillCard(el, g);
+  return el;
+}
+
+function fillCard(el, g) {
+  const reviewed = g.entries.every((e) => e.reviewed);
+  const edited = g.entries.some(isEdited);
+  el.classList.toggle("reviewed", reviewed);
+  el.classList.toggle("edited", edited);
+  const hits = new Set(g.entries.flatMap((e) => vocabHits(current(e))));
+  const kinds = [...new Set(g.entries.map((e) => e.kind))];
+  const path = (g.file === "Wayward.toc" ? data.addon + "/Wayward.toc" : data.addon + "/" + g.file);
+  const src = data.sources[g.file] || [];
+  const span = +(el.dataset.span || 0);
+  el.innerHTML = `
+    <div class="chead">
+      <a class="loc mono" href="vscode://file/${esc(path)}:${g.line}:${g.entries[0].col + 1}" title="Open in VS Code">${esc(g.file)}:${g.line}</a>
+      ${g.func ? `<span>in <code>${esc(g.func)}</code></span>` : ""}
+      ${kinds.map((k) => `<span class="badge">${esc(k)}</span>`).join("")}
+      ${[...hits].map((w) => `<span class="badge vocab" title="docs/DESIGN.md Vocabulary">${esc(w)} → ${esc(vocabTerm[w])}</span>`).join("")}
+      <span class="spacer"></span>
+      <button class="tog" data-act="ctx">${span ? "− code" : "+ code"}</button>
+      <label><input type="checkbox" data-act="rev" ${reviewed ? "checked" : ""}> Reviewed</label>
+    </div>
+    <pre class="ctx">${ctxHtml(g, src, span)}</pre>
+    <div class="strings">${g.entries.map((e) => strHtml(e)).join("")}</div>`;
+}
+
+function ctxHtml(g, src, span) {
+  const lo = Math.max(1, g.line - span), hi = Math.min(src.length, g.line + span);
+  let h = span && lo > 1 ? `<div class="more" data-act="more">⋯ more above</div>` : "";
+  for (let n = lo; n <= hi; n++) {
+    const marks = n === g.line ? g.entries.map((e) => ({ col: e.col, len: e.raw.length })) : [];
+    h += `<div class="${n === g.line ? "here" : ""}">${n === g.line && g.file === "Wayward.toc" ? `<span class="ln">${n}</span>${esc(src[n - 1])}` : codeLine(src[n - 1] || "", n, marks)}</div>`;
+  }
+  if (span && hi < src.length) h += `<div class="more" data-act="more">⋯ more below</div>`;
+  return h;
+}
+
+function strHtml(e) {
+  const val = current(e), ed = isEdited(e);
+  return `<div class="str ${ed ? "edited" : ""}" data-id="${esc(e.id)}">
+    <textarea class="raw" spellcheck="true" rows="1" aria-label="${esc(e.file)} line ${e.line}">${esc(val)}</textarea>
+    <div class="preview">${renderGame(val, e.quote)}</div>
+    ${ed ? `<div class="strfoot"><span>was</span><span class="was">${esc(e.raw)}</span><button data-act="revert">revert</button></div>` : ""}
+  </div>`;
+}
+
+function renderFiles() {
+  const counts = {};
+  for (const e of data.entries) {
+    if (view.kind === "player" ? e.kind === "Debug" : view.kind && e.kind !== view.kind) continue;
+    const c = counts[e.file] || (counts[e.file] = { n: 0, todo: 0, ed: 0 });
+    c.n++; if (!e.reviewed) c.todo++; if (isEdited(e)) c.ed++;
+  }
+  const row = (f, label, c) => `<button data-file="${esc(f)}" class="${view.file === f ? "on" : ""}" title="${c.n - c.todo} of ${c.n} reviewed">
+      <span>${esc(label)}</span><span class="n ${c.todo ? "" : "done"}">${c.ed ? `<span class="ed">${c.ed}✎ </span>` : ""}${c.todo ? c.todo : "✓"}</span></button>`;
+  const all = Object.values(counts).reduce((a, c) => ({ n: a.n + c.n, todo: a.todo + c.todo, ed: a.ed + c.ed }), { n: 0, todo: 0, ed: 0 });
+  $("files").innerHTML = row("", "All files", all) + fileOrder.filter((f) => counts[f]).map((f) => row(f, f, counts[f])).join("");
+}
+
+function renderProgress() {
+  const es = data.entries.filter((e) => view.kind === "player" ? e.kind !== "Debug" : !view.kind || e.kind === view.kind);
+  const done = es.filter((e) => e.reviewed).length;
+  const ed = Object.keys(drafts).length;
+  $("progress").textContent = `${done} of ${es.length} reviewed` + (ed ? ` · ${ed} unsaved` : "") + (shown.length !== groups.length ? ` · showing ${shown.length} lines` : "");
+  $("meter").style.width = (es.length ? (100 * done / es.length) : 0) + "%";
+  $("saveBtn").disabled = !ed;
+  $("saveBtn").textContent = ed ? `Save ${ed} edit${ed === 1 ? "" : "s"}` : "Save";
+}
+
+const groupOf = (el) => groups.find((g) => g.key === el.closest(".card").dataset.key);
+
+// ------------------------------------------------------------ events
+
+$("list").addEventListener("input", (ev) => {
+  const t = ev.target; if (!t.matches("textarea.raw")) return;
+  const box = t.closest(".str"), e = byId.get(box.dataset.id);
+  if (t.value === e.raw) delete drafts[e.id]; else drafts[e.id] = { old: e.raw, new: t.value };
+  box.querySelector(".preview").innerHTML = renderGame(t.value, e.quote);
+  const wasEd = box.classList.contains("edited"), nowEd = isEdited(e);
+  box.classList.toggle("edited", nowEd);
+  if (wasEd !== nowEd) {
+    const foot = box.querySelector(".strfoot");
+    if (nowEd && !foot) box.insertAdjacentHTML("beforeend", `<div class="strfoot"><span>was</span><span class="was">${esc(e.raw)}</span><button data-act="revert">revert</button></div>`);
+    if (!nowEd && foot) foot.remove();
+  }
+  t.closest(".card").classList.toggle("edited", groupOf(t).entries.some(isEdited));
+  saveDrafts(); renderProgress();
+});
+
+$("list").addEventListener("click", (ev) => {
+  const t = ev.target.closest("[data-act]"); if (!t) return;
+  const el = t.closest(".card"), g = groupOf(t);
+  if (t.dataset.act === "revert") {
+    delete drafts[t.closest(".str").dataset.id]; saveDrafts(); fillCard(el, g); renderProgress(); renderFiles();
+  } else if (t.dataset.act === "ctx") {
+    el.dataset.span = +(el.dataset.span || 0) ? 0 : 6; fillCard(el, g);
+  } else if (t.dataset.act === "more") {
+    el.dataset.span = +(el.dataset.span || 0) + 12; fillCard(el, g);
+  }
+});
+
+$("list").addEventListener("change", (ev) => {
+  const t = ev.target; if (t.dataset.act !== "rev") return;
+  setReviewed(groupOf(t), t.checked, t.closest(".card"));
+});
+
+$("list").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey) && ev.target.matches("textarea.raw")) {
+    ev.preventDefault();
+    const el = ev.target.closest(".card");
+    setReviewed(groupOf(ev.target), true, el);
+    let next = el.nextElementSibling;
+    while (next && !next.classList.contains("card")) {
+      if (next.classList.contains("sentinel")) { renderMore(); }
+      next = next.nextElementSibling;
+    }
+    if (next) { const ta = next.querySelector("textarea"); ta.focus({ preventScroll: true }); next.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  }
+});
+
+async function setReviewed(g, on, el) {
+  for (const e of g.entries) e.reviewed = on;
+  if (el) { el.classList.toggle("reviewed", on); const cb = el.querySelector('[data-act="rev"]'); if (cb) cb.checked = on; }
+  renderProgress(); renderFiles();
+  const r = await post("/api/review", { items: g.entries.map((e) => ({ file: e.file, raw: e.raw, reviewed: on })) });
+  if (r.error) toast("Couldn't save the reviewed mark: " + r.error, true);
+}
+
+$("files").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button"); if (!b) return;
+  view.file = b.dataset.file; apply(); window.scrollTo(0, 0);
+});
+let qTimer;
+$("q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => { view.q = $("q").value.trim(); apply(); }, 150); });
+$("kind").addEventListener("change", () => { view.kind = $("kind").value; apply(); });
+$("status").addEventListener("change", () => { view.status = $("status").value; apply(); });
+$("vocabBtn").addEventListener("click", () => $("vocabbar").classList.toggle("open"));
+$("vocabbar").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-w]"); if (!b) return;
+  vocabOn[b.dataset.w] = !vocabOn[b.dataset.w]; store.set("wayward-copy-vocab", vocabOn); buildVocab(); apply();
+});
+document.addEventListener("keydown", (ev) => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); save(); }
+  else if (ev.key === "/" && !ev.target.matches("input, textarea, select")) { ev.preventDefault(); $("q").focus(); }
+});
+window.addEventListener("beforeunload", (ev) => { if (Object.keys(drafts).length) { ev.preventDefault(); ev.returnValue = ""; } });
+
+$("saveBtn").addEventListener("click", save);
+async function save() {
+  const ids = Object.keys(drafts); if (!ids.length) return;
+  $("saveBtn").disabled = true; $("saveBtn").textContent = "Saving…";
+  const edits = ids.map((id) => { const e = byId.get(id); return { id, file: e.file, line: e.line, col: e.col, quote: e.quote, old: e.raw, new: drafts[id].new }; });
+  const r = await post("/api/save", { edits });
+  if (r.error) { renderProgress(); return toast("Save failed: " + r.error, true); }
+  for (const id of r.saved) delete drafts[id];
+  saveDrafts();
+  const files = new Set(r.saved.map((id) => id.split(":")[0]));
+  let msg = r.saved.length ? `Saved ${r.saved.length} string${r.saved.length === 1 ? "" : "s"} in ${files.size} file${files.size === 1 ? "" : "s"}` +
+    (r.copy_md === true ? " · docs/copy.md regenerated" : r.copy_md ? " · " + r.copy_md : "") : "";
+  if (r.refused.length) msg += (msg ? "\n" : "") + `Not saved (${r.refused.length}): ` + r.refused.map((x) => `${x.id}: ${x.why}`).join("\n");
+  toast(msg, r.refused.length > 0);
+  await load(true);
+}
+
+$("diffBtn").addEventListener("click", async () => {
+  openDialog("git diff -- Wayward", "Loading…");
+  const r = await (await fetch("/api/diff")).json();
+  const body = r.diff ? r.diff.split("\n").map((l) => {
+    const c = l.startsWith("+++") || l.startsWith("---") || l.startsWith("diff ") || l.startsWith("index ") || l.startsWith("@@") ? "hd" : l[0] === "+" ? "add" : l[0] === "-" ? "del" : "";
+    return `<span class="${c}">${esc(l)}</span>`;
+  }).join("\n") : "No changes in Wayward/.";
+  $("dlgBody").innerHTML = body;
+});
+$("checkBtn").addEventListener("click", async () => {
+  openDialog("Smoke tests", "Running the three smoke tests…");
+  const r = await post("/api/check", {});
+  if (r.error) return ($("dlgBody").textContent = r.error);
+  $("dlgBody").innerHTML = r.checks.map((c) => `<span class="${c.ok ? "add" : "del"}">${c.ok ? "PASS" : "FAIL"}  ${esc(c.cmd)}</span>\n${esc(c.tail)}\n`).join("\n");
+});
+function openDialog(title, body) { $("dlgTitle").textContent = title; $("dlgBody").textContent = body; $("dlg").showModal(); }
+$("dlgClose").addEventListener("click", () => $("dlg").close());
+
+async function post(url, body) {
+  try {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return await r.json();
+  } catch (e) { return { error: String(e) }; }
+}
+function saveDrafts() { store.set("wayward-copy-drafts", drafts); }
+let toastTimer;
+function toast(msg, bad) {
+  const t = $("toast"); t.textContent = msg; t.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = "toast"), bad ? 9000 : 4000);
+}
+
+new ResizeObserver(([e]) => document.documentElement.style.setProperty("--hh", e.target.offsetHeight + "px")).observe(document.querySelector("header"));
+load().catch((e) => { $("list").innerHTML = `<div class="empty">Couldn't load: ${esc(e)}. Is tools/copy_editor.py running?</div>`; });
+</script>
+</body>
+</html>

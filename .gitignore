@@ -3,3 +3,6 @@
 # Private data companion (its own repo); never commit it here.
 Wayward_Data/
 dist/
+
+# tools/copy_editor.py: what you marked as reviewed
+.copy-review.json
