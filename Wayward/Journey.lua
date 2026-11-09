@@ -227,10 +227,39 @@ local BIG_AREA = 8
 local MARKER_YARDS = 500
 Journey.MARKER_YARDS = MARKER_YARDS
 
+-- Nor is a lone spawn or two off by itself when the rest of the creature is
+-- in camps: an area with STRAY_SPAWNS or fewer of an objective's spawns is a
+-- stray, left out while all of that objective's strays together hold no more
+-- than STRAY_SHARE of it (the Bounty on Murlocs fins: one murloc by the
+-- Eastvale bridge, 169 down the river). It isn't headed for, and being near
+-- it isn't being in the area. An objective that's only ever a few spawns here
+-- and there (a rare mob, one named boss) keeps them all.
+local STRAY_SPAWNS, STRAY_SHARE = 3, 0.1
+
+local function withoutStrays(areas)
+  if #areas < 2 then return areas end
+  local total, small = {}, {}
+  for _, area in ipairs(areas) do
+    for g, n in pairs(area.counts) do
+      total[g] = (total[g] or 0) + n
+      if n <= STRAY_SPAWNS then small[g] = (small[g] or 0) + n end
+    end
+  end
+  local kept = {}
+  for _, area in ipairs(areas) do
+    local stray = true
+    for g, n in pairs(area.counts) do
+      if n > STRAY_SPAWNS or small[g] > total[g] * STRAY_SHARE then stray = false end
+    end
+    if not stray then kept[#kept + 1] = area end
+  end
+  return #kept > 0 and kept or areas
+end
+
 -- The areas that still have something you need (a finished objective's
--- spawns don't count; the quest log says which are finished):
--- { {index, nodes}, ... }.
-function Journey.OpenAreas(questID)
+-- spawns don't count; the quest log says which are finished) and near the
+-- game's marker: { {index, nodes, counts}, ... } (counts: spawns per group).
+local function neededAreas(questID)
   local areas = ns.Quests.ObjectiveAreas(questID)
   if #areas == 0 then return {} end
   local groups = ns.Quests.ObjectiveGroups(questID)
@@ -245,11 +274,14 @@ function Journey.OpenAreas(questID)
   end
   local out = {}
   for index, area in ipairs(areas) do
-    local nodes = {}
+    local nodes, counts = {}, {}
     for _, m in ipairs(area) do
-      if not finished[m.group] then nodes[#nodes + 1] = m.node end
+      if not finished[m.group] then
+        nodes[#nodes + 1] = m.node
+        counts[m.group] = (counts[m.group] or 0) + 1
+      end
     end
-    if #nodes > 0 then out[#out + 1] = { index = index, nodes = nodes } end
+    if #nodes > 0 then out[#out + 1] = { index = index, nodes = nodes, counts = counts } end
   end
   local marker = #out > 1 and ns.Quests.LogMarker(questID)
   if marker then
@@ -261,6 +293,24 @@ function Journey.OpenAreas(questID)
     if #near > 0 then out = near end
   end
   return out
+end
+
+-- Those areas less the strays: where the quest is done.
+function Journey.OpenAreas(questID)
+  return withoutStrays(neededAreas(questID))
+end
+
+-- Whether one of a quest's areas is left out as a stray (the plan report).
+function Journey.StrayArea(questID, index)
+  local needed = false
+  for _, area in ipairs(neededAreas(questID)) do
+    if area.index == index then needed = true end
+  end
+  if not needed then return false end
+  for _, area in ipairs(Journey.OpenAreas(questID)) do
+    if area.index == index then return false end
+  end
+  return true
 end
 
 local function clearedAt(stop, index, now)

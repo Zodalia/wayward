@@ -4015,6 +4015,47 @@ do
   check(not ns.Nav.InArea() and ns.Journey.ClearedAreas(islandStop) == 0 and ns.Journey.RespawnIn(islandStop) == 0,
     "walked off after a minute: not counted as cleared, no respawn wait")
 
+  -- A lone murloc by a bridge, the rest of them down the river: the stray
+  -- isn't where the quest is done. Standing by it isn't being in the area,
+  -- and the way goes on to the river.
+  ns.Nav.Stop()
+  local river = {}
+  for k = 0, 11 do river[#river + 1] = { 40 + (k % 4) * 0.4, 40 + math.floor(k / 4) * 0.4 } end
+  local strayAt = { 60, 40 }
+  river[#river + 1] = strayAt
+  NPCS[9161] = { name = "River Murloc", minLevel = 18, maxLevel = 19, spawns = { [44] = river } }
+  QUESTS[400] = { name = "River Bounty", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+    finishedBy = { { 345 } }, objectives = { { { 9161 } } } }
+  refreshData()
+  C_QuestLog.GetInfo = function() return { questID = 400, isHeader = false } end
+  local fins = { { text = "River Murloc slain: 0/8", finished = false } }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 400 and fins or {} end
+  local riverAreas = ns.Quests.ObjectiveAreas(400)
+  local strayIndex
+  for index, area in ipairs(riverAreas) do
+    if #area == 1 then strayIndex = index end
+  end
+  check(#riverAreas == 2 and strayIndex ~= nil, "(the river camp and the stray are two areas)")
+  local riverOpen = ns.Journey.OpenAreas(400)
+  check(#riverOpen == 1 and riverOpen[1].index ~= strayIndex and ns.Journey.StrayArea(400, strayIndex),
+    "a lone spawn off from the camp isn't one of the quest's areas")
+  player.x, player.y = (strayAt[1] + 0.3) / 100, strayAt[2] / 100
+  here = ns.Geo.PlayerNode()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "River", stops = ns.Journey.QuestStops(400, here) }))
+  ns.HUD.Update()
+  local riverStop = ns.Nav.CurrentStep().stop
+  check(riverStop.action.kind == "complete" and not ns.Nav.InArea()
+    and ns.Geo.Distance(riverStop.node, ns.Geo.Node(1433, 0.41, 0.41)) < 150,
+    "standing by the stray: not in the area, headed for the river")
+  local riverText = ns.PlanReport.Build()
+  check(riverText:find("a stray, the rest are in camps: left out", 1, true), "the plan report says so:\n" .. riverText)
+  -- A creature that's only ever a lone spawn here and there keeps them all.
+  NPCS[9161].spawns[44] = { { 20, 20 }, { 40, 40 }, { 60, 60 } }
+  refreshData()
+  check(#ns.Journey.OpenAreas(400) == 3, "lone spawns all over: every one counts")
+  ns.Nav.Stop()
+  QUESTS[400], NPCS[9161] = nil, nil
+
   UnitGUID, UnitName, UnitIsDead, UnitIsTapDenied, UnitIsDeadOrGhost = savedGUID, savedName, nil, nil, nil
   QUESTS[49], NPCS[9160] = nil, nil
   time = os.time

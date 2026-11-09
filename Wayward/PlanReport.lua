@@ -90,6 +90,7 @@ local function objectiveLines(stop, here)
       local fromMarker
       if source == "log" then fromMarker = select(2, ns.Data.Nearest(nodes, marker)) end
       flags[#flags + 1] = fromMarker and fromMarker > ns.Journey.MARKER_YARDS and "far from the game's marker: left out"
+        or ns.Journey.StrayArea(questID, index) and "a stray, the rest are in camps: left out"
         or "done"
     end
     if stop.aimArea == index then flags[#flags + 1] = "aimed for" end
