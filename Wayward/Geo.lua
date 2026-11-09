@@ -119,6 +119,11 @@ end
 local ZONE_CACHE_LIMIT = 20000
 local zoneCache, zoneCached = {}, 0
 
+-- Forgets the answers kept (for tests that redraw the world).
+function Geo.ForgetZones()
+  zoneCache, zoneCached = {}, 0
+end
+
 function Geo.ZoneAt(instance, wx, wy)
   local key = instance .. ":" .. math.floor(wx + 0.5) .. ":" .. math.floor(wy + 0.5)
   local cached = zoneCache[key]

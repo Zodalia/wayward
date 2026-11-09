@@ -17,7 +17,7 @@ end
 
 -- Built once and reused while nothing it depends on changes (the planner
 -- keeps its worked-out paths on it): your known flight paths, the recorded
--- and bundled transports, your faction.
+-- and bundled transports, your faction, the links you walk between zones by.
 local cached, cachedKey
 local FLIGHT_MASTER_RADIUS = 60 -- yards from a flight path's map position
 
@@ -38,7 +38,7 @@ local function signature()
   for _ in pairs(known) do count = count + 1 end
   return table.concat({ tostring(known), count, tostring(ns.db.transports), #ns.db.transports,
     tostring(ns.data.transports), #ns.data.transports, UnitFactionGroup("player") or "",
-    tostring(C_TaxiMap), tostring(C_TaxiMap.GetTaxiNodesForMap) }, "|")
+    tostring(C_TaxiMap), tostring(C_TaxiMap.GetTaxiNodesForMap), ns.Walk.Version() }, "|")
 end
 
 function Network.Build()

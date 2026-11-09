@@ -223,6 +223,10 @@ for line in io.lines(dir .. "/Wayward.toc") do
   local file = line:match("^([^#%s].-%.lua)%s*$")
   if file then assert(loadfile(dir .. "/" .. file:gsub("\\", "/")))("Wayward", ns) end
 end
+-- The bundled zone links are the real world's; this one is made of rectangles
+-- and has none, until the "walking between zones" section draws its own.
+local BUNDLED_ZONE_LINKS = ns.data.zoneLinks
+ns.data.zoneLinks = {}
 
 local function fire(event, ...)
   -- Classic Era's QUEST_ACCEPTED has the quest log index first.
@@ -9219,6 +9223,148 @@ do
   rawset(f, "GetWidth", nil)
 end
 -- ===== journey: snackbars (end) =====
+-- ===== routing: walking between zones =====
+io.write("walking between zones\n")
+do
+  local W = ns.Walk
+  -- The bundled links: well-formed, and the world hangs together as it should.
+  local sane, group = #BUNDLED_ZONE_LINKS >= 40, {}
+  local function find(z)
+    while group[z] and group[z] ~= z do z = group[z] end
+    return z
+  end
+  for _, l in ipairs(BUNDLED_ZONE_LINKS) do
+    if not (l.a and l.b and l.a ~= l.b and (l.mapID == l.a or l.mapID == l.b) and l.x >= 0 and l.x <= 1 and l.y >= 0
+      and l.y <= 1 and type(l.label) == "string") then sane = false end
+    group[l.a], group[l.b] = group[l.a] or l.a, group[l.b] or l.b
+    group[find(l.a)] = find(l.b)
+  end
+  check(sane, "every bundled link names two zones, a point on one of their maps and a label")
+  check(find(1429) == find(1423) and find(1426) == find(1434) and find(1411) == find(1451) and find(1439) == find(1446),
+    "the bundled links join each continent's zones (Elwynn to the Plaguelands, Durotar to Silithus)")
+  check(find(1438) == find(1457) and find(1438) ~= find(1439) and find(1429) ~= find(1439),
+    "Teldrassil is joined to Darnassus only: no walking to Darkshore")
+
+  -- On foot: no flight paths, no boats (Stormwind's harbour would get you to Menethil).
+  local known, recorded, where = ns.charDB.knownTaxi, ns.db.transports, { player.mapID, player.x, player.y }
+  local boats = ns.data.transports
+  ns.Nav.Stop()
+  ns.charDB.knownTaxi, ns.db.transports, ns.data.transports = {}, {}, {}
+  ns.data.zoneLinks = {
+    { a = 1433, b = 1453, mapID = 1433, x = 0, y = 0.5, label = "the east gate" },
+    { a = 1453, b = 1429, mapID = 1453, x = 0.5, y = 1, label = "the gates of Stormwind" },
+    { a = 1437, b = 1426, mapID = 1437, x = 0, y = 1, label = "Dun Algaz" },
+  }
+  W.Reset()
+  local redridge = ns.Geo.Node(1433, 0.5, 0.5, "Lakeshire")
+  local elwynn = ns.Geo.Node(1429, 0.9, 0.1, "Eastvale")
+  local straight = ns.Geo.Distance(redridge, elwynn)
+  local yards, vias = W.Path(redridge, elwynn, true)
+  check(yards and yards > straight * 1.2 and vias and #vias == 2 and vias[1].zone == 1453 and vias[2].zone == 1429
+    and vias[1].label == "the east gate", "a walk into another zone goes through the links between them, not straight: "
+    .. tostring(yards) .. " against " .. straight)
+  check(W.Distance(elwynn, redridge) == yards, "and the same way back")
+  local near = ns.Geo.Node(1433, 0.6, 0.6, "Close by")
+  check(W.Distance(redridge, near) == ns.Geo.Distance(redridge, near) and select(2, W.Path(redridge, near, true)) == nil,
+    "inside a zone a walk is a straight line")
+  local nowhere = ns.Geo.Node(1415, 0.6, 0.3, "Off the map")
+  check(W.Distance(redridge, nowhere) == ns.Geo.Distance(redridge, nowhere), "to a place with no links, a straight line as before")
+  local wetlands = ns.Geo.Node(1437, 0.5, 0.5, "Wetlands camp")
+  check(W.Distance(redridge, wetlands) == nil, "zones with links but no chain of them between the two: no walking there")
+  check(W.Distance(redridge, ns.Geo.Node(1439, 0.5, 0.5, "Darkshore")) == nil, "nor to another continent")
+
+  -- The router: no walk, so no route on foot; with the flight path, a flight.
+  check(ns.Router.Plan(redridge, wetlands, ns.Network.Build()) == nil, "the router has no route where you can't walk")
+  ns.charDB.knownTaxi = { [5] = true, [7] = true }
+  ns.Fire("FLIGHTS_CHANGED")
+  local flown = ns.Router.Plan(redridge, wetlands, ns.Network.Build())
+  check(flown and ns.Router.Summary(flown):find("fly to Menethil Harbor", 1, true), "and flies instead when it can: "
+    .. tostring(flown and ns.Router.Summary(flown)))
+  ns.charDB.knownTaxi = {}
+  ns.Fire("FLIGHTS_CHANGED")
+
+  -- The steps: one per link, said with the link.
+  local plain = ns.Router.Plan(redridge, elwynn, ns.Network.Build())
+  local route = ns.Router.WithZoneSteps(plain)
+  local total = 0
+  for _, st in ipairs(route.steps) do total = total + st.seconds end
+  check(#plain.steps == 1 and math.abs(plain.seconds - yards * ns.Router.WALK_FACTOR / ns.Router.RUN_SPEED) < 0.01,
+    "the walk costs its way through the links")
+  check(#route.steps == 3 and route.steps[1].link and route.steps[1].zoneEntry == 1453 and route.steps[2].zoneEntry == 1429
+    and not route.steps[3].link and route.steps[3].to == elwynn and math.abs(total - plain.seconds) < 0.01,
+    "each link is a step of the walk, and the time is shared out between them")
+  check(ns.Router.Describe(route, 1) == "Walk to Stormwind City through the east gate"
+    and ns.Router.Describe(route, 2) == "Walk to Elwynn Forest through the gates of Stormwind"
+    and ns.Router.Describe(route, 3) == "Walk to Eastvale", "the steps name the link: " .. ns.Router.Describe(route, 1))
+  check(ns.Router.Summary(route) == "on foot", "still on foot")
+
+  -- Following it: in the zone the link leads to, wherever you crossed, the step is done.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  ns.Nav.Start("Eastvale", elwynn, ns.Router.Plan(ns.Geo.PlayerNode(), elwynn, ns.Network.Build()))
+  check(ns.Nav.CurrentStep().zoneEntry == 1453 and ns.Nav.Aim().pass == "the east gate", "the arrow points at the gate first")
+  player.mapID, player.x, player.y = 1453, 0.9, 0.2
+  ns.HUD.Update()
+  check(ns.Nav.active and ns.Nav.CurrentStep().zoneEntry == 1429, "in the city, by whichever way: on to the next gate")
+  ns.Nav.Stop()
+
+  -- An area gathered in on the way is aimed past, but never past a link.
+  local gate = { label = "Stormwind City", pass = "the east gate" }
+  local aimed = { steps = {
+    { mode = "walk", to = { label = "boars" }, via = { stop = {} } },
+    { mode = "walk", to = gate, link = true, zoneEntry = 1453 },
+    { mode = "walk", to = { label = "the hand-in" }, stop = {} } } }
+  local aim, at = ns.Router.Aim(aimed, 1)
+  check(aim == gate and at == 2, "past an area on the way the arrow points at the gate, not through the wall")
+
+  -- Crossings you walk are recorded. Arathi, drawn north of the Wetlands.
+  ZONES[1417] = { cont = 1415, x0 = 0.38, y0 = 0.32, w = 0.10, h = 0.10, name = "Arathi Highlands" }
+  ns.Geo.ForgetZones()
+  ns.db.zoneLinks = {}
+  player.mapID, player.x, player.y = 1437, 0.5, 0.5
+  fire("ZONE_CHANGED_NEW_AREA")
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  fire("ZONE_CHANGED_NEW_AREA")
+  check(#ns.db.zoneLinks == 0, "turning up in a zone far from the one you were in (a hearthstone) records nothing")
+  player.mapID, player.x, player.y = 1437, 0.5, 0.5
+  fire("ZONE_CHANGED_NEW_AREA")
+  local arathi = ns.Geo.Node(1417, 0.5, 0.5, "Refuge Pointe")
+  check(W.Distance(wetlands, arathi) == ns.Geo.Distance(wetlands, arathi), "before: Arathi has no links, a straight line")
+  player.mapID, player.x, player.y = 1417, 0.2, 0.995
+  UnitOnTaxi = function() return true end
+  fire("ZONE_CHANGED_NEW_AREA")
+  UnitOnTaxi = nil
+  check(#ns.db.zoneLinks == 0, "flying over a border records nothing")
+  player.mapID, player.x, player.y = 1437, 0.5, 0.5
+  fire("ZONE_CHANGED_NEW_AREA")
+  player.mapID, player.x, player.y = 1417, 0.2, 0.995
+  fire("ZONE_CHANGED_NEW_AREA")
+  local l = ns.db.zoneLinks[1]
+  check(#ns.db.zoneLinks == 1 and l.a == 1437 and l.b == 1417 and l.mapID == 1417 and l.x == 0.2,
+    "walking from one zone into the next records where")
+  yards, vias = W.Path(wetlands, arathi, true)
+  check(yards > ns.Geo.Distance(wetlands, arathi) and vias and #vias == 1 and vias[1].zone == 1417,
+    "and walks between the two go that way from then on")
+  player.mapID, player.x, player.y = 1437, 0.21, 0.005
+  fire("ZONE_CHANGED_NEW_AREA")
+  check(#ns.db.zoneLinks == 1, "crossing back at the same place isn't a second crossing")
+  -- A bundled point for the same two zones, a little off: what you walked replaces it.
+  table.insert(ns.data.zoneLinks, { a = 1437, b = 1417, mapID = 1417, x = 0.4, y = 1, label = "the Thandol Span" })
+  W.Reset()
+  local _, replaced = W.Path(ns.Geo.Node(1437, 0.4, 0.1, "South of the span"), ns.Geo.Node(1417, 0.4, 0.9, "North of it"), true)
+  check(replaced and #replaced == 1 and math.abs(replaced[1].node.x - 0.2) < 0.001,
+    "a crossing you walked replaces the bundled point near it")
+  check(W.LuaLine(l):find("a = 1437, b = 1417, mapID = 1417, x = 0.200, y = 0.995", 1, true), "/ww crossings: " .. W.LuaLine(l))
+
+  ZONES[1417] = nil
+  ns.Geo.ForgetZones()
+  ns.data.zoneLinks, ns.db.zoneLinks = {}, {}
+  W.Reset()
+  ns.charDB.knownTaxi, ns.db.transports, ns.data.transports = known, recorded, boats
+  ns.Fire("FLIGHTS_CHANGED")
+  player.mapID, player.x, player.y = where[1], where[2], where[3]
+  fire("ZONE_CHANGED_NEW_AREA")
+end
+-- ===== routing: walking between zones (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

@@ -199,6 +199,9 @@ Data limits to know about:
   missing. Record one yourself: `/ww dock` where you board, ride, `/ww dock`
   where you get off. Routes use it immediately; `/ww dock list` copies the
   data line to add to `Data/Transports.lua` for everyone.
+- The points where zones join in `Wayward/Data/ZoneLinks.lua` are approximate
+  (which zones join is not), and ways that need a swim, a drop or a key are
+  left out. Walk a crossing once and yours replaces the bundled point.
 - "New spells" needs one visit to a trainer for your class first, or a data
   source with class spells (then costs show only when the source has them).
 - Weapon masters are only recognised on English clients.
@@ -513,8 +516,22 @@ play it. `/ww sounds export` opens your choices as one line to copy
 
 ### Getting around
 
-- **Directions** add a step whenever you walk into another zone ("Walk to
-  Elwynn Forest"); it counts as done as soon as you're in that zone.
+- **Walking goes zone by zone**, not as the crow flies. A walk into another
+  zone goes through the gates, passes, bridges and tunnels between them
+  (`Data/ZoneLinks.lua`, `Walk.lua`), each its own step ("Walk to Loch Modan
+  through South Gate Pass") that the compass points at and that counts as
+  done as soon as you're in that zone, wherever you crossed. Zones with no
+  way between them on foot (Teldrassil and Darkshore) aren't walked between:
+  the route takes the boat, a flight, or there is none. Inside a zone a walk
+  is still a straight line, so a lake or a cliff in the way isn't known
+  about. The bundled crossing points are approximate until walked: when you
+  walk from one zone into the next, Wayward records where (not from the air,
+  as a ghost, or after a hearthstone) and uses that instead of the bundled
+  point near it. `/ww crossings` copies yours as lines for
+  `Data/ZoneLinks.lua`; `/ww crossings clear` forgets them. A zone with no
+  crossing bundled or recorded (one new in Forever) is walked into in a
+  straight line, with a step where the line enters it ("Walk to Elwynn
+  Forest"), as every walk used to be.
 - **Re-routing is automatic** after a hearthstone, portal or loading screen,
   when you're on another continent than the current step expects, or when
   you've walked well away from the current target. Never during a flight,

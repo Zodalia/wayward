@@ -1,20 +1,23 @@
 local _, ns = ...
 
 -- Plans the fastest trip from A to B over a travel network (see Network.lua):
--- walking anywhere on the same continent, flying between known flight paths,
--- and boats/zeppelins/tram/portals. Pure logic over route nodes, no game API.
+-- walking (zone to zone through the links between them, see Walk.lua), flying
+-- between known flight paths, and boats/zeppelins/tram/portals. Pure logic
+-- over route nodes, no game API.
 
 local Router = {}
 ns.Router = Router
 
 Router.RUN_SPEED = 7       -- yards per second on foot
-Router.WALK_FACTOR = 1.3   -- real paths vs a straight line
+Router.WALK_FACTOR = 1.3   -- real paths vs a straight line (inside a zone, and between its links)
 Router.FLY_SPEED = 25      -- effective yards per second along a flight path
 Router.FLY_OVERHEAD = 20   -- seconds: talk to the flight master, take off, land
 
+-- Nil when you can't walk from a to b: another continent, or zones with no
+-- way between them on foot (Walk.lua).
 local function walkCost(a, b)
-  local d = ns.Geo.Distance(a, b)
-  if d == math.huge then return nil end
+  local d = ns.Walk.Distance(a, b)
+  if not d then return nil end
   return d * Router.WALK_FACTOR / Router.RUN_SPEED
 end
 
@@ -119,7 +122,8 @@ function Router.Plan(start, goal, net)
 
   local exits = {}
   for j, node in ipairs(nodes) do
-    if node.instance == goal.instance then exits[#exits + 1] = { j, walkCost(node, goal) } end
+    local toGoal = node.instance == goal.instance and walkCost(node, goal)
+    if toGoal then exits[#exits + 1] = { j, toGoal } end
   end
   if #exits > 0 then
     for i, node in ipairs(nodes) do
@@ -155,14 +159,41 @@ function Router.Plan(start, goal, net)
   return { steps = out, seconds = best }
 end
 
--- Walking into another zone becomes its own step ("Walk to Elwynn Forest"),
--- found by sampling the straight line. Used for the route you follow and for
--- previews, not while comparing routes (that would be wasted work).
+-- Walking into another zone becomes its own step: to the link you go
+-- through ("Walk to Loch Modan through South Gate Pass", Walk.lua), or,
+-- where the zones have no links, found by sampling the straight line ("Walk
+-- to Elwynn Forest"). Used for the route you follow and for previews, not
+-- while comparing routes (that would be wasted work).
 local ZONE_SAMPLE_YARDS = 40
 local MAX_ZONE_SAMPLES = 60
 local MIN_LEG_YARDS = 30
 
+-- A walk through links, as one step per link and the rest of the way. Nil
+-- for a straight walk.
+local function linkSteps(step)
+  local yards, vias = ns.Walk.Path(step.from, step.to, true)
+  if not (yards and vias and #vias > 0) then return nil end
+  local out, from = {}, step.from
+  local function share(a, b)
+    return yards > 0 and step.seconds * ns.Geo.Distance(a, b) / yards or 0
+  end
+  for _, via in ipairs(vias) do
+    local n = via.node
+    local node = { label = ns.MapName(via.zone), pass = via.label, mapID = n.mapID, x = n.x, y = n.y,
+      instance = n.instance, wx = n.wx, wy = n.wy }
+    out[#out + 1] = { mode = "walk", from = from, to = node, zoneEntry = via.zone, link = true, seconds = share(from, node) }
+    from = node
+  end
+  local last = {}
+  for k, v in pairs(step) do last[k] = v end
+  last.from, last.seconds = from, share(from, step.to)
+  out[#out + 1] = last
+  return out
+end
+
 local function zoneSteps(step)
+  local linked = linkSteps(step)
+  if linked then return linked end
   local a, b = step.from, step.to
   local distance = ns.Geo.Distance(a, b)
   if distance == math.huge or distance < 2 * MIN_LEG_YARDS then return { step } end
@@ -216,7 +247,9 @@ local TRANSPORT_VERB = {
 -- area to gather in on the way (Journey: gathering as you go) that the next
 -- stop doesn't need: that's passed through, not headed for, so the arrow
 -- points on to the next stop (or the flight master or boat on the way
--- there), past any zone borders. A needed area (step.via.needed) is the
+-- there), past any zone borders found by sampling, but never past a link
+-- (a pass or a gate is the way: the arrow points at it, not through the
+-- mountain). A needed area (step.via.needed) is the
 -- point of the walk: heading for a hand-in that can't be done yet would
 -- only send you back out. Returns the node and its step's index.
 function Router.Aim(route, index)
@@ -226,7 +259,7 @@ function Router.Aim(route, index)
   while route.steps[k + 1] and route.steps[k + 1].mode == "walk" do
     k = k + 1
     local nextStep = route.steps[k + 1]
-    if route.steps[k].stop or not nextStep or nextStep.mode ~= "walk" then break end
+    if route.steps[k].link or route.steps[k].stop or not nextStep or nextStep.mode ~= "walk" then break end
   end
   return route.steps[k].to, k
 end
@@ -278,6 +311,7 @@ function Router.Describe(route, index, travelOnly)
     if place and place ~= step.to.label then return "Walk to " .. place end
     return "Walk to the area for " .. step.to.label
   end
+  if step.zoneEntry and step.to.pass then return string.format("Walk to %s through %s", step.to.label, step.to.pass) end
   return "Walk to " .. step.to.label
 end
 

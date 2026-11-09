@@ -260,6 +260,23 @@ four views:
 - The tooltip lines on items and quests become actionable: "Wayward: /ww
   find" and, where the client allows, a click target.
 
+## Walking routes
+
+Added 2026-11-09, after the 0.5 streams. Travel times are what every
+"on the way" and "+2 min" claim rests on, so they have to be honest
+(pillar 4: cut friction, don't send the player at a mountain).
+
+- A walk between zones goes through **links** (`Wayward/Walk.lua`,
+  `Data/ZoneLinks.lua`): gates, passes, bridges, tunnels. Zones with links
+  but no chain between them can't be walked between. A zone with no link is
+  uncharted and walked into in a straight line, as before.
+- A link is a step ("Walk to Loch Modan through South Gate Pass"), done
+  when you're in the zone it leads to, wherever you crossed: the arrow
+  suggests a way, it doesn't insist on it (pillar 1).
+- Crossings the player walks are recorded and beat the bundled points.
+- Not done: obstacles inside a zone (lakes, cliffs, city walls). The next
+  layer would be points inside a zone, bundled or learned the same way.
+
 ## Work streams
 
 Four streams, one session each, all branched from `feat/pillars` (this

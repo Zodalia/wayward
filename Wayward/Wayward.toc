@@ -19,6 +19,7 @@ Geo.lua
 Sources.lua
 Data\Dungeons.lua
 Data\Transports.lua
+Data\ZoneLinks.lua
 Data\VendorGoods.lua
 Data\Seed.lua
 Data\ClassSpells.lua
@@ -27,6 +28,7 @@ Sources\QuestieLive.lua
 Sources\Spells.lua
 Search.lua
 Harvest.lua
+Walk.lua
 Network.lua
 Hearth.lua
 Router.lua
