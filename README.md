@@ -265,7 +265,7 @@ Find's (`ns.Search.Find(text, "item")`).
 ### For you
 
 The main window is the home screen: under a header with your portrait,
-"Level 8 · Dun Morogh", the summary line and the time buttons, three regions
+"Level 8 · Dun Morogh", the summary line and the time buttons, four regions
 with their own jobs:
 
 - **Your journey**: the journey you're on, with its icon, title, the current
@@ -301,6 +301,18 @@ with their own jobs:
   journey adds the card to it straight away, and Start journey asks: **Add as
   detour**, **Switch journey** (the journey you're on is set aside, to resume
   later) or Cancel.
+- **Where to quest**: the zones with quests for you, up to four, each a
+  small box you can read at a glance: the zone, "You're here" or "New to
+  you", its levels, how many quests you can take there now ("3 quests left"
+  where you are) and how far its first hub is. The zone you're in comes
+  first while it has anything left for you, then the zones whose quests sit
+  nearest your level, then the nearest; never by XP. Hover one for its hubs,
+  where its chains lead and the route; click it for the journey to its first
+  hub (the usual question while a journey is on). A zone is listed even when
+  the time you've set doesn't fit it: the time is about what to do now, not
+  where to go next. While the region is on show the cards leave zones to it
+  (unless there'd be no cards at all); with no zone to list it isn't there.
+  Not listed yet: zones that open in a level or two.
 - **Good to know**: up to four small observations, each there because it is
   useful now (new abilities at the next level, gear wearing out, a quest
   ready to hand in, bags filling up with a vendor close by...), the numbers
@@ -308,7 +320,7 @@ with their own jobs:
   joins your journey, or starts one), **Show ...** (a side page) or **Go**
   (plain directions). Hover one for the full text.
 
-The window keeps one size (roughly 4:3, so it fits a 1080p screen at UI
+The window keeps one size (it fits a 1080p screen at UI
 scale 1): the home screen is the main window, and **Find** (the
 "?": search everything, or the likely questions for right now; see
 [Find](#find)), **Quests**
@@ -356,7 +368,8 @@ observations ("Good to know"). The suggestions come from these providers:
   minutes times the share of objectives left (at least a quarter).
 - **Best quest**: the single quest worth the most XP that you can pick up
   nearby, as a whole-quest journey (pick it up, do it, hand it in).
-- **Questing zone** (up to three, anywhere in the world): where to quest at
+- **Questing zone** (up to four, anywhere in the world; on the home screen
+  these are the **Where to quest** region, not cards): where to quest at
   your level. Each counts the quests you can take there now and the ones
   their chains unlock (follow-ups whose first step you can take or have in
   your log), all fitting your level, with their XP. Its journey goes to the

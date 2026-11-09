@@ -69,6 +69,7 @@ UI\Cards.lua
 UI\JourneyBox.lua
 UI\QuestLogButtons.lua
 UI\Observations.lua
+UI\ZoneBand.lua
 UI\Profile.lua
 UI\Panel.lua
 UI\MinimapButton.lua

@@ -1,10 +1,12 @@
 local _, ns = ...
 
--- The Wayward window. The main window is the home screen, in three regions
+-- The Wayward window. The main window is the home screen, in four regions
 -- under a header (your portrait, "Level 8 · Dun Morogh", the summary line and
 -- the time buttons): Your journey (UI/JourneyBox.lua), Something to do next
--- (the card page's results as cards, UI/Cards.lua) and Good to know
--- (UI/Observations.lua). It never changes size; the other pages (Quests,
+-- (the card page's results as cards, UI/Cards.lua), Where to quest (the
+-- zones with quests for you, UI/ZoneBand.lua; while it's on show the cards
+-- leave zones to it) and Good to know (UI/Observations.lua). It never
+-- changes size; the other pages (Quests,
 -- Vendors, Trainers, Dungeons, Items) open in a side panel docked to its
 -- right, from icon tabs inside its right edge.
 --
@@ -44,7 +46,7 @@ ns.Panel = Panel
 local MAX_ROWS = 11
 local MAIN_WIDTH = 840 -- at least; a card page's `width` can ask for more
 local SIDE_WIDTH = 384
-local HEIGHT = 672     -- roughly 4:3 with the tab column; fits 1080p at UI scale 1
+local HEIGHT = 728     -- with the tab column; fits 1080p at UI scale 1 (768 high)
 local ROW_HEIGHT = 42
 local MARGIN = 18      -- inside the main window's left and right edges
 local HEADER_TOP = -32 -- the portrait's top
@@ -664,8 +666,9 @@ local function create()
     f.summary:SetWidth(width - MARGIN * 2 - PORTRAIT - 12 - n * (CONTROL_WIDTH + CONTROL_GAP) - 50)
   end
 
-  -- The three regions, each under its heading; Panel.Layout places them,
-  -- since the journey box is one line when nothing is on.
+  -- The regions, each under its heading; Panel.Layout places them, since
+  -- the journey box is one line when nothing is on and Where to quest isn't
+  -- there without zones.
   local inner = width - MARGIN * 2
   f.journeyHeading = heading(f, "YOUR JOURNEY")
   f.journey = ns.JourneyBox.Create(f, inner)
@@ -673,6 +676,8 @@ local function create()
   f.cards = ns.Cards.Create(f, inner)
   -- Under the first card, left of the page arrows: how complete your profile is.
   f.profile = ns.Profile.CreateStrip(f, f.cards.cards[1], inner)
+  f.zonesHeading = heading(f, "WHERE TO QUEST")
+  f.zones = ns.ZoneBand.Create(f, inner)
   f.observationsHeading = heading(f, "GOOD TO KNOW")
   f.observations = ns.Observations.Create(f, inner)
   f:EnableMouseWheel(true)
@@ -763,9 +768,9 @@ local function cardsKey(page, results)
   return table.concat(parts, "|")
 end
 
--- Places the three regions under the header: the journey box first (one
--- line when nothing is on), the cards and the observations under it. Called
--- on each refresh and when the journey changes.
+-- Places the regions under the header: the journey box first (one line
+-- when nothing is on), then the cards, the zones (when there are any) and
+-- the observations. Called on each refresh and when the journey changes.
 function Panel.Layout()
   if not frame then return end
   local f = frame
@@ -782,6 +787,9 @@ function Panel.Layout()
   end
   place(f.journeyHeading, f.journey, journeyHeight)
   place(f.cardsHeading, f.cards, ns.Cards.Height())
+  local zonesHeight = ns.ZoneBand.Height()
+  f.zonesHeading:SetShown(zonesHeight > 0)
+  if zonesHeight > 0 then place(f.zonesHeading, f.zones, zonesHeight) end
   place(f.observationsHeading, f.observations, ns.Observations.Height())
 end
 
@@ -794,6 +802,18 @@ local function refreshMain()
   if not mainPage then return nil end
   local results, err, net = mainPage.Results("")
   results = results or {}
+  -- Zones have a region of their own: while it's on show, the cards leave
+  -- them to it (all but the one offered because nothing else fits the time).
+  ns.ZoneBand.Update()
+  if mainPage.Zones and ns.ZoneBand.Shown() then
+    local kept = {}
+    for _, r in ipairs(results) do
+      if r.kind ~= "zone" or r.over then kept[#kept + 1] = r end
+    end
+    -- Never down to no cards at all: with nothing else to suggest, the
+    -- zones are the suggestions.
+    if #kept > 0 then results = kept end
+  end
   local key = cardsKey(mainPage, results)
   local fresh = key ~= cardKey
   cardKey = key

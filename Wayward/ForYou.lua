@@ -54,7 +54,8 @@ local TRAIN_LEVELS_STALE = 2    -- levels since your last trainer visit before n
 local ZONE_MIN_QUESTS = 4       -- quests you can take now for a zone to get a card
 local DUNGEON_QUEST_SHARE = 0.6 -- of a dungeon's quests, the share you need to be able to take now
                                 -- (mobs in Forever's dungeons give little XP: the quests make the run)
-local MAX_ZONES = 3             -- "Questing zone" cards
+local MAX_ZONES = 4             -- zones worked out: "Where to quest" lists them all (UI/ZoneBand.lua)
+local ZONE_FIT_STEP = 2         -- levels: zones whose quests sit this much nearer your level come first
 local HOME_LEVEL = 10           -- below this, your starting zone's card comes first and no other starting zone gets one
 local ZONE_HUBS = 3             -- hubs named on a zone card after the first
 local ZONE_QUEST_LINES = 5      -- quests listed on a zone card
@@ -1135,21 +1136,42 @@ local function zoneOptions(ctx, start, net)
         if q.chain then later[#later + 1] = q else now[#now + 1] = q end
       end
     end
-    if #now >= ZONE_MIN_QUESTS then
-      zones[#zones + 1] = { mapID = mapID, now = now, later = later, value = value, lowest = lowest, highest = highest }
+    -- The zone you're in is listed while it has anything left for you.
+    local here = mapID == ctx.hereMap
+    if #now >= ZONE_MIN_QUESTS or (here and #now >= 1) then
+      -- How far its quests sit from your level (in steps of ZONE_FIT_STEP
+      -- levels), and how far off the nearest of them is.
+      local levels, nearest = 0, math.huge
+      for _, q in ipairs(now) do
+        levels = levels + (q.level or ctx.level)
+        nearest = math.min(nearest, ns.Geo.Distance(start, q.node))
+      end
+      zones[#zones + 1] = { mapID = mapID, now = now, later = later, value = value, lowest = lowest, highest = highest,
+        here = here, fit = math.floor(math.abs(levels / #now - ctx.level) / ZONE_FIT_STEP), nearest = nearest }
     end
   end
   local home = homeZone(ctx, start)
+  -- Where you are first, then what fits your level best, then what's
+  -- nearest. Never by XP: that's one part of a card's suitability, not what
+  -- decides where you go (pillar 3).
   table.sort(zones, function(a, b)
+    if a.here ~= b.here then return a.here end
     if (a.mapID == home) ~= (b.mapID == home) then return a.mapID == home end
-    if a.value ~= b.value then return a.value > b.value end
-    return #a.now > #b.now
+    if a.fit ~= b.fit then return a.fit < b.fit end
+    if a.nearest ~= b.nearest then return a.nearest < b.nearest end
+    if #a.now ~= #b.now then return #a.now > #b.now end
+    return a.mapID < b.mapID
   end)
   -- While your starting zone has quests for you, not the other starting zones.
-  if home and zones[1] and zones[1].mapID == home then
-    local kept = { zones[1] }
-    for i = 2, #zones do
-      if not STARTING_ZONES[zones[i].mapID] then kept[#kept + 1] = zones[i] end
+  -- (Enough of them: a last quest or two there doesn't hold the others back.)
+  local atHome
+  for _, z in ipairs(zones) do
+    if z.mapID == home and #z.now >= ZONE_MIN_QUESTS then atHome = z end
+  end
+  if atHome then
+    local kept = {}
+    for _, z in ipairs(zones) do
+      if z == atHome or z.here or not STARTING_ZONES[z.mapID] then kept[#kept + 1] = z end
     end
     zones = kept
   end
@@ -1206,12 +1228,18 @@ local function zoneOptions(ctx, start, net)
     local anchor = first.anchor.node
     local goal = ns.Geo.Node(anchor.mapID, anchor.x, anchor.y, string.format("%s (%s)", first.place, first.anchor.name or "?"))
     local route = goal and ns.Router.Plan(start, goal, net)
+    local visited = ns.charDB and ns.charDB.visitedZones
+    local unseen = visited ~= nil and not z.here and not visited[z.mapID]
     -- With a time budget: the trip to the first hub and one quest must fit.
+    -- One that doesn't gets no card, but "Where to quest" still lists it
+    -- (`over`): the budget is about what to do now, not where to go next.
     local over = route and ctx.budget and route.seconds + perQuest > ctx.budget
-    if over and #ctx.overZones < MAX_ZONES then
-      ctx.overZones[#ctx.overZones + 1] = { kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = "Quest in " .. ns.MapName(z.mapID),
-        goal = goal, route = route, trip = route.seconds, seconds = route.seconds + perQuest,
+    if over then
+      local entry = { kind = "zone", zone = ns.MapName(z.mapID), mapID = z.mapID, title = "Quest in " .. ns.MapName(z.mapID),
+        goal = goal, route = route, trip = route.seconds, seconds = route.seconds + perQuest, over = true, here = z.here, unseen = unseen,
         now = z.now, later = z.later, value = z.value, lowest = z.lowest, highest = z.highest, hubs = hubs, first = first, leads = {} }
+      if #ctx.overZones < MAX_ZONES then ctx.overZones[#ctx.overZones + 1] = entry end
+      out[#out + 1] = entry
     end
     if route and not over then
       -- Where the chains lead: the places their next quests start, other than the first hub.
@@ -1238,6 +1266,7 @@ local function zoneOptions(ctx, start, net)
         goal = goal, route = route, journey = journey, trip = journey and journey.seconds or route.seconds,
         seconds = route.seconds + perQuest, now = z.now, later = z.later, value = z.value,
         lowest = z.lowest, highest = z.highest, hubs = hubs, first = first, leads = leads,
+        here = z.here, unseen = unseen,
       }
     end
   end
@@ -2078,10 +2107,12 @@ local function timed(name, fn, ...)
 end
 
 local builtObservations -- the observations of the build under way (read by finished)
+local builtZones        -- and its zones ("Where to quest")
 
 local function build()
   parts = {}
   builtObservations = {}
+  builtZones = {}
   local start = ns.Geo.PlayerNode()
   if not start then
     summary = nil
@@ -2252,8 +2283,20 @@ local function build()
   for _, need in ipairs(professions) do
     if fits(need.trip) then add(professionRow(need, ctx), need.trip) end
   end
-  local zones = timed("zones", zoneOptions, ctx, start, net) or {}
-  for _, zone in ipairs(zones) do add(zoneRow(zone, ctx), zone.seconds) end
+  -- Zones: every one worked out is listed under "Where to quest"
+  -- (ForYou.Zones); the ones with enough quests that fit the time are
+  -- suggestions too (the toasts, "Up next", and a page without the band).
+  local zones = {}
+  for _, zone in ipairs(timed("zones", zoneOptions, ctx, start, net) or {}) do
+    local row = zoneRow(zone, ctx)
+    builtZones[#builtZones + 1] = { mapID = zone.mapID, zone = zone.zone, lowest = zone.lowest, highest = zone.highest,
+      now = #zone.now, later = #zone.later, seconds = zone.trip, here = zone.here or false, unseen = zone.unseen or false,
+      row = row }
+    if not zone.over and #zone.now >= ZONE_MIN_QUESTS then
+      zones[#zones + 1] = zone
+      add(row, zone.seconds)
+    end
+  end
   local dungeonRow, dungeonSeconds
   if dungeon then
     timed("dungeon journey", dungeonJourney, dungeon, ctx, start, net)
@@ -2488,11 +2531,13 @@ local function finished(ok, results, err, net)
     ForYou.lastParts = parts and table.concat(parts, ", ") or nil
   end
   local observations = ok and builtObservations or {}
-  last = { results = results, err = err, net = net, observations = observations }
+  local zones = ok and builtZones or {}
+  for _, z in ipairs(zones) do z.row.icon, z.row.iconCoords = iconFor(z.row) end
+  last = { results = results, err = err, net = net, observations = observations, zones = zones }
   -- Invalidated while it was built: once more (not forever).
   if j.stale and j.tries < 2 then return startJob(j.tries + 1) end
   local now = GetTime and GetTime()
-  cache = now and { at = now, results = results, err = err, net = net, observations = observations } or nil
+  cache = now and { at = now, results = results, err = err, net = net, observations = observations, zones = zones } or nil
   local shown = visible(results)
   pcall(ForYou.CheckNew, shown)
   local list = waiters
@@ -2616,6 +2661,19 @@ function ForYou.Observations(all)
   if dirty and not job then ForYou.Results() end
   if cache and now and now - cache.at < CACHE_SECONDS then return shown(cache) end
   return shown(last)
+end
+
+-- "Where to quest": the zones with quests for you, the one you're in first,
+-- then by how well they fit your level, then nearest. Built with the cards.
+--   { { mapID, zone, lowest, highest, now, later (quests you can take, and
+--       those their chains unlock), seconds (travel to its first hub), here,
+--       unseen (never been there), row (a suggestion row: tooltip, journey) } }
+function ForYou.Zones()
+  local now = GetTime and GetTime()
+  if cache and now and now - cache.at < CACHE_SECONDS then return cache.zones or {} end
+  if dirty and not job then ForYou.Results() end
+  if cache and now and now - cache.at < CACHE_SECONDS then return cache.zones or {} end
+  return last and last.zones or {}
 end
 
 -- fn(results, err, net) once For you's results are fresh: now, or when the

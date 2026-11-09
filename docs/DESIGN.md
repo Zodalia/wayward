@@ -260,6 +260,23 @@ four views:
 - The tooltip lines on items and quests become actionable: "Wayward: /ww
   find" and, where the client allows, a click target.
 
+## Where to quest
+
+Added 2026-11-09. "Where do I go next?" is its own question, so zones have
+their own region on the home screen, between the cards and Good to know:
+`ForYou.Zones()` drawn by `UI/ZoneBand.lua`. That makes four regions, not
+the three above.
+
+- Order: the zone you're in (while it has anything left), then level fit,
+  then distance. Not XP (pillar 3), which used to pick the zone cards.
+- A glance gives zone, state ("You're here", "New to you"), levels, quests
+  and travel; hover gives hubs, chains and the route; click starts the
+  journey (pillar 2).
+- The time budget doesn't hide a zone here: it filters what to do now.
+- While the region shows, the cards leave zones to it. Zone rows stay in
+  `ForYou.Results()` for the toasts and "Up next".
+- Not done: zones that open in a level or two, and a full browse list.
+
 ## Walking routes
 
 Added 2026-11-09, after the 0.5 streams. Travel times are what every

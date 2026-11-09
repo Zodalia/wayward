@@ -5500,7 +5500,7 @@ do
   for _, page in ipairs(ns.pages) do if page.id == "foryou" then forYou = page end end
   check(forYou.layout == "cards" and select(1, ns.Panel.Size()) > 384, "For you uses the card layout on a wider panel")
   local w, h = ns.Panel.Size()
-  check(w >= 840 and h == 672 and w <= 1365 - 384, string.format("the window holds the three regions and fits 1080p: %dx%d", w, h))
+  check(w >= 840 and h == 728 and w <= 1365 - 384, string.format("the window holds the four regions and fits 1080p: %dx%d", w, h))
 
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
   local goal = ns.Geo.Node(1433, 0.6, 0.5, "Camp")
@@ -9365,6 +9365,94 @@ do
   fire("ZONE_CHANGED_NEW_AREA")
 end
 -- ===== routing: walking between zones (end) =====
+-- ===== home: where to quest =====
+io.write("where to quest\n")
+do
+  local F, B = ns.ForYou, ns.ZoneBand
+  ns.Nav.Stop()
+  local realZoneQuests, visited, where = ns.Quests.ZoneQuests, ns.charDB.visitedZones, { player.mapID, player.x, player.y }
+  -- Redridge (where you are): two quests left. Elwynn: five at your level.
+  -- Wetlands: six, four levels up, worth the most XP.
+  local zones = { [1433] = { 2, 20 }, [1429] = { 5, 20 }, [1437] = { 6, 24 } }
+  ns.Quests.ZoneQuests = function()
+    local out, id = {}, 91000
+    for mapID, z in pairs(zones) do
+      local entry = { mapID = mapID, quests = {} }
+      for i = 1, z[1] do
+        id = id + 1
+        entry.quests[i] = { id = id, name = "Band quest " .. id, level = z[2], node = ns.Geo.Node(mapID, 0.5, 0.5),
+          giver = "Giver " .. mapID, chain = false }
+      end
+      out[mapID] = entry
+    end
+    return out
+  end
+  player.mapID, player.x, player.y = 1433, 0.4, 0.4
+  ns.charDB.visitedZones = { [1433] = true, [1429] = true }
+  local function names(list)
+    local out = {}
+    for i, z in ipairs(list) do out[i] = z.zone end
+    return table.concat(out, ", ")
+  end
+  local function card(list, title)
+    for _, r in ipairs(list) do if r.title == title then return r end end
+  end
+  F.Invalidate()
+  local results = F.Results()
+  local list = F.Zones()
+  check(names(list) == "Redridge Mountains, Elwynn Forest, Wetlands",
+    "the zone you're in first, then the one at your level, then the one above it, whatever its XP: " .. names(list))
+  check(list[1].here and list[1].now == 2 and not list[1].unseen and not list[2].here,
+    "the zone you're in is listed with the two quests it has left")
+  check(not list[2].unseen and list[3].unseen, "a zone you've never been to is marked")
+  check(list[2].row and list[2].row.title == "Quest in Elwynn Forest" and list[2].row.journey and list[2].row.icon
+    and list[2].seconds and list[2].lowest == 20, "each zone carries its row: the journey to its first hub")
+  check(card(results, "Quest in Elwynn Forest") and card(results, "Quest in Wetlands")
+    and not card(results, "Quest in Redridge Mountains"),
+    "a zone with enough quests is still a suggestion (toasts, Up next); two quests left where you are aren't")
+
+  -- On the home screen: its own region, and the cards leave zones to it.
+  if not ns.Panel.IsShown() then ns.Panel.Toggle() end
+  ns.Panel.Refresh()
+  local chips = B.Chips()
+  check(#chips == 3 and chips[1].name == "Redridge Mountains" and chips[1].state == "You're here"
+    and chips[1].facts:find("Level 20  ·  2 quests left", 1, true), "the band: " .. tostring(chips[1] and chips[1].facts))
+  check(chips[2].state == "" and chips[2].facts:find("5 quests", 1, true) and not chips[2].facts:find("left", 1, true)
+    and chips[3].state == "New to you", "each zone at a glance: levels, quests, how far, and what's new to you")
+  local zoneCards = 0
+  for _, r in ipairs(ns.Cards.Visible()) do
+    if r.kind == "zone" then zoneCards = zoneCards + 1 end
+  end
+  check(zoneCards == 0 and B.Shown() and B.Height() > 0, "with the band on show, no card is a zone")
+  local _, h = ns.Panel.Size()
+  check(h <= 768, "the window still fits a 1080p screen at UI scale 1: " .. h)
+
+  -- Clicking a zone starts its journey; with one on, it asks (the usual question).
+  check(B.Act(2) and ns.Nav.active and ns.Nav.active.title == "Quest in Elwynn Forest", "clicking a zone starts its journey")
+  ns.Nav.Stop()
+
+  -- A time budget keeps a far zone off the cards, not out of the band.
+  F.SetBudget(1)
+  results = F.Results()
+  check(#F.Zones() == 3, "with 1 minute to spare the zones are all still listed: " .. names(F.Zones()))
+  local carded = card(results, "Quest in Wetlands")
+  check(not carded or carded.over, "though the far one is no suggestion for that minute")
+  F.SetBudget(nil)
+
+  -- No zones: no region.
+  zones = {}
+  F.Invalidate()
+  F.Results()
+  if not ns.Panel.IsShown() then ns.Panel.Toggle() end -- (starting the journey closed it)
+  ns.Panel.Refresh()
+  check(#F.Zones() == 0 and not B.Shown() and B.Height() == 0, "with no zone to suggest the region isn't there")
+
+  ns.Quests.ZoneQuests, ns.charDB.visitedZones = realZoneQuests, visited
+  player.mapID, player.x, player.y = where[1], where[2], where[3]
+  F.Invalidate()
+  ns.Panel.Refresh()
+end
+-- ===== home: where to quest (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
