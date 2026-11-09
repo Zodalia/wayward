@@ -485,15 +485,23 @@ end
 local SPREAD_AREAS, SPREAD_YARDS = 4, 400
 local BUSY_YARDS, BUSY_SHARE = 350, 0.4
 local BUSY_CENTRES = 300 -- spawns tried as the busy spot's centre at most (evenly picked)
--- An area is on the way when going through it adds VIA_YARDS or less. On the
--- way to the quest's own hand-in, its objectives still open, the best area
--- whatever it adds (you'd only be turned back at the hand-in).
+-- An area is on the way when going through it adds VIA_YARDS or less, and no
+-- more than the walk itself (Journey.ViaAllowance): a stop 30 yards off isn't
+-- turned into a 250-yard loop through a patch behind you; the next leg can
+-- go through it. On the way to the quest's own hand-in, its objectives still
+-- open, the best area whatever it adds (you'd only be turned back at the
+-- hand-in).
 local VIA_YARDS = 250
 -- Within VIA_RADIUS of an area's spawns you're in it: passed through.
 local VIA_RADIUS = 80
 -- Within NEAR_YARDS of a spawn, a shopping list entry is around you.
 local NEAR_YARDS = 200
 Journey.VIA_YARDS, Journey.VIA_RADIUS, Journey.NEAR_YARDS = VIA_YARDS, VIA_RADIUS, NEAR_YARDS
+
+-- The most an area on the way may add to a walk of `direct` yards.
+function Journey.ViaAllowance(direct)
+  return math.min(VIA_YARDS, direct)
+end
 
 -- Keyed by the quest's area list (Quests.ObjectiveAreas), so new data re-checks.
 local spreadCache = setmetatable({}, { __mode = "k" })
@@ -787,7 +795,7 @@ Journey.ShortOf = shortOf
 -- The area to go through on the way from `from` to stop `to`: of the quests
 -- gathered as you go that you have (or pick up earlier on the journey,
 -- `picked`), an area not visited lately and not where you are, adding the
--- least; see VIA_YARDS. None on the first leg while you're in one of their
+-- least; see VIA_YARDS and Journey.ViaAllowance. None on the first leg while you're in one of their
 -- areas already (`atStart`). The one the last plan chose stays unless another
 -- saves STICK_YARDS. Before the quest's own hand-in, when you'd get there
 -- short of what it needs (shortOf), whatever it adds, and with every area
@@ -801,6 +809,7 @@ local function pickVia(gathers, from, to, picked, atStart)
   if atStart and gatherAreaAt(gathers, from, picked) then return nil end
   local direct = ns.Geo.Distance(from, to.node)
   if direct == math.huge then return nil end
+  local allowance = Journey.ViaAllowance(direct)
   local now = time()
   local best, bestExtra, oldest, oldestAt
   for _, g in ipairs(gathers) do
@@ -818,7 +827,7 @@ local function pickVia(gathers, from, to, picked, atStart)
           local extra = d + ns.Geo.Distance(node, to.node) - direct
           local last = to.via
           if last and last.stop == g and last.index == area.index then extra = extra - STICK_YARDS end
-          if (needed or extra <= VIA_YARDS) and (not bestExtra or extra < bestExtra) then
+          if (needed or extra <= allowance) and (not bestExtra or extra < bestExtra) then
             best, bestExtra = { stop = g, index = area.index, node = node, needed = needed or nil }, extra
           end
         end

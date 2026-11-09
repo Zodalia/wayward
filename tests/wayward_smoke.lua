@@ -8491,6 +8491,28 @@ do
     "the plan report says where the arrow points")
   ns.Nav.Stop()
 
+  -- A stop a few dozen yards off, an area well behind you: under VIA_YARDS
+  -- added, but it would make a short walk several times as long. Straight
+  -- there; the next leg can go through it. (Seen on the way to Sara
+  -- Timberlain, 32 yards away, routed out through a patch 127 yards back.)
+  player.x, player.y = 0.85, 0.74
+  here = ns.Geo.PlayerNode()
+  local short = {}
+  for _, s in ipairs(ns.Journey.QuestStops(4600, here)) do
+    if s.action.kind == "complete" then short[#short + 1] = s end
+  end
+  local near = { node = ns.Geo.Node(1433, 0.85, 0.715, "Close by"), text = "Go to Close by" }
+  short[#short + 1] = near
+  local behind = ns.Geo.Node(1433, 0.85, 0.85)
+  local direct = ns.Geo.Distance(here, near.node)
+  local extra = ns.Geo.Distance(here, behind) + ns.Geo.Distance(behind, near.node) - direct
+  check(direct < 60 and extra <= ns.Journey.VIA_YARDS and ns.Geo.Distance(here, behind) > ns.Journey.VIA_RADIUS,
+    string.format("setup: %.0f yd to the stop, the area adds %.0f yd", direct, extra))
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Redridge", stops = short }), true)
+  check(not ns.Nav.CurrentStep().via and at(ns.Nav.Aim(), 0.85, 0.715),
+    "a stop close by, an area behind you: straight there, not out through the area")
+  ns.Nav.Stop()
+
   -- Heading for one area, you walk into another of theirs: you're
   -- gathering already, so the arrow goes on to the hand-in.
   player.x, player.y = 0.5, 0.95
