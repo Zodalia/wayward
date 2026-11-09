@@ -254,7 +254,7 @@ local function create()
     row.add:SetSize(46, 16)
     row.add:SetPoint("RIGHT", 0, 0)
     row.add:SetText("Add")
-    row.add:SetScript("OnClick", function() if row.suggestion then ns.OnTheWay.Add(row.suggestion) end end)
+    row.add:SetScript("OnClick", function() if row.suggestion then ns.Wayside.Add(row.suggestion) end end)
     ns.Skin.Button(row.add)
     ns.Skin.Text(row.text)
     row:Hide()
@@ -543,12 +543,13 @@ function Overview.Refresh()
   -- Under the stops: detours on the way, the journeys set aside, then the
   -- map. A scrolling list keeps its full height.
   local y = -44 - (maxScroll > 0 and room or used) - 10
-  local list = ns.OnTheWay and ns.OnTheWay.Get() or {}
+  -- The same offers as the directions box's drawer (Wayside.lua), so the two never disagree.
+  local list = ns.Wayside and ns.Wayside.Get(true).offers or {}
   frame.suggestHeader:ClearAllPoints()
   frame.suggestHeader:SetPoint("TOPLEFT", 12, y)
   frame.suggestHeader:SetShown(#list > 0)
   if #list > 0 then
-    frame.suggestHeader:SetText("Detours on the way (3 min or less)")
+    frame.suggestHeader:SetText("On the way: you could add")
     y = y - 16
   end
   for i, row in ipairs(frame.suggest) do
@@ -557,7 +558,7 @@ function Overview.Refresh()
     if s then
       row:ClearAllPoints()
       row:SetPoint("TOPLEFT", 12, y)
-      row.text:SetText(string.format("%s  |cff9d9d9d+%s|r", s.label, ns.FormatDuration(s.extra)))
+      row.text:SetText(string.format("%s  |cff9d9d9d%s|r", s.text, s.right or ""))
       row:Show()
       y = y - SUGGEST_HEIGHT
     else

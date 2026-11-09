@@ -45,6 +45,7 @@ Navigator.lua
 PlanReport.lua
 OnTheWay.lua
 Errands.lua
+Wayside.lua
 Marker.lua
 Docks.lua
 Dungeons.lua
@@ -61,7 +62,7 @@ UI\TargetButton.lua
 UI\JourneyOverview.lua
 UI\Fanfare.lua
 UI\Snackbar.lua
-UI\ErrandPicker.lua
+UI\Drawer.lua
 UI\RouteMap.lua
 UI\WorldMapRoute.lua
 UI\MinimapRoute.lua

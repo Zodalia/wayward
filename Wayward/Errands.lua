@@ -5,8 +5,8 @@ local _, ns = ...
 -- Each kind lists the places that add least to the journey on now
 -- (OnTheWay.Added), from NPCs you've talked to (Harvest.lua), the data
 -- sources' NPC flags and, for mailboxes, the ones you've opened and the
--- sources' objects named "Mailbox". UI/ErrandPicker.lua is the list behind
--- the directions box's + button.
+-- sources' objects named "Mailbox". UI/Drawer.lua lists them, from the
+-- icons along the top of the directions box's drawer.
 
 local Errands = {}
 ns.Errands = Errands
@@ -62,14 +62,20 @@ local function freeBagSlots()
   return free
 end
 
--- The kind the list opens on: repairs when your gear is worn, a vendor when
--- your bags are full, else the last one you picked.
-function Errands.DefaultKind()
+-- The kind you plainly need now: repairs when your gear is worn, a vendor
+-- when your bags are full. Nil otherwise: the drawer opens on what's on the
+-- way (UI/Drawer.lua).
+function Errands.UrgentKind()
   local durability = ns.Vendors.Durability()
   if durability and durability <= WORN then return "repair" end
   local free = freeBagSlots()
   if free and free <= FULL_BAGS then return "vendor" end
-  return Errands.lastKind or "repair"
+  return nil
+end
+
+-- That, else the last kind you picked.
+function Errands.DefaultKind()
+  return Errands.UrgentKind() or Errands.lastKind or "repair"
 end
 
 ---------------------------------------------------------------- places

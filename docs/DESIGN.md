@@ -52,7 +52,7 @@ strings, tooltips, README and comments that face the reader change):
 | "Skip this step" / "Move to the next step and do this later" (HUD; they act on the stop) | "Skip this stop" / "Do this stop later" |
 | "Step %d of %d to get there" | unchanged (these are steps) |
 | "Add a stop: repair, vendor, mailbox, bank..." | "Add a detour: repair, vendor, mailbox, bank..." |
-| "On the way (3 min or less more)" | "Detours on the way (3 min or less)" |
+| "On the way (3 min or less more)" | "On the way: you could add" (was "Detours on the way (3 min or less)" until the drawer) |
 | "See full journey" | "View details" (and the button in the Your Journey box) |
 | "Journey complete!", "New journey available", "Up next" | unchanged |
 | "Due now", "Worth a visit" (card categories) | gone as cards; these become observations |
@@ -259,6 +259,33 @@ four views:
   other.
 - The tooltip lines on items and quests become actionable: "Wayward: /ww
   find" and, where the client allows, a click target.
+
+## On the way: one surface
+
+Added 2026-11-09. Six places used to offer things to add (the shopping
+list, the detour picker, notes, toasts, the overview's detours, Good to
+know), four of them on or beside the directions box, with three different
+ideas of "near the way". Now:
+
+- **One list** (`Wayside.lua`): `gathering` (on the journey already, with
+  counts) and `offers` (a log quest with things on the way, quest givers,
+  hand-ins and vendors near the way, a new suggestion). One row shape, one
+  `Wayside.Add`, one `Wayside.Dismiss`.
+- **One place** (`UI/Drawer.lua`, the directions box's +): the list, and
+  along the top a detour of your own (repair, mailbox...). The journey
+  overview shows the same offers.
+- **Who speaks when.** A note over the box answers something you just did
+  (picked up a quest, undo). A toast is for a new suggestion between
+  journeys. On a journey a new suggestion is an offer in the drawer.
+- **Pillars 1 and 2.** An offer never makes a sound or moves the arrow; the
+  closed drawer shows a count and no more; waved off, an offer stays away
+  for that journey.
+- Vocabulary: "On the way" is the surface; what you add from it is still a
+  **detour**. "Shopping list" and "errand" are gone from what the player
+  reads (module names `ns.Errands`, `ns.ErrandPicker` stay).
+- Not done: Good to know still makes its own tiles on the home screen, and
+  the routed offers still measure "near" by `OnTheWay`'s 3 minutes while
+  log quests use the journey's 250 yards.
 
 ## Where to quest
 

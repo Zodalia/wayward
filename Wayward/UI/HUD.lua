@@ -2,12 +2,11 @@ local _, ns = ...
 
 -- Directions box shown while navigating: current step, distance, and our own
 -- compass (an arrow in a circle; /ww compass or the options turn it off, and
--- the box gets narrower), and a + button to add a detour (repair, mail, ...).
+-- the box gets narrower), and a + button for what's on the way: the drawer
+-- (UI/Drawer.lua) with what you're gathering, what you could add, and a stop
+-- of your own (repair, mail, ...). The + carries a count while it's closed.
 -- Blizzard's on-screen navigation is off by default in Forever
 -- (showInGameNavigation = 0), so we don't rely on it.
--- Prototype: a bag button for the shopping list (quests gathered as you go,
--- and quests in your log with something on the way) with the count of
--- what's left; open, the list pops up above the box.
 -- Detail on demand (Nav.Detail): "steps" shows each step to the next stop
 -- with a count; "stops" shows only the stop you're heading for and the
 -- compass, and the step when you hover the box.
@@ -30,14 +29,7 @@ local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the journe
 local FLASH_PULSES = 3
 local MAX_OBJECTIVES = 4 -- lines of objectives under the step; past that, "+N more"
 local OTHER_WIDTH, OTHER_HEIGHT = 92, 20 -- the Another spot button, right of the objectives
--- PROTOTYPE: the shopping list (quests gathered as you go, Journey.ShoppingList).
-local SHOP_ICON = "Interface\\Icons\\INV_Misc_Bag_07"
-local SHOP_ROWS = 4        -- things listed, around you first, then nearest; the rest is one "+N more"
-local SHOP_EVERY = 1       -- seconds between looks at what's around you
-local SHOP_GAP = 3         -- the list sits this far above the box
-local SHOP_PAD = 5         -- inside its background
-local SHOP_FADE = 0.35     -- its background's alpha
-local SHOP_LINE = 14       -- a line's height in the list
+local WAYSIDE_EVERY = 1    -- seconds between looks at what's on the way
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -178,57 +170,24 @@ local function create()
   f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
     "Skip this stop")
   f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
-  -- PROTOTYPE: the shopping list's toggle, shown while there's something to
-  -- gather as you go. Hidden list: the button says how many things are
-  -- still wanted. Open: the list pops up above the box (HUD.ToggleShop).
-  f.shopToggle = squareButton(f, nil, SHOP_ICON, "$", function() HUD.ToggleShop() end, "Shopping list")
-  f.shopToggle:SetPoint("RIGHT", f.skip, "LEFT", -2, 0)
-  f.shopToggle:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText(HUD.ShopOpen() and "Hide the shopping list" or "Show the shopping list")
-    local n = frame and frame.shopCount or 0
-    local fromLog = frame and frame.shopFromLog or 0
-    GameTooltip:AddLine(string.format("%d thing%s to gather as you go", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
-    if fromLog > 0 then
-      GameTooltip:AddLine(string.format("%s for quests in your log, on the way", fromLog == n and "All" or fromLog),
-        0.6, 0.6, 0.6, true)
-    end
-    GameTooltip:Show()
-  end)
-  f.shopToggle.count = f.shopToggle:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-  f.shopToggle.count:SetPoint("BOTTOMRIGHT", 3, -3)
-  f.shopToggle:Hide()
-  -- The list itself: just the lines on a faint background, its bottom on the
-  -- box's top edge (so it grows upward). Not part of the box: the box keeps
-  -- its size. Hover it for where the rest are.
-  f.shopList = CreateFrame("Frame", nil, f)
-  f.shopList:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, SHOP_GAP)
-  f.shopList:SetSize(WIDTH, 1)
-  local shopBg = f.shopList:CreateTexture(nil, "BACKGROUND")
-  shopBg:SetAllPoints()
-  shopBg:SetColorTexture(0, 0, 0, SHOP_FADE)
-  -- One font string a line: a font string that doesn't wrap shows one line
-  -- only, so the lines can't share one.
-  f.shopList.rows = {}
-  for i = 1, SHOP_ROWS + 1 do
-    local row = f.shopList:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row:SetPoint("TOPLEFT", SHOP_PAD, -SHOP_PAD - (i - 1) * SHOP_LINE)
-    row:SetHeight(SHOP_LINE)
-    row:SetJustifyH("LEFT")
-    row:SetJustifyV("MIDDLE")
-    row:SetWordWrap(false)
-    row:Hide()
-    f.shopList.rows[i] = row
-  end
-  f.shopList:EnableMouse(true)
-  f.shopList:SetScript("OnEnter", function(self) HUD.ShowShopTooltip(self) end)
-  f.shopList:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  f.shopList:Hide()
-  -- Bottom right, beside the last line: add a detour (repair, mailbox, ...; UI/ErrandPicker.lua).
-  f.add = squareButton(f, nil, "Interface\\Icons\\Spell_ChargePositive", "+", function() ns.ErrandPicker.Toggle() end,
-    "Add a detour: repair, vendor, mailbox, bank...")
+  -- Bottom right, beside the last line: what's on the way (UI/Drawer.lua).
+  -- Closed, it says how many things there are; nothing else asks for a look.
+  f.add = squareButton(f, nil, "Interface\\Icons\\Spell_ChargePositive", "+", function() ns.Drawer.Toggle() end,
+    "On the way")
   f.add:SetSize(ADD_SIZE, ADD_SIZE)
   f.add:SetPoint("BOTTOMRIGHT", -6, 6)
+  f.add:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("On the way")
+    local n = frame and frame.waysideCount or 0
+    if n > 0 then
+      GameTooltip:AddLine(string.format("%d thing%s to gather or add as you go.", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
+    end
+    GameTooltip:AddLine("And a detour of your own: repair, vendor, mailbox, bank...", 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+  end)
+  f.add.count = f.add:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+  f.add.count:SetPoint("BOTTOMRIGHT", 3, -3)
   -- Beside the objectives, when they're in more than one area: another spot
   -- for them (this one's camped, respawning, too busy). A labelled button,
   -- since it's the one you reach for in a hurry. Placed by HUD.Update.
@@ -295,7 +254,7 @@ local function create()
   f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
   f.info:SetPoint("RIGHT", INFO_RIGHT, 0)
   f.info:SetJustifyH("LEFT")
-  for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info, unpack(f.shopList.rows) }) do ns.Skin.Text(fs) end
+  for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -389,171 +348,35 @@ local function place(trip)
   frame.step:SetPoint("TOPLEFT", trip and frame.progress or frame.title, "BOTTOMLEFT", 0, trip and -7 or -5)
   frame.step:SetPoint("RIGHT", -PADDING, 0)
   -- The title stops short of the buttons.
-  local leftmost = trip and (frame.shopToggle:IsShown() and frame.shopToggle or frame.skip) or frame.close
+  local leftmost = trip and frame.skip or frame.close
   frame.title:SetPoint("RIGHT", leftmost, "LEFT", -6, 0)
 end
 
----------------------------------------------------------------- shopping list (prototype)
+---------------------------------------------------------------- on the way
 
-local GREY = "|cff9d9d9d"
-
-local function countText(e)
-  return (e.have and e.need) and string.format("%d/%d", e.have, e.need) or nil
-end
-
-local function placeOf(node)
-  if not (node and ns.Places) then return nil end
-  local ok, place = pcall(ns.Places.NameFor, node)
-  return ok and place or nil
-end
-
--- "Goretusk  0/3 · Redridge Stew" around you; farther off, dimmer, and where
--- the nearest is when that has a name ("· near Lakeshire").
-local function shopText(e)
-  local count = countText(e)
-  local where = ""
-  if not e.near then
-    local place = placeOf(e.node)
-    where = place and ("  ·  near " .. place) or ""
-  end
-  return string.format("%s%s|r  %s%s%s%s|r", e.near and "|cffffffff" or "|cffb0b0b0", e.name, GREY,
-    count and (count .. "  ·  ") or "", e.quest, where)
-end
-
--- The list for what you're following now: the journey's things gathered as
--- you go, and its way ahead for the quests in your log that aren't on it.
-local function currentList(a)
-  if not a then return {} end
-  return ns.Journey.ShoppingList(a.journey, ns.Geo.PlayerNode(), a.route, a.index)
-end
-
--- Whether the list is open (per character; hidden until you open it).
-function HUD.ShopOpen()
-  return ns.charDB ~= nil and ns.charDB.shopOpen == true
-end
-
--- The list as lines, top to bottom: { text, entry } for up to SHOP_ROWS
--- things (around you first, then nearest: Journey.ShoppingList's order),
--- then { text, entries } for the rest. Empty when there's nothing to
--- gather as you go.
-function HUD.ShopLines(list)
-  list = list or currentList(ns.Nav.active)
-  local lines, rest = {}, {}
-  for _, e in ipairs(list) do
-    if #lines < SHOP_ROWS then
-      lines[#lines + 1] = { text = shopText(e), entry = e }
-    else
-      rest[#rest + 1] = e
-    end
-  end
-  if #rest > 0 then
-    lines[#lines + 1] = { text = string.format("%s+%d more|r", GREY, #rest), entries = rest }
-  end
-  return lines
-end
-
--- Looks again at what's around you (every SHOP_EVERY seconds, or now when
--- `force`): the toggle shows while there's anything on the list, with the
--- count while it's hidden; the list sizes to its text, upward from the box.
-local function refreshShop(a, force)
+-- Looks again at what's on the way (every WAYSIDE_EVERY seconds, or now
+-- when `force`): the count on the + button while the drawer is closed, and
+-- the drawer itself while it's open (or when you left it open).
+local function refreshWayside(force)
   local now = GetTime and GetTime()
-  if not force and now and frame.shopAt and now - frame.shopAt < SHOP_EVERY then return end
-  frame.shopAt = now
-  local list = currentList(a)
-  local open = #list > 0 and HUD.ShopOpen()
-  frame.shopCount = #list
-  frame.shopFromLog = 0
-  for _, e in ipairs(list) do
-    if e.fromLog then frame.shopFromLog = frame.shopFromLog + 1 end
+  if not force and now and frame.waysideAt and now - frame.waysideAt < WAYSIDE_EVERY then return end
+  frame.waysideAt = now
+  local ok, count = pcall(ns.Wayside.Count)
+  frame.waysideCount = ok and count or 0
+  ns.Drawer.Sync()
+  local open = ns.Drawer.IsShown()
+  frame.add.count:SetText((frame.waysideCount > 0 and not open) and tostring(frame.waysideCount) or "")
+  if open and frame.add.LockHighlight then
+    frame.add:LockHighlight()
+  elseif frame.add.UnlockHighlight then
+    frame.add:UnlockHighlight()
   end
-  frame.shopToggle:SetShown(#list > 0)
-  frame.shopToggle.count:SetText((#list > 0 and not open) and tostring(#list) or "")
-  if open and frame.shopToggle.LockHighlight then
-    frame.shopToggle:LockHighlight()
-  elseif frame.shopToggle.UnlockHighlight then
-    frame.shopToggle:UnlockHighlight()
-  end
-  local lines = HUD.ShopLines(list)
-  frame.shopLines = lines
-  -- A row a line, as wide as the widest (at most the box's width).
-  local maxWidth = (frame.width or WIDTH) - 2 * SHOP_PAD
-  local width = 0
-  for i, row in ipairs(frame.shopList.rows) do
-    local line = lines[i]
-    row:SetWidth(0)
-    if line then
-      row:SetText(line.text)
-      row:Show()
-      width = math.max(width, row:GetStringWidth() or maxWidth)
-    else
-      row:SetText("")
-      row:Hide()
-    end
-  end
-  width = math.min(width, maxWidth)
-  for i, row in ipairs(frame.shopList.rows) do
-    if lines[i] then row:SetWidth(width) end
-  end
-  frame.shopHeight = open and (#lines * SHOP_LINE + 2 * SHOP_PAD) or 0
-  frame.shopList:SetSize(width + 2 * SHOP_PAD, math.max(frame.shopHeight, 1))
-  frame.shopList:SetShown(open)
-  -- Kept on screen with the box: its clamp counts the list.
-  if frame.SetClampRectInsets then frame:SetClampRectInsets(0, 0, open and (frame.shopHeight + SHOP_GAP) or 0, 0) end
 end
 
-function HUD.ToggleShop()
-  if not ns.charDB then return end
-  ns.charDB.shopOpen = not HUD.ShopOpen() or nil
-  if frame and ns.Nav.active then refreshShop(ns.Nav.active, true) end
-end
-
--- The toggle and the list, for tests: { toggle, count, open, lines, height,
--- rows = the rows' shown text, top to bottom }.
-function HUD.Shop()
+-- The + button's count as shown, and the count behind it (for tests).
+function HUD.Wayside()
   if not frame then return {} end
-  local texts, rows = {}, {}
-  for i, line in ipairs(frame.shopLines or {}) do texts[i] = line.text end
-  for _, row in ipairs(frame.shopList.rows) do
-    if row:IsShown() then rows[#rows + 1] = row:GetText() end
-  end
-  return { toggle = frame.shopToggle:IsShown(), count = frame.shopToggle.count:GetText() or "",
-    open = frame.shopList:IsShown(), lines = texts, height = frame.shopHeight or 0, rows = rows }
-end
-
--- Hovering the list: what's around you, and where the rest are.
-function HUD.ShowShopTooltip(owner)
-  local lines = frame and frame.shopLines or {}
-  if #lines == 0 or not GameTooltip then return end
-  GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-  GameTooltip:SetText("Shopping list", 1, 1, 1)
-  local onJourney, fromLog = false, false
-  local function note(e)
-    if e.fromLog then fromLog = true else onJourney = true end
-    return e.fromLog and "  ·  not on this journey" or ""
-  end
-  for _, line in ipairs(lines) do
-    if line.entry then
-      local e = line.entry
-      local place = not e.near and placeOf(e.node)
-      GameTooltip:AddLine(string.format("%s  %s%s%s|r", e.name, GREY, e.near and "around you" or place and ("near " .. place)
-        or "farther off", note(e)), 0.9, 0.9, 0.9, true)
-    elseif line.entries then
-      for _, e in ipairs(line.entries) do
-        local place = placeOf(e.node)
-        GameTooltip:AddLine(string.format("%s%s  %s%s%s|r", e.name, countText(e) and (" " .. countText(e)) or "", GREY,
-          place and ("near " .. place) or "elsewhere", note(e)), 0.8, 0.8, 0.8, true)
-      end
-    end
-  end
-  if onJourney then
-    GameTooltip:AddLine("The journey takes you through these when they're on the way; it carries on whenever you do.",
-      0.5, 0.82, 0.68, true)
-  end
-  if fromLog then
-    GameTooltip:AddLine("Quests in your log that aren't on this journey show here when they're on the way. "
-      .. "The journey doesn't change for them.", 0.5, 0.82, 0.68, true)
-  end
-  GameTooltip:Show()
+  return { badge = frame.add.count:GetText() or "", count = frame.waysideCount or 0 }
 end
 
 -- The step and its count, for the tooltip when the box shows only the stop
@@ -577,7 +400,7 @@ function HUD.Update()
   frame.moveOn:SetShown(trip)
   frame.skip:SetShown(trip)
   frame.close.tip = trip and "End journey" or "Stop directions"
-  refreshShop(a)
+  refreshWayside()
   place(trip)
 
   -- One count each: stops done in the title, steps to the next stop (or to
@@ -757,8 +580,9 @@ ns.Listen("SETTINGS_CHANGED", function(key)
   if (key == "showArrow" or key == "detail") and frame then HUD.Update() end
 end)
 
--- The shopping list's counts: looked at again on the next update.
-ns.On("QUEST_LOG_UPDATE", function() if frame then frame.shopAt = nil end end)
+-- What's on the way: looked at again on the next update.
+ns.On("QUEST_LOG_UPDATE", function() if frame then frame.waysideAt = nil end end)
+ns.Listen("WAYSIDE_CHANGED", function() if frame then frame.waysideAt = nil end end)
 
 ns.Listen("JOURNEY_EXTENDED", function()
   if not ns.JourneyOverview.IsShown() then HUD.FlashJourney() end

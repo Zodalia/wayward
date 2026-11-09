@@ -261,10 +261,16 @@ local function showNext()
 end
 
 -- Shows "New journey available" for `r` (queued behind one on screen).
+-- On a journey it doesn't pop up over what you're doing: it's a row on the
+-- directions box's drawer instead (Wayside.Offer), to add or wave off.
 function Fanfare.NewJourney(r)
   if ns.db.settings.toasts == false then return end
-  queue[#queue + 1] = { result = r }
   Fanfare.lastNew = r
+  if ns.Wayside and ns.Wayside.Offer(r) then
+    Fanfare.lastOffered = r
+    return
+  end
+  queue[#queue + 1] = { result = r }
   if not (toast and toast:IsShown()) then showNext() end
 end
 

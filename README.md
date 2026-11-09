@@ -110,13 +110,25 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   two doesn't flip the arrow back and forth. Detail
   on demand: with `/ww detail stops` (or the option) the box shows only the
   stop you're heading for and the compass, and the step when you hover it.
-- **Add a detour**: the directions box's + button (bottom right) lists
-  errands to fit into the journey, like a road map's "petrol on the way":
-  repair, vendor (sell and buy), mailbox, bank, inn, auction house and, for
-  hunters, stable master. Pick a kind along the top; under it, the five
-  places that add least to the journey, each with the time it adds ("+2 min")
-  and Add. It opens on repairs when your gear is at 75% or less, on vendors
-  when your bags are full, else on the kind you last added from. Plain
+- **On the way**: the directions box's + button (bottom right) opens a
+  drawer under the box, the one place for everything near the journey
+  you're on (`Wayside.lua`, `UI/Drawer.lua`). **Gathering as you go**: what
+  the journey is gathering, with counts, what's around you first.
+  **You could add**: up to four offers, each with **Add** and an x to wave
+  it off: a quest in your log with objectives on your way ("on the way",
+  "around you"; adding it takes in the rest of the quest), quest givers,
+  hand-ins and vendors you need that add 3 minutes or less ("+2 min"), and
+  a new suggestion from For you ("new"). An offer is only that: no sound,
+  the arrow doesn't move for it, and one you wave off isn't offered again
+  on that journey. Along the top, **a detour of your own**, like a road
+  map's "petrol on the way": repair, vendor (sell and buy), mailbox, bank,
+  inn, auction house and, for hunters, stable master. Pick one and the list
+  is the five places that add least to the journey, each with the time it
+  adds and Add; pick it again to go back. The drawer stays open until you
+  close it (per character). Closed, the + carries a count of what's there
+  and nothing else asks for a look. It opens on what's on the way, or on
+  repairs when your gear is at 75% or less and on vendors when your bags
+  are full. Plain
   directions become a journey with the place as one more stop. NPCs come
   from the ones you've talked to and from the data source's NPC flags (your
   faction's); mailboxes from the ones you've opened and the data source's
@@ -492,9 +504,10 @@ of is shown. Distance and time only make up the numbers when a journey
 achieved less than two things. Ending a journey early (the directions box's
 x, or skipping or abandoning what was left) shows the same frame, headed
 "Journey ended" and with the stops done, when it came to anything. When For you has a new major suggestion (a questing
-zone, a dungeon, a profession's next rank) a short "New
-journey available" toast pops up; click it to start the journey, or to add
-it to the journey you're on (the usual question). Both fade after a few seconds,
+zone, a dungeon, a profession's next rank) and you aren't on a journey, a
+short "New journey available" toast pops up; click it to start the journey.
+On a journey it doesn't pop up over what you're doing: it's an offer in the
+directions box's drawer instead (see On the way). Both fade after a few seconds,
 not while the mouse is over them. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
 zones flown over wait for the landing); the first look after this update
@@ -798,10 +811,12 @@ button, to add it to the journey you're on.
     them or when they'd push open stops off the list; under the current
     stop, the steps that get you there, walk, fly, boat, with the one you're
     on marked, and any stop's +/- shows or hides its own, so you can see
-    where it's taking you and hearth instead; under the stops, "Detours on
-    the way (3 min or less)": up to four things near the route that add 3
-    minutes of travel or less, quest givers with quests for you, quests in
-    your log ready to hand in and vendors you need, each with an Add button
+    where it's taking you and hearth instead; under the stops, "On the way:
+    you could add": the same offers as the directions box's drawer (up to
+    four: a log quest with objectives on your way, a new suggestion, and
+    things near the route that add 3 minutes of travel or less, quest
+    givers with quests for you, quests in your log ready to hand in and
+    vendors you need), each with an Add button
     (a quest whose objectives and hand-in add under a minute more comes
     whole, not asked about once you pick it up; not when it's under a
     minute only by spending your Hearthstone, which a journey uses only

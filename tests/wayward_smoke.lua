@@ -3333,23 +3333,27 @@ do
   ns.ErrandPicker.Select("mailbox")
   check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].text:find("Mailbox", 1, true), "and lists it: " .. rowText())
 
-  -- Add: the stop goes in the trip and the list closes; the NPC is someone to talk to.
+  -- Add: the stop goes in the trip and the drawer goes back to what's on the
+  -- way (it stays open: it's yours to close); the NPC is someone to talk to.
   ns.ErrandPicker.Select("repair")
-  check(ns.ErrandPicker.AddRow(1) and not ns.ErrandPicker.IsShown(), "Add puts it in the trip and closes the list")
+  check(ns.ErrandPicker.AddRow(1) and ns.ErrandPicker.IsShown() and ns.ErrandPicker.Selected() == nil,
+    "Add puts it in the trip, and the drawer is back on what's on the way")
   local added
   for _, st in ipairs(ns.Nav.active.journey.root.stops) do
     if st.npc == "Redridge Smith" then added = st end
   end
   check(added and added.action and added.action.kind == "talk" and added.text == "Repair at Redridge Smith",
     "a stop to talk to the repairer: " .. tostring(added and added.text))
-  hud.add.scripts.OnClick(hud.add)
   ns.ErrandPicker.Select("repair")
   check(ns.ErrandPicker.Rows()[1].time:find("in your journey", 1, true) and not ns.ErrandPicker.AddRow(1),
     "listed again as in your journey, and not added twice: " .. rowText())
-  -- The last kind you added from is where it opens next time.
+  -- Closed and opened again: with nothing pressing (the gear's fine by now),
+  -- on what's on the way, not on the kind you last added from.
   ns.ErrandPicker.Toggle()
+  check(not ns.ErrandPicker.IsShown() and not ns.Drawer.Open(), "the + closes it again, and it stays closed")
   ns.ErrandPicker.Toggle()
-  check(ns.ErrandPicker.Selected() == "repair", "opens on the kind you last added from")
+  check(ns.ErrandPicker.IsShown() and ns.ErrandPicker.Selected() == nil and ns.Drawer.Headings()[1] == "On the way",
+    "opened again: on what's on the way")
 
   -- A mailbox stop: an object, done when you get there.
   ns.ErrandPicker.Select("mailbox")
@@ -3359,7 +3363,6 @@ do
     if st.text == "Check your mail" then box = st end
   end
   check(box and box.node.object and not box.action, "a mailbox stop has nobody to talk to")
-  hud.add.scripts.OnClick(hud.add)
   ns.ErrandPicker.Select("mailbox")
   check(ns.ErrandPicker.Rows()[1] and ns.ErrandPicker.Rows()[1].time:find("in your journey", 1, true),
     "and the mailbox shows as in your journey: " .. rowText())
@@ -8334,22 +8337,30 @@ do
   for _, r in ipairs(ns.JourneyOverview.Rows()) do if r.state == "gather" then gatherRow = r end end
   check(gatherRow and gatherRow.stop.action.kind == "complete", "the window lists the objectives as gathered as you go")
 
-  -- The directions box: a toggle for the shopping list, hidden to start
-  -- with, the toggle saying how many things are on it.
-  ns.charDB.shopOpen = nil
+  -- The directions box: the + says how many things are on the way while its
+  -- drawer is closed; open, the drawer lists them under "Gathering as you go".
+  local function gathering()
+    local out = {}
+    for _, r in ipairs(ns.Drawer.Rows()) do
+      if r.kind == "gather" then out[#out + 1] = r.text end
+    end
+    return out
+  end
+  ns.Drawer.Hide()
   ns.HUD.Update()
-  local shop = ns.HUD.Shop()
-  check(shop.toggle and shop.count == "2" and not shop.open and shop.height == 0,
-    "the box has a shopping list toggle; list hidden, the toggle says 2: " .. shop.count)
-  local lines = ns.HUD.ShopLines()
+  check(ns.HUD.Wayside().badge == "2" and not ns.Drawer.IsShown(),
+    "the drawer closed, the + says 2: " .. ns.HUD.Wayside().badge)
+  local lines = ns.Wayside.Lines()
   check(#lines == 2 and lines[1].entry and lines[2].entry and not lines[1].entry.near and not lines[2].entry.near,
     "far from every spawn: both things listed, nearest first, neither around you")
-  ns.HUD.ToggleShop()
-  shop = ns.HUD.Shop()
-  check(shop.open and shop.count == "" and #shop.lines == 2 and shop.height == 2 * 14 + 10 and ns.charDB.shopOpen,
-    string.format("opened: the list pops up above the box, a line each (%d high), no count on the toggle", shop.height))
-  check(#shop.rows == 2 and shop.rows[1] == shop.lines[1] and shop.rows[2] == shop.lines[2],
-    "every line shows, each on a row of its own (not one text that shows its first line only): " .. #shop.rows)
+  ns.Drawer.Toggle()
+  ns.HUD.Update()
+  check(ns.Drawer.IsShown() and ns.Drawer.Open() and ns.HUD.Wayside().badge == "" and ns.Drawer.Selected() == nil
+    and ns.Drawer.Headings()[2] == "Gathering as you go",
+    "opened: the drawer under the box, on what's on the way, no count on the +")
+  check(#gathering() == 2 and gathering()[1] == lines[1].text and gathering()[2] == lines[2].text,
+    "each thing on a row of its own: " .. #gathering())
+  check(not ns.Drawer.Rows()[1].add and not ns.Drawer.Rows()[1].dismiss, "nothing to add or wave off: they're on the journey")
 
   -- Passing through the area: not waited in, on to Oslow.
   player.x, player.y = 0.5, 0.52
@@ -8358,11 +8369,11 @@ do
   check(not ns.Nav.Waiting() and not step.via and ns.Nav.HeadingFor().action.kind == "turnin",
     "in the area: passed through, not waited in; still heading for the hand-in")
   check(gatherRow.stop.worked and next(gatherRow.stop.worked) ~= nil, "the area counts as visited")
-  lines = ns.HUD.ShopLines()
+  lines = ns.Wayside.Lines()
   check(lines[1].entry and lines[1].entry.name == "Goretusk" and lines[1].text:find("0/3", 1, true)
     and lines[2].entry and lines[2].entry.name == "Stringy Vulture" and not lines[2].entry.near,
     "around you: the goretusks first, with the count; then the vultures, farther off")
-  check(ns.HUD.Shop().lines[1]:find("Goretusk", 1, true), "and the list above the box says so")
+  check(gathering()[1]:find("Goretusk", 1, true), "and the drawer says so")
 
   -- Planned again while in the goretusks' area: you're gathering already,
   -- so the way isn't turned aside to another area: straight for Oslow.
@@ -8381,31 +8392,26 @@ do
   -- Walking on: the list follows what's around you.
   player.x, player.y = 0.15, 0.17
   ns.HUD.Update()
-  check(ns.HUD.Shop().lines[1]:find("Stringy Vulture", 1, true), "among the vultures: the list says so")
-  local height = ns.HUD.Shop().height
-  -- A third thing to gather, right here too: one line more, and the list
-  -- grows (upward: its bottom is on the box's top edge; the box keeps its size).
+  check(gathering()[1]:find("Stringy Vulture", 1, true), "among the vultures: the drawer says so")
+  -- A third thing to gather, right here too: one row more.
   NPCS[9603] = { name = "Murloc Raider", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 16, 20 } } } }
   QUESTS[4600].objectives[1][3] = { 9603 }
   objectives[3] = { text = "Murloc Raider slain: 0/2", finished = false }
   refreshData()
   fire("QUEST_LOG_UPDATE")
   ns.HUD.Update()
-  shop = ns.HUD.Shop()
-  check(#shop.lines == 3 and shop.height == height + 14,
-    string.format("a longer list, a taller popup: %d lines, %d high", #shop.lines, shop.height))
-  check(#shop.rows == 3 and shop.rows[3] == shop.lines[3], "all three lines show: " .. #shop.rows)
-  ns.HUD.ToggleShop()
-  shop = ns.HUD.Shop()
-  check(not shop.open and shop.count == "3" and shop.height == 0 and not ns.charDB.shopOpen,
-    "hidden again: the toggle shows the count, 3")
+  check(#gathering() == 3, "a longer list: " .. #gathering() .. " rows")
+  ns.Drawer.Toggle()
+  ns.HUD.Update()
+  check(not ns.Drawer.IsShown() and not ns.Drawer.Open() and ns.HUD.Wayside().badge == "3",
+    "closed again: the + shows the count, 3")
   QUESTS[4600].objectives[1][3], objectives[3], NPCS[9603] = nil, nil, nil
   refreshData()
   player.x, player.y = 0.5, 0.52
   -- Up to four things listed; the rest on one line.
   local many = {}
   for i = 1, 6 do many[i] = { name = "Thing " .. i, quest = "Redridge Stew", near = i <= 2, distance = i * 10 } end
-  lines = ns.HUD.ShopLines(many)
+  lines = ns.Wayside.Lines(many)
   check(#lines == 5 and lines[4].entry and lines[4].entry.name == "Thing 4" and lines[5].entries
     and #lines[5].entries == 2 and lines[5].text:find("+2 more", 1, true),
     "six things: four listed, then \"+2 more\"")
@@ -8452,12 +8458,9 @@ do
   end
   check(stew.done and not anyVia and ns.Nav.HeadingFor().action.kind == "turnin",
     "all gathered: straight to the hand-in")
-  check(#ns.HUD.ShopLines() == 0, "and nothing on the list")
-  ns.charDB.shopOpen = true
+  check(#ns.Wayside.Lines() == 0, "and nothing on the list")
   ns.HUD.Update()
-  shop = ns.HUD.Shop()
-  check(not shop.toggle and not shop.open and shop.height == 0, "no toggle on the box, no list above it, even set open")
-  ns.charDB.shopOpen = nil
+  check(ns.HUD.Wayside().badge == "" and ns.HUD.Wayside().count == 0, "and no count on the +")
 
   -- A stop elsewhere, nothing it needs: an area far off the way isn't a detour.
   objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }
@@ -8909,27 +8912,86 @@ do
   here = ns.Geo.PlayerNode()
   local docks3 = { node = ns.Geo.Node(1433, 0.62, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Docks", stops = { docks3 } }), true)
-  ns.charDB.shopOpen = nil
+  ns.Drawer.Hide()
   ns.HUD.Update()
-  lines = ns.HUD.ShopLines()
+  lines = ns.Wayside.Lines()
   check(#lines == 1 and lines[1].entry.name == "Defias Smuggler" and lines[1].entry.fromLog
     and lines[1].entry.quest == "Smuggler Sweep" and lines[1].text:find("0/6", 1, true),
     "a log quest off the journey, its smugglers on the way: listed, though not spread; the dust devils aren't: "
     .. #lines)
-  check(ns.HUD.Shop().toggle and ns.HUD.Shop().count == "1", "the box shows the toggle for it: " .. ns.HUD.Shop().count)
+  check(ns.HUD.Wayside().badge == "1", "the + counts it: " .. ns.HUD.Wayside().badge)
   check(ns.Nav.HeadingFor() == docks3 and not ns.Nav.CurrentStep().via, "the journey isn't changed for it")
   -- Walked on past the docks' way to the dust devils: around you, so listed.
   player.x, player.y = 0.94, 0.94
-  lines = ns.HUD.ShopLines()
+  lines = ns.Wayside.Lines()
   local names = {}
   for i, l in ipairs(lines) do names[i] = l.entry and l.entry.name or "?" end
   check(#lines == 2 and lines[1].entry.name == "Dust Devil" and lines[1].entry.near,
     "among the dust devils: listed first, around you: " .. table.concat(names, ", "))
   -- Done with the dust devils: off the list.
   devils[1] = { text = "Dust Devil slain: 2/2", finished = true }
-  lines = ns.HUD.ShopLines()
+  lines = ns.Wayside.Lines()
   check(#lines == 1 and lines[1].entry.name == "Defias Smuggler", "the dust devils done: off the list: " .. #lines)
   devils[1] = { text = "Dust Devil slain: 0/2", finished = false }
+
+  -- On the way, one surface: the sweep (in your log, off the journey) is an
+  -- offer in the drawer, with Add and a way to wave it off.
+  -- (In a function of its own: this block is at Lua's limit of 200 locals.)
+  ;(function()
+  ns.Drawer.Show()
+  local function offers()
+    local out = {}
+    for i, r in ipairs(ns.Drawer.Rows()) do
+      if r.kind ~= "gather" then out[#out + 1] = { at = i, kind = r.kind, text = r.text, time = r.time, add = r.add,
+        dismiss = r.dismiss } end
+    end
+    return out
+  end
+  local function offerOf(text)
+    for _, o in ipairs(offers()) do
+      if o.text:find(text, 1, true) then return o end
+    end
+  end
+  local sweep = offerOf("Smuggler Sweep")
+  check(sweep and sweep.kind == "log" and sweep.add and sweep.dismiss and sweep.text:find("Defias Smuggler 0/6", 1, true),
+    "a log quest with things on the way is an offer you can add: " .. tostring(sweep and sweep.text))
+  local hasHeading = false
+  for _, h in ipairs(ns.Drawer.Headings()) do if h == "You could add" then hasHeading = true end end
+  check(hasHeading and ns.Drawer.Headings()[1] == "On the way", "under its own heading in the drawer")
+  -- The journey overview lists the same offers.
+  ns.JourneyOverview.Show()
+  local inOverview = false
+  for _, row in ipairs(ns.JourneyOverview.EnsureFrame().suggest) do
+    if row.suggestion and row.suggestion.id == "log:4601" then inOverview = true end
+  end
+  check(inOverview, "and the journey overview lists the same offer")
+
+  -- A new suggestion while you're on a journey: a row here, not a toast.
+  local mines = { id = "dungeonTestMines", kind = "dungeon", title = "Run The Test Mines",
+    goal = ns.Geo.Node(1433, 0.8, 0.8, "Test Mines"), why = "A dungeon you haven't seen." }
+  ns.Fanfare.lastOffered = nil
+  ns.Fanfare.NewJourney(mines)
+  local first = offers()[1]
+  check(ns.Fanfare.lastOffered == mines and first and first.kind == "card" and first.text == "Run The Test Mines"
+    and first.time == "new", "a new suggestion on a journey is the first offer in the drawer, not a toast")
+  check(ns.Wayside.Count() >= 2 and ns.HUD.Wayside().count >= 0, "and it counts on the + while the drawer's closed")
+  -- Waved off: gone, and not offered again on this journey.
+  check(ns.Drawer.DismissRow(first.at) and not offerOf("Run The Test Mines"), "waved off: it's gone")
+  ns.Fanfare.NewJourney(mines)
+  check(not offerOf("Run The Test Mines") and offerOf("Smuggler Sweep"), "and it isn't offered again on this journey")
+  -- Added: the quest joins the journey and leaves the offers.
+  sweep = offerOf("Smuggler Sweep")
+  check(ns.Drawer.AddRow(sweep.at) and ns.Nav.TripHasQuest(4601) and not offerOf("Smuggler Sweep") and ns.Drawer.IsShown(),
+    "Add puts the quest on the journey; it's no longer an offer, and the drawer stays")
+  -- With no journey on, a new suggestion is a toast as before.
+  ns.Drawer.Hide()
+  ns.JourneyOverview.Toggle()
+  ns.Nav.Stop()
+  ns.Fanfare.lastOffered = nil
+  ns.Fanfare.NewJourney(mines)
+  check(ns.Fanfare.lastOffered == nil and ns.Fanfare.lastNew == mines and not ns.Wayside.Offer(mines),
+    "with no journey on, a new suggestion is still a toast")
+  end)()
 
   -- On the journey, the sweep is a stop you head for: not on the list. Set
   -- aside, it stays off it.
@@ -8939,11 +9001,11 @@ do
   local withSweep = ns.Journey.QuestStops(4601, here)
   withSweep[#withSweep + 1] = { node = ns.Geo.Node(1433, 0.62, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
   ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Sweep", stops = withSweep }), true)
-  check(#ns.HUD.ShopLines() == 0, "the sweep on the journey (headed for): not listed; the dust devils still not on the way")
+  check(#ns.Wayside.Lines() == 0, "the sweep on the journey (headed for): not listed; the dust devils still not on the way")
   local sweepStop
   for _, s in ipairs(withSweep) do if s.action and s.action.kind == "complete" then sweepStop = s end end
   sweepStop.skipped = true
-  check(#ns.HUD.ShopLines() == 0, "set aside on the journey: still not listed")
+  check(#ns.Wayside.Lines() == 0, "set aside on the journey: still not listed")
   ns.Nav.Stop()
   log = { 4600 }
   C_QuestLog.GetQuestObjectives = function(id) return id == 4600 and objectives or {} end
