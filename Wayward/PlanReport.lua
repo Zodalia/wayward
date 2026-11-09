@@ -204,6 +204,10 @@ function PlanReport.Build()
                 o.name or "?", o.busiest, o.total, o.share * 100)
             end
           end
+          -- Judged on what's still open: a finished objective's spawns are left out.
+          if #info.finished > 0 then
+            spreadLines[#spreadLines + 1] = "      finished, left out: " .. table.concat(info.finished, ", ")
+          end
         end
       end
       if #spreadLines > 0 then
@@ -225,9 +229,9 @@ function PlanReport.Build()
       -- A fresh plan from here, as a re-plan would make it, put back after.
       if here and not root.manual then
         local saved = {}
-        for _, s in ipairs(root.stops or {}) do saved[s] = { node = s.node, aim = s.aimArea } end
+        for _, s in ipairs(root.stops or {}) do saved[s] = { node = s.node, aim = s.aimArea, via = s.via } end
         local ok, fresh = ns.Protect(ns.Journey.Replan, journey, here, net)
-        for s, v in pairs(saved) do s.node, s.aimArea = v.node, v.aim end
+        for s, v in pairs(saved) do s.node, s.aimArea, s.via = v.node, v.aim, v.via end
         add("")
         add("From here, travel only:")
         add("  plan's order:  %s, %s", names(order), duration(travel(here, order, net)))

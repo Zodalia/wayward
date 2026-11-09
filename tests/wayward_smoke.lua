@@ -8489,6 +8489,36 @@ do
   check(text:find("^Go to Redridge north, through"), "the step says where it points, and what it's through: " .. text)
   check(ns.PlanReport.Build():find("the arrow points past it, on to", 1, true),
     "the plan report says where the arrow points")
+
+  -- The goretusks finished on the way, then a re-plan that isn't taken up
+  -- (a what-if, the plan report's fresh plan) runs first: it sets the stop's
+  -- area on the way, the route still goes through the goretusks. Re-planning
+  -- as you go goes by the route you're on, so it doesn't call that the same
+  -- order and keep you headed for an area you've finished. (An Enticing
+  -- Offer: through a bear area with the vials of blood in your bags.)
+  local savedLiveTime, liveClock = GetTime, 9000
+  GetTime = function() return liveClock end
+  -- Still spread with the goretusks done (the vultures alone aren't, here):
+  -- this is about the area on the way, not the quest becoming a stop.
+  local realSpread = ns.Journey.Spread
+  ns.Journey.Spread = function() return true end
+  objectives[2] = { text = "Goretusk slain: 3/3", finished = true }
+  local function throughGoretusks()
+    for k = ns.Nav.active.index, #ns.Nav.active.route.steps do
+      local s = ns.Nav.active.route.steps[k]
+      if s.via and s.via.stop.action.questID == 4600 and at(s.to, 0.5, 0.5) then return true end
+    end
+    return false
+  end
+  check(throughGoretusks(), "setup: the route goes through the goretusks")
+  ns.Journey.Replan(ns.Nav.active.journey, ns.Geo.PlayerNode())
+  ns.PlanReport.Build()
+  liveClock = liveClock + 10
+  player.y = 0.9
+  ns.HUD.Update()
+  check(not throughGoretusks(), "goretusks done: re-planned off their area, though a re-plan not taken up came first")
+  GetTime, ns.Journey.Spread = savedLiveTime, realSpread
+  objectives[2] = { text = "Goretusk slain: 0/3", finished = false }
   ns.Nav.Stop()
 
   -- A stop a few dozen yards off, an area well behind you: under VIA_YARDS
@@ -8570,28 +8600,30 @@ do
   planned = ns.Journey.Plan(here, { title = "Redridge", stops = withDocks })
   check(planned.stops[1] == docks2, "the docks first: the hand-in won't be ready for a while, though it's nearer")
 
-  -- Your pace shows: 5 of 6 in a minute, the last one ~12 s away, sooner than
-  -- the walk to Oslow. You'll likely have it on the way: heading for the
-  -- hand-in (still called gather until it's done), no redirect.
-  clock = clock + 60
-  objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
+  -- Your pace shows: 4 of 6 in half a minute, the last two ~15 s away, sooner
+  -- than the walk to Oslow. You'll likely have them on the way: heading for
+  -- the hand-in (still called gather until it's done), no redirect. (One of
+  -- each left: with either finished, the other alone isn't spread here.)
+  clock = clock + 30
+  objectives[1] = { text = "Stringy Vulture slain: 3/4", finished = false }
   objectives[2] = { text = "Goretusk slain: 2/3", finished = false }
   fire("QUEST_LOG_UPDATE")
   ns.HUD.Update()
   hudLines = ns.HUD.Lines()
-  check(math.abs(ns.Journey.GatherSeconds(4600) - 12) < 0.01, "your pace: ~12 s to go: " .. ns.Journey.GatherSeconds(4600))
+  check(math.abs(ns.Journey.GatherSeconds(4600) - 15) < 0.01, "your pace: ~15 s to go: " .. ns.Journey.GatherSeconds(4600))
   check(not ns.Nav.GatheringHere() and ns.Nav.HeadingFor().action.kind == "turnin" and not ns.Nav.CurrentStep().via
     and hudLines[2] == "Gather for Redridge Stew, then hand in to Foreman Oslow",
     "likely done on the way: heading for the hand-in: " .. tostring(hudLines[2]))
 
-  -- At Oslow (in an area there) with the last one still to get: gathering
+  -- At Oslow (in an area there) with the last two still to get: gathering
   -- there, not waiting on a hand-in that can't be done.
   player.x, player.y = 0.36, 0.3
   ns.HUD.Update()
   ns.HUD.Update()
   check(not ns.Nav.Waiting() and ns.Nav.GatheringHere() and ns.HUD.Lines()[2]:find("^Gather here"),
-    "at the hand-in, in an area, one still to get: gathering there, not waiting")
+    "at the hand-in, in an area, two still to get: gathering there, not waiting")
   -- All gathered: now it's a hand-in, and you're there.
+  objectives[1] = { text = "Stringy Vulture slain: 4/4", finished = true }
   objectives[2] = { text = "Goretusk slain: 3/3", finished = true }
   complete = true
   fire("QUEST_LOG_UPDATE")
@@ -8656,6 +8688,48 @@ do
   check(info.share >= 0.4 and #info.objectives == 2 and boars.share < 0.4 and lurkers.share == 1 and info.spread,
     string.format("a crowded patch doesn't make the rest a stop (%.0f%% pooled; %.0f%% and %.0f%% each)",
       info.share * 100, boars.share * 100, lurkers.share * 100))
+
+  -- The boars done (the vials of blood in your bags): what's left is the
+  -- patch, so the quest is a stop now. Judged on its open objectives, it
+  -- says so once, and the next re-plan as you go puts it on the journey.
+  do
+  ns.Nav.Stop()
+  local bog ={ { text = "Field Boar slain: 1/4", finished = false }, { text = "Bog Lurker slain: 0/3", finished = false } }
+  local savedObjectives, savedLog, savedBogTime, bogClock = C_QuestLog.GetQuestObjectives, log, GetTime, 9500
+  log = { 4604 }
+  C_QuestLog.GetQuestObjectives = function(id) return id == 4604 and bog or {} end
+  GetTime = function() return bogClock end
+  player.x, player.y = 0.9, 0.5
+  here = ns.Geo.PlayerNode()
+  local bogStops = ns.Journey.QuestStops(4604, here)
+  local bogDocks = { node = ns.Geo.Node(1433, 0.9, 0.3, "Lakeshire docks"), text = "Go to Lakeshire docks" }
+  bogStops[#bogStops + 1] = bogDocks
+  local bogDo
+  for _, s in ipairs(bogStops) do if s.action and s.action.kind == "complete" then bogDo = s end end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Bog", stops = bogStops }), true)
+  check(bogDo and bogDo.gather, "boars and the patch both open: gathered as you go")
+  bog[1] = { text = "Field Boar slain: 4/4", finished = true }
+  info = ns.Journey.SpreadInfo(4604)
+  check(not info.spread and info.areas == 1 and #info.objectives == 1 and info.finished[1] == "Field Boar",
+    string.format("the boars done: only the patch left, one area, a stop (%d areas, finished: %s)",
+      info.areas, table.concat(info.finished, ", ")))
+  -- A plan not taken up (the report's fresh plan) comes first; the re-plan
+  -- as you go still brings the stop in.
+  check(ns.PlanReport.Build():find("finished, left out: Field Boar", 1, true),
+    "the plan report says the finished objective is left out")
+  before = #chat
+  bogClock = bogClock + 10
+  player.y = 0.47
+  ns.HUD.Update()
+  local bogPlanned = false
+  for _, s in ipairs(ns.Nav.active.journey.stops) do if s == bogDo then bogPlanned = true end end
+  check(bogPlanned and not bogDo.gather, "re-planned as you go: the quest is a stop on the journey")
+  local said = table.concat(chat, "\n", before + 1)
+  check(said:find("Blood and Bog: only Bog Lurker left, all in one place. It's a stop on your journey now.", 1, true)
+    and not said:find("fits better", 1, true), "and it says why, once:\n" .. said)
+  ns.Nav.Stop()
+  C_QuestLog.GetQuestObjectives, log, GetTime = savedObjectives, savedLog, savedBogTime
+  end
   -- A bigger patch: most of the spawns. A stop.
   NPCS[9606].spawns[44] = { { 50, 50 }, { 51, 52 }, { 52, 51 }, { 50, 53 }, { 53, 50 } }
   refreshData()

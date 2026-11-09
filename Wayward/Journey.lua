@@ -256,22 +256,28 @@ local function withoutStrays(areas)
   return #kept > 0 and kept or areas
 end
 
--- The areas that still have something you need (a finished objective's
--- spawns don't count; the quest log says which are finished) and near the
--- game's marker: { {index, nodes, counts}, ... } (counts: spawns per group).
-local function neededAreas(questID)
-  local areas = ns.Quests.ObjectiveAreas(questID)
-  if #areas == 0 then return {} end
-  local groups = ns.Quests.ObjectiveGroups(questID)
+-- The quest's objective groups (Quests.ObjectiveGroups) the quest log says
+-- are finished: { [group index] = true }. Empty when it isn't in your log.
+local function finishedGroups(questID)
   local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID) or {}
   local finished = {}
-  for g, group in ipairs(groups) do
+  for g, group in ipairs(ns.Quests.ObjectiveGroups(questID)) do
     for _, o in ipairs(objectives) do
       if o.finished and group.name and type(o.text) == "string" and o.text:find(group.name, 1, true) then
         finished[g] = true
       end
     end
   end
+  return finished
+end
+
+-- The areas that still have something you need (a finished objective's
+-- spawns don't count; the quest log says which are finished) and near the
+-- game's marker: { {index, nodes, counts}, ... } (counts: spawns per group).
+local function neededAreas(questID)
+  local areas = ns.Quests.ObjectiveAreas(questID)
+  if #areas == 0 then return {} end
+  local finished = finishedGroups(questID)
   local out = {}
   for index, area in ipairs(areas) do
     local nodes, counts = {}, {}
@@ -503,7 +509,8 @@ function Journey.ViaAllowance(direct)
   return math.min(VIA_YARDS, direct)
 end
 
--- Keyed by the quest's area list (Quests.ObjectiveAreas), so new data re-checks.
+-- Keyed by the quest's area list (Quests.ObjectiveAreas), so new data
+-- re-checks, then by which objectives are finished.
 local spreadCache = setmetatable({}, { __mode = "k" })
 
 -- The most of `nodes` in one BUSY_YARDS circle round one of them.
@@ -522,8 +529,16 @@ end
 
 -- How a quest's objective spawns lie: { areas, span (yards end to end),
 -- total (spawns), busiest (spawns in the busiest BUSY_YARDS circle), share
--- (busiest / total), objectives, spread }. objectives: each objective's own
--- { name, total, busiest, share }. Built once per quest's data.
+-- (busiest / total), objectives, finished, spread }. objectives: each open
+-- objective's own { name, total, busiest, share }; finished: the names of
+-- those the quest log says are done. Built once per quest's data and set of
+-- finished objectives.
+--
+-- Only the objectives still open count: what's left is what you'd be
+-- picking up. With An Enticing Offer's blood in your bags, its duskweed is
+-- in one patch: a stop to go and do, not something you'd come across. With
+-- every objective finished, all of them count (the verdict doesn't flip at
+-- the hand-in).
 --
 -- An objective that crowds a patch (An Enticing Offer's Duskweed Petals, 23
 -- in one corner of Elwynn) doesn't make one that's all over the zone (its
@@ -534,14 +549,24 @@ end
 -- through on the way to the hand-in.
 function Journey.SpreadInfo(questID)
   local areas = questID and ns.Quests.ObjectiveAreas(questID) or {}
-  if spreadCache[areas] then return spreadCache[areas] end
   local groups = questID and ns.Quests.ObjectiveGroups(questID) or {}
-  local nodes, byGroup, instance, x0, x1, y0, y1 = {}, {}, nil, nil, nil, nil, nil
+  local finished = questID and finishedGroups(questID) or {}
+  local open, done = 0, {}
+  for g in ipairs(groups) do
+    if finished[g] then done[#done + 1] = g else open = open + 1 end
+  end
+  if open == 0 then finished, done = {}, {} end
+  local key = table.concat(done, ",")
+  local cached = spreadCache[areas]
+  if cached and cached[key] then return cached[key] end
+  local nodes, byGroup, used, instance, x0, x1, y0, y1 = {}, {}, 0, nil, nil, nil, nil, nil
   for _, area in ipairs(areas) do
+    local any = false
     for _, m in ipairs(area) do
       local n = m.node
       instance = instance or n.instance
-      if n.instance == instance then
+      if n.instance == instance and not finished[m.group] then
+        any = true
         nodes[#nodes + 1] = n
         byGroup[m.group] = byGroup[m.group] or {}
         table.insert(byGroup[m.group], n)
@@ -549,9 +574,11 @@ function Journey.SpreadInfo(questID)
         y0, y1 = math.min(y0 or n.wy, n.wy), math.max(y1 or n.wy, n.wy)
       end
     end
+    if any then used = used + 1 end
   end
-  local info = { areas = #areas, total = #nodes, span = x0 and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) or 0,
-    busiest = busiestCircle(nodes), share = 1, objectives = {} }
+  local info = { areas = used, total = #nodes, span = x0 and math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2) or 0,
+    busiest = busiestCircle(nodes), share = 1, objectives = {}, finished = {} }
+  for _, g in ipairs(done) do info.finished[#info.finished + 1] = groups[g].name or ("objective " .. g) end
   if #nodes > 0 then info.share = info.busiest / #nodes end
   local loose = 0 -- spawns of objectives that don't crowd one spot
   for g, group in ipairs(groups) do
@@ -566,12 +593,13 @@ function Journey.SpreadInfo(questID)
   -- A place to explore (How Big a Threat?: find a furbolg camp, one of a few
   -- across Darkshore) isn't picked up in passing: you go to one of its places.
   -- However its places lie, the quest is a stop.
-  for _, group in ipairs(groups) do
-    if group.explore then info.explore = true end
+  for g, group in ipairs(groups) do
+    if group.explore and not finished[g] then info.explore = true end
   end
   info.spread = not info.explore and info.areas >= SPREAD_AREAS and info.span >= SPREAD_YARDS
     and (info.share < BUSY_SHARE or loose * 2 > info.total)
-  spreadCache[areas] = info
+  spreadCache[areas] = cached or {}
+  spreadCache[areas][key] = info
   return info
 end
 
@@ -1537,7 +1565,9 @@ function Journey.Plan(start, def, net)
       steps = { { mode = "walk", from = leg.from, to = stop.node, seconds = 0 } }
     end
     for i, step in ipairs(steps) do
-      if i == #steps then step.stop = stop end
+      -- The area aimed for goes on the step too: stop.aimArea is set again by
+      -- every re-plan, kept or not (Navigator's re-plan as you go).
+      if i == #steps then step.stop, step.aim = stop, stop.aimArea end
       journey.steps[#journey.steps + 1] = step
     end
     -- Getting to a camp before it respawns means waiting there.

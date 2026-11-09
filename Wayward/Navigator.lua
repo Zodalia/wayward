@@ -228,7 +228,33 @@ local function count(key, n)
   if stats then stats[key] = (stats[key] or 0) + (n or 1) end
 end
 
+-- Quests gathered as you go that are a stop now: what's left of them is in
+-- one place (Journey.SpreadInfo counts only open objectives). Says so once
+-- for each, and remembers which are gathered for next time. Returns the set
+-- of those that changed. `quiet`: remember only (a journey starting).
+local function becameStops(journey, quiet)
+  local root = journey and (journey.root or journey.def)
+  local changed = {}
+  for _, s in ipairs(root and root.stops or {}) do
+    local id = s.action and s.action.questID
+    if s.gatherSeen and not s.gather and not s.done and not s.skipped and id and not ns.Journey.Spread(id) then
+      changed[s] = true
+      note("%s is a stop now: what's left is in one place", stopName(s))
+      if not quiet then
+        local names = {}
+        for _, o in ipairs(ns.Journey.SpreadInfo(id).objectives) do names[#names + 1] = o.name or "?" end
+        local q = ns.Quests.Quest(id)
+        ns.print(string.format("%s: only %s left, all in one place. It's a stop on your journey now.",
+          q and q.name or ("quest " .. id), #names > 0 and table.concat(names, " and ") or "one thing"))
+      end
+    end
+    s.gatherSeen = s.gather or nil
+  end
+  return changed
+end
+
 local function startJourney(journey, quiet)
+  becameStops(journey, true)
   note("journey started: %s, next %s", journey.title or "?", stopName(journey.stops[1]))
   local last = journey.stops[#journey.stops]
   Nav.active = { title = journey.title, goal = last.node, journey = journey, index = 1,
@@ -460,6 +486,7 @@ local function adopt(a, route, journey)
   if journey then
     a.journey = journey
     a.goal = journey.stops[#journey.stops].node
+    becameStops(journey)
   end
   showStep()
 end
@@ -1901,8 +1928,15 @@ local function liveBlocker(a, here)
   if Nav.InArea() then return "in the next stop's objective area", true end
   if a.gatherHere then return "gathering where you are", true end
   local stops = stopsAhead(a)
-  -- One stop left in one place: nothing to put in another order.
-  if #stops == 0 or (#stops == 1 and not stops[1].aimArea and not ns.Journey.HasGathering(a.journey)) then
+  -- One stop left in one place: nothing to put in another order. Gathering
+  -- as you go on the route you're on counts too (gatherSeen, set when it
+  -- was taken up): a plan not taken up may have made that quest a stop,
+  -- which only a re-plan brings in.
+  local gathering = ns.Journey.HasGathering(a.journey)
+  for _, s in ipairs(not gathering and (a.journey.root or a.journey.def).stops or {}) do
+    if s.gatherSeen and not s.done and not s.skipped then gathering = true end
+  end
+  if #stops == 0 or (#stops == 1 and not stops[1].aimArea and not gathering) then
     return "one stop left", true
   end
   if a.livePlanning then return "a re-plan is running" end
@@ -1939,12 +1973,27 @@ local function liveCheck(a, here)
   if blocked then return end
   local stops = stopsAhead(a)
   a.lastLive, a.liveFrom, a.livePlanning = GetTime(), here, true
-  local journey, route, index, aim, pins = a.journey, a.route, a.index, stops[1].aimArea, a.pins
-  local function viaKey(stop)
-    local via = stop and stop.via
+  local journey, route, index, pins = a.journey, a.route, a.index, a.pins
+  local function viaKey(via)
     return via and (tostring(via.stop.action.questID) .. ":" .. via.index) or ""
   end
-  local via = viaKey(stops[1])
+  -- The area on the way and the area aimed for, as the route you're on has
+  -- them. Not the stop's own .via and .aimArea: any re-plan sets those, kept
+  -- or not (the plan report's fresh plan, a what-if), and a stop saying "no
+  -- area on the way" while the route still went through one kept you on it.
+  local onVia, aim
+  for k = a.index, #a.route.steps do
+    local step = a.route.steps[k]
+    onVia = step.via or onVia
+    if step.stop then
+      if step.stop == stops[1] then
+        aim = step.aim
+        break
+      end
+      onVia = nil
+    end
+  end
+  local via = viaKey(onVia)
   ns.Warm(function() return ns.Journey.Replan(journey, here) end, function(ok, planned)
     a.livePlanning = nil
     -- Moved on meanwhile (a stop reached, a pin, another re-plan, ended): stale.
@@ -1959,15 +2008,19 @@ local function liveCheck(a, here)
     for i, stop in ipairs(planned.stops) do
       if stop ~= stops[i] then same = false end
     end
-    if same and planned.stops[1].aimArea == aim and viaKey(planned.stops[1]) == via then
+    if same and planned.stops[1].aimArea == aim and viaKey(planned.stops[1].via) == via then
       note("re-plan as you go: same order, next %s", stopName(stops[1]))
       return
     end
     a.lastReplan = GetTime and GetTime()
     local upNext = planned.stops[1]
+    -- A quest that's a stop now says so itself, not that it "fits better".
+    local nowStops = becameStops(planned)
     if upNext ~= stops[1] then
       note("re-plan as you go: next %s instead of %s", stopName(upNext), stopName(stops[1]))
-      ns.print(string.format("%s is next now: it fits better from where you are.", upNext.text or "another stop"))
+      if not nowStops[upNext] then
+        ns.print(string.format("%s is next now: it fits better from where you are.", upNext.text or "another stop"))
+      end
     elseif same and planned.stops[1].aimArea == aim then
       note("re-plan as you go: %s", upNext.via and "through another area on the way" or "straight on, nothing to gather on the way")
     elseif same then
