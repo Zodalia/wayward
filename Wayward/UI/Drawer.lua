@@ -1,9 +1,9 @@
 local _, ns = ...
 
--- On the way: the drawer on the directions box (its + button). One place
--- for everything near the journey you're on (Wayside.lua):
+-- On the way: the drawer on the directions box (its + button), for what
+-- you could add near the journey you're on (Wayside.lua). What the journey
+-- already gathers as you go has a section of its own above the box (HUD.lua).
 --
---   Gathering as you go   what the journey is gathering, with counts
 --   On the way            what you could add: each with the time it adds,
 --                         a + to add it and an x to wave it off for good
 --   the icons on top      add a stop of your own: repair, vendor, mailbox,
@@ -11,9 +11,10 @@ local _, ns = ...
 --                         out of the way first (Errands.lua); pick it again
 --                         to go back.
 --
--- It hangs under the directions box, or over it near the bottom of the
--- screen, and stays open until you close it (per character). Closed, the +
--- button carries a count and nothing else calls for attention.
+-- It hangs under the directions box, or over it (and over Gathering as you
+-- go) near the bottom of the screen, and stays open until you close it (per
+-- character). Closed, the + button carries a count of the offers and nothing
+-- else calls for attention.
 -- (It took over from the detour picker and the shopping list; ns.ErrandPicker
 -- is this.)
 
@@ -25,12 +26,11 @@ local WIDTH = 330
 local PADDING = 10
 local CHIP = 28
 local CHIP_GAP = 4
-local ROWS = 12        -- lines at most: two headings, the things, the offers
+local ROWS = 8         -- lines at most: a heading, the offers, "+N more"; a kind's places
 local ROW_HEIGHT = 20
 local GAP = 4          -- between the directions box and the drawer
 local ROOM_BELOW = 220 -- pixels under the directions box it needs, else it opens above
 local TITLE = "On the way"
-local GATHERING = "Gathering as you go"
 local OFFERS = "You could add"
 local NOTHING = "Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox..."
 local GREY = "|cff9d9d9d"
@@ -154,7 +154,8 @@ local function create()
   return f
 end
 
--- Under the directions box, or over it when there's no room below.
+-- Under the directions box, or over it (and over the section above it)
+-- when there's no room below.
 local function place()
   local hud = ns.HUD.Frame()
   frame:ClearAllPoints()
@@ -165,7 +166,7 @@ local function place()
   frame:SetWidth(hud:GetWidth() or WIDTH)
   local bottom = hud:GetBottom()
   if bottom and bottom < ROOM_BELOW then
-    frame:SetPoint("BOTTOMLEFT", hud, "TOPLEFT", 0, GAP)
+    frame:SetPoint("BOTTOMLEFT", ns.HUD.Top() or hud, "TOPLEFT", 0, GAP)
   else
     frame:SetPoint("TOPLEFT", hud, "BOTTOMLEFT", 0, -GAP)
   end
@@ -173,15 +174,10 @@ end
 
 function Drawer.Kind() return selected and ns.Errands.Kind(selected) or nil end
 
--- What's on the way, as lines: a heading for each part that has something,
--- then its rows.
+-- What you could add on the way, as lines: a heading, then the offers.
 local function waysideLines()
   local w = ns.Wayside.Get(true)
   local out = {}
-  if #w.gathering > 0 then
-    out[#out + 1] = { header = true, text = GATHERING }
-    for _, r in ipairs(w.gathering) do out[#out + 1] = { text = r.text, tip = r.tip, row = r } end
-  end
   if #w.offers > 0 then
     out[#out + 1] = { header = true, text = OFFERS }
     for _, r in ipairs(w.offers) do
@@ -215,6 +211,8 @@ end
 
 function Drawer.Refresh()
   if not (frame and frame:IsShown()) then return end
+  -- Placed again: the section above the box comes and goes.
+  place()
   local kinds = ns.Errands.Kinds()
   for i, b in ipairs(frame.chips) do
     local kind = kinds[i]

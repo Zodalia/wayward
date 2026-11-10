@@ -271,15 +271,21 @@ ideas of "near the way". Now:
   counts) and `offers` (a log quest with things on the way, quest givers,
   hand-ins and vendors near the way, a new suggestion). One row shape, one
   `Wayside.Add`, one `Wayside.Dismiss`.
-- **One place** (`UI/Drawer.lua`, the directions box's +): the list, and
-  along the top a detour of your own (repair, mailbox...). The journey
-  overview shows the same offers.
+- **Two places, by kind** (changed 2026-11-10): `gathering` is a section of
+  its own above the directions box ("Gathering as you go", `UI/HUD.lua`),
+  shown whenever there's something, since it's what the journey you chose
+  already does. `offers` stay in the drawer (`UI/Drawer.lua`, the
+  directions box's +), with along the top a detour of your own (repair,
+  mailbox...). The journey overview shows the same offers.
 - **Who speaks when.** A note over the box answers something you just did
   (picked up a quest, undo). A toast is for a new suggestion between
   journeys. On a journey a new suggestion is an offer in the drawer.
 - **Pillars 1 and 2.** An offer never makes a sound or moves the arrow; the
-  closed drawer shows a count and no more; waved off, an offer stays away
-  for that journey.
+  closed drawer shows a count of the offers and no more; waved off, an
+  offer stays away for that journey. Gathering as you go is on screen
+  unasked because it isn't extra guidance: it's your journey's own way,
+  like the objectives in the box. Offers are suggestions, so they wait
+  behind the +.
 - Vocabulary: "On the way" is the surface; what you add from it is still a
   **detour**. "Shopping list" and "errand" are gone from what the player
   reads (module names `ns.Errands`, `ns.ErrandPicker` stay).

@@ -3,8 +3,10 @@ local _, ns = ...
 -- Directions box shown while navigating: current step, distance, and our own
 -- compass (an arrow in a circle; /ww compass or the options turn it off, and
 -- the box gets narrower), and a + button for what's on the way: the drawer
--- (UI/Drawer.lua) with what you're gathering, what you could add, and a stop
--- of your own (repair, mail, ...). The + carries a count while it's closed.
+-- (UI/Drawer.lua) with what you could add and a stop of your own (repair,
+-- mail, ...). The + carries a count of the offers while it's closed.
+-- Above the box, a section of its own: "Gathering as you go", what the
+-- journey takes in on the way, shown whenever there's something.
 -- Blizzard's on-screen navigation is off by default in Forever
 -- (showInGameNavigation = 0), so we don't rely on it.
 -- Detail on demand (Nav.Detail): "steps" shows each step to the next stop
@@ -30,6 +32,12 @@ local FLASH_PULSES = 3
 local MAX_OBJECTIVES = 4 -- lines of objectives under the step; past that, "+N more"
 local OTHER_WIDTH, OTHER_HEIGHT = 92, 20 -- the Another spot button, right of the objectives
 local WAYSIDE_EVERY = 1    -- seconds between looks at what's on the way
+local GATHER_ROWS = 5      -- lines in "Gathering as you go": four things and "+N more" (Wayside.lua)
+local GATHER_GAP = 3       -- the section sits this far above the box
+local GATHER_PAD = 6       -- inside its background
+local GATHER_LINE = 14     -- a line's height
+local GATHER_FADE = 0.45   -- its background's alpha
+local GATHER_HEADING = "Gathering as you go"
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -171,7 +179,7 @@ local function create()
     "Skip this stop")
   f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
   -- Bottom right, beside the last line: what's on the way (UI/Drawer.lua).
-  -- Closed, it says how many things there are; nothing else asks for a look.
+  -- Closed, it says how many offers there are; nothing else asks for a look.
   f.add = squareButton(f, nil, "Interface\\Icons\\Spell_ChargePositive", "+", function() ns.Drawer.Toggle() end,
     "On the way")
   f.add:SetSize(ADD_SIZE, ADD_SIZE)
@@ -181,13 +189,59 @@ local function create()
     GameTooltip:SetText("On the way")
     local n = frame and frame.waysideCount or 0
     if n > 0 then
-      GameTooltip:AddLine(string.format("%d thing%s to gather or add as you go.", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
+      GameTooltip:AddLine(string.format("%d thing%s you could add on the way.", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
     end
     GameTooltip:AddLine("And a detour of your own: repair, vendor, mailbox, bank...", 0.6, 0.6, 0.6, true)
     GameTooltip:Show()
   end)
   f.add.count = f.add:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
   f.add.count:SetPoint("BOTTOMRIGHT", 3, -3)
+  -- Gathering as you go: a section of its own on the box's top edge, as wide
+  -- as the box, growing upward. Not part of the box: the box keeps its size.
+  -- A faint background on its own frame (skins fade the box's textures);
+  -- hover a line for what it's for and where.
+  f.gathering = CreateFrame("Frame", nil, f)
+  f.gathering:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, GATHER_GAP)
+  f.gathering:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, GATHER_GAP)
+  f.gathering:SetHeight(1)
+  local gatherBg = f.gathering:CreateTexture(nil, "BACKGROUND")
+  gatherBg:SetAllPoints()
+  gatherBg:SetColorTexture(0, 0, 0, GATHER_FADE)
+  f.gathering.heading = f.gathering:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  f.gathering.heading:SetPoint("TOPLEFT", GATHER_PAD, -GATHER_PAD)
+  f.gathering.heading:SetPoint("RIGHT", -GATHER_PAD, 0)
+  f.gathering.heading:SetHeight(GATHER_LINE)
+  f.gathering.heading:SetJustifyH("LEFT")
+  f.gathering.heading:SetText(GATHER_HEADING)
+  ns.Skin.Text(f.gathering.heading)
+  -- A frame a line, for its tooltip; a font string that doesn't wrap shows
+  -- one line only, so the lines can't share one.
+  f.gathering.rows = {}
+  for i = 1, GATHER_ROWS do
+    local r = CreateFrame("Frame", nil, f.gathering)
+    r:SetPoint("TOPLEFT", GATHER_PAD, -GATHER_PAD - i * GATHER_LINE)
+    r:SetPoint("RIGHT", -GATHER_PAD, 0)
+    r:SetHeight(GATHER_LINE)
+    r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.text:SetAllPoints()
+    r.text:SetJustifyH("LEFT")
+    r.text:SetJustifyV("MIDDLE")
+    r.text:SetWordWrap(false)
+    ns.Skin.Text(r.text)
+    r:EnableMouse(true)
+    r:SetScript("OnEnter", function(self)
+      local tip = self.row and self.row.tip
+      if not tip then return end
+      GameTooltip:SetOwner(self, "ANCHOR_TOP")
+      GameTooltip:SetText(tip[1])
+      for k = 2, #tip do GameTooltip:AddLine(tip[k], 0.6, 0.6, 0.6, true) end
+      GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    r:Hide()
+    f.gathering.rows[i] = r
+  end
+  f.gathering:Hide()
   -- Beside the objectives, when they're in more than one area: another spot
   -- for them (this one's camped, respawning, too busy). A labelled button,
   -- since it's the one you reach for in a hurry. Placed by HUD.Update.
@@ -354,15 +408,38 @@ end
 
 ---------------------------------------------------------------- on the way
 
+-- Gathering as you go, above the box: shown while the journey has things
+-- to gather, sized to its lines. The box's clamp counts it, so it stays on
+-- screen with the box.
+local function showGathering(rows)
+  local section = frame.gathering
+  local n = math.min(#rows, GATHER_ROWS)
+  for i, r in ipairs(section.rows) do
+    local row = i <= n and rows[i] or nil
+    r.row = row
+    r.text:SetText(row and row.text or "")
+    r:SetShown(row ~= nil)
+  end
+  frame.gatheringHeight = n > 0 and ((n + 1) * GATHER_LINE + 2 * GATHER_PAD) or 0
+  section:SetHeight(math.max(frame.gatheringHeight, 1))
+  section:SetShown(n > 0)
+  if frame.SetClampRectInsets then
+    frame:SetClampRectInsets(0, 0, n > 0 and (frame.gatheringHeight + GATHER_GAP) or 0, 0)
+  end
+end
+
 -- Looks again at what's on the way (every WAYSIDE_EVERY seconds, or now
--- when `force`): the count on the + button while the drawer is closed, and
--- the drawer itself while it's open (or when you left it open).
+-- when `force`): Gathering as you go above the box, the count of offers on
+-- the + button while the drawer is closed, and the drawer itself while it's
+-- open (or when you left it open).
 local function refreshWayside(force)
   local now = GetTime and GetTime()
   if not force and now and frame.waysideAt and now - frame.waysideAt < WAYSIDE_EVERY then return end
   frame.waysideAt = now
-  local ok, count = pcall(ns.Wayside.Count)
-  frame.waysideCount = ok and count or 0
+  local ok, w = pcall(ns.Wayside.Get, false)
+  if not ok then w = { gathering = {}, offers = {}, more = 0 } end
+  frame.waysideCount = #w.offers + (w.more or 0)
+  showGathering(w.gathering)
   ns.Drawer.Sync()
   local open = ns.Drawer.IsShown()
   frame.add.count:SetText((frame.waysideCount > 0 and not open) and tostring(frame.waysideCount) or "")
@@ -377,6 +454,24 @@ end
 function HUD.Wayside()
   if not frame then return {} end
   return { badge = frame.add.count:GetText() or "", count = frame.waysideCount or 0 }
+end
+
+-- Gathering as you go, above the box (for tests): { shown, heading, rows =
+-- the lines' text, top to bottom }.
+function HUD.Gathering()
+  if not frame then return { rows = {} } end
+  local rows = {}
+  for _, r in ipairs(frame.gathering.rows) do
+    if r:IsShown() then rows[#rows + 1] = r.text:GetText() end
+  end
+  return { shown = frame.gathering:IsShown(), heading = frame.gathering.heading:GetText(), rows = rows }
+end
+
+-- What the drawer opens above when there's no room under the box: the
+-- section above it when that shows, else the box.
+function HUD.Top()
+  if frame and frame.gathering:IsShown() then return frame.gathering end
+  return frame
 end
 
 -- The step and its count, for the tooltip when the box shows only the stop

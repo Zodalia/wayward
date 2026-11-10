@@ -8337,30 +8337,30 @@ do
   for _, r in ipairs(ns.JourneyOverview.Rows()) do if r.state == "gather" then gatherRow = r end end
   check(gatherRow and gatherRow.stop.action.kind == "complete", "the window lists the objectives as gathered as you go")
 
-  -- The directions box: the + says how many things are on the way while its
-  -- drawer is closed; open, the drawer lists them under "Gathering as you go".
-  local function gathering()
-    local out = {}
-    for _, r in ipairs(ns.Drawer.Rows()) do
-      if r.kind == "gather" then out[#out + 1] = r.text end
-    end
-    return out
-  end
+  -- The directions box: "Gathering as you go" is a section of its own above
+  -- it, shown without asking; the drawer behind the + is for what you could
+  -- add, so the + doesn't count what's gathered and the drawer doesn't list it.
+  local function gathering() return ns.HUD.Gathering().rows end
   ns.Drawer.Hide()
   ns.HUD.Update()
-  check(ns.HUD.Wayside().badge == "2" and not ns.Drawer.IsShown(),
-    "the drawer closed, the + says 2: " .. ns.HUD.Wayside().badge)
   local lines = ns.Wayside.Lines()
   check(#lines == 2 and lines[1].entry and lines[2].entry and not lines[1].entry.near and not lines[2].entry.near,
     "far from every spawn: both things listed, nearest first, neither around you")
+  check(ns.HUD.Gathering().shown and ns.HUD.Gathering().heading == "Gathering as you go" and not ns.Drawer.IsShown(),
+    "the drawer closed: Gathering as you go shows above the box all the same")
+  check(#gathering() == 2 and gathering()[1] == lines[1].text and gathering()[2] == lines[2].text,
+    "each thing on a line of its own: " .. #gathering())
+  check(ns.HUD.Wayside().badge == "" and ns.HUD.Wayside().count == 0,
+    "nothing to add: no count on the +: " .. ns.HUD.Wayside().badge)
   ns.Drawer.Toggle()
   ns.HUD.Update()
-  check(ns.Drawer.IsShown() and ns.Drawer.Open() and ns.HUD.Wayside().badge == "" and ns.Drawer.Selected() == nil
-    and ns.Drawer.Headings()[2] == "Gathering as you go",
-    "opened: the drawer under the box, on what's on the way, no count on the +")
-  check(#gathering() == 2 and gathering()[1] == lines[1].text and gathering()[2] == lines[2].text,
-    "each thing on a row of its own: " .. #gathering())
-  check(not ns.Drawer.Rows()[1].add and not ns.Drawer.Rows()[1].dismiss, "nothing to add or wave off: they're on the journey")
+  local gatherInDrawer = false
+  for _, r in ipairs(ns.Drawer.Rows()) do if r.kind == "gather" then gatherInDrawer = true end end
+  for _, h in ipairs(ns.Drawer.Headings()) do if h == "Gathering as you go" then gatherInDrawer = true end end
+  check(ns.Drawer.IsShown() and ns.Drawer.Open() and ns.Drawer.Selected() == nil and not gatherInDrawer
+    and ns.HUD.Gathering().shown, "opened: the drawer lists none of it; the section stays above the box")
+  ns.Drawer.Hide()
+  ns.HUD.Update()
 
   -- Passing through the area: not waited in, on to Oslow.
   player.x, player.y = 0.5, 0.52
@@ -8373,7 +8373,7 @@ do
   check(lines[1].entry and lines[1].entry.name == "Goretusk" and lines[1].text:find("0/3", 1, true)
     and lines[2].entry and lines[2].entry.name == "Stringy Vulture" and not lines[2].entry.near,
     "around you: the goretusks first, with the count; then the vultures, farther off")
-  check(gathering()[1]:find("Goretusk", 1, true), "and the drawer says so")
+  check(gathering()[1]:find("Goretusk", 1, true), "and the section above the box says so")
 
   -- Planned again while in the goretusks' area: you're gathering already,
   -- so the way isn't turned aside to another area: straight for Oslow.
@@ -8392,7 +8392,7 @@ do
   -- Walking on: the list follows what's around you.
   player.x, player.y = 0.15, 0.17
   ns.HUD.Update()
-  check(gathering()[1]:find("Stringy Vulture", 1, true), "among the vultures: the drawer says so")
+  check(gathering()[1]:find("Stringy Vulture", 1, true), "among the vultures: the section says so")
   -- A third thing to gather, right here too: one row more.
   NPCS[9603] = { name = "Murloc Raider", minLevel = 16, maxLevel = 17, spawns = { [44] = { { 16, 20 } } } }
   QUESTS[4600].objectives[1][3] = { 9603 }
@@ -8400,11 +8400,7 @@ do
   refreshData()
   fire("QUEST_LOG_UPDATE")
   ns.HUD.Update()
-  check(#gathering() == 3, "a longer list: " .. #gathering() .. " rows")
-  ns.Drawer.Toggle()
-  ns.HUD.Update()
-  check(not ns.Drawer.IsShown() and not ns.Drawer.Open() and ns.HUD.Wayside().badge == "3",
-    "closed again: the + shows the count, 3")
+  check(#gathering() == 3, "a longer list: " .. #gathering() .. " lines")
   QUESTS[4600].objectives[1][3], objectives[3], NPCS[9603] = nil, nil, nil
   refreshData()
   player.x, player.y = 0.5, 0.52
@@ -8460,7 +8456,8 @@ do
     "all gathered: straight to the hand-in")
   check(#ns.Wayside.Lines() == 0, "and nothing on the list")
   ns.HUD.Update()
-  check(ns.HUD.Wayside().badge == "" and ns.HUD.Wayside().count == 0, "and no count on the +")
+  check(ns.HUD.Wayside().badge == "" and ns.HUD.Wayside().count == 0 and not ns.HUD.Gathering().shown,
+    "and no count on the +, no section above the box")
 
   -- A stop elsewhere, nothing it needs: an area far off the way isn't a detour.
   objectives[1] = { text = "Stringy Vulture slain: 1/4", finished = false }

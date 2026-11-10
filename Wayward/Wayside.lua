@@ -1,16 +1,19 @@
 local _, ns = ...
 
--- On the way: the one list of what's near the journey you're on, for the
--- one place it shows (the drawer on the directions box, UI/Drawer.lua, and
--- the journey overview's "Detours on the way"). Two kinds of row:
+-- On the way: the one list of what's near the journey you're on. Two kinds
+-- of row, each with its place:
 --
 --   gathering  what the journey is already gathering as you go, with counts
 --              (Journey.ShoppingList). Nothing to add: it's on the journey.
+--              Shown in a section of its own above the directions box
+--              (UI/HUD.lua), whenever there's something.
 --   offers     what you could add, each with a + and the time it adds where
 --              that's known: quests in your log with something on the way,
 --              quest givers, hand-ins and vendors you need near the way
 --              (OnTheWay.lua), and a new suggestion from For you (which
 --              would have been a toast, were you not on a journey).
+--              Shown in the drawer behind the directions box's + button
+--              (UI/Drawer.lua) and the journey overview, never unasked.
 --
 -- Wayside.Get(routed) -> { gathering = { row... }, more (gathering things
 --   past the rows), offers = { row... } }
@@ -21,8 +24,8 @@ local _, ns = ...
 -- An offer is a suggestion and no more (pillar 1): it makes no sound, the
 -- arrow doesn't move for it, and one you dismiss stays away for the rest of
 -- the journey. `routed`: also the offers that need routes worked out
--- (OnTheWay.Get); without it only what's cheap to know, for the count on
--- the closed drawer's button.
+-- (OnTheWay.Get); without it only what's cheap to know, for the section
+-- above the directions box and the count on the + button, every second.
 
 local Wayside = {}
 ns.Wayside = Wayside
@@ -171,11 +174,11 @@ function Wayside.Get(routed)
   return out
 end
 
--- How many things there are to glance at: what you're gathering and what's
--- on offer (the cheap ones: see `routed`).
+-- How many things are on offer, for the + button's count (the cheap ones:
+-- see `routed`). What you're gathering is on screen already, so not counted.
 function Wayside.Count()
   local w = Wayside.Get(false)
-  return (w.things or 0) + #w.offers + w.more
+  return #w.offers + w.more
 end
 
 -- Adds an offer to the journey. Returns true when the journey changed.

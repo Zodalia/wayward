@@ -110,10 +110,14 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   two doesn't flip the arrow back and forth. Detail
   on demand: with `/ww detail stops` (or the option) the box shows only the
   stop you're heading for and the compass, and the step when you hover it.
+- **Gathering as you go**: a section of its own above the directions box,
+  shown whenever the journey has things to gather on the way: what, with
+  counts, what's around you first (up to four, then "+N more"); hover a
+  line for which quest it's for and where the nearest are. It's already on
+  the journey, so there's nothing to add and nothing to wave off.
 - **On the way**: the directions box's + button (bottom right) opens a
-  drawer under the box, the one place for everything near the journey
-  you're on (`Wayside.lua`, `UI/Drawer.lua`). **Gathering as you go**: what
-  the journey is gathering, with counts, what's around you first.
+  drawer under the box, for what you could add near the journey you're on
+  (`Wayside.lua`, `UI/Drawer.lua`).
   **You could add**: up to four offers, each with **Add** and an x to wave
   it off: a quest in your log with objectives on your way ("on the way",
   "around you"; adding it takes in the rest of the quest), quest givers,
@@ -125,7 +129,7 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   inn, auction house and, for hunters, stable master. Pick one and the list
   is the five places that add least to the journey, each with the time it
   adds and Add; pick it again to go back. The drawer stays open until you
-  close it (per character). Closed, the + carries a count of what's there
+  close it (per character). Closed, the + carries a count of the offers
   and nothing else asks for a look. It opens on what's on the way, or on
   repairs when your gear is at 75% or less and on vendors when your bags
   are full. Plain
