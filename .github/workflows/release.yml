@@ -1,0 +1,81 @@
+# Packages Wayward with the BigWigs packager and publishes it when a tag is
+# pushed (annotated tags: git tag -a v0.4.0 -m "Wayward 0.4.0").
+#
+# The tag decides the file type, as CurseForge does: a tag containing "alpha"
+# is an alpha, one containing "beta" a beta, anything else a release.
+#
+# Where it goes:
+# - GitHub: always, as a release with the zip attached.
+# - CurseForge: once Wayward.toc has "## X-Curse-Project-ID" and the
+#   repository has the CF_API_TOKEN secret.
+# - WoWInterface / Wago: the same, with X-WoWI-ID + WOWI_API_TOKEN and
+#   X-Wago-ID + WAGO_API_TOKEN.
+#
+# The smoke tests run first (the three runs CLAUDE.md asks for before a
+# commit, and tests/smoke.lua); a failing test publishes nothing.
+name: Release
+
+on:
+  push:
+    tags:
+      - '**'
+  workflow_dispatch: # a dry run: tests and a zip, no upload anywhere
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Lua 5.4
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install lupa (Lua 5.1, the game's Lua)
+        run: python -m pip install 'lupa>=2,<3'
+
+      - name: Smoke tests (Forever)
+        run: lua5.4 tests/wayward_smoke.lua
+
+      - name: Smoke tests (Classic Era)
+        run: WAYWARD_GAME=era lua5.4 tests/wayward_smoke.lua
+
+      - name: Smoke tests (Lua 5.1)
+        run: python -I tools/lua51.py tests/wayward_smoke.lua
+
+      - name: Smoke tests (older suite)
+        run: lua5.4 tests/smoke.lua
+
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # the whole history, for the changelog
+
+      - name: Package and publish
+        if: github.ref_type == 'tag'
+        uses: BigWigsMods/packager@v2
+
+      - name: Package only (dry run)
+        if: github.ref_type != 'tag'
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wayward
+          path: .release/*.zip

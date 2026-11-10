@@ -8,6 +8,39 @@ and the checklist. Written 2026-10-20 against version 0.4.0.
 Only `Wayward/` (see `.pkgmeta` and `tools/package.sh`). `WFProbe/` (the dev
 probe), `tests/`, `tools/` and `docs/` stay in the repository.
 
+## Publishing
+
+Pushing a tag publishes (`.github/workflows/release.yml`, the BigWigs
+packager): the smoke tests run, then the zip goes to a GitHub release and,
+once set up, to CurseForge. The tag is the version: the packager writes it
+over `@project-version@` in `Wayward.toc` and `Core.lua` (straight from the
+repository the addon calls itself "dev"). A tag containing `alpha` is an
+alpha file, one containing `beta` a beta, anything else a release.
+
+```bash
+git tag -a v0.4.0-beta1 -m "Wayward 0.4.0 beta 1"
+git push origin v0.4.0-beta1
+```
+
+Run the workflow by hand (Actions, Release, Run workflow) for a dry run: the
+tests and a zip to download, nothing uploaded.
+
+CurseForge setup, once:
+
+1. Create the project (see the checklist). For testing before going public,
+   mark it Experimental: it stays out of CurseForge search and the app, but
+   it is still moderated. Alpha files are another quiet option: they show on
+   the website but reach the app only for players who opted into alphas.
+2. Add `## X-Curse-Project-ID: <id>` to `Wayward/Wayward.toc` (the ID is on
+   the project page).
+3. Create an API token in your CurseForge account and save it as the
+   repository secret `CF_API_TOKEN`.
+4. Repository settings, Actions, Workflow permissions: read and write, so the
+   workflow can create the GitHub release.
+
+The TOC lists Classic Era (115xx) and Forever (16001) together; the packager
+uploads one file marked for both.
+
 The addon bundles no third-party data. `Wayward/Data/` holds our own
 hand-made tables: one seeded trainer, boat/zeppelin/tram/portal docks, dungeon
 entrances and vendor goods tiers, all approximate vanilla knowledge marked
@@ -69,6 +102,7 @@ the project page early to hold the name.
 - [ ] CurseForge project: game versions Forever and Classic Era (1.15.9), category Quests & Leveling,
       description from the README's first three sections, QuestieDB named
       as the optional dependency.
+- [ ] CurseForge setup from "Publishing" above; a dry run of the workflow.
 - [ ] Tag `v0.4.0` on the branch that ships; merge to `main` (empty today).
 
 ## Audit, 2026-10-20

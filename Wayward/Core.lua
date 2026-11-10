@@ -1,6 +1,9 @@
 local ADDON, ns = ...
 
-ns.VERSION = "0.4.0"
+-- The packager (BigWigs packager, tools/package.sh) writes the release tag in
+-- here; straight from the repository it stays a keyword, so call that "dev".
+ns.VERSION = "@project-version@"
+if ns.VERSION:sub(1, 1) == "@" then ns.VERSION = "dev" end
 ns.data = {}
 
 function ns.print(msg)
