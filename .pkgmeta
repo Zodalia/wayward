@@ -2,6 +2,12 @@
 # rest of the repository (the WFProbe dev addon, tests, tools, docs) stays out.
 package-as: Wayward
 
+# The changelog players see (CurseForge, the GitHub release) is written by
+# hand; the generated one is every commit message since the last tag.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 move-folders:
   Wayward/Wayward: Wayward
 

@@ -17,6 +17,13 @@ over `@project-version@` in `Wayward.toc` and `Core.lua` (straight from the
 repository the addon calls itself "dev"). A tag containing `alpha` is an
 alpha file, one containing `beta` a beta, anything else a release.
 
+Before tagging, add the release to the top of `CHANGELOG.md`: what changed
+for players, in the Vocabulary's words, not the commit log. The packager
+uploads that whole file as the changelog on CurseForge and on the GitHub
+release (`manual-changelog` in `.pkgmeta`), and it ships in the zip. (The
+generated changelog was every commit since the last tag; for the first tag
+that was the whole history, which GitHub refused as a release body.)
+
 ```bash
 git tag -a v0.4.0-beta1 -m "Wayward 0.4.0 beta 1"
 git push origin v0.4.0-beta1

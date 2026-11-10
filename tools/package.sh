@@ -17,6 +17,7 @@ rm -f "$out"
 stage=$(mktemp -d)
 cp -R Wayward "$stage/Wayward"
 cp LICENSE "$stage/Wayward/LICENSE.txt"
+cp CHANGELOG.md "$stage/Wayward/CHANGELOG.md"
 find "$stage/Wayward" \( -name '*.lua' -o -name '*.toc' \) -exec sed -i.bak "s/@project-version@/$version/g" {} + &&
   find "$stage/Wayward" -name '*.bak' -delete
 (cd "$stage" && zip -qr "$OLDPWD/$out" Wayward -x '*.DS_Store' -x '*/.*')
