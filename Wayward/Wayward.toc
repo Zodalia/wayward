@@ -2,6 +2,7 @@
 ## Title: Wayward
 ## Notes: Levelling helper for WoW Forever and Classic Era (Season of Discovery, Hardcore): what to do next for your character, with step-by-step directions by foot, flight path, boat and zeppelin.
 ## X-Website: https://github.com/Zodalia/wayward
+## X-Curse-Project-ID: 1796257
 ## Author: Zodalia
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\Wayward\Media\Icon
