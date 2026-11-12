@@ -347,6 +347,33 @@ do
   ns.Fire("DATA_CHANGED")
 end
 check(ns.Router.Describe(r.route, 2) == "Fly to Stormwind, Elwynn", "step 2 text")
+do
+  -- Lakeshire not learned yet: the way out still goes by its flight master,
+  -- learning it there; but you can't fly into a flight path you don't have.
+  ns.charDB.knownTaxi[5] = nil
+  local here = ns.Geo.PlayerNode()
+  local stormwind = ns.Geo.Node(1453, 0.5, 0.5, "Stormwind")
+  local function modesOf(route)
+    local out = {}
+    for _, s in ipairs(route and route.steps or {}) do out[#out + 1] = s.mode end
+    return table.concat(out, ",")
+  end
+  local out = ns.Router.Plan(here, stormwind, ns.Network.Build())
+  check(modesOf(out) == "walk,fly,walk" and out.steps[1].to.learn
+    and ns.Router.Describe(out, 1) == "Learn the flight path at Lakeshire, Redridge",
+    "an unlearned flight path on the way is learned and flown from: " .. modesOf(out) .. " ("
+      .. (out and ns.Router.Describe(out, 1) or "no route") .. ")")
+  local back = ns.Router.Plan(stormwind, here, ns.Network.Build())
+  check(not modesOf(back):find("fly", 1, true), "but never flown to: " .. modesOf(back))
+  local savedKnownOn = ns.Harvest.FlightsKnownOn
+  ns.Harvest.FlightsKnownOn = function() return false end
+  ns.Fire("DATA_CHANGED")
+  check(not modesOf(ns.Router.Plan(here, stormwind, ns.Network.Build())):find("fly", 1, true),
+    "where we don't know your flight paths, none is counted as there to learn")
+  ns.Harvest.FlightsKnownOn = savedKnownOn
+  ns.charDB.knownTaxi[5] = true
+  ns.Fire("DATA_CHANGED")
+end
 
 player.mapID, player.x, player.y = 1439, 0.5, 0.5
 local far = ns.Trainers.Results()[1]
@@ -376,6 +403,7 @@ do
   local function reference(start, goal, net)
     local nodes, links = { start, goal }, {}
     for _, n in ipairs(net.flights) do nodes[#nodes + 1] = n end
+    for _, n in ipairs(net.learnable) do nodes[#nodes + 1] = n end
     for _, t in ipairs(net.transports) do
       nodes[#nodes + 1] = t.a
       local ia = #nodes
@@ -396,7 +424,7 @@ do
         if not done[j] and j ~= cur then
           local c = walk(nodes[cur], nodes[j])
           if c and best + c < dist[j] then dist[j] = best + c end
-          if nodes[cur].isFlight and nodes[j].isFlight then
+          if nodes[cur].isFlight and nodes[j].isFlight and not nodes[j].learn then
             c = fly(nodes[cur], nodes[j])
             if c and best + c < dist[j] then dist[j] = best + c end
           end
@@ -1312,6 +1340,34 @@ do
   ns.charDB.knownTaxi, player.mapID = savedTaxi, 1433
   GetItemCount, GetBindLocation, GetItemCooldown, GetTime = savedCount, nil, nil, nil
   ns.charDB.hearth = nil
+end
+
+io.write("flight paths learned on the way\n")
+do
+  -- In Redridge without Lakeshire: into Stormwind (learning Lakeshire on the
+  -- way out), then back to Redridge, flying in now it's yours.
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  ns.charDB.knownTaxi[5] = nil
+  local town = stopAt(1453, 0.5, 0.5, "Stormwind errand", 105)
+  local back = stopAt(1433, 0.52, 0.52, "Lakeshire errand", 106)
+  back.after = { town }
+  local planned = ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "There and back", stops = { town, back } })
+  local legs, current = {}, {}
+  for _, st in ipairs(planned and planned.steps or {}) do
+    current[#current + 1] = st.mode .. (st.mode == "fly" and st.from.learn and "(learn)" or "")
+    if st.stop then
+      legs[#legs + 1] = table.concat(current, ",")
+      current = {}
+    end
+  end
+  check(legs[1] == "walk,fly(learn),walk" and legs[2] and legs[2]:find("fly", 1, true)
+    and not legs[2]:find("learn", 1, true),
+    "learned on the first leg, flown back to on the second: " .. table.concat(legs, " | "))
+  local net = ns.Network.Build()
+  check(ns.Router.Learned(net, 5) == ns.Router.Learned(ns.Router.Learned(net, 5), 5)
+    and ns.Router.Learned(net, 5).base == net, "the network with it learned is kept and reused")
+  ns.charDB.knownTaxi[5] = true
+  ns.Fire("DATA_CHANGED")
 end
 
 io.write("pages\n")

@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- Plans the fastest trip from A to B over a travel network (see Network.lua):
 -- walking (zone to zone through the links between them, see Walk.lua), flying
--- between known flight paths, and boats/zeppelins/tram/portals. Pure logic
+-- between known flight paths (or from one you walk up to and learn), and
+-- boats/zeppelins/tram/portals. Pure logic
 -- over route nodes, no game API.
 
 local Router = {}
@@ -45,10 +46,28 @@ end
 -- direct edges (walk, fly, transport) up front, then Dijkstra from a node the
 -- first time a route starts there. A route is then: walk to a network node,
 -- the best trip through the network, walk to the goal (or just walk).
+-- A network that's another one with flight paths learned on the way
+-- (Router.Learned) shares its nodes, in the same order, and its walks.
 local function prepare(net)
   if net.paths then return net.paths end
+  local base = net.base or net
   local nodes, links = {}, {}
   for _, n in ipairs(net.flights) do nodes[#nodes + 1] = n end
+  for _, n in ipairs(net.learnable or {}) do
+    -- Learned earlier on the journey: a flight path like the ones you know.
+    if net.learned and net.learned[n.nodeID] then
+      base.copies = base.copies or {}
+      local copy = base.copies[n]
+      if not copy then
+        copy = {}
+        for k, v in pairs(n) do copy[k] = v end
+        copy.learn = nil
+        base.copies[n] = copy
+      end
+      n = copy
+    end
+    nodes[#nodes + 1] = n
+  end
   for _, t in ipairs(net.transports) do
     nodes[#nodes + 1] = t.a
     local ia = #nodes
@@ -60,14 +79,20 @@ local function prepare(net)
     table.insert(links[ib], { to = ia, transport = t })
   end
   local count = #nodes
-  -- Best direct edge between two network nodes: walking, or flying between flight paths.
+  -- Best direct edge between two network nodes: walking, or flying between
+  -- flight paths (from one you'd learn on the way, never to one).
   local edge = {}
+  local walks = base.walks or {}
+  base.walks = walks
   for i = 1, count do
     local row, a = {}, nodes[i]
+    local walked = walks[i] or {}
+    walks[i] = walked
     for j = 1, count do
       if i ~= j then
-        local cost, mode = walkCost(a, nodes[j]), "walk"
-        if a.isFlight and nodes[j].isFlight then
+        if walked[j] == nil then walked[j] = walkCost(a, nodes[j]) or false end
+        local cost, mode = walked[j] or nil, "walk"
+        if a.isFlight and nodes[j].isFlight and not nodes[j].learn then
           local fly = flyCost(a, nodes[j])
           if fly and (not cost or fly < cost) then cost, mode = fly, "fly" end
         end
@@ -110,6 +135,40 @@ local function prepare(net)
 
   net.paths = { nodes = nodes, from = from }
   return net.paths
+end
+
+-- The flight paths `route` learns on the way (flies on from one you don't
+-- have yet): their taxi nodeIDs.
+function Router.LearnedOn(route)
+  local out = {}
+  for _, step in ipairs(route and route.steps or {}) do
+    if step.mode == "fly" and step.from.learn and step.from.nodeID then out[#out + 1] = step.from.nodeID end
+  end
+  return out
+end
+
+-- `net` with flight path `nodeID` learned too, for the rest of a journey
+-- after the leg that learns it: you can fly there as well as from there.
+-- Kept on the network it's made from (so re-plans don't work its paths out
+-- again), and gone with it when that's rebuilt.
+function Router.Learned(net, nodeID)
+  if not nodeID or (net.learned and net.learned[nodeID]) then return net end
+  local base = net.base or net
+  local learned, ids = { [nodeID] = true }, { nodeID }
+  for id in pairs(net.learned or {}) do
+    learned[id] = true
+    ids[#ids + 1] = id
+  end
+  table.sort(ids)
+  local key = table.concat(ids, ",")
+  base.variants = base.variants or {}
+  local v = base.variants[key]
+  if not v then
+    v = { flights = base.flights, learnable = base.learnable, transports = base.transports,
+      knownFlights = base.knownFlights, base = base, learned = learned }
+    base.variants[key] = v
+  end
+  return v
 end
 
 -- Returns { steps = { {mode, from, to, seconds, kind} ... }, seconds } or nil.
@@ -289,6 +348,10 @@ function Router.Describe(route, index, travelOnly)
     return string.format(TRANSPORT_VERB[step.kind] or "Travel to %s", step.to.label)
   end
   if nextStep and nextStep.mode == "fly" then
+    if step.to.learn then
+      return string.format("Learn the flight path at %s%s", step.to.label,
+        step.to.npc and (" from " .. step.to.npc) or "")
+    end
     if step.to.npc then return string.format("Talk to %s, the flight master at %s", step.to.npc, step.to.label) end
     return "Talk to the flight master at " .. step.to.label
   end

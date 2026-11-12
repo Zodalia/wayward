@@ -1264,6 +1264,17 @@ local function viaHearth(net, node, goal)
   return cache.routes[goal] or nil
 end
 
+-- Whether `route` learns every flight path `leg`'s own way does (the legs
+-- after it count on them).
+local function learnsAsMuch(route, leg)
+  local learned = {}
+  for _, id in ipairs(ns.Router.LearnedOn(route)) do learned[id] = true end
+  for _, id in ipairs(ns.Router.LearnedOn(leg.route)) do
+    if not learned[id] then return false end
+  end
+  return true
+end
+
 local function hearthLeg(legs, net)
   local hearth = ns.Hearth and ns.Hearth.Get()
   if not hearth then return nil end
@@ -1273,8 +1284,11 @@ local function hearthLeg(legs, net)
     if leg.route.seconds >= cast + HEARTH_MIN_SAVING then
       -- Through the leg's gathering area too; nil from throughVia means the
       -- area is at the inn or the stop (or out of reach), and the plain way passes it.
-      local via = leg.stop.via and throughVia(hearth.node, leg.stop.via, leg.stop.node, net)
-        or viaHearth(net, hearth.node, leg.stop.node)
+      local legNet = leg.net or net
+      local via = leg.stop.via and throughVia(hearth.node, leg.stop.via, leg.stop.node, legNet)
+        or viaHearth(legNet, hearth.node, leg.stop.node)
+      -- Not where it would skip a flight path the legs after count on.
+      if via and not learnsAsMuch(via, leg) then via = nil end
       local saves = via and leg.route.seconds - (cast + via.seconds) or 0
       local wait = math.max(0, hearth.readyIn - leg.at)
       if saves - wait >= HEARTH_MIN_SAVING then
@@ -1541,14 +1555,18 @@ function Journey.Plan(start, def, net)
   local legs, from, clock = {}, start, 0
   refresh()
   local picked = {} -- quests picked up earlier on the journey: their areas count as vias after
+  -- A flight path learned on one leg is yours for the legs after it
+  -- (Router.Learned). Stop order is found without them.
+  local legNet = net
   for _, stop in ipairs(ordered) do
     local via = pickVia(gathers, from, stop, picked, from == start)
-    local route = via and stop.node and throughVia(from, via, stop.node, net)
+    local route = via and stop.node and throughVia(from, via, stop.node, legNet)
     stop.via = route and via or nil
-    route = route or (stop.node and ns.Router.Plan(from, stop.node, net))
+    route = route or (stop.node and ns.Router.Plan(from, stop.node, legNet))
     if stop.action and stop.action.kind == "pickup" and stop.action.questID then picked[stop.action.questID] = true end
     if route then
-      legs[#legs + 1] = { from = from, stop = stop, route = route, at = clock }
+      legs[#legs + 1] = { from = from, stop = stop, route = route, at = clock, net = legNet }
+      for _, nodeID in ipairs(ns.Router.LearnedOn(route)) do legNet = ns.Router.Learned(legNet, nodeID) end
       clock = math.max(clock + route.seconds, Journey.RespawnIn(stop))
       from = stop.node
     else

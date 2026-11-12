@@ -46,18 +46,28 @@ function Network.Build()
   if cached and cachedKey == key then return cached end
   local faction = UnitFactionGroup("player")
   local known = ns.charDB.knownTaxi
-  local net = { flights = {}, transports = {}, knownFlights = 0 }
+  local net = { flights = {}, learnable = {}, transports = {}, knownFlights = 0 }
 
   for _, continent in pairs(ns.Geo.Continents()) do
+    -- Where we know which flight paths you have, the others are yours to
+    -- learn on the way: walk up, talk to the flight master, fly on from
+    -- there (but not to one: you can't fly where you've never been).
+    -- Elsewhere every one would look new, so only the known ones count.
+    local learn = ns.Harvest.FlightsKnownOn(continent)
     for _, t in ipairs(C_TaxiMap.GetTaxiNodesForMap(continent) or {}) do
-      if known[t.nodeID] and usableTaxi(t, faction) and t.position then
+      if (known[t.nodeID] or learn) and usableTaxi(t, faction) and t.position then
         local node = ns.Geo.Node(continent, t.position.x, t.position.y, t.name)
         if node then
           node.isFlight, node.nodeID = true, t.nodeID
           -- Who you talk to there: one you've met, else the data's.
           node.npc = ns.Harvest.NPCNear("flightMaster", node, FLIGHT_MASTER_RADIUS)
             or sourceFlightMaster(node, FLIGHT_MASTER_RADIUS)
-          net.flights[#net.flights + 1] = node
+          if known[t.nodeID] then
+            net.flights[#net.flights + 1] = node
+          else
+            node.learn = true
+            net.learnable[#net.learnable + 1] = node
+          end
         end
       end
     end
