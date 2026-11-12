@@ -70,7 +70,8 @@ clients (`WAYWARD_GAME=era`), against stubs.
 Options > AddOns > Wayward has every setting, in sections: **Navigation
 aid** (the compass in the directions box, TomTom's arrow, and whether the
 box shows every step or just the stop you're heading for; that one is per
-character, `/ww detail steps|stops`), **NPCs** (the
+character, `/ww detail steps|stops`; and the small bar with no journey on,
+`/ww idle`), **NPCs** (the
 star over the NPC you are heading for, and the game's friendly nameplates it
 needs), **Journeys and quests** (the question when you pick up a quest, whether
 the journey overview opens by itself when a journey starts (off by default), the new-journey
@@ -110,6 +111,11 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   two doesn't flip the arrow back and forth. Detail
   on demand: with `/ww detail stops` (or the option) the box shows only the
   stop you're heading for and the compass, and the step when you hover it.
+  With no journey or directions on, the box stays as a small bar: **Suggest
+  a journey** starts the best suggestion from your quest log and where you
+  are (quests to hand in, or quests to finish close together; hover for which
+  and why), and **Open Wayward** opens the window. Its x, `/ww idle` or the
+  option turns the bar off.
 - **Gathering as you go**: a section of its own above the directions box,
   shown whenever the journey has things to gather on the way: what, with
   counts, what's around you first (up to four, then "+N more"); hover a

@@ -38,6 +38,11 @@ local SECTIONS = {
         .. "Per character; /ww detail steps|stops changes it too.",
       function() return ns.Nav.Detail() ~= "stops" end,
       function(v) ns.Nav.SetDetail(v and "steps" or "stops") end },
+    { "WAYWARD_IDLE_BOX", "Small bar with no journey on",
+      "With no journey or directions on, the directions box stays as a small bar: open Wayward, or suggest a journey "
+        .. "from your quest log and where you are. Off: the box shows only while you're on a journey. /ww idle changes it too.",
+      function() return ns.HUD.IdleWanted() end,
+      function(v) ns.SetSetting("idleBox", v) end },
   },
   { "NPCs",
     { "WAYWARD_MARKER", "Star over the NPC you're heading for",
@@ -167,7 +172,7 @@ function Options.Open()
   if category and Settings.OpenToCategory then
     Settings.OpenToCategory(category:GetID())
   else
-    ns.print("options: /ww compass, /ww tomtom, /ww toasts, /ww marker, /ww worldmap, /ww minimap journey and /ww minimap turn those on or off; "
+    ns.print("options: /ww compass, /ww tomtom, /ww toasts, /ww marker, /ww worldmap, /ww minimap journey, /ww minimap and /ww idle turn those on or off; "
       .. "/ww detail steps|stops sets what the directions box shows.")
   end
 end

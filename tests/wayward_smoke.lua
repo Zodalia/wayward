@@ -9512,6 +9512,80 @@ do
   ns.Panel.Refresh()
 end
 -- ===== home: where to quest (end) =====
+-- ===== journey: the small bar with no journey on =====
+io.write("small bar with no journey on\n")
+do
+  local F, H = ns.ForYou, ns.HUD
+  local realResults, realWhenReady = F.Results, F.WhenReady
+  local wasIdle = ns.db.settings.idleBox
+  ns.db.settings.idleBox = nil
+  local spot = { player.mapID, player.x, player.y }
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local function row(kind, title, relevance, why)
+    local goal = ns.Geo.Node(1433, 0.5 + relevance / 10, 0.6)
+    goal.label = title
+    return { id = kind .. title, kind = kind, title = title, why = why, relevance = relevance, goal = goal,
+      route = ns.Router.Plan(ns.Geo.PlayerNode(), goal, ns.Network.Build()) }
+  end
+  -- A zone more relevant than anything from the log: still not what's suggested.
+  local rows = { row("zone", "Quest in Wetlands", 0.9), row("finish", "Finish 2 quests near Lakeshire", 0.5),
+    row("handin", "Hand in 1 quest in Lakeshire", 0.7, "Ready to hand in, 1 min away") }
+  local asked = 0
+  F.Results = function() return rows end
+  F.WhenReady = function(fn) asked = asked + 1; return fn(rows) end
+
+  ns.Nav.Stop()
+  local hud = H.Frame()
+  check(H.IdleShown() and hud.idle:IsShown() and not hud.title:IsShown() and not hud.add:IsShown()
+    and not hud.holder:IsShown(), "no journey: the directions box stays, as the small bar only")
+  check(H.Width() < 330, "the small bar is narrower than the box: " .. tostring(H.Width()))
+  check(H.LogSuggestion(rows).title == "Hand in 1 quest in Lakeshire",
+    "the suggestion is the most relevant one from your quest log, not the most relevant of all")
+  local tip = H.SuggestTooltip()
+  check(tip[1] == "Hand in 1 quest in Lakeshire" and tip[2] == "Ready to hand in, 1 min away",
+    "hover the button for what it would start, and why")
+
+  -- Open Wayward opens the window (and doesn't close it when it's open).
+  ns.Panel.Hide()
+  hud.idle.open.scripts.OnClick()
+  hud.idle.open.scripts.OnClick()
+  check(ns.Panel.IsShown(), "Open Wayward opens the window")
+  ns.Panel.Hide()
+
+  -- Suggest a journey: worked out afresh, then started; the box is the directions box again.
+  hud.idle.suggest.scripts.OnClick()
+  check(asked == 1 and ns.Nav.active and ns.Nav.active.title == "Hand in 1 quest in Lakeshire",
+    "Suggest a journey starts the quest log's best suggestion from here")
+  ns.HUD.Update()
+  check(not H.IdleShown() and not hud.idle:IsShown() and hud.title:IsShown() and hud.add:IsShown()
+    and H.CompassShown() == (ns.db.settings.showArrow ~= false), "on the way: the full directions box is back")
+  ns.Nav.Stop()
+  check(H.IdleShown() and not hud.title:IsShown(), "stopped: the small bar again")
+
+  -- Nothing from the log: it says so, and starts nothing.
+  rows = { rows[1] }
+  local said = #chat
+  hud.idle.suggest.scripts.OnClick()
+  check(not ns.Nav.active and #chat > said and chat[#chat]:find("Nothing in your quest log", 1, true),
+    "nothing in the log to go on: it says so and starts nothing")
+  check(H.SuggestTooltip()[1] == "Suggest a journey", "and the hover says what it would look for")
+
+  -- The x hides the bar; journeys still bring the box; /ww idle brings the bar back.
+  check(hud.close.tip:find("Hide this bar", 1, true), "on the small bar the x says it hides the bar")
+  hud.close.scripts.OnClick()
+  check(ns.db.settings.idleBox == false and not hud:IsShown(), "the x turns the small bar off")
+  ns.Nav.Start("Somewhere", rows[1].goal, rows[1].route)
+  check(hud:IsShown() and not H.IdleShown(), "with it off, directions still show the box")
+  ns.Nav.Stop()
+  check(not hud:IsShown(), "and with them stopped there's no box")
+  SlashCmdList.WAYWARD("idle")
+  check(ns.db.settings.idleBox == true and H.IdleShown(), "/ww idle brings the small bar back")
+
+  F.Results, F.WhenReady = realResults, realWhenReady
+  ns.db.settings.idleBox = wasIdle
+  player.mapID, player.x, player.y = spot[1], spot[2], spot[3]
+end
+-- ===== journey: the small bar with no journey on (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

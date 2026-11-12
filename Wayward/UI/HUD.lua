@@ -12,6 +12,10 @@ local _, ns = ...
 -- Detail on demand (Nav.Detail): "steps" shows each step to the next stop
 -- with a count; "stops" shows only the stop you're heading for and the
 -- compass, and the step when you hover the box.
+-- With no journey and no directions, the box stays as a small bar (unless
+-- the options or /ww idle turn that off): open Wayward, or have it suggest a
+-- journey from your quest log and where you are (For you's best hand-in or
+-- "Finish N quests near X"; its title and why on hover).
 
 local HUD = {}
 ns.HUD = HUD
@@ -38,6 +42,15 @@ local GATHER_PAD = 6       -- inside its background
 local GATHER_LINE = 14     -- a line's height
 local GATHER_FADE = 0.45   -- its background's alpha
 local GATHER_HEADING = "Gathering as you go"
+local IDLE_HEIGHT = 34     -- the small bar with no journey on
+local IDLE_ICON = 20
+local SUGGEST_WIDTH, OPEN_WIDTH, IDLE_BUTTON_HEIGHT = 124, 96, 22
+local IDLE_WIDTH = PADDING + IDLE_ICON + 6 + SUGGEST_WIDTH + 4 + OPEN_WIDTH + 4 + 24 + 4
+local ICON = "Interface\\AddOns\\Wayward\\Media\\Icon"
+-- For you's suggestions made from your quest log: hand-ins ready, and
+-- unfinished log quests close together.
+local LOG_KINDS = { handin = true, finish = true }
+local NOTHING_TO_SUGGEST = "Nothing in your quest log to go on from here. Open Wayward (/ww) for other ideas."
 
 -- What's at a stop, shown in the circle when there's no arrow to show.
 local STOP_ICONS = {
@@ -159,7 +172,10 @@ local function create()
   f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   f.close:SetSize(24, 24)
   f.close:SetPoint("TOPRIGHT", -3, -3)
-  f.close:SetScript("OnClick", function() ns.Nav.End() end)
+  -- With no journey on, the x hides the small bar (the options bring it back).
+  f.close:SetScript("OnClick", function()
+    if ns.Nav.active then ns.Nav.End() else HUD.HideIdle() end
+  end)
   tooltip(f.close, "Stop directions")
   ns.Skin.CloseButton(f.close)
   f.list = squareButton(f, nil, "Interface\\Icons\\INV_Misc_Book_08", "=", function() ns.JourneyOverview.Toggle() end,
@@ -260,8 +276,39 @@ local function create()
   ns.Skin.Button(f.otherArea)
   f.otherArea:Hide()
 
+  -- No journey on: Wayward's icon, Suggest a journey, Open Wayward (and the x).
+  f.idle = CreateFrame("Frame", nil, f)
+  f.idle:SetAllPoints()
+  f.idle.icon = f.idle:CreateTexture(nil, "ARTWORK")
+  f.idle.icon:SetSize(IDLE_ICON, IDLE_ICON)
+  f.idle.icon:SetPoint("LEFT", PADDING, 0)
+  f.idle.icon:SetTexture(ICON)
+  f.idle.suggest = CreateFrame("Button", nil, f.idle, "UIPanelButtonTemplate")
+  f.idle.suggest:SetSize(SUGGEST_WIDTH, IDLE_BUTTON_HEIGHT)
+  f.idle.suggest:SetPoint("LEFT", f.idle.icon, "RIGHT", 6, 0)
+  f.idle.suggest:SetText("Suggest a journey")
+  f.idle.suggest:SetScript("OnClick", function() HUD.SuggestJourney() end)
+  f.idle.suggest:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    for i, line in ipairs(HUD.SuggestTooltip()) do
+      if i == 1 then GameTooltip:SetText(line) else GameTooltip:AddLine(line, 0.6, 0.6, 0.6, true) end
+    end
+    GameTooltip:Show()
+  end)
+  f.idle.suggest:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(f.idle.suggest)
+  f.idle.open = CreateFrame("Button", nil, f.idle, "UIPanelButtonTemplate")
+  f.idle.open:SetSize(OPEN_WIDTH, IDLE_BUTTON_HEIGHT)
+  f.idle.open:SetPoint("LEFT", f.idle.suggest, "RIGHT", 4, 0)
+  f.idle.open:SetText("Open Wayward")
+  f.idle.open:SetScript("OnClick", function() if not ns.Panel.IsShown() then ns.Panel.Toggle() end end)
+  tooltip(f.idle.open, "Open Wayward: suggestions, quests, places and more")
+  ns.Skin.Button(f.idle.open)
+  f.idle:Hide()
+
   -- With the detail on "stops", the step is in a tooltip over the box.
   f:SetScript("OnEnter", function(self)
+    if self.idleMode then return end
     local lines = HUD.StepTooltip()
     if not lines then return end
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -309,6 +356,9 @@ local function create()
   f.info:SetPoint("RIGHT", INFO_RIGHT, 0)
   f.info:SetJustifyH("LEFT")
   for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
+  -- What the small bar hides; HUD.Update shows them again as each needs.
+  f.journeyParts = { f.holder, f.title, f.progress, f.step, f.sub, f.objectives, f.info, f.list, f.moveOn, f.skip,
+    f.add, f.gathering, f.otherArea }
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -481,14 +531,117 @@ function HUD.StepTooltip()
   return { frame.stepText, frame.subText ~= "" and frame.subText or nil }
 end
 
+---------------------------------------------------------------- no journey on
+
+-- Whether the small bar shows with no journey on (the options, /ww idle).
+function HUD.IdleWanted()
+  return ns.db ~= nil and ns.db.settings.idleBox ~= false
+end
+
+-- The best suggestion from your quest log among For you's results (most
+-- relevant first; not XP), or nil.
+local function logSuggestion(results)
+  local best
+  for _, r in ipairs(results or {}) do
+    if LOG_KINDS[r.kind] and (r.journey or r.route) and (not best or (r.relevance or 0) > (best.relevance or 0)) then
+      best = r
+    end
+  end
+  return best
+end
+HUD.LogSuggestion = logSuggestion
+
+-- The suggestion as For you has it now, without asking for a new build.
+local function currentSuggestion()
+  if not (ns.ForYou and ns.ForYou.Results) then return nil end
+  local ok, results = pcall(ns.ForYou.Results)
+  return ok and logSuggestion(results) or nil
+end
+
+-- The Suggest a journey button's tooltip: what it would start, and why.
+function HUD.SuggestTooltip()
+  local r = currentSuggestion()
+  if not r then
+    return { "Suggest a journey", "Starts a journey from your quest log and where you are: quests to hand in, "
+      .. "or quests to finish close together." }
+  end
+  local lines = { r.title or "Suggest a journey" }
+  if r.why then lines[#lines + 1] = r.why end
+  lines[#lines + 1] = "Click to start it. Open Wayward for other ideas."
+  return lines
+end
+
+-- Starts the best journey from your quest log, worked out afresh from here
+-- (now, or when For you's build under way is done). Nothing to go on: says so.
+function HUD.SuggestJourney()
+  if not (ns.ForYou and ns.ForYou.WhenReady) or (frame and frame.suggesting) then return end
+  if frame then frame.suggesting = true end
+  ns.ForYou.WhenReady(function(results)
+    if frame then frame.suggesting = nil end
+    if ns.Nav.active then return end -- something else started meanwhile
+    local r = logSuggestion(results)
+    if r then
+      ns.Panel.Activate(r)
+    else
+      ns.print(NOTHING_TO_SUGGEST)
+    end
+  end)
+end
+
+-- The x on the small bar: hidden until turned on again in the options.
+function HUD.HideIdle()
+  ns.SetSetting("idleBox", false)
+  ns.print("The directions box now shows only while you're on a journey. /ww idle or the options bring the small bar back.")
+end
+
+-- The box as the small bar: the journey's parts hidden, the bar's shown.
+local function showIdle()
+  if not frame.idleMode then
+    frame.idleMode = true
+    for _, part in ipairs(frame.journeyParts) do part:Hide() end
+    frame.idle:Show()
+    frame.compass = nil -- applyCompass lays the box out again for the next journey
+    frame.stepHidden = false
+    frame:SetSize(IDLE_WIDTH, IDLE_HEIGHT)
+    frame.width = IDLE_WIDTH
+    if frame.SetClampRectInsets then frame:SetClampRectInsets(0, 0, 0, 0) end
+    frame.close.tip = "Hide this bar while there's no journey (the options bring it back)"
+  end
+  frame:Show()
+end
+
+-- Back from the small bar to the directions box: Update shows what's needed.
+local function leaveIdle()
+  if not frame.idleMode then return end
+  frame.idleMode = nil
+  frame.idle:Hide()
+  for _, part in ipairs({ frame.title, frame.step, frame.sub, frame.info, frame.add }) do part:Show() end
+  frame.waysideAt = nil
+end
+
+-- Shows the box as it should be now: the directions, the small bar or nothing.
+function HUD.Refresh()
+  if not (ns.Nav.active or HUD.IdleWanted()) then
+    if frame then frame:Hide() end
+    return
+  end
+  frame = frame or create()
+  frame:Show()
+  HUD.Update()
+end
+
+-- Whether the small bar shows (for tests).
+function HUD.IdleShown() return frame ~= nil and frame:IsShown() and frame.idleMode == true end
+
 function HUD.Update()
   if not frame then return end
   local here, step = ns.Nav.Tick()
   local a = ns.Nav.active
   if not (a and step) then
-    frame:Hide()
+    if not a and HUD.IdleWanted() then showIdle() else frame:Hide() end
     return
   end
+  leaveIdle()
   applyCompass()
   local trip = a.journey ~= nil
   frame.list:SetShown(trip)
@@ -643,7 +796,7 @@ function HUD.Frame() return frame end
 function HUD.EnsureFrame()
   if not frame then
     frame = create()
-    if not ns.Nav.active then frame:Hide() end
+    if ns.Nav.active or HUD.IdleWanted() then HUD.Update() else frame:Hide() end
   end
   return frame
 end
@@ -673,6 +826,15 @@ function HUD.Flashing() return frame ~= nil and frame.flashLeft ~= nil end
 
 ns.Listen("SETTINGS_CHANGED", function(key)
   if (key == "showArrow" or key == "detail") and frame then HUD.Update() end
+  if key == "idleBox" then HUD.Refresh() end
+end)
+
+-- With no journey to restore, the small bar from the start.
+ns.On("PLAYER_LOGIN", function() HUD.Refresh() end)
+
+ns.RegisterCommand("idle", "/ww idle - the small directions bar while there's no journey on or off", function()
+  ns.SetSetting("idleBox", not HUD.IdleWanted())
+  ns.print("small bar with no journey " .. (HUD.IdleWanted() and "on" or "off"))
 end)
 
 -- What's on the way: looked at again on the next update.
@@ -683,12 +845,4 @@ ns.Listen("JOURNEY_EXTENDED", function()
   if not ns.JourneyOverview.IsShown() then HUD.FlashJourney() end
 end)
 
-ns.Listen("NAV_CHANGED", function()
-  if ns.Nav.active then
-    frame = frame or create()
-    frame:Show()
-    HUD.Update()
-  elseif frame then
-    frame:Hide()
-  end
-end)
+ns.Listen("NAV_CHANGED", HUD.Refresh)
