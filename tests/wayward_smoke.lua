@@ -9783,6 +9783,46 @@ do
   refreshData()
 end
 -- ===== journey: dungeon quests (end) =====
+
+-- ===== journey: a stop beside a chain (begin) =====
+-- A chain of hand-ins (each after the one before) through two towns, and a
+-- hand-in of another quest next to the second town, the nearest stop from
+-- the start. Nearest-next takes it first, there and back on its own, and no
+-- stretch of a chain can be reversed: it has to be moved to the visit the
+-- chain makes there anyway.
+do
+  io.write("journey: a stop beside a chain\n")
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1437, 0.50, 0.50
+  local function at(x, y, label) return { node = ns.Geo.Node(1437, x, y, label), text = label } end
+  local sideIn, sideUp = at(0.40, 0.60, "Side hand-in"), at(0.40, 0.60, "Side pickup")
+  local farIn, farUp = at(0.80, 0.40, "Far hand-in"), at(0.80, 0.40, "Far pickup")
+  local townIn, townUp = at(0.41, 0.58, "Town hand-in"), at(0.41, 0.58, "Town pickup")
+  local homeIn, homeUp = at(0.52, 0.50, "Home hand-in"), at(0.52, 0.50, "Home pickup")
+  local townLast = at(0.41, 0.58, "Town last")
+  sideUp.after = { sideIn }
+  farUp.after, townIn.after, townUp.after = { farIn }, { farUp }, { townIn }
+  homeIn.after, homeUp.after, townLast.after = { townUp }, { homeIn }, { homeUp }
+  local here, net = ns.Geo.PlayerNode(), ns.Network.Build()
+  local function travel(list)
+    local t, from = 0, here
+    for _, s in ipairs(list) do t, from = t + ns.Router.Plan(from, s.node, net).seconds, s.node end
+    return t
+  end
+  local planned = ns.Journey.Plan(here, { title = "Chain",
+    stops = { sideIn, sideUp, farIn, farUp, townIn, townUp, homeIn, homeUp, townLast } }, net)
+  local names, place = {}, {}
+  for i, s in ipairs(planned.stops) do names[i], place[s] = s.text, i end
+  local said = table.concat(names, " > ")
+  check(#planned.stops == 9 and planned.stops[1] == farIn,
+    "the chain's far end comes first, not the stop beside its second town: " .. said)
+  check(place[sideIn] > place[townIn] and place[sideUp] == place[sideIn] + 1,
+    "that stop goes with a visit the chain makes there, its pickup right after: " .. said)
+  local nearestFirst = { sideIn, sideUp, farIn, farUp, townIn, townUp, homeIn, homeUp, townLast }
+  check(travel(planned.stops) < travel(nearestFirst) - 30,
+    string.format("and the journey is shorter for it (%.0f s, %.0f s nearest first)", travel(planned.stops), travel(nearestFirst)))
+end
+-- ===== journey: a stop beside a chain (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

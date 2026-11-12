@@ -2,8 +2,8 @@ local _, ns = ...
 
 -- Journeys: adventures with several stops, e.g. "pick up three quests, then
 -- go to the Deadmines". Stops are visited in the quickest order found
--- (nearest next stop, then pairwise swaps) that respects each stop's `after`
--- list.
+-- (nearest next stop, then reversing stretches and moving stops while that
+-- shortens it) that respects each stop's `after` list.
 --
 -- A journey definition:
 --   {
@@ -47,6 +47,9 @@ local Journey = {}
 ns.Journey = Journey
 
 local MAX_SWAP_PASSES = 6
+-- Stops in a row moved together to another place in the order (orderStops):
+-- a hand-in and the pickup after it at the same spot, say.
+local MAX_MOVE_STOPS = 3
 
 -- Do this stop later (Journey.Postpone): besides coming after the next stop,
 -- the stop waits LATER_SECONDS in the plans after, the way a cleared camp
@@ -1072,9 +1075,9 @@ end
 
 -- Travel seconds between points, planned once per pair.
 local function costTable(points, net)
-  local cache = {}
+  local cache, width = {}, #points + 1
   return function(i, j)
-    local key = i .. ":" .. j
+    local key = i * width + j
     if cache[key] == nil then
       local route = ns.Router.Plan(points[i], points[j], net)
       cache[key] = route and route.seconds or math.huge
@@ -1139,12 +1142,41 @@ local function orderStops(start, stops, net, keep)
   end
 
   -- Reverse segments while that shortens the trip (2-opt), keeping `after`.
+  -- (Moving stops, below, takes its turn in the same passes.)
   local function total(o)
     local t, prev = 0, 1
     for _, i in ipairs(o) do t, prev = arrive(t, prev, i), i end
     return t
   end
   local best = total(order)
+  -- And move a stop, or up to MAX_MOVE_STOPS in a row, to where in the order
+  -- it adds the least. A chain (each stop after the one before) can't be
+  -- reversed, so this is how a stop outside it finds its place along it: a
+  -- hand-in next to the chain's second town goes with that visit, not before
+  -- the chain, there and back on its own.
+  local function moveStops()
+    local improved = false
+    for len = 1, math.min(MAX_MOVE_STOPS, #order - 1) do
+      for a = 1, #order - len + 1 do
+        local rest = {}
+        for k = 1, a - 1 do rest[#rest + 1] = order[k] end
+        for k = a + len, #order do rest[#rest + 1] = order[k] end
+        local found, foundTotal
+        for pos = 1, #rest + 1 do
+          if pos ~= a then
+            local candidate = {}
+            for k = 1, pos - 1 do candidate[k] = rest[k] end
+            for k = 1, len do candidate[pos + k - 1] = order[a + k - 1] end
+            for k = pos, #rest do candidate[k + len] = rest[k] end
+            local t = total(candidate)
+            if t < (foundTotal or best) and valid(candidate) then found, foundTotal = candidate, t end
+          end
+        end
+        if found then order, best, improved = found, foundTotal, true end
+      end
+    end
+    return improved
+  end
   for _ = 1, MAX_SWAP_PASSES do
     local improved = false
     for a = 1, #order - 1 do
@@ -1157,6 +1189,7 @@ local function orderStops(start, stops, net, keep)
         if t < best and valid(candidate) then order, best, improved = candidate, t, true end
       end
     end
+    if moveStops() then improved = true end
     if not improved then break end
   end
 
