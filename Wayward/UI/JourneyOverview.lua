@@ -380,6 +380,21 @@ local function legOf(a, stop)
   return nil
 end
 
+-- Where your Hearthstone takes you on the way to `stop`, when the plan
+-- uses it there and you haven't yet (steps from `from` on), else nil: a line
+-- off to your inn on the map then has its reason in the list.
+function Overview.HearthBefore(steps, from, stop)
+  local hearth
+  for i, step in ipairs(steps or {}) do
+    if step.mode == "hearth" and i >= (from or 1) then hearth = step.to and step.to.label end
+    if step.stop then
+      if step.stop == stop then return hearth end
+      hearth = nil
+    end
+  end
+  return nil
+end
+
 local function stepsOpen(stop, state)
   if opened[stop] ~= nil then return opened[stop] end
   return state == "now"
@@ -514,6 +529,11 @@ function Overview.Refresh()
       local look = LOOK[r.state]
       row.text:SetText(look[1] .. (r.stop.text or (r.stop.node and r.stop.node.label) or "?"))
       local zone = ns.Journey.StopZone(r.stop)
+      local hearth = not FINISHED[r.state] and Overview.HearthBefore(a.route.steps, a.index, r.stop)
+      if hearth then
+        hearth = "hearth to " .. hearth .. " first"
+        zone = zone and (zone .. "  ·  " .. hearth) or hearth
+      end
       row.zone:SetText(zone and ("      " .. zone) or "")
       row.text:SetAlpha(look[2])
       row.movable = r.state == "now" or r.state == "next"

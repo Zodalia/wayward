@@ -1297,6 +1297,11 @@ do
   local index
   for i, st in ipairs(with.steps) do if st.mode == "hearth" then index = i end end
   check(ns.Router.Describe(with, index) == "Hearth to Stormwind City", "the step says to hearth")
+  local hearthStop = with.hearth.stop
+  check(ns.JourneyOverview.HearthBefore(with.steps, 1, hearthStop) == "Stormwind City"
+    and ns.JourneyOverview.HearthBefore(with.steps, index + 1, hearthStop) == nil
+    and ns.JourneyOverview.HearthBefore(without.steps, 1, without.steps[#without.steps].stop) == nil,
+    "the overview names the hearth on the stop it's used for, until you've used it")
   cooldownStart = 900 -- used 100 s ago: ready in ~58 min
   local cooling = plan()
   check(cooling.hearth and cooling.hearth.cooldown and cooling.hearth.readyIn > 3000
