@@ -1475,12 +1475,16 @@ do
     for _, row in ipairs(ns.QuestsPage.Results(text)) do if row.id == "quest" .. id then return row end end
   end
   local inLogRow = questRow("already in log", 10)
-  stop = inLogRow and inLogRow.journey and inLogRow.journey.stops[1]
-  check(stop and stop.action.kind == "turnin" and stop.action.questID == 10 and stop.node.mapID == 1453
-    and stop.text == "Hand in Already in log to Stormwind Questgiver", "in your log: to where you hand it in")
+  local logStops = inLogRow and inLogRow.journey and inLogRow.journey.stops or {}
+  stop = logStops[2]
+  check(logStops[1] and logStops[1].text == "Do The Deadmines" and logStops[1].action.questID == 10
+    and stop and stop.action.kind == "turnin" and stop.action.questID == 10 and stop.node.mapID == 1453
+    and stop.text == "Hand in Already in log to Stormwind Questgiver",
+    "in your log, done inside a dungeon: do the dungeon, then to where you hand it in")
   rows = ns.QuestsPage.Results("after the log")
-  stop = rows[1] and rows[1].journey and rows[1].journey.stops[1]
-  check(stop and stop.action.kind == "turnin" and stop.action.questID == 10, "chain behind a log quest: hand that in first")
+  local chainStops = rows[1] and rows[1].journey and rows[1].journey.stops or {}
+  check(chainStops[1] and chainStops[1].action.questID == 10 and chainStops[2] and chainStops[2].action.kind == "turnin"
+    and chainStops[2].action.questID == 10, "chain behind a log quest: do that and hand it in first")
   local function subFor(text, id)
     local r = questRow(text, id)
     return r and r.subtitle or ""
@@ -1650,9 +1654,11 @@ do
     if r.title:find("Needs prequest", 1, true) then closed = r end
     if r.title:find("Too high", 1, true) then high = r end
   end
-  check(inLog and inLog.title:find("in your log") and stops(inLog)[1]
-    and stops(inLog)[1].action.kind == "turnin" and stops(inLog)[1].node.label == "Foreman Oslow",
-    "quest in your log: says so, tracked to where you hand it in")
+  local inLogStops = inLog and stops(inLog) or {}
+  local handIn = inLogStops[#inLogStops]
+  check(inLog and inLog.title:find("in your log") and inLogStops[1] and inLogStops[1].text == "Do The Deadmines"
+    and handIn and handIn.action.kind == "turnin" and handIn.node.label == "Foreman Oslow",
+    "quest in your log (a Deadmines one): says so, tracked through the dungeon to where you hand it in")
   check(chain and chain.title:find("needs earlier quests") and stops(chain)[1]
     and stops(chain)[1].node.label == "Stormwind Questgiver" and stops(chain)[1].action.questID == 14
     and detailText(chain):find("Start the chain: pick up Chain part 1 from Stormwind Questgiver", 1, true),
@@ -9647,6 +9653,129 @@ do
   player.mapID, player.x, player.y = spot[1], spot[2], spot[3]
 end
 -- ===== journey: the small bar with no journey on (end) =====
+-- ===== journey: dungeon quests (begin) =====
+io.write("dungeon quests\n")
+do
+  ns.Nav.Stop()
+  runTimers()
+  ns.Snackbar.Clear()
+  local J, D = ns.Journey, ns.Dungeons
+  local questKeys = LibQuestieDB.Meta.QuestMeta.questKeys
+  questKeys.zoneOrSort, questKeys.finishedBy = 17, 3
+  local savedLog = { C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete }
+  local savedGroup, savedLevel = GetNumGroupMembers, UnitLevel
+  local log = {}
+  C_QuestLog.GetNumQuestLogEntries = function() return #log end
+  C_QuestLog.GetInfo = function(i) return { questID = log[i], isHeader = false } end
+  C_QuestLog.IsComplete = function() return false end
+  GetNumGroupMembers = function() return 0 end
+  UnitLevel = function() return 20 end
+  -- Two quests done inside the Deadmines (their objectives are in there, off
+  -- the map), from Magistrate Solomon, and one outside.
+  QUESTS[9701] = { name = "Deep Ledger", questLevel = 20, requiredLevel = 15, zoneOrSort = 1581,
+    startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  QUESTS[9702] = { name = "Mine Captain", questLevel = 20, requiredLevel = 15, zoneOrSort = 1581,
+    startedBy = { { 344 } }, finishedBy = { { 344 } } }
+  refreshData()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNode()
+  local deadmines = D.ForQuest(9701)
+  check(deadmines and deadmines.name == "The Deadmines" and D.ForQuest(345) == nil,
+    "a quest whose area is a dungeon's is done in that dungeon")
+
+  local function kinds(stops)
+    local out = {}
+    for _, s in ipairs(stops) do out[#out + 1] = s.action.kind end
+    return table.concat(out, ",")
+  end
+  local stops = J.QuestStops(9701, here)
+  local doIt = stops[2]
+  check(kinds(stops) == "pickup,complete,turnin" and doIt.text == "Do The Deadmines"
+    and J.DungeonOf(doIt) == "The Deadmines" and doIt.node == ns.Data.Nearest(deadmines.entrances, here),
+    "a dungeon quest gets a Do The Deadmines stop at the entrance, between pickup and hand-in: " .. kinds(stops))
+
+  -- Two of its quests on one journey: one stop, one run.
+  local both = {}
+  for _, s in ipairs(stops) do both[#both + 1] = s end
+  for _, s in ipairs(J.QuestStops(9702, here)) do both[#both + 1] = s end
+  local journey = J.Plan(here, { title = "Deadmines quests", stops = both })
+  local lead
+  for _, s in ipairs(journey.stops) do
+    if J.DungeonOf(s) and not s.joined then lead = s end
+  end
+  check(lead and J.Together(lead) and #J.Together(lead) == 2 and J.StopText(lead) == "Do The Deadmines",
+    "two quests in the same dungeon are one stop: " .. tostring(lead and J.StopText(lead)))
+  check(#J.Runs(both) == 1 and J.RunSeconds(both) == D.RUN_SECONDS and J.RunSeconds(both, stops) == 0,
+    "they cost one run, and none when the journey goes in there already")
+  check(ns.Nav.WorkSeconds(journey) == D.RUN_SECONDS,
+    "the time left counts the run once, not a quest's time each: " .. ns.Nav.WorkSeconds(journey))
+
+  -- What to know: on your own at its level, bring a group; not in a group or well over it.
+  local level = D.LevelFor(deadmines, 20)
+  check(D.Warning(deadmines) == string.format("Done inside The Deadmines (level %d): bring a group.", level),
+    "solo at its level: bring a group: " .. tostring(D.Warning(deadmines)))
+  GetNumGroupMembers = function() return 3 end
+  check(D.Warning(deadmines) == nil, "in a group: nothing to say")
+  GetNumGroupMembers = function() return 0 end
+  UnitLevel = function() return level + 10 end
+  check(D.Warning(deadmines) == nil, "well over its level: yours to clear alone, nothing to say")
+  UnitLevel = function() return 20 end
+  check(D.Warning({ name = "Molten Core", raid = true, levels = {}, dataLevel = 60 }) ==
+    "Done inside Molten Core (level 60), a raid: it needs a raid group.", "a raid needs a raid group")
+
+  -- On a journey, picking one up: never added unasked, the run counts in
+  -- what it adds, and the question says what to know.
+  ns.Nav.StartJourney(J.Plan(here, { title = "Errands", stops = {
+    { node = ns.Geo.Node(1433, 0.52, 0.5, "First"), text = "Visit First" } } }))
+  ns.Snackbar.Clear()
+  local offer = ns.Nav.PickupOffer({ 9701 })
+  check(offer and offer.extra >= D.RUN_SECONDS and offer.runs[1] == "The Deadmines"
+    and ns.Nav.ExtraText(offer):find(", with a run of The Deadmines", 1, true),
+    "what it adds counts the run, and says so: " .. tostring(offer and ns.Nav.ExtraText(offer)))
+  log[1] = 9701
+  fire("QUEST_ACCEPTED", 9701)
+  runTimers()
+  local shown = ns.Snackbar.Current()
+  check(not ns.Nav.TripHasQuest(9701) and shown and shown.question
+    and shown.text:find("with a run of The Deadmines", 1, true)
+    and shown.note and shown.note:find("Done inside The Deadmines", 1, true),
+    "a dungeon quest picked up on a journey is asked about, with the run and what to know: "
+      .. tostring(shown and shown.text) .. " / " .. tostring(shown and shown.note))
+  ns.Snackbar.Click(1)
+  local added = ns.Snackbar.Current()
+  check(ns.Nav.TripHasQuest(9701) and not (added and added.note),
+    "Add to journey: in it, and what to know isn't said twice")
+
+  -- Added straight from somewhere else (the Find page, the quest log): said with the undo.
+  ns.Snackbar.Clear()
+  ns.Nav.RemoveQuest(9701)
+  local again = J.QuestStops(9702, here)
+  ns.Nav.AddToTrip(again, "Mine Captain")
+  shown = ns.Snackbar.Current()
+  check(shown and shown.text == "Added Mine Captain to your journey." and shown.note
+    and shown.note:find("bring a group", 1, true) and shown.actions[1].icon == "undo",
+    "added from elsewhere: a snackbar says what to know, with undo: " .. tostring(shown and shown.note))
+  ns.Snackbar.Clear()
+  ns.Nav.Stop()
+
+  -- In a group: nothing said, and starting a journey with it is quiet too.
+  GetNumGroupMembers = function() return 4 end
+  ns.Nav.StartJourney(J.Plan(here, { title = "Deep Ledger", stops = J.QuestStops(9701, here) }))
+  check(ns.Snackbar.Current() == nil, "in a group, starting a dungeon quest's journey says nothing more")
+  ns.Nav.Stop()
+  GetNumGroupMembers = function() return 0 end
+  ns.Nav.StartJourney(J.Plan(here, { title = "Deep Ledger", stops = J.QuestStops(9701, here) }))
+  shown = ns.Snackbar.Current()
+  check(shown and shown.text:find("Done inside The Deadmines", 1, true), "on your own it says what to know")
+  ns.Nav.Stop()
+  ns.Snackbar.Clear()
+
+  C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo, C_QuestLog.IsComplete = savedLog[1], savedLog[2], savedLog[3]
+  GetNumGroupMembers, UnitLevel = savedGroup, savedLevel
+  QUESTS[9701], QUESTS[9702] = nil, nil
+  refreshData()
+end
+-- ===== journey: dungeon quests (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

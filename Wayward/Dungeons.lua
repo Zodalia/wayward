@@ -339,10 +339,8 @@ local function rowFor(entry, fit, quests, start, net, level)
   })
 end
 
--- The row for any catalogue dungeon, whether or not it fits your level (the
--- Find page): fit or not, its level is the nearest to yours.
-function Dungeons.RowFor(entry, start, net)
-  local level = UnitLevel("player")
+-- The level entry that fits you, else the one nearest your level, or nil.
+local function nearestFit(entry, level)
   local fit = bestFit(entry, level)
   if not fit then
     local levels = #entry.levels > 0 and entry.levels or { { level = entry.dataLevel } }
@@ -351,7 +349,14 @@ function Dungeons.RowFor(entry, start, net)
     end
     if fit and not fit.level then fit = nil end
   end
-  return rowFor(entry, fit, ns.Quests.QuestsForAreas(entry.areaIDs), start, net, level)
+  return fit
+end
+
+-- The row for any catalogue dungeon, whether or not it fits your level (the
+-- Find page): fit or not, its level is the nearest to yours.
+function Dungeons.RowFor(entry, start, net)
+  local level = UnitLevel("player")
+  return rowFor(entry, nearestFit(entry, level), ns.Quests.QuestsForAreas(entry.areaIDs), start, net, level)
 end
 
 function Dungeons.Results()
@@ -400,4 +405,46 @@ end
 function Dungeons.ForArea(areaID)
   catalogue()
   return byAreaCache[areaID]
+end
+
+---------------------------------------------------------------- dungeon quests
+
+-- A quest done inside a dungeon is a stop at its entrance in a journey
+-- ("Do The Deadmines", Journey.QuestStops). What it adds to a journey is a
+-- run of the dungeon, about RUN_SECONDS with a group, however many of its
+-- quests you take in: they're all done on the one run.
+Dungeons.RUN_SECONDS = 45 * 60
+
+-- On your own, a dungeon is worth a word until you're SOLO_LEVELS over its
+-- level (then it's yours to clear alone); a raid until you're in a raid group.
+local SOLO_LEVELS = 10
+
+-- The dungeon a quest is done in (the quest's AreaID is the dungeon's), or nil.
+function Dungeons.ForQuest(questID)
+  local q = ns.Quests.Quest(questID)
+  local area = q and ns.Quests.QuestArea(q)
+  return area and Dungeons.ForArea(area) or nil
+end
+
+-- The dungeon's level that fits `level` best (a wing's, when it has several), or nil.
+function Dungeons.LevelFor(entry, level)
+  local fit = entry and nearestFit(entry, level)
+  return fit and fit.level or nil
+end
+
+-- What to know before taking a quest into a dungeon, or nil when there's
+-- nothing to say: you're in a big enough group, or well over its level.
+-- "Done inside The Deadmines (level 18): bring a group."
+function Dungeons.Warning(entry)
+  if not entry then return nil end
+  local members = type(GetNumGroupMembers) == "function" and tonumber((GetNumGroupMembers())) or 0
+  local level = UnitLevel("player")
+  local at = Dungeons.LevelFor(entry, level)
+  local where = at and string.format("%s (level %d)", entry.name, at) or entry.name
+  if entry.raid then
+    if members > 5 then return nil end
+    return string.format("Done inside %s, a raid: it needs a raid group.", where)
+  end
+  if members > 1 or (at and level >= at + SOLO_LEVELS) then return nil end
+  return string.format("Done inside %s: bring a group.", where)
 end

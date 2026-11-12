@@ -188,7 +188,12 @@ local function withHandIns(stops)
       local with = plan(candidate)
       local q = ns.Quests.Quest(id)
       local name = q and q.name or ("quest " .. id)
-      if with and #with.skipped <= #base.skipped and with.seconds - base.seconds < AUTO_ADD then
+      -- Done inside a dungeon: a run of it, never "under a minute". Left to
+      -- ask about once you pick it up.
+      local besides = { unpack(open) }
+      for _, st in ipairs(out) do besides[#besides + 1] = st end
+      local run = ns.Journey.RunSeconds(qs, besides)
+      if with and run == 0 and #with.skipped <= #base.skipped and with.seconds - base.seconds < AUTO_ADD then
         if with.withoutHearth - base.withoutHearth < AUTO_ADD then
           out, base = candidate, with
           whole[#whole + 1] = name

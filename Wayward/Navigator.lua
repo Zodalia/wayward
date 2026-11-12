@@ -266,6 +266,10 @@ local function startJourney(journey, quiet)
       ns.print("no route to " .. (stop.node and stop.node.label or stop.text or "a stop") .. "; left out.")
     end
     flightTip()
+    -- A quest done inside a dungeon: a word on it, once (not when the
+    -- question that started it said it already).
+    local dungeon = ns.Journey.DungeonNote(journey.stops)
+    if dungeon then ns.Snackbar.Show({ text = dungeon }) end
   end
   showStep()
   if not quiet and #journey.stops > 1 then ns.Fire("JOURNEY_STARTED") end
@@ -671,12 +675,18 @@ function Nav.PickupOffer(questIDs)
   local alone = ns.Journey.Plan(here, { title = label, kind = "quest", icon = QUEST_ICON, stops = stops })
   if not alone then return nil end
   local offer = { label = label, names = names, ids = ids, stops = stops, alone = alone.seconds, journey = alone }
+  -- A quest done inside a dungeon costs a run of it, not just the walk to
+  -- its door: that counts in what it adds (so it's never added unasked as
+  -- "on the way"), unless the journey goes into that dungeon already.
   local a = Nav.active
+  local root = a and a.journey and (a.journey.root or a.journey.def)
+  offer.alone = offer.alone + ns.Journey.RunSeconds(stops)
+  offer.runs = ns.Journey.Runs(stops, root and root.stops)
+  local run = #offer.runs * ns.Dungeons.RUN_SECONDS
   if a then
     local base, open
     if a.journey then
       base = ns.Journey.Replan(a.journey, here)
-      local root = a.journey.root or a.journey.def
       open = {}
       for _, s in ipairs(root.stops or {}) do
         if not s.done and not s.skipped then open[#open + 1] = s end
@@ -691,6 +701,8 @@ function Nav.PickupOffer(questIDs)
       local remaining = Nav.RemainingSeconds(here)
       offer.extra = with and remaining and math.max(0, with.seconds - remaining) or nil
     end
+    offer.extra = offer.extra and offer.extra + run
+    offer.extraNoHearth = offer.extraNoHearth and offer.extraNoHearth + run
   end
   return offer
 end
@@ -703,6 +715,12 @@ local HEARTH_NOTE = 60 -- seconds the Hearthstone must make up before it's worth
 
 function Nav.ExtraText(offer)
   local text = "about " .. ns.FormatDuration(offer.extra) .. " more"
+  -- Most of that is the dungeon run: say so.
+  local runs = offer.runs or {}
+  if #runs > 0 then
+    text = text .. ", with a run of " .. (#runs == 1 and runs[1]
+      or (table.concat(runs, ", ", 1, #runs - 1) .. " and " .. runs[#runs]))
+  end
   if offer.extraNoHearth and offer.extraNoHearth - offer.extra >= HEARTH_NOTE then
     text = text .. ", but only by using your Hearthstone: " .. ns.FormatDuration(offer.extraNoHearth) .. " without it"
   end
@@ -749,7 +767,10 @@ local function askAbout(ids, what)
   local offer = Nav.PickupOffer(ids)
   if not offer then return end
   Nav.lastPickupOffer = offer
-  local item = { question = true, sound = "popup", quests = questSet(offer.ids), note = chainNote(offer),
+  -- Said with the question, a dungeon's word isn't said again when you add it.
+  local dungeon, chain = ns.Journey.DungeonNote(offer.stops), chainNote(offer)
+  local item = { question = true, sound = "popup", quests = questSet(offer.ids),
+    note = dungeon and chain and (dungeon .. "\n" .. chain) or dungeon or chain,
     title = offer.label, detail = #offer.names > 1 and offer.names or nil }
   if Nav.active and offer.extra then
     item.text = string.format("You %s %s. Add it to your journey (%s)?", what, offer.label, Nav.ExtraText(offer))
@@ -1198,8 +1219,11 @@ function Nav.AddToTrip(stops, label, message, notice)
   ns.print(message or string.format("added %s to your journey: %d stops, %s", label, #planned.stops,
     ns.FormatDuration(planned.seconds)))
   ns.Fire("JOURNEY_EXTENDED")
+  -- Into a dungeon: a word on it, with the undo, unless it was said already.
+  local dungeon = ns.Journey.DungeonNote(stops)
+  if dungeon and not notice then notice = { text = string.format("Added %s to your journey.", label) } end
   if notice then
-    ns.Snackbar.Show({ text = notice.text, quests = notice.quests, detail = notice.detail,
+    ns.Snackbar.Show({ text = notice.text, note = dungeon, quests = notice.quests, detail = notice.detail,
       actions = { { label = "Undo", icon = "undo", tooltip = "Takes it out of your journey again.",
         run = function() Nav.RemoveAdded(stops, label) end } } })
   end
@@ -1303,14 +1327,17 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
           for _, s in ipairs(qs) do with[#with + 1] = s end
           local planned = ns.Journey.Plan(here, { stops = with })
           local extra = planned and planned.seconds - base.seconds - travel
+          -- One done inside a dungeon the journey doesn't go into yet costs a
+          -- run of it: never on the way, so never in unasked.
+          local run = ns.Journey.RunSeconds(qs, open)
           -- A first follow-up only when it's on the way (or anyDistance); the chain after it is listed anyway.
-          if extra and (parent or anyDistance or extra <= FOLLOW_UP_SLACK) then
+          if extra and (parent or anyDistance or extra + run <= FOLLOW_UP_SLACK) then
             extra = math.max(0, extra)
             travel = travel + extra
             open = with
             local entry = { quest = q, after = afterID, parent = parent, depth = depth, travel = extra,
-              seconds = extra + perQuest, stops = qs,
-              checked = extra <= FOLLOW_UP_SLACK and (not parent or offer.quests[parent].checked) }
+              seconds = extra + (run > 0 and run or perQuest), run = run > 0 and run or nil, stops = qs,
+              checked = extra + run <= FOLLOW_UP_SLACK and (not parent or offer.quests[parent].checked) }
             offer.quests[#offer.quests + 1] = entry
             if entry.checked then
               offer.extra = offer.extra + extra
@@ -1352,7 +1379,11 @@ end
 -- snackbar's hover.
 function Nav.FollowUpDetail(e)
   local doing = ns.FormatDuration(e.seconds - e.travel) .. " to do it"
-  if ns.QuestTimes.Seconds() then doing = doing .. " (your average)" end
+  if e.run then
+    doing = doing .. " (a run of " .. (ns.Journey.Runs(e.stops)[1] or "the dungeon") .. ")"
+  elseif ns.QuestTimes.Seconds() then
+    doing = doing .. " (your average)"
+  end
   local name = e.quest.name or ("Quest " .. e.quest.id)
   if e.travel < 1 then return name .. ": on the way; " .. doing end
   return string.format("%s: %s more travel + %s", name, ns.FormatDuration(e.travel), doing)
@@ -1786,14 +1817,23 @@ function Nav.WorkSeconds(journey)
   for _, s in ipairs(root and root ~= journey and root.stops or {}) do
     if s.gather then stops[#stops + 1] = s end
   end
+  -- A dungeon's quests are done on one run of it: the run counts once, at
+  -- the share left of the quest with most left.
+  local runs = {}
   for _, s in ipairs(stops) do
     local id = s.action and s.action.kind == "complete" and s.action.questID
     if id and not seen[id] and not (s.done or s.skipped or s.passed) then
       seen[id] = true
-      -- Gathered as you go: at your pace on it, once there is one.
-      total = total + (s.gather and ns.Journey.GatherSeconds(id) or questSeconds() * shareLeft(id))
+      local dungeon = ns.Journey.DungeonOf(s)
+      if dungeon then
+        runs[dungeon] = math.max(runs[dungeon] or 0, shareLeft(id))
+      else
+        -- Gathered as you go: at your pace on it, once there is one.
+        total = total + (s.gather and ns.Journey.GatherSeconds(id) or questSeconds() * shareLeft(id))
+      end
     end
   end
+  for _, share in pairs(runs) do total = total + ns.Dungeons.RUN_SECONDS * share end
   return total
 end
 

@@ -26,6 +26,8 @@ local _, ns = ...
 --       { kind = "train", profession, cap, npc, book? } (done when that profession's
 --       skill cap is over `cap`: you bought the next rank, or read `book`, the
 --       item ID of the book that teaches it) and
+--       { kind = "complete", questID, dungeon = "The Deadmines" } (a quest done inside a
+--       dungeon: the stop is its entrance, "Do The Deadmines", one for all its quests) and
 --       { kind = "explore", mapID } (done once you're in that zone, or a subzone of it) and
 --       { kind = "enter", dungeon = "The Deadmines" } (done when you load into it) and
 --       { kind = "learn", spells = { spellID or name, ... }, npc } (class training: done at the
@@ -185,8 +187,18 @@ function Journey.QuestStops(questID, here, seen)
     if #items > 0 then gate = items end
     -- A quest that only asks for things you buy has nowhere else to go:
     -- the shopping is the doing.
-    local node = not onlyBuying and ns.Quests.ObjectiveNode(questID, here)
-    if node then
+    -- A quest done inside a dungeon: its objectives are in there, where the
+    -- map can't go, so the stop is the dungeon itself, at its nearest
+    -- entrance ("Do The Deadmines"). Its other quests on the journey are the
+    -- same stop (Journey.DoneTogether), done on the one run.
+    local dungeon = not onlyBuying and ns.Dungeons and ns.Dungeons.ForQuest(questID)
+    local entrance = dungeon and #dungeon.entrances > 0 and ns.Data.Nearest(dungeon.entrances, here)
+    local node = not onlyBuying and not entrance and ns.Quests.ObjectiveNode(questID, here)
+    if entrance then
+      previous = { node = entrance, text = "Do " .. dungeon.name, after = gate,
+        action = { kind = "complete", questID = questID, dungeon = dungeon.name } }
+      stops[#stops + 1] = previous
+    elseif node then
       previous = { node = node, text = "Do " .. name, after = gate,
         action = { kind = "complete", questID = questID }, resolve = { kind = "objectives", questID = questID } }
       stops[#stops + 1] = previous
@@ -749,6 +761,8 @@ function Journey.StopText(stop)
   if not stop then return nil end
   -- Quests done on the same spots: one stop ("Do X and Y").
   local together = Journey.Together and Journey.Together(stop)
+  -- A dungeon's quests: the dungeon is the stop ("Do The Deadmines").
+  if together and Journey.DungeonOf(stop) then return "Do " .. Journey.DungeonOf(stop) end
   if together then
     local names = {}
     for i, s in ipairs(together) do
@@ -1412,8 +1426,59 @@ local function openNodes(questID)
   return out
 end
 
+-- The dungeon a stop's quest is done in ("Do The Deadmines"), or nil.
+function Journey.DungeonOf(stop)
+  local action = stop and stop.action
+  return action and action.kind == "complete" and action.dungeon or nil
+end
+
+-- The dungeons the open stops of `stops` go into that none of the open
+-- stops of `besides` (the journey they join) already do: one run each.
+function Journey.Runs(stops, besides)
+  local have, out = {}, {}
+  for _, s in ipairs(besides or {}) do
+    local d = not (s.done or s.skipped) and Journey.DungeonOf(s)
+    if d then have[d] = true end
+  end
+  for _, s in ipairs(stops or {}) do
+    local d = not (s.done or s.skipped) and Journey.DungeonOf(s)
+    if d and not have[d] then
+      have[d] = true
+      out[#out + 1] = d
+    end
+  end
+  return out
+end
+
+-- The time those runs take (Dungeons.RUN_SECONDS each).
+function Journey.RunSeconds(stops, besides)
+  return #Journey.Runs(stops, besides) * ns.Dungeons.RUN_SECONDS
+end
+
+-- What to know about the dungeons `stops` take you into, one line each
+-- (Dungeons.Warning), for the ones not said yet; they're marked said (kept
+-- with the journey's save). Nil when there's nothing to say.
+function Journey.DungeonNote(stops)
+  local lines, said = {}, {}
+  for _, s in ipairs(stops or {}) do
+    local d = Journey.DungeonOf(s)
+    if d and not (s.done or s.skipped or s.action.warned) then
+      s.action.warned = true
+      if not said[d] then
+        said[d] = true
+        local text = ns.Dungeons.Warning(ns.Dungeons.ForQuest(s.action.questID))
+        if text then lines[#lines + 1] = text end
+      end
+    end
+  end
+  return #lines > 0 and table.concat(lines, "\n") or nil
+end
+
 -- Whether quest stop `b`'s objectives are done where stop `a`'s are aimed.
+-- Quests in the same dungeon are done together on its run.
 function Journey.DoneTogether(a, b)
+  local inA, inB = Journey.DungeonOf(a), Journey.DungeonOf(b)
+  if inA or inB then return inA == inB end
   local here = aimedNodes(a)
   local theirs = openNodes(b.action.questID)
   if #here == 0 or #theirs == 0 then return false end
