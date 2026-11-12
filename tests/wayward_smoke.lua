@@ -4945,6 +4945,13 @@ do
   local pinsShown, pinsOn = ns.JourneyOverview.PinCount()
   check(ns.Nav.CurrentStep().stop == farStop and pinsShown == 3 and pinsOn == 0,
     string.format("each open stop has a pin, none on (%d, %d)", pinsShown, pinsOn))
+  -- Each stop has the number its badge has on the maps, the destination last.
+  local rowNumbers = table.concat(ns.JourneyOverview.RowNumbers(), ",")
+  local mapNumbers = {}
+  for _, n in pairs(ns.RouteMap.StepNumbers(ns.RouteMap.Rest())) do mapNumbers[#mapNumbers + 1] = n end
+  table.sort(mapNumbers)
+  check(rowNumbers == "1,2,3" and table.concat(mapNumbers, ",") == "1,2,3",
+    "the stops are numbered as on the maps: " .. rowNumbers .. " / " .. table.concat(mapNumbers, ","))
   check(ns.Nav.TogglePin(farStop) and select(2, ns.JourneyOverview.PinCount()) == 1, "pin the far camp")
   stand(pad - 5)
   check(ns.Nav.CurrentStep().stop == farStop, "walked back to the near camp: the pinned far camp stays next")

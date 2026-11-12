@@ -291,6 +291,22 @@ function RouteMap.Rest(here)
   return out, false
 end
 
+-- The number each of `steps` gets on the maps, { [i] = number }: each stop
+-- (a journey's stops are on their last step) in order, then the destination;
+-- a destination with no stop before it has none. The journey overview
+-- numbers its stops the same way, so the list and the maps agree.
+function RouteMap.StepNumbers(steps)
+  local out, number = {}, 0
+  for i, step in ipairs(steps) do
+    if step.stop and i < #steps then
+      number = number + 1
+      out[i] = number
+    end
+  end
+  if #steps > 0 and number > 0 then out[#steps] = number + 1 end
+  return out
+end
+
 -- Draws the route through `points` (`steps`' legs, start first) in view `v`:
 -- the legs with their chevrons and travel icons, you, and the numbered stops.
 -- `at(node)` places a node on v's canvas (x right, y down as negative), or
@@ -513,15 +529,14 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
       mark(points[1], "start")
     end
   end
-  local number = 0
+  local numberOf = RouteMap.StepNumbers(steps)
   for i, step in ipairs(steps) do
-    if step.stop and i < #steps then
-      number = number + 1
-      if i <= limit then mark(step.to, "stop", number, math.sqrt(alphaOf(i))) end
+    if step.stop and i < #steps and i <= limit then
+      mark(step.to, "stop", numberOf[i], math.sqrt(alphaOf(i)))
     end
   end
   if #steps <= limit then
-    mark(points[#points], "goal", number > 0 and number + 1 or nil, math.sqrt(alphaOf(#steps)))
+    mark(points[#points], "goal", numberOf[#steps], math.sqrt(alphaOf(#steps)))
   end
   for i = marked + 1, #v.marks do
     local b = v.marks[i]

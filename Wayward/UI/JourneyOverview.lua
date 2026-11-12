@@ -4,6 +4,8 @@ local _, ns = ...
 -- next, opened from the directions box (=) and when a journey with several
 -- stops starts. An open stop can be dropped (x); stops that need it are
 -- dropped with it. Stops you've skipped or dropped aren't listed.
+-- Each stop still to go has the number its badge has on the maps (the
+-- one here, the minimap's and the world map's), so you can find it there.
 -- Drag an open stop up or down by its handle (or the row) to reorder the
 -- journey, or pin one (the lock) so re-plans as you go leave it where it is
 -- (Nav.TogglePin). Under an open stop, the steps that get you there (walk, fly,
@@ -27,6 +29,9 @@ local SUGGESTIONS = 4      -- "Detours on the way" rows
 local SUGGEST_HEIGHT = 18
 local SET_ASIDE = 5        -- set-aside journey rows (Nav keeps that many)
 local HANDLE_WIDTH = 16
+local NUMBER_WIDTH = 16    -- the stop's map number, before its name
+-- The map badges' colours (RouteMap's MARK_COLOR): stops gold, the destination red.
+local NUMBER_COLOR = { stop = "ffffd200", goal = "ffff4d33" }
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
 local PIN_FAINT = 0.35     -- the pin on a stop that isn't pinned
@@ -114,6 +119,12 @@ local function create()
     row.text:SetPoint("RIGHT", -62, 0) -- short of the pin, +/- and x
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
+    -- The stop's number on the maps, in a column of its own.
+    row.number = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.number:SetPoint("TOPLEFT", HANDLE_WIDTH + 2, -2)
+    row.number:SetWidth(NUMBER_WIDTH)
+    row.number:SetJustifyH("RIGHT")
+    ns.Skin.Text(row.number)
     -- Where the stop is, so a journey across several zones reads at a glance.
     row.zone = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.zone:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
@@ -395,6 +406,23 @@ function Overview.HearthBefore(steps, from, stop)
   return nil
 end
 
+-- The number each stop still to go has on the maps, { [stop] = number },
+-- and the stop at the end (the maps' destination badge): numbered as the
+-- maps number the steps from the one you're on (RouteMap.StepNumbers), so a
+-- lone stop has none, as there.
+function Overview.StopNumbers()
+  local a = ns.Nav.active
+  local numbers, goal = {}, nil
+  if not (a and a.route and a.route.steps) then return numbers end
+  local steps = {}
+  for k = a.index or 1, #a.route.steps do steps[#steps + 1] = a.route.steps[k] end
+  for i, n in pairs(ns.RouteMap.StepNumbers(steps)) do
+    if steps[i].stop then numbers[steps[i].stop] = n end
+    if i == #steps then goal = steps[i].stop end
+  end
+  return numbers, goal
+end
+
 local function stepsOpen(stop, state)
   if opened[stop] ~= nil then return opened[stop] end
   return state == "now"
@@ -461,6 +489,7 @@ function Overview.Refresh()
     return
   end
   local lines, rows = Overview.Lines()
+  local numbers, goal = Overview.StopNumbers()
   local root = a.journey.root or a.journey.def
   local done = 0
   for _, r in ipairs(rows) do
@@ -499,6 +528,13 @@ function Overview.Refresh()
     local r = line and line.row
     row.stop, row.rowIndex, row.header = r and r.stop, line and line.index, line and line.header
     row.expand:Hide()
+    -- Stop rows leave room for the number; the other lines don't need it.
+    row.text:ClearAllPoints()
+    row.text:SetPoint("TOPLEFT", HANDLE_WIDTH + 4 + (r and NUMBER_WIDTH + 2 or 0), -2)
+    row.text:SetPoint("RIGHT", -62, 0)
+    local number = r and not FINISHED[r.state] and numbers[r.stop]
+    row.number:SetText(number and string.format("|c%s%d|r", NUMBER_COLOR[r.stop == goal and "goal" or "stop"], number)
+      or "")
     if line and line.step then
       local route = a.route
       local text = ns.Router.Describe(route, line.stepIndex, true) .. "  ·  " .. ns.FormatDuration(line.step.seconds)
@@ -640,6 +676,17 @@ function Overview.PinCount()
     end
   end
   return shown, pinned
+end
+
+-- The stop rows' map numbers, top to bottom, "" where a row has none (for tests).
+function Overview.RowNumbers()
+  local out = {}
+  for _, row in ipairs(frame and frame.rows or {}) do
+    if row:IsShown() and row.stop then
+      out[#out + 1] = (row.number:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    end
+  end
+  return out
 end
 
 -- How many rows show a drag handle (for tests).
