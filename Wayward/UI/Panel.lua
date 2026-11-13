@@ -1,22 +1,24 @@
 local _, ns = ...
 
--- The Wayward window. The main window is the home screen, in four regions
--- under a header (your portrait, "Level 8 · Dun Morogh", the summary line and
--- the time buttons): Your journey (UI/JourneyBox.lua), Something to do next
--- (the card page's results as cards, UI/Cards.lua), Where to quest (the
--- zones with quests for you, UI/ZoneBand.lua; while it's on show the cards
--- leave zones to it) and Good to know (UI/Observations.lua). It never
--- changes size; the other pages (Quests,
--- Vendors, Trainers, Dungeons, Items) open in a side panel docked to its
--- right, from icon tabs inside its right edge.
+-- The Wayward window: a rail down the left (an icon and a name for each
+-- page) and one pane beside it, which shows the page picked. It opens on For
+-- you, the home screen, in four regions under a header (your portrait,
+-- "Level 8 · Dun Morogh", the summary line and the time buttons): Your
+-- journey (UI/JourneyBox.lua), Something to do next (the card page's results
+-- as cards, UI/Cards.lua), Where to quest (the zones with quests for you,
+-- UI/ZoneBand.lua; while it's on show the cards leave zones to it) and Good
+-- to know (UI/Observations.lua). The other pages (Find, Quests, Vendors,
+-- Trainers, Dungeons, Items) are lists that take the pane's place, so the
+-- window never changes size and nothing opens beside it. In the code the
+-- list pane is still `side`, from when it was a panel docked to the right.
 --
 -- Page contract (register with ns.RegisterPage(page) from any file that loads
 -- before this one):
---   page.id, page.label        -- side tab tooltip / side panel title
---   page.icon                  -- side tab icon (optional)
---   page.order                 -- tab order, lowest first
---   page.layout = "cards"      -- shown in the main window as cards (UI/Cards.lua), with
---   page.width                 --   this window width; other pages are lists in the side panel
+--   page.id, page.label        -- the rail's name for it / the list pane's title
+--   page.icon                  -- the rail's icon (optional)
+--   page.order                 -- order down the rail, lowest first
+--   page.layout = "cards"      -- the home screen, as cards (UI/Cards.lua), with
+--   page.width                 --   this pane width; other pages are lists in the pane
 --   page.searchable            -- show the search box (shift-clicked links go in it too)
 --   page.placeholder           -- search box hint (or page.Placeholder())
 --   page.SummaryText(query)    -- line under the search box
@@ -44,9 +46,8 @@ local Panel = {}
 ns.Panel = Panel
 
 local MAX_ROWS = 11
-local MAIN_WIDTH = 840 -- at least; a card page's `width` can ask for more
-local SIDE_WIDTH = 384
-local HEIGHT = 728     -- with the tab column; fits 1080p at UI scale 1 (768 high)
+local MAIN_WIDTH = 840 -- the pane, at least; a card page's `width` can ask for more
+local HEIGHT = 728     -- fits 1080p at UI scale 1 (768 high)
 local ROW_HEIGHT = 42
 local MARGIN = 18      -- inside the main window's left and right edges
 local HEADER_TOP = -32 -- the portrait's top
@@ -55,9 +56,16 @@ local HEADING_GAP = 10 -- above a region's heading
 local HEADING_H = 18   -- the heading's line, to the region under it
 local MAX_DETAIL_LINES = 12
 local SEARCH_DELAY = 0.3
-local SIDE_TAB_SIZE = 32
--- The tab column inside the main window's right edge.
-local TAB_COLUMN = SIDE_TAB_SIZE + 16
+-- The rail down the window's left edge: a button a page, icon and name.
+local RAIL = 132
+local RAIL_BUTTON_H = 34
+local RAIL_ICON = 22
+local RAIL_GAP = 4
+local LIST_TOP = -22   -- the list pane starts this far under the window's top (its title bar)
+local SEARCH_WIDTH = 400
+local CATEGORY_MAX = 120 -- a category button is this wide at most
+local SELECTED_COLOR = { 1, 0.82, 0 }
+local WAYWARD_ICON = "Interface\\AddOns\\Wayward\\Media\\Icon"
 local TAB_ICONS = {
   find = "Interface\\Icons\\INV_Misc_QuestionMark",
   quests = "Interface\\Icons\\INV_Misc_Note_01",
@@ -311,7 +319,7 @@ end
 
 local function createRow(parent, index)
   local row = CreateFrame("Button", nil, parent)
-  row:SetSize(352, ROW_HEIGHT)
+  row:SetSize(parent.inner, ROW_HEIGHT)
   row:SetPoint("TOPLEFT", parent.summary, "BOTTOMLEFT", 0, -10 - (index - 1) * ROW_HEIGHT)
   row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
 
@@ -410,35 +418,26 @@ local function footerText(net)
     flights == 1 and "" or "s")
 end
 
----------------------------------------------------------------- side panel
+---------------------------------------------------------------- list pane
 
-local function createSide(parent)
-  local s, templated = ns.Skin.CreateWindow("WaywardSidePanel")
-  s:SetParent(parent)
-  s:SetSize(SIDE_WIDTH, HEIGHT)
-  -- Flush against the main window; the side tabs sit inside it.
-  s:SetPoint("TOPLEFT", parent, "TOPRIGHT", 0, 0)
+-- The pane for the list pages, in the home screen's place: a plain frame
+-- over the same part of the window, shown instead of it.
+local function createSide(parent, width)
+  local s = CreateFrame("Frame", nil, parent)
+  s:SetPoint("TOPLEFT", parent, "TOPLEFT", RAIL, LIST_TOP)
+  s:SetSize(width, HEIGHT + LIST_TOP)
+  s.width = width
+  s.inner = width - MARGIN * 2 -- what the summary line and the rows span
   s:EnableMouse(true)
 
-  s.title = s.titleText
-  if not s.title then
-    s.title = s:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    s.title:SetPoint("TOPLEFT", 18, -16)
-  end
+  s.title = s:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  s.title:SetPoint("TOPLEFT", MARGIN, -12)
   ns.Skin.Text(s.title)
-  ns.Skin.CloseButton(s.close)
-  s.close:SetScript("OnClick", function() Panel.CloseSide() end)
-  if templated then
-    s.Inset:ClearAllPoints()
-    s.Inset:SetPoint("TOPLEFT", 4, -26)
-    s.Inset:SetPoint("BOTTOMRIGHT", -6, 4)
-    ns.Skin.Inset(s.Inset)
-  end
 
   local searchTemplate
   s.search, searchTemplate = ns.Skin.CreateSearchBox(s)
-  s.search:SetSize(338, 22)
-  s.search:SetPoint("TOPLEFT", 24, -34)
+  s.search:SetSize(SEARCH_WIDTH, 22)
+  s.search:SetPoint("TOPLEFT", MARGIN + 6, -34)
   s.search:SetAutoFocus(false)
   -- Hook rather than replace the template's handler (clear button, hint).
   local onText = searchTemplate and s.search.HookScript or s.search.SetScript
@@ -467,14 +466,14 @@ local function createSide(parent)
   end
 
   s.summary = s:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  s.summary:SetWidth(SIDE_WIDTH - 36)
+  s.summary:SetWidth(s.inner)
   s.summary:SetJustifyH("LEFT")
   s.summary:SetWordWrap(true)
 
   s.rows = {}
   for i = 1, MAX_ROWS do s.rows[i] = createRow(s, i) end
 
-  -- Scrolling: the mouse wheel anywhere on the side panel, or these buttons.
+  -- Scrolling: the mouse wheel anywhere on the pane, or these buttons.
   s.down = CreateFrame("Button", nil, s, "UIPanelButtonTemplate")
   s.down:SetSize(22, 18)
   s.down:SetPoint("TOPRIGHT", s.rows[MAX_ROWS], "BOTTOMRIGHT", -4, -2)
@@ -495,13 +494,12 @@ local function createSide(parent)
 
   s.empty = s:CreateFontString(nil, "OVERLAY", "GameFontDisable")
   s.empty:SetPoint("TOPLEFT", s.summary, "BOTTOMLEFT", 0, -16)
-  s.empty:SetWidth(SIDE_WIDTH - 36)
+  s.empty:SetWidth(s.inner)
   s.empty:SetJustifyH("LEFT")
   s.empty:SetWordWrap(true)
   ns.Skin.Text(s.summary)
   ns.Skin.Text(s.empty)
 
-  ns.Skin.Window(s)
   s:Hide()
   return s
 end
@@ -517,7 +515,7 @@ local function heading(parent, label)
   return fs
 end
 
--- The main window's width without the tab column: the card page's, at least MAIN_WIDTH.
+-- The pane's width (the window without the rail): the card page's, at least MAIN_WIDTH.
 local function mainWidth()
   return math.max(MAIN_WIDTH, mainPage and mainPage.width or 0)
 end
@@ -540,7 +538,7 @@ local function create()
   local f, templated = ns.Skin.CreateWindow("WaywardPanel")
   mainPage = mainPage or defaultMain()
   local width = mainWidth()
-  f:SetSize(width + TAB_COLUMN, HEIGHT)
+  f:SetSize(width + RAIL, HEIGHT)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
@@ -584,49 +582,75 @@ local function create()
     ns.Skin.Inset(f.Inset)
   end
 
-  -- Side tabs in a column inside the right edge for the list pages (square
-  -- icons in an action-button border); each opens or closes the side panel.
+  -- The rail down the left: For you first, then the list pages, each an
+  -- icon and its name. The one picked is lit, and shows in the pane.
+  f.rail = CreateFrame("Frame", nil, f)
+  f.rail:SetPoint("TOPLEFT", 8, -28)
+  f.rail:SetPoint("BOTTOMLEFT", 8, 8)
+  f.rail:SetWidth(RAIL - 10)
+  local railBack = f.rail:CreateTexture(nil, "BACKGROUND")
+  railBack:SetAllPoints()
+  railBack:SetColorTexture(0, 0, 0, 0.25)
+  local railEdge = f.rail:CreateTexture(nil, "ARTWORK")
+  railEdge:SetColorTexture(1, 0.82, 0, 0.18)
+  railEdge:SetWidth(1)
+  railEdge:SetPoint("TOPRIGHT")
+  railEdge:SetPoint("BOTTOMRIGHT")
   f.tabs = {}
-  for i, page in ipairs(listPages()) do
-    local b = CreateFrame("CheckButton", nil, f)
-    b:SetSize(SIDE_TAB_SIZE, SIDE_TAB_SIZE)
-    b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -40 - (i - 1) * (SIDE_TAB_SIZE + 12))
-    local border = b:CreateTexture(nil, "OVERLAY")
-    border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-    border:SetSize(SIDE_TAB_SIZE * 64 / 36, SIDE_TAB_SIZE * 64 / 36)
-    border:SetPoint("CENTER")
-    b:SetNormalTexture(page.icon or TAB_ICONS[page.id] or "Interface\\Icons\\INV_Misc_Map_01")
-    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  local entries = {}
+  if mainPage then entries[1] = mainPage end
+  for _, page in ipairs(listPages()) do entries[#entries + 1] = page end
+  for i, page in ipairs(entries) do
+    local b = CreateFrame("CheckButton", nil, f.rail)
+    b:SetSize(RAIL - 18, RAIL_BUTTON_H)
+    b:SetPoint("TOPLEFT", 4, -6 - (i - 1) * (RAIL_BUTTON_H + RAIL_GAP))
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetSize(RAIL_ICON, RAIL_ICON)
+    b.icon:SetPoint("LEFT", 6, 0)
+    if isCards(page) and not page.icon then
+      b.icon:SetTexture(WAYWARD_ICON)
+    else
+      b.icon:SetTexture(page.icon or TAB_ICONS[page.id] or "Interface\\Icons\\INV_Misc_Map_01")
+      b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.label:SetPoint("LEFT", b.icon, "RIGHT", 8, 0)
+    b.label:SetPoint("RIGHT", -4, 0)
+    b.label:SetJustifyH("LEFT")
+    b.label:SetWordWrap(false)
+    b.label:SetText(page.label)
+    ns.Skin.Text(b.label)
+    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     -- SetCheckedTexture takes no blend mode; without ADD it covers the icon.
-    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+    b:SetCheckedTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
     local checked = b:GetCheckedTexture()
     if checked then checked:SetBlendMode("ADD") end
-    b:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(page.label)
-      GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    b:SetScript("OnClick", function()
-      if sidePage == page and side:IsShown() then Panel.CloseSide() else Panel.SelectPage(page.id) end
-    end)
-    f.tabs[i] = { button = b, page = page }
+    local function pick() Panel.SelectPage(page.id) end
+    b:SetScript("OnClick", pick)
+    f.tabs[i] = { button = b, page = page, pick = pick }
   end
 
+  -- The home screen, in the pane: everything of For you's is on this frame,
+  -- so a list page can take its place.
+  local home = CreateFrame("Frame", nil, f)
+  home:SetPoint("TOPLEFT", RAIL, 0)
+  home:SetPoint("BOTTOMRIGHT", 0, 0)
+  f.home = home
+
   -- The header: your portrait, "Level 8 · Dun Morogh", the page's summary line.
-  f.portrait = f:CreateTexture(nil, "ARTWORK")
+  f.portrait = home:CreateTexture(nil, "ARTWORK")
   f.portrait:SetSize(PORTRAIT, PORTRAIT)
   f.portrait:SetPoint("TOPLEFT", MARGIN, HEADER_TOP)
   -- No mask: the game's portrait texture is round already.
-  f.portraitRing = f:CreateTexture(nil, "OVERLAY")
+  f.portraitRing = home:CreateTexture(nil, "OVERLAY")
   ns.Skin.Ring(f.portraitRing, f.portrait, PORTRAIT)
-  f.headline = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  f.headline = home:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   f.headline:SetPoint("TOPLEFT", f.portrait, "TOPRIGHT", 12, -2)
   f.headline:SetJustifyH("LEFT")
   f.headline:SetWordWrap(false)
   ns.Skin.Text(f.headline)
 
-  f.summary = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  f.summary = home:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.summary:SetPoint("TOPLEFT", f.headline, "BOTTOMLEFT", 0, -4)
   f.summary:SetWidth(width - MARGIN * 2 - PORTRAIT - 12)
   f.summary:SetJustifyH("LEFT")
@@ -639,9 +663,9 @@ local function create()
   if controls then
     local n = #controls.choices
     for i, choice in ipairs(controls.choices) do
-      local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+      local b = CreateFrame("Button", nil, home, "UIPanelButtonTemplate")
       b:SetSize(CONTROL_WIDTH, 20)
-      b:SetPoint("TOPRIGHT", f, "TOPLEFT", width - MARGIN - (n - i) * (CONTROL_WIDTH + CONTROL_GAP), HEADER_TOP - 2)
+      b:SetPoint("TOPRIGHT", home, "TOPLEFT", width - MARGIN - (n - i) * (CONTROL_WIDTH + CONTROL_GAP), HEADER_TOP - 2)
       b:SetText(choice.text)
       b.choice = choice
       b:SetScript("OnClick", function()
@@ -659,7 +683,7 @@ local function create()
       ns.Skin.Button(b)
       f.controls[i] = b
     end
-    f.controlLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.controlLabel = home:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.controlLabel:SetPoint("RIGHT", f.controls[1], "LEFT", -6, 0)
     f.controlLabel:SetText(controls.label or "")
     ns.Skin.Text(f.controlLabel)
@@ -670,21 +694,21 @@ local function create()
   -- the journey box is one line when nothing is on and Where to quest isn't
   -- there without zones.
   local inner = width - MARGIN * 2
-  f.journeyHeading = heading(f, "YOUR JOURNEY")
-  f.journey = ns.JourneyBox.Create(f, inner)
-  f.cardsHeading = heading(f, "SOMETHING TO DO NEXT")
-  f.cards = ns.Cards.Create(f, inner)
+  f.journeyHeading = heading(home, "YOUR JOURNEY")
+  f.journey = ns.JourneyBox.Create(home, inner)
+  f.cardsHeading = heading(home, "SOMETHING TO DO NEXT")
+  f.cards = ns.Cards.Create(home, inner)
   -- Under the first card, left of the page arrows: how complete your profile is.
-  f.profile = ns.Profile.CreateStrip(f, f.cards.cards[1], inner)
-  f.zonesHeading = heading(f, "WHERE TO QUEST")
-  f.zones = ns.ZoneBand.Create(f, inner)
-  f.observationsHeading = heading(f, "GOOD TO KNOW")
-  f.observations = ns.Observations.Create(f, inner)
+  f.profile = ns.Profile.CreateStrip(home, f.cards.cards[1], inner)
+  f.zonesHeading = heading(home, "WHERE TO QUEST")
+  f.zones = ns.ZoneBand.Create(home, inner)
+  f.observationsHeading = heading(home, "GOOD TO KNOW")
+  f.observations = ns.Observations.Create(home, inner)
   f:EnableMouseWheel(true)
-  f:SetScript("OnMouseWheel", function(_, delta) ns.Cards.Step(delta) end)
+  f:SetScript("OnMouseWheel", function(_, delta) Panel.Scroll(delta) end)
 
   f.footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  f.footer:SetPoint("BOTTOMLEFT", MARGIN, 14)
+  f.footer:SetPoint("BOTTOMLEFT", RAIL + MARGIN, 14)
   f.footer:SetWidth(inner)
   f.footer:SetJustifyH("LEFT")
   f.footer:SetWordWrap(true)
@@ -692,7 +716,7 @@ local function create()
   ns.Skin.Text(f.summary)
   ns.Skin.Text(f.footer)
 
-  side = createSide(f)
+  side = createSide(f, width)
   hookLinks()
   f:SetScript("OnShow", function() Panel.Refresh() end)
   ns.Skin.Window(f)
@@ -705,16 +729,45 @@ end
 
 local checkedPage
 
+-- The pane shows a list page (`shown`) or the home screen, never both.
+local function showList(shown)
+  side:SetShown(shown)
+  frame.home:SetShown(not shown)
+end
+
 local function markTabs()
   checkedPage = side:IsShown() and sidePage and sidePage.id or nil
   for _, tab in ipairs(frame.tabs) do
-    tab.button:SetChecked(checkedPage == tab.page.id)
+    local on = checkedPage == tab.page.id or (checkedPage == nil and tab.page == mainPage)
+    tab.button:SetChecked(on)
+    tab.on = on
+    if on then
+      tab.button.label:SetTextColor(SELECTED_COLOR[1], SELECTED_COLOR[2], SELECTED_COLOR[3])
+    else
+      tab.button.label:SetTextColor(1, 1, 1)
+    end
   end
 end
 
--- The list page whose side tab is selected, or nil (for tests).
+-- The list page shown in the pane, or nil on the home screen (for tests).
 function Panel.SelectedTab()
   return checkedPage
+end
+
+-- The rail's names, top to bottom, and the one that's lit (for tests).
+function Panel.Rail()
+  local names, lit = {}, nil
+  for i, tab in ipairs(frame and frame.tabs or {}) do
+    names[i] = tab.button.label:GetText()
+    if tab.on then lit = names[i] end
+  end
+  return names, lit
+end
+
+-- Picks the rail's button `i`, as a click does (for tests).
+function Panel.ClickRail(i)
+  local tab = frame and frame.tabs[i]
+  if tab then tab.pick() end
 end
 
 local offset, listKey = 0, nil
@@ -840,7 +893,8 @@ local function refreshSide()
   -- One category is just the page: no buttons.
   local categories = page.categories and #page.categories > 1 and page.categories or {}
   local showCategories = #categories > 0
-  local width = showCategories and math.floor((SIDE_WIDTH - 36 - 4 * (#categories - 1)) / #categories) or 0
+  local width = showCategories
+    and math.min(CATEGORY_MAX, math.floor((side.inner - 4 * (#categories - 1)) / #categories)) or 0
   for i, b in ipairs(side.categoryButtons) do
     local cat = categories[i]
     b:SetShown(cat ~= nil)
@@ -848,14 +902,14 @@ local function refreshSide()
       b:SetText(cat.label)
       b:SetWidth(width)
       b:ClearAllPoints()
-      b:SetPoint("TOPLEFT", 18 + (i - 1) * (width + 4), -62)
+      b:SetPoint("TOPLEFT", MARGIN + (i - 1) * (width + 4), -62)
       if i == page.selected then b:LockHighlight() else b:UnlockHighlight() end
     end
   end
   local top = page.searchable and -62 or -34
   if showCategories then top = top - 28 end
   side.summary:ClearAllPoints()
-  side.summary:SetPoint("TOPLEFT", 18, top)
+  side.summary:SetPoint("TOPLEFT", MARGIN, top)
 
   local q = page.searchable and query or ""
   local results, err, net
@@ -882,7 +936,7 @@ local function refreshSide()
   return net
 end
 
--- `sideOnly`: only the side panel changed (another tab or category), so the
+-- `sideOnly`: only the list pane changed (another page or category), so the
 -- cards keep what they show instead of being rebuilt (For you is the slowest
 -- page to build).
 function Panel.Refresh(sideOnly)
@@ -894,8 +948,8 @@ function Panel.Refresh(sideOnly)
   frame.footer:SetText(footerText(net or ns.Network.Build()))
 end
 
--- Moves the side panel's list (positive goes up, towards the first result),
--- or steps through the cards when the side panel is closed.
+-- Moves the list (positive goes up, towards the first result), or steps
+-- through the cards on the home screen.
 function Panel.Scroll(delta)
   if not (frame and frame:IsShown()) then return end
   if not side:IsShown() then return ns.Cards.Step(delta) end
@@ -903,7 +957,7 @@ function Panel.Scroll(delta)
   paint()
 end
 
--- The side panel's results currently on screen (for tests and other modules).
+-- The list pane's results currently on screen (for tests and other modules).
 function Panel.VisibleResults()
   local out = {}
   if not (side and side:IsShown()) then return out end
@@ -913,14 +967,14 @@ function Panel.VisibleResults()
   return out
 end
 
+-- Back to the home screen from a list page.
 function Panel.CloseSide()
-  if side then side:Hide() end
+  if side then showList(false) end
   Panel.Refresh()
 end
 
--- Selects a page by id: a card page shows in the main window (and closes the
--- side panel), any other page opens in the side panel, on `category` (index)
--- when given.
+-- Selects a page by id: the card page is the home screen, any other page
+-- takes its place in the pane, on `category` (index) when given.
 function Panel.SelectPage(id, category)
   frame = frame or create()
   local sideOnly = true
@@ -930,21 +984,21 @@ function Panel.SelectPage(id, category)
       if isCards(page) then
         mainPage = page
         sideOnly = false
-        side:Hide()
+        showList(false)
       else
         if page ~= sidePage then
           sidePage = page
           query = ""
           side.search:SetText("")
         end
-        side:Show()
+        showList(true)
       end
     end
   end
   Panel.Refresh(sideOnly)
 end
 
--- Selects a category on the side panel's page.
+-- Selects a category on the list page shown.
 function Panel.Select(index)
   if sidePage then Panel.SelectPage(sidePage.id, index) end
 end
@@ -978,8 +1032,14 @@ function Panel.ResetPosition()
   frame:SetPoint("CENTER")
 end
 
+-- Whether a list page has the pane (the name is from when it was a side panel).
 function Panel.SideShown()
   return side ~= nil and side:IsShown()
+end
+
+-- Whether the home screen has the pane (for tests).
+function Panel.HomeShown()
+  return frame ~= nil and frame.home:IsShown()
 end
 
 function Panel.Toggle()
@@ -998,7 +1058,7 @@ end
 
 -- The main window's width and height (for tests).
 function Panel.Size()
-  return mainWidth() + TAB_COLUMN, HEIGHT
+  return mainWidth() + RAIL, HEIGHT
 end
 
 -- Data changes come in bursts (a vendor window records goods, repairs and

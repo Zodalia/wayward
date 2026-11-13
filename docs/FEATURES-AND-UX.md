@@ -151,8 +151,8 @@ fill, a set-aside journey to resume.
 
 | Surface | File | Size | Default position | Shown when | Movable |
 |---|---|---|---|---|---|
-| Main window (home) | `UI/Panel.lua` | 840+ wide × 728 high, fixed | Centre | `/ww`, minimap button | Drag |
-| Side panel | `UI/Panel.lua` | 384 × 728, docked right | Beside main window | A side tab is selected | With window |
+| Main window | `UI/Panel.lua` | 972+ wide × 728 high, fixed: a rail of 132 and a pane of 840+ | Centre | `/ww`, minimap button | Drag |
+| List pane | `UI/Panel.lua` | The pane, in the home screen's place | Inside the main window | A list page is picked on the rail | With window |
 | Directions box | `UI/HUD.lua` | 330 wide, 84+ high (narrower without compass) | TOP, 0, -140 | Journey or directions on | Drag, Edit Mode |
 | Idle bar | `UI/HUD.lua` | 34 high | Same as directions box | Nothing on, option enabled | Same |
 | Gathering as you go | `UI/HUD.lua` | Box width, up to 5 lines of 14 | 3 above the box | The journey gathers something | With box |
@@ -174,36 +174,38 @@ fill, a set-aside journey to resume.
 ### 4.2 Main window
 
 ```
-+--------------------------------------------------------------------+----+
-| [portrait 44] Level 8 · Dun Morogh        Time: [15][30][60][Any]  | ?  |
-|               summary line                              [Options]  | Q  |
-+--------------------------------------------------------------------+ V  |
-| YOUR JOURNEY                                    156 high, or 26    | T  |
-| [icon 56] title                              [ route map 220 ]     | D  |
-|           current stop                                             | I  |
-|           Stop 3 of 5 · 2 complete · ~6 min remaining              |    |
-|           [progress bar 8]                                         |    |
-|           Then: Do Frostmane Hold, and 3 more stops                |    |
-|           [Continue journey] [View details]                        |    |
-+--------------------------------------------------------------------+    |
-| SOMETHING TO DO NEXT                            3 cards, 180 high  |    |
-| [card] [card] [card]                            [<] page [>]       |    |
-+--------------------------------------------------------------------+    |
-| WHERE TO QUEST                                  up to 4, 42 high   |    |
-| [zone] [zone] [zone] [zone]                                        |    |
-+--------------------------------------------------------------------+    |
-| GOOD TO KNOW                                    up to 4, 84 high   |    |
-| [tile] [tile] [tile] [tile]                                        |    |
-+--------------------------------------------------------------------+----+
-  margin 18 · region heading 18 high, 10 above · side tabs 32 × 32
++------------+--------------------------------------------------------------------+
+| For you    | [portrait 44] Level 8 · Dun Morogh        Time: [15][30][60][Any]  |
+| Find       |               summary line                              [Options]  |
+| Quests     +--------------------------------------------------------------------+
+| Vendors    | YOUR JOURNEY                                    156 high, or 26    |
+| Trainers   | [icon 56] title                              [ route map 220 ]     |
+| Dungeons   |           current stop                                             |
+| Items      |           Stop 3 of 5 · 2 complete · ~6 min remaining              |
+|            |           [progress bar 8]                                         |
+|            |           Then: Do Frostmane Hold, and 3 more stops                |
+|            |           [Continue journey] [View details]                        |
+|            +--------------------------------------------------------------------+
+|            | SOMETHING TO DO NEXT                            3 cards, 180 high  |
+|            | [card] [card] [card]                            [<] page [>]       |
+|            +--------------------------------------------------------------------+
+|            | WHERE TO QUEST                                  up to 4, 42 high   |
+|            | [zone] [zone] [zone] [zone]                                        |
+|            +--------------------------------------------------------------------+
+|            | GOOD TO KNOW                                    up to 4, 84 high   |
+|            | [tile] [tile] [tile] [tile]                                        |
++------------+--------------------------------------------------------------------+
+  rail 132: a button a page, 34 high, icon 22 and name; the one picked is lit, its name gold
+  pane: margin 18 · region heading 18 high, 10 above
 ```
 
 Rules:
 
 - The window never changes size. Regions collapse, they don't resize it.
 - The four regions have separate jobs and never share one ranking.
-- Side tabs, in order: Find, Quests, Vendors, Trainers, Dungeons, Items.
-  Clicking the selected tab, or the panel's close button, closes the panel.
+- The rail, top to bottom: For you, Find, Quests, Vendors, Trainers,
+  Dungeons, Items. The page picked takes the pane; For you is the home
+  screen. Nothing opens beside the window.
 
 **Your journey.** Three forms:
 
@@ -234,10 +236,10 @@ levels, quest count ("3 quests left" where you are), travel to its first hub.
 **Observation tile** (84 high): icon (36), text with numbers in gold, at most
 one light button. Empty region: "Nothing to flag right now."
 
-**Side panel list row** (352 × 42, 11 rows a page): title (optionally
+**List row** (the pane's width, 804 × 42, 11 rows a page): title (optionally
 coloured by quest difficulty), subtitle or "zone · time · summary", one
-action button (72 × 20). Search box 338 wide; up to five category buttons
-(84 × 22); summary line; up and down arrows under the list.
+action button (72 × 20). Search box 400 wide; up to five category buttons
+(120 × 22 at most); summary line; up and down arrows under the list.
 
 ### 4.3 Directions box
 

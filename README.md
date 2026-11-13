@@ -361,13 +361,14 @@ data and the data sources' subtitles say who is which, and a record an
 older version got wrong is put right;
 Professions: each of your professions with its skill, the next rank and the
 nearest trainer for it, then the ones you could still learn),
-**Dungeons** and **Items** are icon tabs inside its right edge that open a
-list panel docked beside them (click the tab again, or the panel's close
-button, to close it). The search box filters any list; the Quests, Vendors,
+**Dungeons** and **Items** are named, with an icon each, on a rail down the window's left edge, under
+**For you**. The one you pick takes the pane beside the rail, in the home
+screen's place (pick For you to go back), so the window keeps its size and
+nothing opens beside it. The search box filters any list; the Quests, Vendors,
 Trainers, Dungeons and Items tabs are browse views of the same Find system,
 with the same rows and actions. If the cards ever show no text, `/ww debug cards` reports what
-each card holds and which font it uses. Pages opt into the main window with `layout = "cards"`; every other
-page is a list in the side panel.
+each card holds and which font it uses. The home screen is the page with `layout = "cards"`; every other
+page is a list in the same pane.
 
 **For you** is the first tab (`/ww next` opens it): a short, curated set of
 suggestions, each a journey on a card labelled with its kind, and a row of

@@ -1913,59 +1913,59 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Panel.lua
 
-- 91: Filter these results
-- 108: Quests
-- 109: Journal
-- 110: Hubs
-- 112: Vendors
-- 113: Vendors
-- 115: Trainers
-- 116: Class
-- 117: Weapons
-- 118: Professions
-- 120: Dungeons
-- 121: Dungeons
-- 159: ... and %d more
-- 173: GameTooltip
-- 202:     Hearth to %s (saves %s)
-- 210: Your Hearthstone (%s) would save %s, but it's ready in %s.
-- 213: Click to start this journey
-- 214: Shift-click to add it to your journey
-- 220: Click for directions
-- 221: Shift-click to add it to your journey
-- 265: %s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.
-- 266: Add as detour
-- 266: Cancel
-- 266: Switch journey
-- 275: You're on a journey: %s.
-- 276: You have directions to %s.
-- 292: %s  ·  %s  ·  %d stop%s
-- 299:   ·  no route found from here
-- 383: ChatEdit_InsertLink
-- 385: InsertLink
-- 393: Data: 
-- 393:  + places you visited. 
-- 394: Data: places you visited. 
-- 395: Quest
-- 396: Install 
-- 396:  for quests, items and every trainer. 
-- 400: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
-- 401: master once and routes will use your flight paths.\|r
-- 406: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
-- 407: paths here.\|r
-- 409: %d known flight path%s. Boat and zeppelin docks are approximate.
-- 533: Level %d  ·  %s
-- 534: Level %d
-- 570: Options
-- 574: Wayward's settings. Also: right-click the minimap button, or /ww options.
-- 591: CheckButton
-- 673: YOUR JOURNEY
-- 675: SOMETHING TO DO NEXT
-- 679: WHERE TO QUEST
-- 681: GOOD TO KNOW
-- 756: %d-%d of %d
-- 839: Search
-- 864: Getting the quest data ready...
+- 99: Filter these results
+- 116: Quests
+- 117: Journal
+- 118: Hubs
+- 120: Vendors
+- 121: Vendors
+- 123: Trainers
+- 124: Class
+- 125: Weapons
+- 126: Professions
+- 128: Dungeons
+- 129: Dungeons
+- 167: ... and %d more
+- 181: GameTooltip
+- 210:     Hearth to %s (saves %s)
+- 218: Your Hearthstone (%s) would save %s, but it's ready in %s.
+- 221: Click to start this journey
+- 222: Shift-click to add it to your journey
+- 228: Click for directions
+- 229: Shift-click to add it to your journey
+- 273: %s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.
+- 274: Add as detour
+- 274: Cancel
+- 274: Switch journey
+- 283: You're on a journey: %s.
+- 284: You have directions to %s.
+- 300: %s  ·  %s  ·  %d stop%s
+- 307:   ·  no route found from here
+- 391: ChatEdit_InsertLink
+- 393: InsertLink
+- 401: Data: 
+- 401:  + places you visited. 
+- 402: Data: places you visited. 
+- 403: Quest
+- 404: Install 
+- 404:  for quests, items and every trainer. 
+- 408: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
+- 409: master once and routes will use your flight paths.\|r
+- 414: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
+- 415: paths here.\|r
+- 417: %d known flight path%s. Boat and zeppelin docks are approximate.
+- 531: Level %d  ·  %s
+- 532: Level %d
+- 568: Options
+- 572: Wayward's settings. Also: right-click the minimap button, or /ww options.
+- 604: CheckButton
+- 697: YOUR JOURNEY
+- 699: SOMETHING TO DO NEXT
+- 703: WHERE TO QUEST
+- 705: GOOD TO KNOW
+- 809: %d-%d of %d
+- 892: Search
+- 918: Getting the quest data ready...
 
 ## UI/MinimapButton.lua
 

@@ -121,6 +121,12 @@ The header keeps the summary line and the time buttons; the side tabs stay
 (the mockup's "?" becomes the unified Find page, see
 [One assistance system](#one-assistance-system-im-stuck)).
 
+Changed 2026-11-13: the side tabs and the panel they docked beside the
+window are gone. A rail down the window's left edge names every page (For
+you, Find, Quests, Vendors, Trainers, Dungeons, Items), and the page picked
+takes the one pane beside it, in the home screen's place. Where this
+document says "side tab" or "side panel", read the rail and the pane.
+
 ### Contracts between modules
 
 So the streams can build in parallel:

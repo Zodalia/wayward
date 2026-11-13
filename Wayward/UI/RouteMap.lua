@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- A small map under a result's tooltip (cards and side panel rows) with its
+-- A small map under a result's tooltip (cards and list rows) with its
 -- route drawn on it: the smallest map that holds the whole route (a zone,
 -- else the continent, else the world map), from the game's own map art,
 -- zoomed in on the route (with some room around it).

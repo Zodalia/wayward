@@ -4735,16 +4735,16 @@ do
   failing = { ButtonFrameTemplate = true, SearchBoxTemplate = true, PanelTopTabButtonTemplate = true }
   unknown = { TooltipBackdropTemplate = true }
   check(openAll(freshUI()), "windows open when the templates fail")
-  -- Windows: the main window, its side panel and the copy box; plus the HUD and overview boxes.
-  check(count(asked, "ButtonFrameTemplate") == 3 and count(asked, "BackdropTemplate") == 5
+  -- Windows: the main window and the copy box (the list pages share the main window); plus the HUD and overview boxes.
+  check(count(asked, "ButtonFrameTemplate") == 2 and count(asked, "BackdropTemplate") == 4
     and count(asked, "TooltipBackdropTemplate") == 0 and count(asked, "InputBoxTemplate") == 1,
     "a failing or unknown template falls back to the old look")
   failing, unknown = {}, {}
   local ui = freshUI()
   check(openAll(ui), "windows open with the templates")
-  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 3
+  check(count(asked, "BackdropTemplate") == 0 and count(asked, "SearchBoxTemplate") == 1 and hidPortrait == 2
     and ui.Panel.SelectedTab() == "trainers",
-    "template windows, search box and side tabs (tab " .. tostring(ui.Panel.SelectedTab()) .. ")")
+    "template windows, search box and the rail (tab " .. tostring(ui.Panel.SelectedTab()) .. ")")
 
   -- Without EllesmereUI the skin does nothing.
   fire("PLAYER_LOGIN")
@@ -4765,7 +4765,7 @@ do
     and (calls.Font or 0) > 0 and (calls.Inset or 0) >= 2, "windows made earlier get EllesmereUI's look")
   local shells, boxes, fonts = calls.Shell, calls.Panel, calls.Font
   openAll(freshUI())
-  check(calls.Shell == shells + 3 and calls.Panel == boxes + 2,
+  check(calls.Shell == shells + 2 and calls.Panel == boxes + 2,
     "new windows get it right away")
   ns.Panel.Toggle()
   ns.Panel.Toggle()
@@ -4782,7 +4782,7 @@ do
   check(ns.db.settings.skin == false and calls.Shell == shells, "/ww skin turns it off for new windows")
   check(chat[said + 1]:find("skin off; /reload", 1, true) ~= nil, "and says a reload removes it from open ones")
   SlashCmdList.WAYWARD("skin")
-  check(ns.db.settings.skin == true and calls.Shell == shells + 3, "/ww skin again paints what was missed")
+  check(ns.db.settings.skin == true and calls.Shell == shells + 2, "/ww skin again paints what was missed")
 
   CreateFrame, C_XMLUtil, EllesmereUI = savedCreate, nil, nil
   ButtonFrameTemplate_HidePortrait, PanelTemplates_SetTab = nil, nil
@@ -10177,6 +10177,49 @@ do
   if O.IsShown() then O.Toggle() end
 end
 -- ===== redesign: the journey overview's rows (end) =====
+
+-- ===== redesign: the window's rail (begin) =====
+-- A rail down the left names every page; the page picked takes the pane, so
+-- the window keeps its size and nothing opens beside it.
+do
+  io.write("redesign: the window's rail\n")
+  local P = ns.Panel
+  ns.Nav.Stop()
+  P.Search("foryou", "")
+  local names, lit = P.Rail()
+  local joined = table.concat(names, ",")
+  check(names[1] == "For you" and joined:find("Find", 1, true) and joined:find("Quests,Vendors,Trainers,Dungeons", 1, true)
+    and joined:find("Items", 1, true), "the rail names every page, For you first: " .. joined)
+  check(lit == "For you" and P.HomeShown() and not P.SideShown() and P.SelectedTab() == nil,
+    "it opens on For you, lit on the rail: " .. tostring(lit))
+  local w, h = P.Size()
+
+  -- Picking a page puts it in the pane, in the home screen's place.
+  local quests
+  for i, name in ipairs(names) do
+    if name == "Quests" then quests = i end
+  end
+  P.ClickRail(quests)
+  names, lit = P.Rail()
+  check(lit == "Quests" and P.SideShown() and not P.HomeShown() and P.SelectedTab() == "quests",
+    "Quests takes the pane; the home screen makes way: " .. tostring(lit))
+  local w2, h2 = P.Size()
+  check(w2 == w and h2 == h, string.format("and the window keeps its size: %dx%d", w2, h2))
+  -- Picking the page that's showing leaves it showing.
+  P.ClickRail(quests)
+  check(P.SideShown() and select(2, P.Rail()) == "Quests", "picking it again changes nothing")
+  -- Another page, then home again.
+  P.SelectPage("trainers", 1)
+  check(select(2, P.Rail()) == "Trainers" and #P.VisibleResults() > 0, "Trainers lists in the pane")
+  P.ClickRail(1)
+  check(select(2, P.Rail()) == "For you" and P.HomeShown() and not P.SideShown(), "For you brings the home screen back")
+  -- A search from elsewhere (/ww find) lands on its page.
+  P.Search("quests", "redridge")
+  check(select(2, P.Rail()) == "Quests" and P.SideShown() and not P.HomeShown(), "a search opens its page in the pane")
+  P.Search("foryou", "")
+  P.Hide()
+end
+-- ===== redesign: the window's rail (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")
