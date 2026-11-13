@@ -1073,14 +1073,14 @@ local function prerequisites(stop, noPins)
   return out
 end
 
--- Travel seconds between points, planned once per pair.
+-- Travel seconds between points, planned once per pair (and kept on the
+-- network for the plans after, Router.Seconds).
 local function costTable(points, net)
   local cache, width = {}, #points + 1
   return function(i, j)
     local key = i * width + j
     if cache[key] == nil then
-      local route = ns.Router.Plan(points[i], points[j], net)
-      cache[key] = route and route.seconds or math.huge
+      cache[key] = ns.Router.Seconds(points[i], points[j], net) or math.huge
     end
     return cache[key]
   end
@@ -1094,21 +1094,44 @@ local function orderStops(start, stops, net, keep)
     points[#points + 1] = stop.node
     indexOf[stop] = i + 1
   end
-  local cost = costTable(points, net)
+  -- Travel seconds from point to point: cost[from][to], planned the first
+  -- time a pair is asked about (Router.Seconds keeps them for the next plan).
+  -- Not with __index: a background job can't pause inside a metamethod.
+  local cost = {}
+  for from = 1, #points do cost[from] = {} end
   -- Seconds until a stop can be done (its camps respawning, or a hand-in
   -- waiting on gathering), or until one you postponed is due: getting there
   -- sooner means waiting, so other stops fit in first.
   local readyIn = {}
   for i, stop in ipairs(stops) do readyIn[i + 1] = math.max(Journey.ReadyIn(stop), Journey.LaterIn(stop)) end
   local function arrive(t, from, i)
-    return math.max(t + cost(from, i), readyIn[i])
+    local row = cost[from]
+    local seconds = row[i]
+    if seconds == nil then
+      seconds = ns.Router.Seconds(points[from], points[i], net) or math.huge
+      row[i] = seconds
+    end
+    t = t + seconds
+    local wait = readyIn[i]
+    if wait > t then return wait end
+    return t
   end
 
   -- A stop is ready once every stop it comes after (in this plan) is placed.
-  local function ready(i, placed)
+  -- What each one comes after, as indexes, worked out once: orders are
+  -- checked thousands of times.
+  local needs = {}
+  for i = 2, #points do
+    local list = {}
     for _, before in ipairs(prerequisites(stops[i - 1])) do
       local j = indexOf[before]
-      if j and not placed[j] then return false end
+      if j then list[#list + 1] = j end
+    end
+    needs[i] = list
+  end
+  local function ready(i, placed)
+    for _, j in ipairs(needs[i]) do
+      if not placed[j] then return false end
     end
     return true
   end
@@ -1149,44 +1172,89 @@ local function orderStops(start, stops, net, keep)
     return t
   end
   local best = total(order)
+  local n = #order
+  -- Trying another order: the time up to where it differs is the same as
+  -- before (kept, `upTo`), and time only ever adds up, so a try is given up
+  -- as soon as it reaches the one to beat. Only one that beats it is made
+  -- into a list (and checked against `after`).
+  local upTo = { [0] = 0 } -- seconds at the end of order[k]
+  local function timeOrder()
+    for k = 1, n do upTo[k] = arrive(upTo[k - 1], order[k - 1] or 1, order[k]) end
+  end
+  timeOrder()
   -- And move a stop, or up to MAX_MOVE_STOPS in a row, to where in the order
   -- it adds the least. A chain (each stop after the one before) can't be
   -- reversed, so this is how a stop outside it finds its place along it: a
   -- hand-in next to the chain's second town goes with that visit, not before
   -- the chain, there and back on its own.
+  local rest, restUpTo = {}, { [0] = 0 }
   local function moveStops()
     local improved = false
-    for len = 1, math.min(MAX_MOVE_STOPS, #order - 1) do
-      for a = 1, #order - len + 1 do
-        local rest = {}
-        for k = 1, a - 1 do rest[#rest + 1] = order[k] end
-        for k = a + len, #order do rest[#rest + 1] = order[k] end
-        local found, foundTotal
-        for pos = 1, #rest + 1 do
-          if pos ~= a then
-            local candidate = {}
-            for k = 1, pos - 1 do candidate[k] = rest[k] end
-            for k = 1, len do candidate[pos + k - 1] = order[a + k - 1] end
-            for k = pos, #rest do candidate[k + len] = rest[k] end
-            local t = total(candidate)
-            if t < (foundTotal or best) and valid(candidate) then found, foundTotal = candidate, t end
+    for len = 1, math.min(MAX_MOVE_STOPS, n - 1) do
+      for a = 1, n - len + 1 do
+        -- The order without the stops moved, and its times.
+        local m = 0
+        for k = 1, n do
+          if k < a or k >= a + len then
+            m = m + 1
+            rest[m] = order[k]
+            restUpTo[m] = arrive(restUpTo[m - 1], rest[m - 1] or 1, rest[m])
           end
         end
-        if found then order, best, improved = found, foundTotal, true end
+        local found, foundTotal
+        for pos = 1, m + 1 do
+          if pos ~= a then
+            local bound = foundTotal or best
+            local t, prev = restUpTo[pos - 1], rest[pos - 1] or 1
+            for k = a, a + len - 1 do
+              if t >= bound then break end
+              t, prev = arrive(t, prev, order[k]), order[k]
+            end
+            for k = pos, m do
+              if t >= bound then break end
+              t, prev = arrive(t, prev, rest[k]), rest[k]
+            end
+            if t < bound then
+              local candidate = {}
+              for k = 1, pos - 1 do candidate[k] = rest[k] end
+              for k = 1, len do candidate[pos + k - 1] = order[a + k - 1] end
+              for k = pos, m do candidate[k + len] = rest[k] end
+              if valid(candidate) then found, foundTotal = candidate, t end
+            end
+          end
+        end
+        if found then
+          order, best, improved = found, foundTotal, true
+          timeOrder()
+        end
       end
     end
     return improved
   end
   for _ = 1, MAX_SWAP_PASSES do
     local improved = false
-    for a = 1, #order - 1 do
-      for b = a + 1, #order do
-        local candidate = {}
-        for k = 1, a - 1 do candidate[k] = order[k] end
-        for k = a, b do candidate[k] = order[b - (k - a)] end
-        for k = b + 1, #order do candidate[k] = order[k] end
-        local t = total(candidate)
-        if t < best and valid(candidate) then order, best, improved = candidate, t, true end
+    for a = 1, n - 1 do
+      for b = a + 1, n do
+        -- order[a..b] reversed.
+        local t, prev = upTo[a - 1], order[a - 1] or 1
+        for k = b, a, -1 do
+          if t >= best then break end
+          t, prev = arrive(t, prev, order[k]), order[k]
+        end
+        for k = b + 1, n do
+          if t >= best then break end
+          t, prev = arrive(t, prev, order[k]), order[k]
+        end
+        if t < best then
+          local candidate = {}
+          for k = 1, a - 1 do candidate[k] = order[k] end
+          for k = a, b do candidate[k] = order[b - (k - a)] end
+          for k = b + 1, n do candidate[k] = order[k] end
+          if valid(candidate) then
+            order, best, improved = candidate, t, true
+            timeOrder()
+          end
+        end
       end
     end
     if moveStops() then improved = true end
@@ -1507,20 +1575,33 @@ function Journey.DungeonNote(stops)
   return #lines > 0 and table.concat(lines, "\n") or nil
 end
 
+-- Whether any of `nodes` is within TOGETHER_YARDS of `node`.
+local function anyNear(nodes, node)
+  for _, n in ipairs(nodes) do
+    if ns.Geo.Distance(node, n) <= TOGETHER_YARDS then return true end
+  end
+  return false
+end
+
 -- Whether quest stop `b`'s objectives are done where stop `a`'s are aimed.
--- Quests in the same dungeon are done together on its run.
-function Journey.DoneTogether(a, b)
+-- Quests in the same dungeon are done together on its run. `here` and
+-- `theirs`: aimedNodes(a) and openNodes(b's quest), when they're known.
+-- Counting stops once the answer can't change.
+function Journey.DoneTogether(a, b, here, theirs)
   local inA, inB = Journey.DungeonOf(a), Journey.DungeonOf(b)
   if inA or inB then return inA == inB end
-  local here = aimedNodes(a)
-  local theirs = openNodes(b.action.questID)
+  here = here or aimedNodes(a)
+  theirs = theirs or openNodes(b.action.questID)
   if #here == 0 or #theirs == 0 then return false end
-  local shared = 0
-  for _, n in ipairs(here) do
-    local _, d = ns.Data.Nearest(theirs, n)
-    if d and d <= TOGETHER_YARDS then shared = shared + 1 end
+  local need, shared = math.max(1, #here * TOGETHER_SHARE), 0
+  for k, n in ipairs(here) do
+    if anyNear(theirs, n) then
+      shared = shared + 1
+      if shared >= need then return true end
+    end
+    if shared + (#here - k) < need then return false end
   end
-  return shared >= math.max(1, #here * TOGETHER_SHARE)
+  return false
 end
 
 local function doing(stop)
@@ -1533,15 +1614,27 @@ local function joinTogether(ordered)
   for _, s in ipairs(ordered) do s.together, s.joined = nil, nil end
   local inPlan = {}
   for _, s in ipairs(ordered) do inPlan[s] = true end
+  -- Each quest's open spawns, worked out once (they're compared pair by pair).
+  local spawns = {}
+  local function spawnsOf(stop)
+    local id = stop.action.questID
+    spawns[id] = spawns[id] or openNodes(id)
+    return spawns[id]
+  end
   local i = 1
   while i <= #ordered do
     local lead = ordered[i]
     if doing(lead) and not lead.joined then
       local at = i
+      local leadNodes -- where the lead is aimed (it stays put while others join it)
       for j = i + 1, #ordered do
         local other = ordered[j]
-        if doing(other) and not other.joined and other.action.questID ~= lead.action.questID
-            and Journey.DoneTogether(lead, other) then
+        local together = false
+        if doing(other) and not other.joined and other.action.questID ~= lead.action.questID then
+          if not (Journey.DungeonOf(lead) or Journey.DungeonOf(other)) then leadNodes = leadNodes or aimedNodes(lead) end
+          together = Journey.DoneTogether(lead, other, leadNodes, not Journey.DungeonOf(other) and spawnsOf(other) or nil)
+        end
+        if together then
           -- Straight after the lead (and any joined already), if what it needs allows.
           local candidate = {}
           for k, s in ipairs(ordered) do

@@ -133,8 +133,45 @@ local function prepare(net)
     return rows[s]
   end
 
-  net.paths = { nodes = nodes, from = from }
+  net.paths = { nodes = nodes, from = from, ends = {}, endCount = 0, seconds = {}, secondsCount = 0 }
   return net.paths
+end
+
+-- A route's two ends are walked to and from network nodes: which ones can be
+-- walked, and how long it takes, worked out once per point and network
+-- (journeys ask about the same stops over and over: every pair of them on
+-- every re-plan). Points are told apart by where they are, not by table:
+-- where you stand is a new one each time. Forgotten past a limit (where
+-- you've stood piles up).
+local ENDS_LIMIT = 1000
+local SECONDS_LIMIT = 20000
+
+local function pointKey(n)
+  return tostring(n.instance) .. ":" .. tostring(n.mapID) .. ":" .. tostring(n.wx) .. ":" .. tostring(n.wy)
+end
+
+-- { node index, walk seconds, node index, walk seconds, ... } in node order:
+-- from `point` to the network's nodes (`toNodes`, a route's start) or from
+-- them to it (its goal).
+local function walkEnds(paths, point, toNodes)
+  local key = (toNodes and ">" or "<") .. pointKey(point)
+  local list = paths.ends[key]
+  if list then return list end
+  list = {}
+  for j, node in ipairs(paths.nodes) do
+    local cost
+    if node.instance == point.instance then
+      if toNodes then cost = walkCost(point, node) else cost = walkCost(node, point) end
+    end
+    if cost then
+      list[#list + 1] = j
+      list[#list + 1] = cost
+    end
+  end
+  if paths.endCount >= ENDS_LIMIT then paths.ends, paths.endCount = {}, 0 end
+  paths.ends[key] = list
+  paths.endCount = paths.endCount + 1
+  return list
 end
 
 -- The flight paths `route` learns on the way (flies on from one you don't
@@ -179,19 +216,16 @@ function Router.Plan(start, goal, net)
   local best = walkCost(start, goal) or math.huge
   local bestEntry, bestExit
 
-  local exits = {}
-  for j, node in ipairs(nodes) do
-    local toGoal = node.instance == goal.instance and walkCost(node, goal)
-    if toGoal then exits[#exits + 1] = { j, toGoal } end
-  end
+  local exits = walkEnds(paths, goal, false)
   if #exits > 0 then
-    for i, node in ipairs(nodes) do
-      local toEntry = node.instance == start.instance and walkCost(start, node)
-      if toEntry and toEntry < best then
+    local entries = walkEnds(paths, start, true)
+    for e = 1, #entries, 2 do
+      local i, toEntry = entries[e], entries[e + 1]
+      if toEntry < best then
         local dist = paths.from(i).dist
-        for _, exit in ipairs(exits) do
-          local total = toEntry + dist[exit[1]] + exit[2]
-          if total < best then best, bestEntry, bestExit = total, i, exit[1] end
+        for x = 1, #exits, 2 do
+          local total = toEntry + dist[exits[x]] + exits[x + 1]
+          if total < best then best, bestEntry, bestExit = total, i, exits[x] end
         end
       end
     end
@@ -216,6 +250,25 @@ function Router.Plan(start, goal, net)
     if not (step.mode == "walk" and (step.seconds or 0) <= 0) then out[#out + 1] = step end
   end
   return { steps = out, seconds = best }
+end
+
+-- Just the seconds of Router.Plan's route (nil when there's none), kept per
+-- pair of points on the network: for comparing orders of stops, where the
+-- same pairs come up on every re-plan.
+function Router.Seconds(start, goal, net)
+  local paths = prepare(net)
+  local key = pointKey(start) .. ">" .. pointKey(goal)
+  local seconds = paths.seconds[key]
+  if seconds == nil then
+    local route = Router.Plan(start, goal, net)
+    seconds = route and route.seconds or false
+    if paths.secondsCount >= SECONDS_LIMIT then paths.seconds, paths.secondsCount = {}, 0 end
+    paths.seconds[key] = seconds
+    paths.secondsCount = paths.secondsCount + 1
+  else
+    ns.WarmStep()
+  end
+  return seconds or nil
 end
 
 -- Walking into another zone becomes its own step: to the link you go

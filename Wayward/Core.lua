@@ -103,7 +103,15 @@ function ns.Warming()
   return warmCo ~= nil or #warmQueue > 0
 end
 
-local current -- the queue entry running: { fn, done }
+local current -- the queue entry running: { fn, done, ran = ms run in the slices before this one }
+
+-- The job running (its queue entry) and the milliseconds it has run so far,
+-- this slice included; nil outside one. For the profiler (Perf.lua): a job
+-- sits paused between frames, and that time isn't its own.
+function ns.WarmJob()
+  if not (current and inJob()) then return nil end
+  return current, current.ran + clock() - sliceStart
+end
 
 local function warmTick()
   if not warmCo then
@@ -117,6 +125,7 @@ local function warmTick()
   end
   sliceStart = clock()
   local results = pack(coroutine.resume(warmCo))
+  current.ran = current.ran + clock() - sliceStart
   if results[1] and coroutine.status(warmCo) ~= "dead" then return end
   warmCo = nil
   if not results[1] then geterrorhandler()(results[2]) end
@@ -130,7 +139,7 @@ local function warmTick()
 end
 
 function ns.Warm(fn, done)
-  warmQueue[#warmQueue + 1] = { fn, done }
+  warmQueue[#warmQueue + 1] = { fn, done, ran = 0 }
   warmFrame = warmFrame or CreateFrame("Frame")
   warmFrame:SetScript("OnUpdate", warmTick)
   -- The first slice now, unless a job is under way (or this is inside one).

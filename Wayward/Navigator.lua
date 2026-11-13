@@ -762,9 +762,10 @@ end
 
 -- Asks about quests that aren't in the journey, as a snackbar (UI/Snackbar.lua);
 -- `what` says how you came by them ("picked up", "made progress on"). Letting
--- it fade, or its x, is "not now".
-local function askAbout(ids, what)
-  local offer = Nav.PickupOffer(ids)
+-- it fade, or its x, is "not now". `offer`: Nav.PickupOffer(ids), when it's
+-- been worked out already (each one plans the journey over, twice).
+local function askAbout(ids, what, offer)
+  offer = offer or Nav.PickupOffer(ids)
   if not offer then return end
   Nav.lastPickupOffer = offer
   -- Said with the question, a dungeon's word isn't said again when you add it.
@@ -818,6 +819,8 @@ local function addsUnasked(offer)
   return offer and offer.extra and math.max(offer.extra, offer.extraNoHearth or 0)
 end
 
+-- Also returns the offer for the quests left, when nothing was added (it's
+-- still what they'd add): asking about them needn't work it out again.
 local function autoAddPickups(ids)
   local a = Nav.active
   if ns.db.settings.autoAddPickups == false or not (a and a.journey) then return ids end
@@ -827,17 +830,29 @@ local function autoAddPickups(ids)
     Nav.AddToTrip(offer.stops, offer.label, autoAddLine(offer), autoAddNotice(offer))
     return {}
   end
-  local rest, budget = {}, AUTO_ADD_SLACK
+  -- One quest: one by one is what was just measured.
+  if #ids == 1 then return ids, offer end
+  local rest, budget, added = {}, AUTO_ADD_SLACK, false
   for _, id in ipairs(ids) do
     local one = Nav.active and Nav.active.journey and Nav.PickupOffer({ id })
     adds = addsUnasked(one)
     if adds and adds <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one), autoAddNotice(one)) then
-      budget = budget - adds
+      budget, added = budget - adds, true
     else
       rest[#rest + 1] = id
     end
   end
-  return rest
+  return rest, not added and offer or nil
+end
+
+local function handlePickups(ids)
+  local offer
+  ids, offer = autoAddPickups(ids)
+  if #ids == 0 or ns.db.settings.askOnPickup == false then return end
+  -- Asked once: progress on it later isn't asked about again.
+  ns.charDB.askedProgress = ns.charDB.askedProgress or {}
+  for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
+  askAbout(ids, "picked up", offer)
 end
 
 local function askPickups()
@@ -846,13 +861,11 @@ local function askPickups()
     return
   end
   waiting = false
-  local ids = autoAddPickups(picked)
+  local ids = picked
   picked = {}
-  if #ids == 0 or ns.db.settings.askOnPickup == false then return end
-  -- Asked once: progress on it later isn't asked about again.
-  ns.charDB.askedProgress = ns.charDB.askedProgress or {}
-  for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
-  askAbout(ids, "picked up")
+  -- Measuring what they add plans the journey over, a few times: as a
+  -- background job, a slice per frame, not a stutter as you take them.
+  ns.Warm(function() handlePickups(ids) end)
 end
 
 ns.On("QUEST_ACCEPTED", function(...)
@@ -1228,7 +1241,7 @@ function Nav.AddToTrip(stops, label, message, notice)
         run = function() Nav.RemoveAdded(stops, label) end } } })
   end
   -- One sound: the follow-up question's, when it asks one.
-  if not offerFollowUps(stops) and not addingFollowUps then ns.Sounds.Play("step") end
+  if not offerFollowUps(stops, planned) and not addingFollowUps then ns.Sounds.Play("step") end
   return true
 end
 
@@ -1294,7 +1307,9 @@ end
 -- `stops` and `extra` are the checked ones' stops and travel.
 -- `anyDistance`: first follow-ups out of the way are listed too (unchecked).
 -- `skip`: quest IDs not to list (ones just added or asked about).
-function Nav.FollowUpOffer(stops, anyDistance, skip)
+-- `base`: the journey just planned from where you are, if it was (it's
+-- measured against; otherwise it's planned, when there's a follow-up).
+function Nav.FollowUpOffer(stops, anyDistance, skip, base)
   local a = Nav.active
   local here = ns.Geo.PlayerNode()
   if not (a and a.journey and here) then return nil end
@@ -1304,8 +1319,16 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
   for _, stop in ipairs(root.stops or {}) do
     if stop.action and stop.action.questID then inTrip[stop.action.questID] = true end
   end
-  local base = ns.Journey.Replan(a.journey, here)
-  if not base then return nil end
+  -- The journey from here as it is, to measure against: planned once there's
+  -- a follow-up to measure (most quests have none), unless it's known.
+  local noRoute = false
+  local function measureFrom()
+    if not (base or noRoute) then
+      base = ns.Journey.Replan(a.journey, here)
+      noRoute = base == nil
+    end
+    return base
+  end
   local open = {}
   for _, s in ipairs(root.stops) do
     if not s.done and not s.skipped then open[#open + 1] = s end
@@ -1320,7 +1343,7 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
       if not inTrip[q.id] then
         inTrip[q.id] = true
         local qs = ns.Journey.QuestStops(q.id, here)
-        if #qs > 0 and qs[1].action and qs[1].action.kind == "pickup" then
+        if #qs > 0 and qs[1].action and qs[1].action.kind == "pickup" and measureFrom() then
           qs[1].after = { turnin }
           -- The journey with it (and the ones listed before), against the journey without.
           local with = { unpack(open) }
@@ -1357,7 +1380,7 @@ function Nav.FollowUpOffer(stops, anyDistance, skip)
     local action = stop.action
     if action and action.kind == "turnin" and not stop.done then consider(stop, action.questID, nil, 1) end
   end
-  if #offer.quests == 0 then return nil end
+  if noRoute or #offer.quests == 0 then return nil end
   return offer
 end
 
@@ -1406,15 +1429,15 @@ end
 -- The journey just gained `stops`. Their follow-ups on the way go in, and a
 -- snackbar says so (with undo); for one quest whose follow-ups are all out
 -- of the way, a snackbar asks instead. True when it asked (the question has
--- its own sound).
-function offerFollowUps(stops)
+-- its own sound). `planned`: the journey just planned from where you are.
+function offerFollowUps(stops, planned)
   local handIns = {}
   for _, stop in ipairs(stops) do
     local action = stop.action
     if action and action.kind == "turnin" and not stop.done then handIns[action.questID] = true end
   end
   local single = next(handIns) ~= nil and next(handIns, next(handIns)) == nil
-  local offer = Nav.FollowUpOffer(stops, single and not answered, answered)
+  local offer = Nav.FollowUpOffer(stops, single and not answered, answered, planned)
   if not offer then return end
   local firsts, seen = {}, {}
   local skip, quests = {}, {}

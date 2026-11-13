@@ -3075,6 +3075,17 @@ do
   local kinds = {}
   for _, st in ipairs(ns.Nav.active.journey.stops) do kinds[#kinds + 1] = st.action.kind end
   check(table.concat(kinds, ",") == "complete,turnin", "Start trip: do it, hand it in: " .. table.concat(kinds, ","))
+  -- Planned again from the same spot, the travel times between the stops are
+  -- known: only the legs taken are routed again, not every pair.
+  local routed, realRoute = 0, ns.Router.Plan
+  ns.Router.Plan = function(...) routed = routed + 1 return realRoute(...) end
+  local from = ns.Geo.PlayerNode()
+  ns.Journey.Replan(ns.Nav.active.journey, from)
+  routed = 0
+  local again = ns.Journey.Replan(ns.Nav.active.journey, from)
+  ns.Router.Plan = realRoute
+  check(again and routed <= #again.stops, string.format("a re-plan from the same spot routes only its %d legs (%d)",
+    again and #again.stops or 0, routed))
 
   -- On that trip, another quest: add it (and how much longer), or a new trip.
   ns.Snackbar.Clear()
@@ -3084,8 +3095,20 @@ do
   refreshData()
   check(ns.Nav.PickupOffer({ 40 }).extra <= 180, "Murloc Menace adds 3 min or less to the journey")
   local said = #chat
+  -- Every clock read 5 ms on: the pickup is measured and added a slice per
+  -- frame (under Lua 5.1, a pause inside a plain pcall would be an error).
+  local realClock, clockAt = debugprofilestop, 0
+  debugprofilestop = function() clockAt = clockAt + 5 return clockAt end
   fire("QUEST_ACCEPTED", 40)
   runTimers()
+  local frames, warmFrame = 0, ns.WarmFrame()
+  check(ns.Warming() and not ns.Nav.TripHasQuest(40), "the pickup is measured as a background job")
+  while ns.Warming() and frames < 10000 do
+    warmFrame.scripts.OnUpdate(warmFrame, 0.016)
+    frames = frames + 1
+  end
+  debugprofilestop = realClock
+  check(frames > 1 and not ns.Warming(), "over several frames (" .. frames .. ")")
   shown = newest()
   check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45) and shown and not shown.question,
     "a pickup that adds 3 min or less goes straight into the journey, unasked")
@@ -3101,7 +3124,12 @@ do
     "Remove takes it out again, and progress on it won't be asked about: " .. tostring(chat[#chat]))
   check(not ns.Nav.RemoveAdded({}, "nothing"), "Remove with nothing left to take out does nothing")
   ns.charDB.askedProgress[40] = nil
-  ns.Nav.AddToTrip(ns.Nav.PickupOffer({ 40 }).stops, "Murloc Menace")
+  local offer40 = ns.Nav.PickupOffer({ 40 })
+  local plans, realJourneyPlan = 0, ns.Journey.Plan
+  ns.Journey.Plan = function(...) plans = plans + 1 return realJourneyPlan(...) end
+  ns.Nav.AddToTrip(offer40.stops, "Murloc Menace")
+  ns.Journey.Plan = realJourneyPlan
+  check(plans == 1, "adding a quest with no follow-ups plans the journey once, not again to look for them: " .. plans)
 
   -- Picked up together, one that adds more than 3 min (made so here) and one
   -- that doesn't: the near one goes in, the far one is asked about.
@@ -3130,7 +3158,9 @@ do
       .. tostring(shown and shown.text))
   -- Under 3 min only because the plan with it spends your Hearthstone: asked,
   -- and the question says so.
+  local offers = 0
   ns.Nav.PickupOffer = function(ids)
+    offers = offers + 1
     local offer = realOffer(ids)
     if offer and offer.extra then offer.extraNoHearth = offer.extra + 400 end
     return offer
@@ -3139,6 +3169,7 @@ do
   fire("QUEST_ACCEPTED", 47)
   runTimers()
   shown = newest()
+  check(offers == 1, "one quest picked up and asked about is measured once, not again to ask: " .. offers)
   check(not ns.Nav.TripHasQuest(47) and shown and shown.question
     and shown.text:find("but only by using your Hearthstone: ~", 1, true) and shown.text:find("without it)?", 1, true),
     "fitting only by hearthing: asked, not added, and the question says why: " .. tostring(shown and shown.text))
@@ -6682,6 +6713,12 @@ do
   -- A clock that moves, so every timed call counts.
   local ticks = 0
   debugprofilestop = function() ticks = ticks + 1 return ticks end
+  -- A background job that pauses between frames (a re-plan as you go).
+  ns.Geo.PerfTestStep = function() ns.WarmStep() return true end
+  ns.Geo.PerfTestJob = function()
+    for _ = 1, 20 do ns.Geo.PerfTestStep() end
+    return true
+  end
   SlashCmdList.WAYWARD("perf on")
   check(ns.db.settings.perf and ns.Perf.Enabled() and ns.Panel.SelectPage ~= realSelect, "/ww perf on wraps the modules")
   ns.Panel.SelectPage("trainers", 1)
@@ -6700,6 +6737,33 @@ do
     and #ns.Perf.Traces() <= 40, "quick per-frame calls are tallied, not kept as traces")
   local ok = pcall(ns.Quests.Quest, nil)
   check(ok, "wrapped functions still work with odd input")
+  ns.Perf.Reset()
+  local jobDone
+  ns.Warm(ns.Geo.PerfTestJob, function(done) jobDone = done end)
+  check(ns.Warming(), "the test job pauses after its first slice")
+  local frame, frames, waited = ns.WarmFrame(), 0, 0
+  while ns.Warming() and frames < 1000 do
+    -- What runs while the job is paused.
+    local from = ticks
+    ns.Panel.SelectPage("vendors")
+    waited = waited + (ticks - from)
+    frame.scripts.OnUpdate(frame, 0.016)
+    frames = frames + 1
+  end
+  local jobTrace
+  for i, t in ipairs(ns.Perf.Traces()) do
+    if t.label == "Geo.PerfTestJob" then jobTrace = table.concat(ns.Perf.TraceLines(i), " / ") end
+  end
+  check(jobDone and frames > 1 and jobTrace and jobTrace:find("Geo.PerfTestStep", 1, true)
+    and not jobTrace:find("Panel", 1, true) and jobTrace:find("(background", 1, true),
+    "a background job is its own trace, without what ran while it was paused: " .. tostring(jobTrace))
+  local jobMS
+  for _, t in ipairs(ns.Perf.Traces()) do
+    if t.label == "Geo.PerfTestJob" then jobMS = t.ms end
+  end
+  check(jobMS and jobMS < waited, string.format("and its time is its own (%s ms, %d ms ran between its slices)",
+    tostring(jobMS), waited))
+  ns.Geo.PerfTestStep, ns.Geo.PerfTestJob = nil, nil
   local before = #ns.Perf.Traces()
   SlashCmdList.WAYWARD("perf")
   check(#ns.Perf.TraceLines() > 1, "/ww perf prints the last trace")

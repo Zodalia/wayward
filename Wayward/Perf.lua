@@ -31,11 +31,33 @@ local memory = function() return collectgarbage("count") end
 local enabled = false
 local originals = {} -- { {table, key, fn}, ... } to put back on `off`
 local wrapped = setmetatable({}, { __mode = "k" }) -- wrapper functions
-local stack = {}
+local mainStack = {}
+local jobStacks = setmetatable({}, { __mode = "k" }) -- [background job] = its own stack
 local traces = {}
 local background = {} -- [label] = { calls, ms }: quick outermost calls (HUD ticks and the like)
 
-local function enter(label)
+-- Where a call runs: its stack of open calls, the time now, and the
+-- background job (ns.Warm) or nil. A job pauses between frames, and what runs
+-- meanwhile isn't inside its calls: each job keeps a stack of its own, timed
+-- by how long it has run (the frames it sits paused don't count).
+local function where()
+  local job, ran
+  if ns.WarmJob then job, ran = ns.WarmJob() end
+  if not job then return mainStack, clock(), nil end
+  local stack = jobStacks[job]
+  if not stack then
+    stack = {}
+    jobStacks[job] = stack
+  end
+  return stack, ran, job
+end
+
+local function now(job)
+  if job then return select(2, ns.WarmJob()) or 0 end
+  return clock()
+end
+
+local function enter(label, stack, job)
   local parent = stack[#stack]
   local node
   if parent then
@@ -46,17 +68,26 @@ local function enter(label)
       parent.list[#parent.list + 1] = node
     end
   else
-    node = { label = label, ms = 0, calls = 0, children = {}, list = {}, at = time and time() or 0, kb = memory() }
+    node = { label = label, ms = 0, calls = 0, children = {}, list = {}, at = time and time() or 0, kb = memory(),
+      job = job ~= nil }
   end
   node.calls = node.calls + 1
   stack[#stack + 1] = node
-  return node, clock()
+  return node
 end
 
-local function leave(node, started)
-  node.ms = node.ms + (clock() - started)
-  stack[#stack] = nil
-  if #stack == 0 then
+local function leave(node, stack, started, job)
+  node.ms = node.ms + (now(job) - started)
+  -- Down to this call: in a job, an error caught further up (ns.Protect)
+  -- skips the leaving of the calls it unwound. Not there at all: perf was
+  -- turned off and on again meanwhile.
+  local at
+  for i = #stack, 1, -1 do
+    if stack[i] == node then at = i break end
+  end
+  if not at then return end
+  for i = #stack, at, -1 do stack[i] = nil end
+  if at == 1 and node.kb then
     node.kb = memory() - node.kb
     local window = node.label:find("^Panel%.") or node.label:find("^page:")
     if node.ms >= TRACE_MS or window then
@@ -71,18 +102,14 @@ local function leave(node, started)
   end
 end
 
-local function finish(node, started, ok, ...)
-  leave(node, started)
-  if not ok then
-    -- An error unwinds past the inner wrappers: drop what is left open.
-    for i = #stack, 1, -1 do stack[i] = nil end
-    error((...), 0)
-  end
+local function finish(node, stack, started, job, ok, ...)
+  leave(node, stack, started, job)
+  if not ok then error((...), 0) end
   return ...
 end
 
 -- Outermost calls name their first arguments (which tab, which message).
-local function describe(label, ...)
+local function describe(label, stack, ...)
   if #stack > 0 then return label end
   local args = {}
   for i = 1, math.min(select("#", ...), 2) do
@@ -96,8 +123,12 @@ local function wrap(tbl, key, label)
   local fn = tbl[key]
   if type(fn) ~= "function" or wrapped[fn] or SKIP[label] then return end
   local w = function(...)
-    local node, started = enter(describe(label, ...))
-    return finish(node, started, ns.Protect(fn, ...))
+    local stack, started, job = where()
+    local node = enter(describe(label, stack, ...), stack, job)
+    -- In a job, called as it is: pcall can't pause there under Lua 5.1, and
+    -- ns.Protect's coroutine for every call would be most of what's timed.
+    if job then return finish(node, stack, started, job, true, fn(...)) end
+    return finish(node, stack, started, nil, pcall(fn, ...))
   end
   wrapped[w] = true
   originals[#originals + 1] = { tbl, key, fn }
@@ -149,7 +180,8 @@ function Perf.Disable()
     local o = originals[i]
     o[1][o[2]] = o[3]
   end
-  originals, stack = {}, {}
+  originals, mainStack = {}, {}
+  jobStacks = setmetatable({}, { __mode = "k" })
 end
 
 function Perf.Enabled() return enabled end
@@ -201,11 +233,18 @@ local function totals(out)
   end
 end
 
+-- A trace's first line. One from a background job ran a slice per frame:
+-- its time is spread over them, not a stutter of its own.
+local function heading(trace)
+  return string.format("%s  %.1f ms  %+.0f KB%s", trace.label, trace.ms, trace.kb,
+    trace.job and "  (background, a slice per frame)" or "")
+end
+
 -- One trace (the last when `index` is nil) as text lines.
 function Perf.TraceLines(index)
   local trace = traces[index or #traces]
   if not trace then return { "no traces yet" } end
-  local out = { string.format("%s  %.1f ms  %+.0f KB", trace.label, trace.ms, trace.kb) }
+  local out = { heading(trace) }
   lines(trace, 1, out)
   return out
 end
@@ -232,7 +271,7 @@ function Perf.Report()
   end
   for i, trace in ipairs(traces) do
     out[#out + 1] = ""
-    out[#out + 1] = string.format("#%d  %s  %.1f ms  %+.0f KB", i, trace.label, trace.ms, trace.kb)
+    out[#out + 1] = string.format("#%d  %s", i, heading(trace))
     lines(trace, 1, out)
   end
   return table.concat(out, "\n")
