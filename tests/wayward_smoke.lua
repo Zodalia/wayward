@@ -9887,6 +9887,130 @@ do
     string.format("and the journey is shorter for it (%.0f s, %.0f s nearest first)", travel(planned.stops), travel(nearestFirst)))
 end
 -- ===== journey: a stop beside a chain (end) =====
+
+-- ===== journey: set aside, kept up to date (begin) =====
+-- Setting a journey aside yourself (the overview's button, the End journey
+-- question, /ww journeys aside), the home screen's way to the ones set aside
+-- with no journey on, and the list keeping up with your quests: stops done
+-- since are done on it, and a journey with nothing left goes.
+do
+  io.write("journey: set aside, kept up to date\n")
+  ns.Nav.Stop()
+  ns.charDB.journeys = nil
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  player.mapID, player.x, player.y = 1433, 0.50, 0.50
+  local here = ns.Geo.PlayerNode()
+  local function stop(x, label, kind, questID)
+    return { node = ns.Geo.Node(1433, x, 0.5, label), text = label, action = questID and { kind = kind, questID = questID } or nil }
+  end
+  local savedDone = C_QuestLog.GetAllCompletedQuestIDs
+  local completed = { 2 }
+  C_QuestLog.GetAllCompletedQuestIDs = function() return completed end
+  local Box, Overview = ns.JourneyBox, ns.JourneyOverview
+  local frame = Overview.EnsureFrame()
+  frame:Hide()
+
+  -- Nothing set aside: the one line has no button.
+  Box.Update()
+  check(Box.State() == "none" and Box.AsideButton() == nil, "nothing set aside: no button on the home screen's line")
+  Overview.Show()
+  check(not Overview.IsShown(), "and the overview has nothing to list")
+
+  -- The overview's Set aside button.
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Two hand-ins",
+    stops = { stop(0.53, "Hand in one", "turnin", 9801), stop(0.56, "Hand in two", "turnin", 9802) } }), true)
+  Overview.Show()
+  check(frame.setAside:IsShown() and frame.setAside:GetText() == "Set aside", "the overview has a Set aside button on a journey")
+  frame.setAside.scripts.OnClick(frame.setAside)
+  local list = ns.Nav.SetAsideList()
+  check(ns.Nav.active == nil and #list == 1 and list[1].title == "Two hand-ins" and list[1].stops == 2,
+    "it sets the journey on now aside")
+  local rows = Overview.SetAsideRows()
+  check(Overview.IsShown() and frame.title:GetText() == "Journeys set aside" and not frame.setAside:IsShown()
+    and #rows == 1 and rows[1]:find("Two hand-ins", 1, true) and rows[1]:find("2 stops left", 1, true),
+    "and the overview lists the journeys set aside by themselves: " .. tostring(rows[1]))
+  frame:Hide()
+
+  -- The home screen, with no journey on: a button to them.
+  Box.Update()
+  local button = Box.AsideButton()
+  check(Box.State() == "none" and button and button:GetText() == "1 set aside",
+    "no journey, one set aside: the line has a button: " .. tostring(button and button:GetText()))
+  button.scripts.OnClick(button)
+  check(Overview.IsShown() and #Overview.SetAsideRows() == 1, "which lists them")
+
+  -- A quest handed in meanwhile: its stop is done on the journey set aside.
+  completed = { 2, 9801 }
+  fire("QUEST_TURNED_IN", 9801)
+  runTimers()
+  rows = Overview.SetAsideRows()
+  check(#list == 1 and list[1].stops == 1 and list[1].journey.stops[1].done and not list[1].journey.stops[2].done
+    and rows[1] and rows[1]:find("1 stop left", 1, true),
+    "a quest handed in since is done on the journey set aside: " .. tostring(rows[1]))
+  -- Resuming it plans only what's left.
+  check(ns.Nav.ResumeSetAside(1) and #ns.Nav.active.journey.stops == 1 and ns.Nav.active.journey.stops[1].text == "Hand in two",
+    "resuming plans only what's left")
+  Box.Update()
+  check(Box.AsideButton() == nil, "on a journey the button is gone")
+  ns.Nav.SetAside()
+  runTimers()
+  -- Its last quest handed in: nothing to resume, so it leaves the list.
+  Overview.Show()
+  completed = { 2, 9801, 9802 }
+  fire("QUEST_TURNED_IN", 9802)
+  runTimers()
+  Box.Update()
+  check(#ns.Nav.SetAsideList() == 0 and not Overview.IsShown() and Box.AsideButton() == nil,
+    "a journey set aside with nothing left to do leaves the list, and the button with it")
+
+  -- Abandoning a quest: its open stops leave the journeys set aside, with
+  -- the stops that need them; a journey of nothing else goes.
+  local kill, handIn = stop(0.53, "Do the deed", "complete", 9803), stop(0.56, "Hand in the deed", "turnin", 9803)
+  handIn.after = { kill }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Deed and more", stops = { kill, handIn, stop(0.6, "The inn") } }), true)
+  ns.Nav.SetAside()
+  local kill2, after2 = stop(0.53, "Do the deed", "complete", 9803), stop(0.56, "Then this")
+  after2.after = { kill2 }
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Only the deed", stops = { kill2, after2 } }), true)
+  ns.Nav.SetAside()
+  list = ns.Nav.SetAsideList()
+  check(#list == 2 and list[1].stops == 2 and list[2].stops == 3, "two set aside, with quest stops open")
+  ns.Fire("QUEST_ABANDONED", 9803)
+  check(#list == 1 and list[1].title == "Deed and more" and list[1].stops == 1,
+    "an abandoned quest's stops leave them; a journey with nothing else goes: " .. #list)
+  ns.Nav.ForgetSetAside(1)
+
+  -- Ending a journey offers to set it aside instead.
+  local asked
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, text, _, data) asked = { which = which, text = text, data = data } end
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Keep me", stops = { stop(0.53, "K1"), stop(0.56, "K2") } }), true)
+  ns.Nav.End()
+  check(asked and asked.which == "WAYWARD_END" and StaticPopupDialogs.WAYWARD_END.button3 == "Set aside"
+    and asked.text:find("set it aside", 1, true), "End journey offers to set it aside: " .. tostring(asked and asked.text))
+  StaticPopupDialogs.WAYWARD_END.OnAlt(nil, { active = {} })
+  check(ns.Nav.active ~= nil, "a stale answer (another journey since) sets nothing aside")
+  StaticPopupDialogs.WAYWARD_END.OnAlt(nil, asked.data)
+  check(ns.Nav.active == nil and #ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "Keep me",
+    "Set aside keeps it in the list")
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+
+  -- /ww journeys aside.
+  ns.Nav.ResumeSetAside(1)
+  SlashCmdList.WAYWARD("journeys aside")
+  check(ns.Nav.active == nil and #ns.Nav.SetAsideList() == 1, "/ww journeys aside sets the journey on now aside")
+  local before = #chat
+  SlashCmdList.WAYWARD("journeys aside")
+  check(chat[before + 1] and chat[before + 1]:find("no journey on now", 1, true), "and says so with none on")
+
+  ns.charDB.journeys = nil
+  frame:Hide()
+  Box.Update()
+  C_QuestLog.GetAllCompletedQuestIDs = savedDone
+  fire("QUEST_LOG_UPDATE")
+  runTimers()
+end
+-- ===== journey: set aside, kept up to date (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

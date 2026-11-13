@@ -10,7 +10,8 @@ local _, ns = ...
 -- View details (the journey overview, where it can be reordered, added to or
 -- set aside), with a map of the rest of the journey on the right. With plain
 -- directions: the destination and "Directions", and Continue. With nothing
--- active the region is one line, so the suggestions move up.
+-- active the region is one line, so the suggestions move up; journeys set
+-- aside add a "2 set aside" button to it, which lists them to resume.
 
 local Box = {}
 ns.JourneyBox = Box
@@ -19,6 +20,7 @@ local FULL_HEIGHT = 156
 local LINE_HEIGHT = 26
 local ICON = 56
 local MAP_WIDTH = 220
+local ASIDE_WIDTH = 96     -- the "2 set aside" button on the one line
 local PAD = 10
 local LEFT = PAD + ICON + 14
 local GOLD = { 1, 0.82, 0 }
@@ -225,6 +227,12 @@ function Box.Create(parent, width)
   f.none:SetPoint("LEFT", PAD + 4, 0)
   f.none:SetWidth(width - 2 * PAD - 8)
   f.none:SetText(NONE_TEXT)
+  -- With journeys set aside: a way to them (the overview lists them, each
+  -- with Resume and Forget). Not there when there are none.
+  f.aside = ns.Skin.LinkButton(f, ASIDE_WIDTH, "", function() ns.JourneyOverview.Show() end)
+  f.aside:SetPoint("RIGHT", -PAD, 0)
+  explain(f.aside, "Journeys set aside", "The journeys you set aside, with the stops left on each. Resume one from where you are, or forget it.")
+  f.aside:Hide()
 
   frame = f
   return f
@@ -250,7 +258,11 @@ function Box.Update()
   local f = frame
   local a = ns.Nav.active
   f.map.canvas:Hide()
+  local aside = not a and ns.Nav.SetAsideList and #ns.Nav.SetAsideList() or 0
+  f.aside:SetShown(aside > 0)
+  f.none:SetWidth(f.width - 2 * PAD - 8 - (aside > 0 and ASIDE_WIDTH + 8 or 0))
   if not a then
+    f.aside:SetText(string.format("%d set aside", aside))
     setShown(f, false)
     f.none:Show()
     f.state = "none"
@@ -319,6 +331,11 @@ function Box.Buttons()
   return frame.continue:GetText(), frame.details:IsShown() and frame.details:GetText() or nil
 end
 
+-- The "2 set aside" button on the one line, or nil when hidden (for tests).
+function Box.AsideButton()
+  return frame and frame.aside:IsShown() and frame.aside or nil
+end
+
 -- Clicks Continue (for tests).
 function Box.Continue() continueJourney() end
 
@@ -331,3 +348,4 @@ end
 ns.Listen("NAV_CHANGED", changed)
 ns.Listen("JOURNEY_STARTED", changed)
 ns.Listen("JOURNEY_EXTENDED", changed)
+ns.Listen("JOURNEYS_CHANGED", changed)

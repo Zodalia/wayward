@@ -756,6 +756,7 @@ local function askPlayer(which, text, data)
     ns.print("couldn't show a question (" .. tostring(err) .. "): " .. text:gsub("\n\n", " "))
     return false
   end
+  Nav.CancelLast(err) -- the dialog, when it was shown: Cancel last on a three-button question
   ns.Sounds.Play("popup")
   return true
 end
@@ -1702,9 +1703,24 @@ end)
 -- A journey you set aside (to start another, or for later) is saved with its
 -- stops done so far, newest first, up to MAX_SET_ASIDE of them; the oldest
 -- goes when there's more. Resuming one plans what's left of it from here.
--- The journey overview lists them under the journey on now; /ww journeys
--- lists them in chat.
+-- The journey overview lists them under the journey on now (and by
+-- themselves with no journey on: the home screen's "set aside" button);
+-- /ww journeys lists them in chat.
+-- A journey set aside keeps up with your quests (Nav.SyncSetAside): stops
+-- you've done since are done on it too, and one with nothing left to do
+-- leaves the list.
 local MAX_SET_ASIDE = 5
+local SET_ASIDE_SYNC = 1 -- seconds after a quest event before the list is brought up to date
+
+-- A saved journey's stops still to do (not done, not skipped or dropped).
+local function savedStopsLeft(saved)
+  local left = 0
+  for _, s in ipairs(saved.stops or {}) do
+    if not (s.done or s.skipped) then left = left + 1 end
+  end
+  if saved.finish and not (saved.finish.done or saved.finish.skipped) then left = left + 1 end
+  return left
+end
 
 function Nav.SetAsideList()
   ns.charDB.journeys = ns.charDB.journeys or {}
@@ -1718,10 +1734,7 @@ function Nav.SetAside()
   if not a then return nil end
   local journey = a.journey or { root = { title = a.title, kind = "custom", stops = { visitStop(a.title, a.goal) } } }
   local saved = ns.Journey.Save(journey)
-  local left = 0
-  for _, s in ipairs(saved.stops) do
-    if not (s.done or s.skipped) then left = left + 1 end
-  end
+  local left = savedStopsLeft(saved)
   local entry = { title = a.title, kind = saved.kind, icon = saved.icon, at = time(), stops = left, journey = saved,
     stats = a.stats }
   local list = Nav.SetAsideList()
@@ -1772,6 +1785,77 @@ function Nav.ResumeSetAside(i)
   return true
 end
 
+-- Brings the set-aside journeys up to date with your quests: a stop whose
+-- quest has moved past it (picked up, objectives done, handed in) is done,
+-- the stops left are counted again, and a journey with none left goes from
+-- the list (there's nothing to resume). True when anything changed.
+function Nav.SyncSetAside()
+  local list = ns.charDB and ns.charDB.journeys
+  if not list or #list == 0 then return false end
+  local changed = false
+  for i = #list, 1, -1 do
+    local entry = list[i]
+    if entry.journey then
+      if ns.Journey.SyncQuestState(entry.journey) > 0 then changed = true end
+      local left = savedStopsLeft(entry.journey)
+      if left ~= entry.stops then entry.stops, changed = left, true end
+      if left == 0 then
+        table.remove(list, i)
+        changed = true
+      end
+    end
+  end
+  if changed then ns.Fire("JOURNEYS_CHANGED") end
+  return changed
+end
+
+-- Quest events come in bursts (every kill and loot): one look a moment later.
+local setAsideSyncing = false
+local function syncSetAsideSoon()
+  local list = ns.charDB and ns.charDB.journeys
+  if setAsideSyncing or not list or #list == 0 then return end
+  setAsideSyncing = true
+  ns.After(SET_ASIDE_SYNC, function()
+    setAsideSyncing = false
+    Nav.SyncSetAside()
+  end)
+end
+
+ns.On("QUEST_ACCEPTED", syncSetAsideSoon)
+ns.On("QUEST_TURNED_IN", syncSetAsideSoon)
+ns.On("QUEST_LOG_UPDATE", syncSetAsideSoon)
+-- After a login: quests done on another day (or without Wayward on).
+ns.On("PLAYER_ENTERING_WORLD", function() ns.After(RESUME_EVERY, syncSetAsideSoon) end)
+
+-- An abandoned quest's open stops leave the set-aside journeys too, with the
+-- stops that need them, as on the journey on now (Nav.QuestAbandoned).
+ns.Listen("QUEST_ABANDONED", function(questID)
+  local touched = false
+  for _, entry in ipairs(ns.charDB and ns.charDB.journeys or {}) do
+    local stops, gone = entry.journey and entry.journey.stops or {}, {}
+    local again = false
+    for i, s in ipairs(stops) do
+      if s.action and s.action.questID == questID and not (s.done or s.skipped) then
+        s.skipped, gone[i], again, touched = true, true, true, true
+      end
+    end
+    while again do
+      again = false
+      for i, s in ipairs(stops) do
+        if not (s.done or s.skipped) then
+          for _, before in ipairs(s.after or {}) do
+            if gone[before] then
+              s.skipped, gone[i], again = true, true, true
+              break
+            end
+          end
+        end
+      end
+    end
+  end
+  if touched then Nav.SyncSetAside() end
+end)
+
 function Nav.ForgetSetAside(i)
   local list = Nav.SetAsideList()
   local entry = table.remove(list, i or 1)
@@ -1787,8 +1871,12 @@ function Nav.SetAsideAge(entry)
   return (seconds < 60 and "just now") or (ns.FormatDuration(seconds) .. " ago")
 end
 
-ns.RegisterCommand("journeys", "/ww journeys [resume|forget <n>] - the journey on now and the ones set aside", function(rest)
+ns.RegisterCommand("journeys", "/ww journeys [aside | resume <n> | forget <n>] - the journey on now and the ones set aside", function(rest)
   local verb, n = (rest or ""):lower():match("^(%a*)%s*(%d*)")
+  if verb == "aside" then
+    if not Nav.SetAside() then ns.print("no journey on now.") end
+    return
+  end
   if verb == "resume" then return Nav.ResumeSetAside(tonumber(n) or 1) end
   if verb == "forget" then
     if not Nav.ForgetSetAside(tonumber(n) or 1) then ns.print("no journey set aside there.") end
@@ -2407,7 +2495,8 @@ function Nav.Skip()
 end
 
 -- The directions box's x. A journey asks first, since ending it can't be
--- undone; plain directions stop at once (they're one click to start again).
+-- undone, and offers to set it aside instead (kept, to resume later); plain
+-- directions stop at once (they're one click to start again).
 function Nav.End()
   local a = Nav.active
   if not a then return end
@@ -2415,14 +2504,15 @@ function Nav.End()
   if not (StaticPopupDialogs and StaticPopup_Show) then return endEarly() end
   StaticPopupDialogs.WAYWARD_END = StaticPopupDialogs.WAYWARD_END or {
     text = "%s",
-    button1 = "End journey", button2 = "Keep going",
+    button1 = "End journey", button2 = "Keep going", button3 = "Set aside",
     -- Only the journey you were asked about: not one started since.
     OnAccept = function(_, data) if Nav.active == data.active then endEarly() end end,
+    OnAlt = function(_, data) if Nav.active == data.active then Nav.SetAside() end end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   local done, total = ns.Journey.Progress(a.journey)
-  local text = string.format("End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone.",
-    a.title or "this journey", done, total)
+  local text = string.format("End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; "
+    .. "set it aside to keep it and resume it later.", a.title or "this journey", done, total)
   if not askPlayer("WAYWARD_END", text, { active = a }) then endEarly() end
 end
 

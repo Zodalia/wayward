@@ -725,6 +725,16 @@ button, to add it to the journey you're on.
     loses the plan you had. The journey overview lists set-aside journeys
     under the stops with Resume and Forget; `/ww journeys` lists them in
     chat (`/ww journeys resume 2`, `/ww journeys forget 2`).
+    To set the journey on now aside yourself: the overview's **Set aside**
+    button, the **Set aside** answer when you end a journey (the directions
+    box's x), or `/ww journeys aside`. With no journey on, the home screen's
+    line gains an "N set aside" button while there are any: it opens the
+    overview as a list of just those journeys.
+    Journeys set aside keep up with your quests (`ns.Nav.SyncSetAside()`, a
+    moment after a quest is picked up, progressed or handed in, and after a
+    login): stops you've done since are done on them, an abandoned quest's
+    open stops leave them with the stops that need them, and a journey with
+    no stop left to do leaves the list.
   - `ns.Journey.QuestStops(questID, here)` gives the stops for a whole quest
     from where it stands now: pick it up, do the objectives (the game's quest
     area marker once it's in your log, else the quest data's objective mobs, objects,

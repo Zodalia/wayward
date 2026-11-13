@@ -216,7 +216,12 @@ journeys flexible. Add what the pillars need:
   `Nav.ResumeSetAside(i)` re-plans it from here. The "Switch journey" choice
   on the home screen uses it, so starting something new never loses the
   current plan. The journey overview lists set-aside journeys under the
-  active one with Resume and Forget.
+  active one with Resume and Forget. Added 2026-11-13: the player can set a
+  journey aside directly (the overview's button, the End journey question);
+  with no journey on, the home screen's one line has an "N set aside" button
+  only while there are any (pillar 2); and set-aside journeys follow the
+  quest log (`Nav.SyncSetAside`), leaving the list once nothing is left to
+  do. "Set aside" is the word the player reads, not "suspend" or "pause".
 - **Detail on demand** (pillar 2): the directions box gains a detail
   setting, "steps" (today) or "stops" (show only the current stop and the
   compass; steps on hover). Per character, in Options and `/ww detail`.

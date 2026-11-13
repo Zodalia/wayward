@@ -2943,6 +2943,12 @@ ns.Listen("NAV_CHANGED", function()
   shownTrip = key
   if ns.Panel and ns.Panel.RefreshSoon then ns.Panel.RefreshSoon() end
 end)
+-- The journeys set aside changed (one done or gone as you quested): the
+-- resume tile and the cards their quests hide follow.
+ns.Listen("JOURNEYS_CHANGED", function()
+  ForYou.Invalidate()
+  if ns.Panel and ns.Panel.RefreshSoon then ns.Panel.RefreshSoon() end
+end)
 ns.On("ZONE_CHANGED_NEW_AREA", ForYou.Invalidate)
 
 ns.RegisterPage(ForYou)

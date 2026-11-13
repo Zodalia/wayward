@@ -17,6 +17,8 @@ local _, ns = ...
 -- them would push open stops off the list.
 -- Under the stops: detours on the way (OnTheWay.lua), the journeys you set
 -- aside (Nav.SetAside) with Resume and Forget, and a map of the rest.
+-- "Set aside" at the top sets the journey on now aside. With no journey on,
+-- the window lists just the journeys set aside (the home screen's button).
 
 local Overview = {}
 ns.JourneyOverview = Overview
@@ -97,8 +99,25 @@ local function create()
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.title:SetPoint("TOPLEFT", 12, -10)
-  f.title:SetPoint("RIGHT", -30, 0)
+  f.title:SetPoint("RIGHT", -104, 0)
   f.title:SetJustifyH("LEFT")
+
+  -- Set the journey on now aside: kept in the list below, to resume later.
+  f.setAside = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.setAside:SetSize(70, 18)
+  f.setAside:SetPoint("TOPRIGHT", -30, -8)
+  f.setAside:SetText("Set aside")
+  f.setAside:SetScript("OnClick", function()
+    if ns.Nav.SetAside() then Overview.Show() end
+  end)
+  f.setAside:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Set this journey aside")
+    GameTooltip:AddLine("It's kept with the stops you've done, to resume whenever you like.", 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+  end)
+  f.setAside:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(f.setAside)
 
   f.info = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.info:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -3)
@@ -481,13 +500,63 @@ function Overview.ToggleFinished()
   Overview.Refresh()
 end
 
+-- The set-aside journeys' rows from `y` down, under their header when
+-- `header`; returns the y under them.
+function Overview.LayoutSetAside(y, header)
+  local aside = ns.Nav.SetAsideList and ns.Nav.SetAsideList() or {}
+  frame.asideHeader:ClearAllPoints()
+  frame.asideHeader:SetPoint("TOPLEFT", 12, y)
+  frame.asideHeader:SetShown(header and #aside > 0)
+  if header and #aside > 0 then y = y - 16 end
+  for i, row in ipairs(frame.aside) do
+    local entry = aside[i]
+    if entry then
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", 12, y)
+      row.text:SetText(string.format("%s%s  |cff9d9d9d%d stop%s left, %s|r",
+        entry.icon and ("|T" .. entry.icon .. ":12:12|t ") or "", entry.title or "?", entry.stops or 0,
+        entry.stops == 1 and "" or "s", ns.Nav.SetAsideAge(entry)))
+      row:Show()
+      y = y - SUGGEST_HEIGHT
+    else
+      row:Hide()
+    end
+  end
+  return y
+end
+
+-- With no journey on: just the journeys set aside, each with Resume and
+-- Forget. False (nothing drawn) when there are none.
+function Overview.RefreshSetAside()
+  local aside = ns.Nav.SetAsideList and ns.Nav.SetAsideList() or {}
+  if #aside == 0 then return false end
+  frame.title:SetText("Journeys set aside")
+  frame.info:SetText("Resume one from where you are, or forget it.")
+  frame.setAside:Hide()
+  for _, row in ipairs(frame.rows) do row:Hide() end
+  frame.suggestHeader:Hide()
+  for _, row in ipairs(frame.suggest) do row:Hide() end
+  frame.map.canvas:Hide()
+  frame.marker:Hide()
+  frame.more:SetText("")
+  local y = Overview.LayoutSetAside(-44, false)
+  frame.height = -y + 14
+  frame:SetHeight(frame.height)
+  return true
+end
+
 function Overview.Refresh()
   if not (frame and frame:IsShown()) then return end
   local a = ns.Nav.active
   if not (a and a.journey) then
-    frame:Hide()
+    -- No journey on: the ones set aside by themselves (the home screen's
+    -- button), or nothing to show. Plain directions have no overview.
+    -- Only when asked for (`listing`): a journey that ends closes the window.
+    if a or not frame.listing or not Overview.RefreshSetAside() then frame:Hide() end
     return
   end
+  frame.listing = nil
+  frame.setAside:Show()
   local lines, rows = Overview.Lines()
   local numbers, goal = Overview.StopNumbers()
   local root = a.journey.root or a.journey.def
@@ -621,25 +690,7 @@ function Overview.Refresh()
       row:Hide()
     end
   end
-  local aside = ns.Nav.SetAsideList and ns.Nav.SetAsideList() or {}
-  frame.asideHeader:ClearAllPoints()
-  frame.asideHeader:SetPoint("TOPLEFT", 12, y)
-  frame.asideHeader:SetShown(#aside > 0)
-  if #aside > 0 then y = y - 16 end
-  for i, row in ipairs(frame.aside) do
-    local entry = aside[i]
-    if entry then
-      row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", 12, y)
-      row.text:SetText(string.format("%s%s  |cff9d9d9d%d stop%s left, %s|r",
-        entry.icon and ("|T" .. entry.icon .. ":12:12|t ") or "", entry.title or "?", entry.stops or 0,
-        entry.stops == 1 and "" or "s", ns.Nav.SetAsideAge(entry)))
-      row:Show()
-      y = y - SUGGEST_HEIGHT
-    else
-      row:Hide()
-    end
-  end
+  y = Overview.LayoutSetAside(y, true)
   local mapHeight
   if ns.RouteMap then
     local remaining = {}
@@ -717,6 +768,8 @@ end
 
 function Overview.Show()
   frame = frame or create()
+  -- Opened with no journey on: the journeys set aside.
+  frame.listing = not (ns.Nav.active and ns.Nav.active.journey) or nil
   frame:Show()
   Overview.Refresh()
 end
