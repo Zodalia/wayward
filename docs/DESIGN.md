@@ -88,7 +88,9 @@ layout is described here so it can be built without it).
 +----------------------------------------------------------------------+---+
 ```
 
-Three regions with distinct roles; they never compete on one ranking:
+Three regions with distinct roles (four since 2026-11-09, with
+[Where to quest](#where-to-quest) between the cards and Good to know); they
+never compete on one ranking:
 
 1. **Your journey** (`ns.Nav.active`): what the player chose. Title, the
    current *stop* ("Stop 3 of 5 · Find Shimmerweed in Dun Morogh"; the
@@ -98,7 +100,7 @@ Three regions with distinct roles; they never compete on one ranking:
    directions box is showing the current step) and **View details** (opens
    the journey overview). With plain directions the box shows the
    destination and "Directions". With nothing active the region collapses to
-   one line ("No journey on the go. Pick something below, or search with ?")
+   one line ("No journey on the go. Pick something below.")
    so the suggestions move up.
 2. **Something to do next** (`ForYou.Results()`): suggestions as cards, three
    per page, chosen by *role* (see [Relevance](#relevance)): a continuation,

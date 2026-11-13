@@ -1,17 +1,20 @@
 local _, ns = ...
 
 -- The whole journey at a glance (View details): every stop with done / now /
--- next, opened from the directions box (=) and when a journey with several
--- stops starts. An open stop can be dropped (x); stops that need it are
--- dropped with it. Stops you've skipped or dropped aren't listed.
+-- next, opened from the directions box (View details) and when a journey
+-- with several stops starts. Click an open stop to show or fold its steps.
+-- Its "..." menu (UI/Menu.lua) has what you do to a stop now and then: pin
+-- it, move it up or down (the same as dragging, without the drag), remove it
+-- (stops that need it go with it). Stops you've skipped or removed aren't listed.
 -- Each stop still to go has the number its badge has on the maps (the
 -- one here, the minimap's and the world map's), so you can find it there.
 -- Drag an open stop up or down by its handle (or the row) to reorder the
--- journey, or pin one (the lock) so re-plans as you go leave it where it is
--- (Nav.TogglePin). Under an open stop, the steps that get you there (walk, fly,
--- boat...), with the one you're on marked: open under the current stop, and
--- any stop's +/- opens or folds them, so you can see where it's taking you
--- (and hearth instead).
+-- journey, or pin one so re-plans as you go leave it where it is
+-- (Nav.TogglePin); a pinned stop shows a lock, and clicking the lock unpins
+-- it. Under an open stop, the steps that get you there (walk, fly, boat...),
+-- with the one you're on marked: open under the current stop, and a click
+-- on any stop (or its +/-) opens or folds them, so you can see where it's
+-- taking you (and hearth instead).
 -- Finished stops fold into one line you can open;
 -- they fold by themselves once there are AUTO_FOLD of them, or when showing
 -- them would push open stops off the list.
@@ -36,8 +39,7 @@ local NUMBER_WIDTH = 16    -- the stop's map number, before its name
 local NUMBER_COLOR = { stop = "ffffd200", goal = "ffff4d33" }
 local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
-local PIN_FAINT = 0.35     -- the pin on a stop that isn't pinned
-local PIN_TEXTURE = { [true] = "Interface\\Buttons\\LockButton-Locked-Up", [false] = "Interface\\Buttons\\LockButton-Unlocked-Up" }
+local PIN_TEXTURE = "Interface\\Buttons\\LockButton-Locked-Up" -- on a pinned stop only
 
 local frame
 local HOME = { "TOPLEFT", "TOP", 170, -140 }
@@ -135,7 +137,7 @@ local function create()
     row:SetPoint("TOPLEFT", 12, -44 - (i - 1) * ROW_HEIGHT)
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.text:SetPoint("TOPLEFT", HANDLE_WIDTH + 4, -2)
-    row.text:SetPoint("RIGHT", -62, 0) -- short of the pin, +/- and x
+    row.text:SetPoint("RIGHT", -62, 0) -- short of the lock, +/- and "..."
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
     -- The stop's number on the maps, in a column of its own.
@@ -150,16 +152,24 @@ local function create()
     row.zone:SetPoint("RIGHT", -62, 0)
     row.zone:SetJustifyH("LEFT")
     ns.Skin.Text(row.zone)
-    row.drop = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.drop:SetSize(20, 16)
-    row.drop:SetPoint("RIGHT", 0, 0)
-    row.drop:SetText("x")
-    row.drop:SetScript("OnClick", function() ns.Nav.Drop(row.stop) end)
-    ns.Skin.Button(row.drop)
-    -- Show or fold the steps to this stop.
+    -- More: pin, move up or down, remove (Overview.StopMenu).
+    row.more = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.more:SetSize(24, 16)
+    row.more:SetPoint("RIGHT", 0, 0)
+    row.more:SetText("...")
+    row.more:SetScript("OnClick", function(self) ns.Menu.Show(self, Overview.StopMenu(row.stop)) end)
+    row.more:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText("More: pin, move or remove this stop")
+      GameTooltip:Show()
+    end)
+    row.more:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ns.Skin.Button(row.more)
+    -- Whether the steps to this stop show: a click on it (or anywhere on the
+    -- row) shows or folds them.
     row.expand = CreateFrame("Button", nil, row)
     row.expand:SetSize(14, 14)
-    row.expand:SetPoint("RIGHT", row.drop, "LEFT", -6, 0)
+    row.expand:SetPoint("RIGHT", row.more, "LEFT", -6, 0)
     row.expand:SetScript("OnClick", function() Overview.ToggleSteps(row.stop) end)
     row.expand:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -168,37 +178,30 @@ local function create()
     end)
     row.expand:SetScript("OnLeave", function() GameTooltip:Hide() end)
     row.expand:Hide()
-    -- Pin the stop in its place (Nav.TogglePin): faint until you point at
-    -- it, bright while pinned.
+    -- A lock on a pinned stop (Nav.TogglePin), so you can see why it stays
+    -- put; click it to unpin. Pinning is in the "..." menu.
     row.pin = CreateFrame("Button", nil, row)
     row.pin:SetSize(14, 14)
-    row.pin:SetPoint("RIGHT", row.drop, "LEFT", -24, 0)
+    row.pin:SetPoint("RIGHT", row.more, "LEFT", -24, 0)
+    row.pin:SetNormalTexture(PIN_TEXTURE)
     row.pin:SetScript("OnClick", function()
+      GameTooltip:Hide()
       ns.Nav.TogglePin(row.stop)
-      if row.pin:IsMouseOver() then row.pin:GetScript("OnEnter")(row.pin) end
     end)
     row.pin:SetScript("OnEnter", function(self)
-      self:SetAlpha(1)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      if ns.Journey.IsPinned(row.stop) then
-        GameTooltip:SetText("Unpin this stop")
-        GameTooltip:AddLine("Re-plans can move it again.", 0.6, 0.6, 0.6, true)
-      else
-        GameTooltip:SetText("Pin this stop")
-        GameTooltip:AddLine("It keeps its place when the journey re-plans; the stops around it can still change.",
-          0.6, 0.6, 0.6, true)
-      end
+      GameTooltip:SetText("Pinned: click to unpin")
+      GameTooltip:AddLine("It keeps its place when the journey re-plans. Unpinned, re-plans can move it again.",
+        0.6, 0.6, 0.6, true)
       GameTooltip:Show()
     end)
-    row.pin:SetScript("OnLeave", function(self)
-      self:SetAlpha(ns.Journey.IsPinned(row.stop) and 1 or PIN_FAINT)
-      GameTooltip:Hide()
-    end)
+    row.pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
     row.pin:Hide()
     ns.Skin.Text(row.text)
     row.index = i
     local function startDrag()
       if not row.movable then return end
+      row.dragged = true -- this press is a drag, not a click (OnMouseUp)
       dragging = row
       row.text:SetAlpha(0.4)
       f:SetScript("OnUpdate", trackDrag)
@@ -226,7 +229,18 @@ local function create()
     row.toggle:SetPoint("LEFT", 1, 0)
     row.toggle:SetScript("OnClick", function() Overview.ToggleFinished() end)
     row.toggle:Hide()
-    row:SetScript("OnMouseUp", function(self) if self.header then Overview.ToggleFinished() end end)
+    -- A click on the finished-stops line opens or folds them; on a stop, its
+    -- steps. Not at the end of a drag.
+    row:SetScript("OnMouseDown", function(self) self.dragged = nil end)
+    row:SetScript("OnMouseUp", function(self, button)
+      if self.dragged then self.dragged = nil return end
+      if button and button ~= "LeftButton" then return end
+      if self.header then
+        Overview.ToggleFinished()
+      elseif self.stop and self.canOpen then
+        Overview.ToggleSteps(self.stop)
+      end
+    end)
     row.handle:RegisterForDrag("LeftButton")
     row.handle:SetScript("OnDragStart", startDrag)
     row.handle:SetScript("OnDragStop", endDrag)
@@ -494,6 +508,57 @@ function Overview.Lines()
   return lines, rows
 end
 
+-- The nearest stop above (`by` -1) or below (+1) row `at` that can be moved,
+-- as its index in `rows`, or nil.
+local function movableNeighbour(rows, at, by)
+  local i = at + by
+  while rows[i] do
+    if rows[i].state == "now" or rows[i].state == "next" then return i end
+    i = i + by
+  end
+  return nil
+end
+
+-- A stop's "..." menu: what you do to a stop now and then. Moving up or down
+-- is a drag without the drag (the same rules: not before a stop it needs,
+-- and the order is yours from then on). {} for a stop that's finished or gone.
+function Overview.StopMenu(stop)
+  local a = ns.Nav.active
+  if not (a and a.journey and stop) then return {} end
+  local rows = Overview.Rows()
+  local at
+  for i, r in ipairs(rows) do
+    if r.stop == stop then at = i end
+  end
+  local r = at and rows[at]
+  if not r or FINISHED[r.state] then return {} end
+  local root = a.journey.root or a.journey.def
+  local items = {}
+  if r.state == "now" or r.state == "next" then
+    -- No pins on an order you made yourself: all of it keeps its place.
+    if not root.manual then
+      if ns.Journey.IsPinned(stop) then
+        items[#items + 1] = { text = "Unpin stop", onClick = function() ns.Nav.TogglePin(stop) end,
+          tip = "Re-plans can move it again." }
+      else
+        items[#items + 1] = { text = "Pin stop", onClick = function() ns.Nav.TogglePin(stop) end,
+          tip = "It keeps its place when the journey re-plans; the stops around it can still change." }
+      end
+    end
+    local up, down = movableNeighbour(rows, at, -1), movableNeighbour(rows, at, 1)
+    local yours = "Like dragging it: the order is yours from then on, and re-plans keep it."
+    if up then
+      items[#items + 1] = { text = "Move up", onClick = function() Overview.Move(at, up) end, tip = yours }
+    end
+    if down then
+      items[#items + 1] = { text = "Move down", onClick = function() Overview.Move(at, down) end, tip = yours }
+    end
+  end
+  items[#items + 1] = { text = "Remove stop", onClick = function() ns.Nav.Drop(stop) end,
+    tip = "Takes it off the journey, with any stops that need it." }
+  return items
+end
+
 function Overview.ToggleFinished()
   local lines = Overview.Lines()
   unfolded = not (lines[1] and lines[1].header and not lines[1].folded)
@@ -596,6 +661,7 @@ function Overview.Refresh()
     end
     local r = line and line.row
     row.stop, row.rowIndex, row.header = r and r.stop, line and line.index, line and line.header
+    row.canOpen, row.canPin = nil, nil
     row.expand:Hide()
     -- Stop rows leave room for the number; the other lines don't need it.
     row.text:ClearAllPoints()
@@ -612,7 +678,7 @@ function Overview.Refresh()
       row.text:SetAlpha(line.state == "done" and 0.45 or 0.9)
       row.zone:SetText("")
       row.movable = false
-      row.drop:Hide()
+      row.more:Hide()
       row.pin:Hide()
       row.handle:Hide()
       row.toggle:Hide()
@@ -623,7 +689,7 @@ function Overview.Refresh()
       row.zone:SetText("")
       row.text:SetAlpha(1)
       row.movable = false
-      row.drop:Hide()
+      row.more:Hide()
       row.pin:Hide()
       row.handle:Hide()
       local texture = line.folded and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up"
@@ -642,14 +708,14 @@ function Overview.Refresh()
       row.zone:SetText(zone and ("      " .. zone) or "")
       row.text:SetAlpha(look[2])
       row.movable = r.state == "now" or r.state == "next"
-      row.drop:SetShown(r.state == "now" or r.state == "next" or r.state == "gather")
+      row.more:SetShown(r.state == "now" or r.state == "next" or r.state == "gather")
       -- No pins on an order you dragged yourself: all of it keeps its place.
-      local pinned = ns.Journey.IsPinned(r.stop)
-      row.pin:SetShown(row.movable and not root.manual)
-      row.pin:SetNormalTexture(PIN_TEXTURE[pinned])
-      if not row.pin:IsMouseOver() then row.pin:SetAlpha(pinned and 1 or PIN_FAINT) end
+      -- The lock shows on a pinned stop only; pinning is in the menu.
+      row.canPin = row.movable and not root.manual
+      row.pin:SetShown(row.canPin and ns.Journey.IsPinned(r.stop))
       row.handle:SetShown(row.movable)
       row.toggle:Hide()
+      row.canOpen = line.canOpen
       if line.canOpen then
         row.expand:SetNormalTexture(line.stepsOpen and "Interface\\Buttons\\UI-MinusButton-Up"
           or "Interface\\Buttons\\UI-PlusButton-Up")
@@ -717,16 +783,25 @@ function Overview.SetAsideRows()
   return out
 end
 
--- How many rows show a pin, and how many of those are pinned (for tests).
+-- How many rows can be pinned (their menu offers it), and how many show the
+-- lock of a pinned stop (for tests).
 function Overview.PinCount()
-  local shown, pinned = 0, 0
+  local can, pinned = 0, 0
   for _, row in ipairs(frame and frame.rows or {}) do
-    if row:IsShown() and row.pin:IsShown() then
-      shown = shown + 1
-      if ns.Journey.IsPinned(row.stop) then pinned = pinned + 1 end
+    if row:IsShown() and row.canPin then
+      can = can + 1
+      if row.pin:IsShown() then pinned = pinned + 1 end
     end
   end
-  return shown, pinned
+  return can, pinned
+end
+
+-- The shown row for `stop` (for tests).
+function Overview.RowFor(stop)
+  for _, row in ipairs(frame and frame.rows or {}) do
+    if row:IsShown() and row.stop == stop then return row end
+  end
+  return nil
 end
 
 -- The stop rows' map numbers, top to bottom, "" where a row has none (for tests).
@@ -792,7 +867,7 @@ ns.Movers.Add({ key = "Journey", label = "Journey", posKey = "overviewPos", home
   frame = Overview.EnsureFrame })
 
 -- A new journey folds by the rule again. It opens the overview only when the
--- options say so (off by default: the directions box's book button opens it any time).
+-- options say so (off by default: View details on the directions box opens it any time).
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
   opened = setmetatable({}, { __mode = "k" })
@@ -804,7 +879,7 @@ ns.Listen("JOURNEY_STARTED", function()
   end
 end)
 -- Stops added to the journey: shown if it's open, without opening it (the
--- directions box's book button flashes instead).
+-- directions box's View details pulses instead).
 ns.Listen("JOURNEY_EXTENDED", Overview.Refresh)
 ns.Listen("NAV_CHANGED", Overview.Refresh)
 ns.Listen("JOURNEYS_CHANGED", Overview.Refresh)

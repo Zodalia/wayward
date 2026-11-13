@@ -7,7 +7,7 @@ local _, ns = ...
 --     the same, headed "Journey ended", when you end one that came to
 --     something before its end;
 --   * when For you has a new major suggestion (a questing zone, a dungeon,
---     new spells, a profession's next rank): "New journey available", which
+--     a profession's next rank): "New journey available", which
 --     you click to start it (or add it as a detour, or switch to it: the
 --     usual question); a few seconds after a journey is done, the same toast
 --     says "Up next" with For you's top card.

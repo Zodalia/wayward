@@ -103,9 +103,12 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   flight, a zone to explore, a dungeon to enter). On a journey it also shows
   the journey's title, a bar of stops done ("2 of 5 done", `ns.Nav.Progress()`),
   the step, which step of the way to the next stop you're on, and distance
-  and time left, with Blizzard's square buttons for skip this stop and do
-  this stop later (on a journey), View details (the journey overview) and
-  End journey (Stop directions on plain directions). There's no recalculate
+  and time left. Top right on a journey: **Do this stop later** (>>), a
+  "..." menu for what you use now and then or can't undo (**Skip this
+  stop**, **Set journey aside**, **End journey**; End asks first). Plain directions
+  have an x instead (Stop directions). Along the bottom,
+  two labelled actions: **+ On the way** and **View details** (the journey
+  overview). There's no recalculate
   button: the journey re-plans as you go, and only changes which stop is
   next when another is clearly nearer, so skirting the halfway point between
   two doesn't flip the arrow back and forth. Detail
@@ -121,7 +124,7 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   counts, what's around you first (up to four, then "+N more"); hover a
   line for which quest it's for and where the nearest are. It's already on
   the journey, so there's nothing to add and nothing to wave off.
-- **On the way**: the directions box's + button (bottom right) opens a
+- **On the way**: the directions box's **+ On the way** (bottom left) opens a
   drawer under the box, for what you could add near the journey you're on
   (`Wayside.lua`, `UI/Drawer.lua`).
   **You could add**: up to four offers, each with **Add** and an x to wave
@@ -135,7 +138,7 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   inn, auction house and, for hunters, stable master. Pick one and the list
   is the five places that add least to the journey, each with the time it
   adds and Add; pick it again to go back. The drawer stays open until you
-  close it (per character). Closed, the + carries a count of the offers
+  close it (per character). Closed, **+ On the way** carries a count of the offers
   and nothing else asks for a look. It opens on what's on the way, or on
   repairs when your gear is at 75% or less and on vendors when your bags
   are full. Plain
@@ -571,7 +574,7 @@ play it. `/ww sounds export` opens your choices as one line to copy
 - **Re-routing is automatic** after a hearthstone, portal or loading screen,
   when you're on another continent than the current step expects, or when
   you've walked well away from the current target. Never during a flight,
-  and at most every 10 seconds. The R button still re-plans on demand.
+  and at most every 10 seconds.
 - **TomTom**: when it's installed, Wayward asks once whether to use it
   (yes turns Wayward's compass off; the options can turn it back on); then
   each step goes on TomTom's arrow and map pins, titled with what to do
@@ -805,9 +808,9 @@ button, to add it to the journey you're on.
     plans keep (`Journey.Postpone`, saved with the journey; your newest
     choice wins), so the rest is still ordered for you; in a journey you
     ordered yourself it moves.
-  - **Skip this stop** (the box's x button) asks first, then takes the stop
+  - **Skip this stop** (in the box's "..." menu) asks first, then takes the stop
     off the journey with the stops that need it (a hand-in when you skip the
-    objectives), like the overview's x.
+    objectives), like the overview's Remove stop.
   - Quest data can miss a step of a chain, so a follow-up looks available
     when it isn't. When you talk to a quest giver, the game lists what they
     offer you: a journey's pickup there that isn't on the list is dropped
@@ -823,14 +826,14 @@ button, to add it to the journey you're on.
   - The current journey is saved per character and resumed after a login or
     reload, re-planned from where you are (tried again for half a minute
     while the game isn't ready to place you; a journey it still can't re-plan
-    stays saved, and `/ww resume` tries again). The directions box's book
-    button, **View details** (it flashes a few times when stops are added to
+    stays saved, and `/ww resume` tries again). The directions box's
+    **View details** (it pulses a few times when stops are added to
     the journey, rather than the overview popping open), opens an overview of
     every stop (done / now / next; stops you skipped aren't listed; finished
     stops fold into one line you can click open, by themselves from three of
     them or when they'd push open stops off the list; under the current
     stop, the steps that get you there, walk, fly, boat, with the one you're
-    on marked, and any stop's +/- shows or hides its own, so you can see
+    on marked, and a click on any stop (or its +/-) shows or hides its own, so you can see
     where it's taking you and hearth instead; under the stops, "On the way:
     you could add": the same offers as the directions box's drawer (up to
     four: a log quest with objectives on your way, a new suggestion, and
@@ -843,8 +846,9 @@ button, to add it to the journey you're on.
     where it saves 5 minutes or more); then "Set aside", the
     journeys you set aside, each with Resume and Forget; and a map of the
     rest of the journey; the mouse wheel scrolls the list when it doesn't all
-    fit); a stop can be dropped there, together with the stops that need it,
-    or dragged up or down by its handle to reorder the journey. A reordered
+    fit); each stop's "..." menu pins it, moves it up or down, or removes it
+    (together with the stops that need it), and a stop can be dragged up or
+    down by its handle to reorder the journey. A reordered
     journey keeps your order (`Journey.Move`); stops added later go where
     they add the least travel, and a stop can't move before one it needs (a
     hand-in before its pickup). The lock beside a stop pins it

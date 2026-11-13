@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- On the way: the drawer on the directions box (its + button), for what
+-- On the way: the drawer on the directions box (its On the way action), for what
 -- you could add near the journey you're on (Wayside.lua). What the journey
 -- already gathers as you go has a section of its own above the box (HUD.lua).
 --
@@ -13,7 +13,7 @@ local _, ns = ...
 --
 -- It hangs under the directions box, or over it (and over Gathering as you
 -- go) near the bottom of the screen, and stays open until you close it (per
--- character). Closed, the + button carries a count of the offers and nothing
+-- character). Closed, that action carries a count of the offers and nothing
 -- else calls for attention.
 -- (It took over from the detour picker and the shopping list; ns.ErrandPicker
 -- is this.)

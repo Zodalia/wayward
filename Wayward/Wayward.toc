@@ -56,6 +56,7 @@ Find.lua
 QuestTimes.lua
 ForYou.lua
 UI\Skin.lua
+UI\Menu.lua
 UI\Movers.lua
 UI\CopyBox.lua
 UI\HUD.lua

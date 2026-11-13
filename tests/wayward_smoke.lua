@@ -5436,10 +5436,10 @@ do
   check(labels() == "Giver,Finisher,Far", "planned nearest first: " .. labels())
   ns.HUD.Update()
   local f = ns.HUD.Frame()
-  check(f.moveOn:IsShown() and f.skip:IsShown() and f.next == nil and f.prev == nil,
-    "a trip's box has move on and skip, no next or back")
+  check(f.moveOn:IsShown() and f.menu:IsShown() and f.skip == nil and f.next == nil and f.prev == nil,
+    "a trip's box has move on and the more menu, no next or back")
   local function tip(b) b.scripts.OnEnter(b) return GameTooltip:GetText() end
-  check(tip(f.moveOn) == "Do this stop later" and tip(f.skip) == "Skip this stop"
+  check(tip(f.moveOn) == "Do this stop later" and ns.HUD.MenuItems()[1].text == "Skip this stop"
     and tip(f.list) == "View details" and tip(f.close) == "End journey", "the buttons' tooltips")
 
   -- The x on a journey asks first; Keep going (or Escape) leaves it on.
@@ -5590,7 +5590,8 @@ do
   local trainer = ns.Trainers.Results()[1]
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   ns.HUD.Update()
-  check(not f.moveOn:IsShown() and not f.skip:IsShown() and ns.Nav.MoveOnKind() == nil, "plain directions: no move on or skip")
+  check(not f.moveOn:IsShown() and not f.menu:IsShown() and #ns.HUD.MenuItems() == 0 and ns.Nav.MoveOnKind() == nil,
+    "plain directions: no move on or skip")
   check(tip(f.close) == "Stop directions", "and the x stops directions, not a journey")
   StaticPopupDialogs = {}
   StaticPopup_Show = function() error("plain directions shouldn't ask") end
@@ -10011,6 +10012,171 @@ do
   runTimers()
 end
 -- ===== journey: set aside, kept up to date (end) =====
+-- ===== redesign: the directions box's controls (begin) =====
+do
+  io.write("redesign: directions box controls\n")
+  local saveDialogs, saveShow = StaticPopupDialogs, StaticPopup_Show
+  local here = ns.Geo.PlayerNodeExact()
+  local function stopAt(x, label)
+    return { node = ns.Geo.Node(here.mapID, x, here.y, label), text = label, action = { kind = "manual", text = label } }
+  end
+  local function start()
+    ns.Nav.Stop()
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Controls", stops = { stopAt(here.x + 0.02, "First"),
+      stopAt(here.x + 0.04, "Second"), stopAt(here.x + 0.06, "Third") } }))
+    ns.HUD.Update()
+  end
+  local before = #ns.Nav.SetAsideList()
+  start()
+  local f = ns.HUD.Frame()
+
+  -- One primary control stays on the box; the rest is behind "...".
+  check(f.moveOn:IsShown() and f.menu:IsShown() and not f.close:IsShown(),
+    "on a journey: do this stop later and the more menu; no x beside a menu that ends it")
+  check(f.add:IsShown() and f.list:IsShown() and f.footRule:IsShown(),
+    "and two labelled actions along the bottom")
+  check(f.add:GetText() == "+ On the way" and f.list:GetText() == "View details",
+    "they say what they open: " .. tostring(f.add:GetText()) .. " / " .. tostring(f.list:GetText()))
+
+  -- The menu: what's used now and then, or can't be undone.
+  ns.Menu.Hide()
+  f.menu.scripts.OnClick(f.menu)
+  check(table.concat(ns.Menu.Labels(), ",") == "Skip this stop,Set journey aside,End journey",
+    "the menu's actions: " .. table.concat(ns.Menu.Labels(), ","))
+  if not (MenuUtil and MenuUtil.CreateContextMenu) then
+    check(ns.Menu.IsShown(), "it opens under its button")
+    f.menu.scripts.OnClick(f.menu)
+    check(not ns.Menu.IsShown(), "and the button closes it again")
+  end
+
+  -- Skip asks first, as it did as a button.
+  local asked
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which) asked = which return {} end
+  ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+  ns.Menu.Pick(1)
+  check(asked == "WAYWARD_SKIP" and ns.Nav.active ~= nil and not ns.Menu.IsShown(),
+    "Skip this stop asks before it takes the stop off: " .. tostring(asked))
+  -- End journey asks too, and offers to set it aside.
+  asked = nil
+  ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+  ns.Menu.Pick(3)
+  check(asked == "WAYWARD_END" and ns.Nav.active ~= nil, "End journey asks first: " .. tostring(asked))
+  -- Setting aside keeps the journey, so it doesn't ask.
+  asked = nil
+  ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+  ns.Menu.Pick(2)
+  check(asked == nil and ns.Nav.active == nil and #ns.Nav.SetAsideList() == math.min(before + 1, 5),
+    "Set journey aside keeps it and ends directions, without a question")
+  check(ns.Nav.SetAsideList()[1].title == "Controls", "it's the first of those set aside")
+  table.remove(ns.Nav.SetAsideList(), 1)
+  StaticPopupDialogs, StaticPopup_Show = saveDialogs, saveShow
+
+  -- View details still opens the overview, and pulses when the journey gains stops.
+  start()
+  if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
+  f.list.scripts.OnClick(f.list)
+  check(ns.JourneyOverview.IsShown(), "View details opens the journey overview")
+  if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
+  ns.HUD.FlashJourney()
+  check(ns.HUD.Flashing(), "View details pulses when asked")
+  ns.Nav.Stop()
+  ns.Menu.Hide()
+  -- Plain directions have no menu, so they keep the x; so does the small bar.
+  local dest = stopAt(here.x + 0.02, "Somewhere").node
+  ns.Nav.Start("Somewhere", dest, ns.Router.Plan(here, dest, ns.Network.Build()))
+  ns.HUD.Update()
+  check(ns.Nav.active ~= nil and f.close:IsShown() and not f.menu:IsShown(), "plain directions: the x, no menu")
+  ns.Nav.Stop()
+  ns.HUD.Refresh()
+  check(not ns.HUD.IdleShown() or f.close:IsShown(), "the small bar keeps its x")
+end
+-- ===== redesign: the directions box's controls (end) =====
+
+-- ===== redesign: the journey overview's rows (begin) =====
+-- A click on a stop shows or folds its steps; what you do to a stop now and
+-- then (pin, move up or down, remove) is in its "..." menu, not a row of icons.
+do
+  io.write("redesign: journey overview rows\n")
+  local O = ns.JourneyOverview
+  local here = ns.Geo.PlayerNodeExact()
+  local function stopAt(dx, label)
+    return { node = ns.Geo.Node(here.mapID, here.x + dx, here.y, label), text = label,
+      action = { kind = "manual", text = label } }
+  end
+  ns.Nav.Stop()
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Rows", stops = { stopAt(0.02, "First"), stopAt(0.04, "Second"),
+    stopAt(0.06, "Third") } }))
+  if not O.IsShown() then O.Show() end
+  local function stop(text)
+    for _, r in ipairs(O.Rows()) do
+      if r.stop.text == text then return r.stop end
+    end
+  end
+  local function order()
+    local out = {}
+    for i, r in ipairs(O.Rows()) do out[i] = r.stop.text end
+    return table.concat(out, ",")
+  end
+  local function labels(text)
+    local out = {}
+    for i, item in ipairs(O.StopMenu(stop(text))) do out[i] = item.text end
+    return table.concat(out, ",")
+  end
+  local function pick(text, label)
+    for _, item in ipairs(O.StopMenu(stop(text))) do
+      if item.text == label then item.onClick() return true end
+    end
+    return false
+  end
+  check(order() == "First,Second,Third", "three stops, nearest first: " .. order())
+  check(labels("First") == "Pin stop,Move down,Remove stop", "the first stop's menu: " .. labels("First"))
+  check(labels("Second") == "Pin stop,Move up,Move down,Remove stop", "a middle stop's menu: " .. labels("Second"))
+  check(labels("Third") == "Pin stop,Move up,Remove stop", "the last stop's menu: " .. labels("Third"))
+
+  -- One button a row, and no lock until a stop is pinned.
+  local row = O.RowFor(stop("Second"))
+  check(row ~= nil and row.more:IsShown() and row.drop == nil and not row.pin:IsShown(),
+    "a stop's row has the more button, no x and no lock")
+  row.more.scripts.OnClick(row.more)
+  check(table.concat(ns.Menu.Labels(), ",") == labels("Second"), "the button opens that menu")
+  ns.Menu.Hide()
+
+  -- A click on the row shows its steps, another folds them; a drag's release doesn't.
+  local before = #O.Lines()
+  check(row.canOpen == true, "a stop with steps to it can be opened")
+  row.scripts.OnMouseDown(row, "LeftButton")
+  row.scripts.OnMouseUp(row, "LeftButton")
+  local open = #O.Lines()
+  check(open > before, "a click on a stop shows its steps: " .. before .. " -> " .. open)
+  row = O.RowFor(stop("Second"))
+  row.dragged = true
+  row.scripts.OnMouseUp(row, "LeftButton")
+  check(#O.Lines() == open, "letting go of a drag isn't a click")
+  row.scripts.OnMouseDown(row, "LeftButton")
+  row.scripts.OnMouseUp(row, "LeftButton")
+  check(#O.Lines() == before, "and another click folds them")
+
+  -- Pin from the menu: the lock shows, and unpins on a click.
+  check(pick("Second", "Pin stop") and ns.Journey.IsPinned(stop("Second")), "Pin stop pins it")
+  row = O.RowFor(stop("Second"))
+  check(row.pin:IsShown() and labels("Second"):find("^Unpin stop") ~= nil and select(2, O.PinCount()) == 1,
+    "a pinned stop shows a lock, and its menu unpins: " .. labels("Second"))
+  row.pin.scripts.OnClick(row.pin)
+  check(not ns.Journey.IsPinned(stop("Second")) and not O.RowFor(stop("Second")).pin:IsShown(),
+    "a click on the lock unpins it")
+
+  -- Move down: a drag without the drag, and the order is yours from then on.
+  check(pick("First", "Move down") and order() == "Second,First,Third", "Move down swaps it with the next: " .. order())
+  check(pick("Third", "Move up") and order() == "Second,Third,First", "Move up, likewise: " .. order())
+  check(labels("Third") == "Move up,Move down,Remove stop", "your own order has no pins to offer: " .. labels("Third"))
+
+  -- Remove takes the stop off the journey.
+  check(pick("Third", "Remove stop") and order() == "Second,First", "Remove stop takes it off: " .. order())
+  ns.Nav.Stop()
+  if O.IsShown() then O.Toggle() end
+end
+-- ===== redesign: the journey overview's rows (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

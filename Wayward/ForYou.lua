@@ -2820,8 +2820,8 @@ end)
 
 ---------------------------------------------------------------- new journeys
 
--- Major suggestions: somewhere to quest, a dungeon, spells to train, a
--- profession's next rank. One the character hasn't been shown before pops up
+-- Major suggestions: somewhere to quest, a dungeon, a profession's next
+-- rank (spells to train are an observation now, so they never get here). One the character hasn't been shown before pops up
 -- as "New journey available" (UI/Fanfare.lua). The first look only learns
 -- what's there, so an update doesn't bring a flood.
 local function major(r)
