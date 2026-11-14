@@ -107,7 +107,8 @@ function WorldMapRoute.Refresh()
   if not (scale and scale > 0) then scale = 1 end
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
-    { size = SIZE / scale, clip = { w = w, h = h }, you = false, alpha = WorldMapRoute.Alpha })
+    { size = SIZE / scale, clip = { w = w, h = h }, you = false, gap = from ~= nil,
+      alpha = WorldMapRoute.Alpha })
   drawnFrom = from
   since = 0
   WorldMapRoute.mapID = mapID

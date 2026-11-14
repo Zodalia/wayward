@@ -5999,12 +5999,23 @@ do
   local s = M.Stats()
   check(s and s.lines >= 2 and not s.youShown, string.format(
     "a journey is drawn on the minimap, without an arrow of ours: %s lines", tostring(s and s.lines)))
-  -- The first leg runs from the middle (you) straight up, 60 yards = 18 px.
+  -- The first leg runs from the middle (you) straight up, 60 yards = 18 px,
+  -- less a gap at your end so the minimap's own arrow for you shows.
   local first = s and s.legs[1]
-  check(first and math.abs(first[1] - 70) < 0.5 and math.abs(first[2] + 70) < 0.5
+  local gap = ns.RouteMap.PLAYER_GAP * 0.8
+  check(first and math.abs(first[1] - 70) < 0.5 and math.abs(first[2] + 70 - gap) < 0.5
     and math.abs(first[3] - 70) < 0.5 and math.abs(first[4] + 52) < 0.5,
-    string.format("north is up, from you in the middle: (%.1f, %.1f) to (%.1f, %.1f)",
+    string.format("north is up, from a gap round you in the middle: (%.1f, %.1f) to (%.1f, %.1f)",
       first and first[1] or -1, first and first[2] or -1, first and first[3] or -1, first and first[4] or -1))
+  -- Nearly there (15 yards = 4.5 px, inside the gap): no line over you, the stop still marked.
+  player.y = 0.5 - 45 / 960
+  M.Tick(1)
+  local close = M.Stats()
+  check(close.lines == 1 and close.numbers[1] == 1 and math.abs(close.legs[1][3] - close.legs[1][1]) > 5,
+    "a leg shorter than the gap isn't drawn over you; its stop is still marked: " .. tostring(close.lines))
+  player.y = 0.5
+  M.Tick(1)
+  s = M.Stats()
   -- The far stop is off the minimap: its leg is cut at the rim, its badge not shown.
   local cut = true
   for _, l in ipairs(s and s.legs or {}) do

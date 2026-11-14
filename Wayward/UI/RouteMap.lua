@@ -71,6 +71,7 @@ local CHEVRON_LENGTH, CHEVRON_SPREAD = 4, 5 -- a chevron's depth and half width
 local LANE_GAP = LINE_THICKNESS + 2 * OUTLINE + 1
 local SAME_PLACE = 3     -- pixels apart at most for two ends to be one place
 local PLAYER_ARROW = "Interface\\Minimap\\MinimapArrow"
+local PLAYER_GAP = 12   -- pixels of a leg left out where it starts at you (opts.gap), so your arrow shows
 local BADGE_DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local BADGE_RING = "Interface\\Minimap\\MiniMap-TrackingBorder"
 local BADGE_DISC_SIZE = 13
@@ -87,6 +88,8 @@ local function available()
 end
 
 -- A map view: a clipped canvas `width` wide on `parent`, with its own pools.
+RouteMap.PLAYER_GAP = PLAYER_GAP
+
 function RouteMap.NewView(parent, width)
   local v = { width = width, tiles = {}, edges = {}, lines = {}, chevronEdges = {}, chevronLines = {}, modeIcons = {}, marks = {} }
   v.canvas = CreateFrame("Frame", nil, parent)
@@ -317,6 +320,9 @@ end
 --         at the circle that wide round the box's middle instead (a round
 --         minimap)
 --   you   false: no arrow or start badge (a map that shows you already)
+--   gap   true: the first leg starts at you, so it begins PLAYER_GAP pixels
+--         along (times `size`) and the map's own arrow for you stays in
+--         view; a leg shorter than that isn't drawn (its stop is still marked)
 --   alpha function(i): how opaque steps[i]'s leg, chevrons and icon are (1);
 --         a stop's badge fades less (the square root of its step's)
 --   skipLeg  steps[skipLeg]'s leg isn't drawn (its stop is still marked)
@@ -417,7 +423,17 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
       if lane then
         x1, y1, x2, y2 = x1 + lane.dx, y1 + lane.dy, x2 + lane.dx, y2 + lane.dy
       end
-      if box and box.radius then x1, y1, x2, y2 = clippedRound(x1, y1, x2, y2, cx, cy, box.radius)
+      if i == 1 and opts.gap then
+        local gx, gy = x2 - x1, y2 - y1
+        local length = math.sqrt(gx * gx + gy * gy)
+        if length <= PLAYER_GAP * k then
+          x1, x2 = nil, nil
+        else
+          x1, y1 = x1 + gx / length * PLAYER_GAP * k, y1 + gy / length * PLAYER_GAP * k
+        end
+      end
+      if not x1 then -- too short to show past the gap
+      elseif box and box.radius then x1, y1, x2, y2 = clippedRound(x1, y1, x2, y2, cx, cy, box.radius)
       elseif box then x1, y1, x2, y2 = clipped(x1, y1, x2, y2, box.w, box.h) end
     end
     if x1 and x2 then

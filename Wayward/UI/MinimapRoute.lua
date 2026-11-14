@@ -126,8 +126,8 @@ end
 -- nothing to draw; returns what was drawn (RouteMap.DrawRoute's stats), or nil.
 local function draw(here)
   if not (Minimap and ns.RouteMap and ns.RouteMap.DrawRoute) then return nil end
-  local steps
-  if enabled() and here then steps = ns.RouteMap.Rest(here) end
+  local steps, fromHere
+  if enabled() and here then steps, fromHere = ns.RouteMap.Rest(here) end
   local now = look(here)
   local w, h = now.w, now.h
   if not (steps and w and w > 0 and h and h > 0) then
@@ -152,7 +152,7 @@ local function draw(here)
   if now.round then clip.radius = math.min(w, h) / 2 - RIM end
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
-    { size = SIZE, clip = clip, you = false, alpha = MinimapRoute.Alpha,
+    { size = SIZE, clip = clip, you = false, gap = fromHere, alpha = MinimapRoute.Alpha,
       skipLeg = now.inArea and 1 or nil, limit = SHOWN })
   drawn = now
   return stats
