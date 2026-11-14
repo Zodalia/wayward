@@ -10220,6 +10220,48 @@ do
   P.Hide()
 end
 -- ===== redesign: the window's rail (end) =====
+
+-- ===== redesign: the home screen's rows (begin) =====
+-- Good to know is a list of one-line rows across the pane, not four tiles;
+-- the zone you're in doesn't say how far it is; Options is on the rail.
+do
+  io.write("redesign: home screen rows\n")
+  local Obs = ns.Observations
+  local saved = ns.ForYou.Observations
+  local function some(n)
+    local out = {}
+    for i = 1, n do
+      out[i] = { id = "r" .. i, kind = "x", text = "Row " .. i .. " has 3 spells", highlights = { "3 spells" },
+        urgency = 1 - i / 10, action = i == 1 and { kind = "show", label = "Show trainer", page = "trainers" } or nil }
+    end
+    return out
+  end
+  ns.Panel.Search("foryou", "")
+  ns.ForYou.Observations = function() return some(4) end
+  local four = Obs.Update()
+  local rows = Obs.Tiles()
+  check(#rows == 4 and rows[1].label == "Show trainer" and rows[2].label == nil,
+    "four observations, four rows, at most one action each")
+  check(rows[1].text:find("|cffffd2003 spells|r", 1, true) ~= nil, "numbers still in gold: " .. rows[1].text)
+  check(Obs.TileWidth == nil, "rows span the pane; there are no tile widths to share out")
+  ns.ForYou.Observations = function() return some(2) end
+  local two = Obs.Update()
+  check(two * 2 == four and Obs.Height() == two, "the region is as tall as its rows: " .. two .. " / " .. four)
+  ns.ForYou.Observations = function() return {} end
+  local none = Obs.Update()
+  check(none * 4 == four and Obs.Frame().none:IsShown(), "nothing to flag is one line")
+  ns.ForYou.Observations = saved
+  Obs.Update()
+
+  -- Where to quest: the zone you're in has no room for the way there, and no need.
+  local Band = ns.ZoneBand
+  local here = Band.FactsFor({ zone = "Stormwind City", here = true, lowest = 17, highest = 25, now = 22, seconds = 40 })
+  local there = Band.FactsFor({ zone = "Loch Modan", lowest = 16, highest = 23, now = 7, seconds = 300 })
+  check(here == "Levels 17-25  ·  22 quests left", "the zone you're in: " .. here)
+  check(there:find("7 quests", 1, true) and there:find(ns.FormatDuration(300), 1, true), "another zone still says how far: " .. there)
+  ns.Panel.Hide()
+end
+-- ===== redesign: the home screen's rows (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

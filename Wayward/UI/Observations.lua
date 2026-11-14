@@ -1,20 +1,22 @@
 local _, ns = ...
 
--- "Good to know", the bottom region of the main window: up to four tiles
--- from ForYou.Observations(), each an icon, a short text with its numbers in
--- gold, and at most one light action: Add detour (the observation's stop joins the
--- journey; Start journey when none is on), Show ... (a side page) or Go (plain directions).
--- Hover a tile for the full text. Until ForYou has observations, the region
--- says so in one line.
+-- "Good to know", the bottom region of the main window: up to four rows
+-- from ForYou.Observations(), most urgent first. Each is one line across the
+-- pane: an icon, the fact with its numbers in gold, and at most one light
+-- action at the right: Add detour (the observation's stop joins the journey;
+-- Start journey when none is on), Show ... (a list page), Go (plain
+-- directions) or Resume. A line as wide as the pane holds the whole
+-- sentence, where a tile a quarter as wide cut it short. Hover a row for the
+-- full text and any detail. With nothing to say, the region says so in one line.
 
 local Obs = {}
 ns.Observations = Obs
 
 local MAX = 4
-local GAP = 8
-local TILE_H = 84
-local ICON = 36
-local PAD = 8
+local ROW_H = 22
+local ICON = 16
+local PAD = 6
+local ACTION_W = 110       -- room for the longest action ("Start journey", "Show trainer")
 local GOLD = "|cffffd200"
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Note_01"
 local LABELS = { detour = "Add detour", show = "Show", go = "Go", resume = "Resume" }
@@ -45,7 +47,7 @@ function Obs.Highlight(text, highlights)
 end
 
 -- Runs an observation's action: a detour into the journey (a new one when
--- none is on), a side page, or plain directions.
+-- none is on), a list page, or plain directions.
 function Obs.Run(o)
   local action = o and o.action
   if not action then return false end
@@ -73,56 +75,63 @@ function Obs.Run(o)
   return false
 end
 
-local function tooltip(tile)
-  local o = tile.observation
+local function tooltip(row)
+  row.hover:Show()
+  local o = row.observation
   if not o then return end
-  GameTooltip:SetOwner(tile, "ANCHOR_RIGHT")
+  GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
   GameTooltip:SetText(Obs.Highlight(o.text, o.highlights), 1, 1, 1, 1, true)
   if o.detail then GameTooltip:AddLine(o.detail, 0.8, 0.8, 0.8, true) end
   if o.action then GameTooltip:AddLine(o.action.label or LABELS[o.action.kind] or "", 0.5, 0.8, 0.7) end
   GameTooltip:Show()
 end
 
-local function makeTile(parent, width)
-  local tile = CreateFrame("Frame", nil, parent)
-  tile:SetSize(width, TILE_H)
-  ns.JourneyBox.Backdrop(tile)
-  tile.icon = tile:CreateTexture(nil, "ARTWORK")
-  tile.icon:SetSize(ICON, ICON)
-  tile.icon:SetPoint("TOPLEFT", PAD, -PAD)
-  tile.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-  tile.text = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  tile.text:SetPoint("TOPLEFT", tile.icon, "TOPRIGHT", 6, 0)
-  tile.text:SetPoint("RIGHT", -PAD, 0)
-  tile.text:SetJustifyH("LEFT")
-  tile.text:SetJustifyV("TOP")
-  tile.text:SetWordWrap(true)
-  if tile.text.SetMaxLines then tile.text:SetMaxLines(3) end
-  ns.Skin.Text(tile.text)
-  -- A light action, not a button frame: a tile is a fact first, and its
+local function makeRow(parent, width, i)
+  local row = CreateFrame("Frame", nil, parent)
+  row:SetSize(width, ROW_H)
+  row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
+  -- A faint band on every other row, so four lines read as a list.
+  if i % 2 == 1 then
+    local band = row:CreateTexture(nil, "BACKGROUND")
+    band:SetAllPoints()
+    band:SetColorTexture(1, 1, 1, 0.04)
+  end
+  row.hover = row:CreateTexture(nil, "BORDER")
+  row.hover:SetAllPoints()
+  row.hover:SetColorTexture(1, 1, 1, 0.06)
+  row.hover:Hide()
+  row.icon = row:CreateTexture(nil, "ARTWORK")
+  row.icon:SetSize(ICON, ICON)
+  row.icon:SetPoint("LEFT", PAD, 0)
+  row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  -- A light action, not a button frame: a row is a fact first, and its
   -- action weighs less than a suggestion's Start journey.
-  tile.button = ns.Skin.LinkButton(tile, 90, "", function() Obs.Run(tile.observation) end)
-  tile.button:SetPoint("BOTTOMRIGHT", -PAD + 4, PAD - 4)
-  tile:EnableMouse(true)
-  tile:SetScript("OnEnter", tooltip)
-  tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  return tile
+  row.button = ns.Skin.LinkButton(row, ACTION_W, "", function() Obs.Run(row.observation) end)
+  row.button:SetPoint("RIGHT", -PAD + 2, 0)
+  row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+  row.text:SetPoint("RIGHT", row.button, "LEFT", -8, 0)
+  row.text:SetJustifyH("LEFT")
+  row.text:SetWordWrap(false)
+  ns.Skin.Text(row.text)
+  row:EnableMouse(true)
+  row:SetScript("OnEnter", tooltip)
+  row:SetScript("OnLeave", function(self)
+    self.hover:Hide()
+    GameTooltip:Hide()
+  end)
+  return row
 end
 
 function Obs.Create(parent, width)
   local f = CreateFrame("Frame", nil, parent)
-  f:SetSize(width, TILE_H)
+  f:SetSize(width, ROW_H)
   f.width = width
-  local tileWidth = math.floor((width - (MAX - 1) * GAP) / MAX)
-  f.tiles = {}
-  for i = 1, MAX do
-    local tile = makeTile(f, tileWidth)
-    tile:SetPoint("TOPLEFT", (i - 1) * (tileWidth + GAP), 0)
-    f.tiles[i] = tile
-  end
+  f.tiles = {} -- the rows; the name is from when they were tiles
+  for i = 1, MAX do f.tiles[i] = makeRow(f, width, i) end
   f.none = f:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-  f.none:SetPoint("TOPLEFT", 4, -4)
-  f.none:SetWidth(width - 8)
+  f.none:SetPoint("LEFT", PAD, 0)
+  f.none:SetWidth(width - 2 * PAD)
   f.none:SetJustifyH("LEFT")
   f.none:SetText(NONE_TEXT)
   ns.Skin.Text(f.none)
@@ -130,76 +139,62 @@ function Obs.Create(parent, width)
   return f
 end
 
-local function fill(tile, o)
-  tile.observation = o
+local function fill(row, o)
+  row.observation = o
   if not o then
-    tile:Hide()
+    row:Hide()
     return
   end
-  tile:Show()
-  tile.icon:SetTexture(o.icon or DEFAULT_ICON)
-  tile.text:SetText(Obs.Highlight(o.text, o.highlights))
+  row:Show()
+  row.icon:SetTexture(o.icon or DEFAULT_ICON)
+  row.text:SetText(Obs.Highlight(o.text, o.highlights))
   local action = o.action
-  tile.button:SetShown(action ~= nil)
+  row.button:SetShown(action ~= nil)
   if action then
     -- A detour's label follows the journey, which may have started or ended
     -- since the observation was made.
-    tile.button:SetText(action.kind == "detour" and ns.Search.DetourLabel() or action.label or LABELS[action.kind] or "Go")
+    row.button:SetText(action.kind == "detour" and ns.Search.DetourLabel() or action.label or LABELS[action.kind] or "Go")
   end
 end
 
--- The tiles share the row: fewer tiles, wider ones, so no slot stands
--- empty while another tile's text is cut short.
-local function layout(count)
-  if not frame then return end
-  local n = math.max(1, math.min(count, MAX))
-  local tileWidth = math.floor((frame.width - (n - 1) * GAP) / n)
-  for i, tile in ipairs(frame.tiles) do
-    tile:ClearAllPoints()
-    tile:SetPoint("TOPLEFT", (i - 1) * (tileWidth + GAP), 0)
-    tile:SetWidth(tileWidth)
-  end
-  frame.tileWidth = tileWidth
-end
-
--- Brings the tiles up to date; returns the region's height.
+-- Brings the rows up to date; returns the region's height: a line a row,
+-- one line when there's nothing to say.
 function Obs.Update()
   if not frame then return 0 end
   local list = Obs.List()
-  layout(#list)
-  for i, tile in ipairs(frame.tiles) do
-    local ok, err = pcall(fill, tile, list[i])
+  for i, row in ipairs(frame.tiles) do
+    local ok, err = pcall(fill, row, list[i])
     if not ok then
-      tile:Hide()
+      row:Hide()
       geterrorhandler()(err)
     end
   end
   frame.none:SetShown(#list == 0)
   frame.count = math.min(#list, MAX)
-  return TILE_H
+  frame:SetHeight(Obs.Height())
+  return Obs.Height()
 end
 
-function Obs.Height() return TILE_H end
+function Obs.Height()
+  return math.max(1, frame and frame.count or 0) * ROW_H
+end
 
--- How wide each tile is drawn now (for tests).
-function Obs.TileWidth() return frame and frame.tileWidth end
-
--- The tiles as drawn, { text, label } each (for tests).
+-- The rows as drawn, { text, label } each (for tests).
 function Obs.Tiles()
   local out = {}
   if not frame then return out end
-  for _, tile in ipairs(frame.tiles) do
-    if tile.observation then
-      out[#out + 1] = { text = tile.text:GetText(), label = tile.button:IsShown() and tile.button:GetText() or nil }
+  for _, row in ipairs(frame.tiles) do
+    if row.observation then
+      out[#out + 1] = { text = row.text:GetText(), label = row.button:IsShown() and row.button:GetText() or nil }
     end
   end
   return out
 end
 
--- Clicks the button of tile `index` (for tests).
+-- Clicks the action of row `index` (for tests).
 function Obs.Act(index)
-  local tile = frame and frame.tiles[index]
-  return tile ~= nil and Obs.Run(tile.observation) or false
+  local row = frame and frame.tiles[index]
+  return row ~= nil and Obs.Run(row.observation) or false
 end
 
 function Obs.Frame() return frame end

@@ -78,8 +78,8 @@ the journey overview opens by itself when a journey starts (off by default), the
 toasts), **Maps** (your journey on the world map and on the minimap, and
 the minimap button), and **Windows and help** (reset window
 positions, show the welcome again, list the slash commands). Right-click the
-minimap button or the addon compartment entry, or click Options in the
-window's title bar, to open them.
+minimap button or the addon compartment entry, or click Options at the
+foot of the window's rail, to open them.
 `/ww options` opens the panel, `/ww help` lists the commands, `/ww welcome`
 shows the introduction again, `/ww reset` puts every window back.
 
@@ -338,12 +338,12 @@ with their own jobs:
   where to go next. While the region is on show the cards leave zones to it
   (unless there'd be no cards at all); with no zone to list it isn't there.
   Not listed yet: zones that open in a level or two.
-- **Good to know**: up to four small observations, each there because it is
+- **Good to know**: up to four observations, a line each across the window, each there because it is
   useful now (new abilities at the next level, gear wearing out, a quest
   ready to hand in, bags filling up with a vendor close by...), the numbers
-  in gold, each with at most one light button: **Add detour** (the stop
-  joins your journey, or starts one), **Show ...** (a side page) or **Go**
-  (plain directions). Hover one for the full text.
+  in gold, each with at most one light action at the end of its line:
+  **Add detour** (the stop joins your journey, or starts one), **Show ...**
+  (a list page) or **Go** (plain directions). Hover one for any detail.
 
 The window keeps one size (it fits a 1080p screen at UI
 scale 1): the home screen is the main window, and **Find** (the
@@ -456,9 +456,9 @@ a card on the first page already offers (a hand-in card's quests). The Quests pa
 how long a refresh took; `/ww debug cards` prints each card's role,
 relevance and parts, and each observation.
 
-**Good to know.** The needs are observations, not cards: small tiles with a
+**Good to know.** The needs are observations, not cards: one-line rows with a
 fact and at most one action (**Add detour** adds a stop to your journey,
-**Show** opens a side page, **Go** gives directions). Most urgent first:
+**Show** opens a list page, **Go** gives directions). Most urgent first:
 some gear broken or at 50% durability or lower (repair at the nearest
 repairer), no ammo or under 200, no food and drink or under 5 (not mages,
 from level 6), full or nearly full bags (the nearest vendor to sell at; when

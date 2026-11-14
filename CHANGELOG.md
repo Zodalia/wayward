@@ -13,13 +13,17 @@ directions there. Explore as you like.
 - **Directions** on foot, by flight path, boat, zeppelin, tram and portal,
   with a compass in the directions box. Walks between zones go through the
   gates, passes and tunnels, not over the mountains.
-- **Journeys you control**: skip a stop or do it later, and Wayward
-  re-plans as you go. The + on the directions box opens **On the way**:
-  quests, vendors and detours you could add near your journey.
+- **Journeys you control**: skip a stop or do it later, pin, move or remove
+  stops in the journey overview, and Wayward re-plans as you go. Set a
+  journey aside and resume it when you like. **+ On the way** on the
+  directions box offers quests, vendors and detours you could add near your
+  journey.
 - **Gathering as you go**: what your quests need you to collect along the
   way, nearest first.
-- **Class trainer, Vendors, Quests, Items and Find**: where to train, repair,
-  restock, pick up a quest or find an item, with directions there.
+- **Find, Quests, Vendors, Trainers, Dungeons and Items**: a page each on
+  the window's rail. Where to train, repair, restock, pick up a quest or
+  find an item, with directions there. Quests done inside a dungeon join a
+  journey as one stop.
 - Learns flight paths, trainers and vendors as you meet them. Optional:
   install QuestieDB for quests, items and every trainer. TomTom's arrow is
   supported.

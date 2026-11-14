@@ -204,8 +204,12 @@ function Box.Create(parent, width)
   track:SetAllPoints()
   track:SetColorTexture(0, 0, 0, 0.5)
 
+  -- What comes next can run long (a quest giver's name, "and 3 more stops",
+  -- the journeys set aside): two lines rather than a cut-off one.
   f.description = label(f, "GameFontDisableSmall", 11)
   f.description:SetPoint("TOPLEFT", f.bar, "BOTTOMLEFT", 0, -6)
+  f.description:SetWordWrap(true)
+  if f.description.SetMaxLines then f.description:SetMaxLines(2) end
 
   f.continue = actionButton(f, 140, "Continue journey", continueJourney)
   f.continue:SetPoint("BOTTOMLEFT", LEFT - 2, PAD)

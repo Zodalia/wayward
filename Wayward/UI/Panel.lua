@@ -561,19 +561,6 @@ local function create()
   title:SetText("Wayward")
   ns.Skin.Text(title)
   ns.Skin.CloseButton(f.close)
-  -- Options, in the title bar: the options panel.
-  f.options = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  f.options:SetSize(64, 20)
-  f.options:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
-  f.options:SetText("Options")
-  f.options:SetScript("OnClick", function() ns.Options.Open() end)
-  f.options:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-    GameTooltip:SetText("Wayward's settings. Also: right-click the minimap button, or /ww options.", 1, 1, 1, 1, true)
-    GameTooltip:Show()
-  end)
-  f.options:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  ns.Skin.Button(f.options)
   if templated then
     -- The footer stays inside the inset.
     f.Inset:ClearAllPoints()
@@ -629,6 +616,28 @@ local function create()
     b:SetScript("OnClick", pick)
     f.tabs[i] = { button = b, page = page, pick = pick }
   end
+  -- At the foot of the rail, apart from the pages: the options panel.
+  f.options = CreateFrame("Button", nil, f.rail)
+  f.options:SetSize(RAIL - 18, RAIL_BUTTON_H)
+  f.options:SetPoint("BOTTOMLEFT", 4, 6)
+  f.options.icon = f.options:CreateTexture(nil, "ARTWORK")
+  f.options.icon:SetSize(RAIL_ICON, RAIL_ICON)
+  f.options.icon:SetPoint("LEFT", 6, 0)
+  f.options.icon:SetTexture("Interface\\Icons\\Trade_Engineering")
+  f.options.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  f.options.label = f.options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  f.options.label:SetPoint("LEFT", f.options.icon, "RIGHT", 8, 0)
+  f.options.label:SetJustifyH("LEFT")
+  f.options.label:SetText("Options")
+  ns.Skin.Text(f.options.label)
+  f.options:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+  f.options:SetScript("OnClick", function() ns.Options.Open() end)
+  f.options:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Wayward's settings. Also: right-click the minimap button, or /ww options.", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  f.options:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
   -- The home screen, in the pane: everything of For you's is on this frame,
   -- so a list page can take its place.

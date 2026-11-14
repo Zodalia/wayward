@@ -37,7 +37,8 @@ function Band.StateFor(z)
 end
 
 -- "Levels 10-15  ·  6 quests  ·  4 min": the levels, what you can take now
--- ("left" where you are), and the way to the first hub.
+-- ("left" where you are), and the way to the first hub. Not the way for the
+-- zone you're in: "You're here" says it, and the line has no room for both.
 function Band.FactsFor(z)
   local parts = {}
   if z.lowest and z.highest then
@@ -46,7 +47,7 @@ function Band.FactsFor(z)
   if z.now then
     parts[#parts + 1] = string.format("%d quest%s%s", z.now, z.now == 1 and "" or "s", z.here and " left" or "")
   end
-  if z.seconds then parts[#parts + 1] = ns.FormatDuration(z.seconds) end
+  if z.seconds and not z.here then parts[#parts + 1] = ns.FormatDuration(z.seconds) end
   return table.concat(parts, "  ·  ")
 end
 

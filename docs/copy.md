@@ -1835,22 +1835,22 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 81: , and %d more stop%s
 - 85:   %d set aside.
 - 197: StatusBar
-- 210: Continue journey
-- 212: Continue journey
-- 212: Closes this window; the directions box shows the next step to your current stop.
-- 213: View details
-- 215: View details
-- 215: Every stop of the journey. Reorder or skip stops, add a detour, or set the journey aside and resume it later: Wayward plans again around you.
-- 234: Journeys set aside
-- 234: The journeys you set aside, with the stops left on each. Resume one from where you are, or forget it.
-- 265: %d set aside
-- 280: %d stop%s
-- 282: Stop %d of %d  ·  %d complete  ·  %s remaining
-- 285: %d of %d stop%s complete  ·  %s remaining
-- 292: Continue journey
-- 296: Directions
-- 302: %d step%s  ·  %s remaining
-- 306: Continue
+- 214: Continue journey
+- 216: Continue journey
+- 216: Closes this window; the directions box shows the next step to your current stop.
+- 217: View details
+- 219: View details
+- 219: Every stop of the journey. Reorder or skip stops, add a detour, or set the journey aside and resume it later: Wayward plans again around you.
+- 238: Journeys set aside
+- 238: The journeys you set aside, with the stops left on each. Resume one from where you are, or forget it.
+- 269: %d set aside
+- 284: %d stop%s
+- 286: Stop %d of %d  ·  %d complete  ·  %s remaining
+- 289: %d of %d stop%s complete  ·  %s remaining
+- 296: Continue journey
+- 300: Directions
+- 306: %d step%s  ·  %s remaining
+- 310: Continue
 
 ## UI/QuestLogButtons.lua
 
@@ -1873,20 +1873,20 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Observations.lua
 
-- 20: Add detour
-- 20: Show
-- 20: Go
-- 20: Resume
-- 21: Nothing to flag right now.
-- 147: Go
+- 22: Add detour
+- 22: Show
+- 22: Go
+- 22: Resume
+- 23: Nothing to flag right now.
+- 156: Go
 
 ## UI/ZoneBand.lua
 
 - 18: You're here
 - 19: New to you
-- 44: Level 
-- 44: Levels %d-%d
-- 47: %d quest%s%s
+- 45: Level 
+- 45: Levels %d-%d
+- 48: %d quest%s%s
 
 ## UI/Profile.lua
 
@@ -1956,16 +1956,16 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 417: %d known flight path%s. Boat and zeppelin docks are approximate.
 - 531: Level %d  ·  %s
 - 532: Level %d
-- 568: Options
-- 572: Wayward's settings. Also: right-click the minimap button, or /ww options.
-- 604: CheckButton
-- 697: YOUR JOURNEY
-- 699: SOMETHING TO DO NEXT
-- 703: WHERE TO QUEST
-- 705: GOOD TO KNOW
-- 809: %d-%d of %d
-- 892: Search
-- 918: Getting the quest data ready...
+- 591: CheckButton
+- 631: Options
+- 637: Wayward's settings. Also: right-click the minimap button, or /ww options.
+- 706: YOUR JOURNEY
+- 708: SOMETHING TO DO NEXT
+- 712: WHERE TO QUEST
+- 714: GOOD TO KNOW
+- 818: %d-%d of %d
+- 901: Search
+- 927: Getting the quest data ready...
 
 ## UI/MinimapButton.lua
 

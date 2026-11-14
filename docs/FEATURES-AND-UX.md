@@ -52,7 +52,7 @@ Words the player reads:
 | Detour | An optional stop added to a journey. | errand, side trip |
 | Directions | Plain A-to-B with no journey. | trip |
 | Suggestion | A possible journey on the home screen (a card). | recommendation |
-| Observation | A small useful fact with at most one action (a Good to know tile). | need, alert, nag |
+| Observation | A small useful fact with at most one action (a Good to know row). | need, alert, nag |
 | On the way | The surface that offers detours. | shopping list |
 | Set aside | A journey saved to resume later. | suspend, pause |
 
@@ -176,7 +176,7 @@ fill, a set-aside journey to resume.
 ```
 +------------+--------------------------------------------------------------------+
 | For you    | [portrait 44] Level 8 · Dun Morogh        Time: [15][30][60][Any]  |
-| Find       |               summary line                              [Options]  |
+| Find       |               summary line                                         |
 | Quests     +--------------------------------------------------------------------+
 | Vendors    | YOUR JOURNEY                                    156 high, or 26    |
 | Trainers   | [icon 56] title                              [ route map 220 ]     |
@@ -192,10 +192,12 @@ fill, a set-aside journey to resume.
 |            | WHERE TO QUEST                                  up to 4, 42 high   |
 |            | [zone] [zone] [zone] [zone]                                        |
 |            +--------------------------------------------------------------------+
-|            | GOOD TO KNOW                                    up to 4, 84 high   |
-|            | [tile] [tile] [tile] [tile]                                        |
+|            | GOOD TO KNOW                              up to 4 rows, 22 each    |
+|            | [icon] observation text                             [one action]   |
+| Options    | [icon] observation text                             [one action]   |
 +------------+--------------------------------------------------------------------+
   rail 132: a button a page, 34 high, icon 22 and name; the one picked is lit, its name gold
+  Options sits at the foot of the rail, apart from the pages
   pane: margin 18 · region heading 18 high, 10 above
 ```
 
@@ -231,10 +233,12 @@ Rules:
 | Paging | Arrows under the cards (28 high) or the mouse wheel; back to page 1 when the cards change. |
 
 **Zone box** (42 high): zone name, state ("You're here" / "New to you"),
-levels, quest count ("3 quests left" where you are), travel to its first hub.
+levels, quest count ("3 quests left" where you are), travel to its first hub
+(not for the zone you're in: "You're here" says it).
 
-**Observation tile** (84 high): icon (36), text with numbers in gold, at most
-one light button. Empty region: "Nothing to flag right now."
+**Observation row** (22 high, the pane's width): icon (16), the text on one
+line with numbers in gold, at most one light action at the right. The region
+is as tall as its rows. Empty region: "Nothing to flag right now."
 
 **List row** (the pane's width, 804 × 42, 11 rows a page): title (optionally
 coloured by quest difficulty), subtitle or "zone · time · summary", one
