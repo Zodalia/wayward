@@ -2200,7 +2200,10 @@ end)
 -- are one area (a camp); a stop remembers the areas you've cleared, so leaving
 -- one you worked re-plans the trip on to another area (or the stops on the
 -- way there), and a short step out points at the nearest area you haven't.
-local AREA_RADIUS, AREA_LEAVE = 80, 120
+-- The radius is tight on purpose: the arrow stays until you're among the
+-- spawns, not a field away from them. 40 is just over half of Quests'
+-- AREA_LINK, so the circles round a camp's spawns still join up.
+local AREA_RADIUS, AREA_LEAVE = 40, 60
 
 -- inside (true / false, or nil when the stop has no area), the nearest spot
 -- and the index of its area.
@@ -2627,7 +2630,7 @@ end
 -- yet, so no arrow, and nothing waits for you either: walk out and the way
 -- goes on through the next area. A little way out (GATHER_LEAVE) still
 -- counts, so the edge doesn't flicker. { area, stop, seconds } or nil.
-local GATHER_LEAVE = 120
+local GATHER_LEAVE = 60
 
 local function gatherHereCheck(a, here)
   if not (a.journey and here) or onTaxi() then return nil end

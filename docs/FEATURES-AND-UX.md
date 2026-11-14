@@ -91,7 +91,7 @@ fill, a set-aside journey to resume.
 | Planning | Stops are put in the quickest order, each quest in its own order (pick up, do, hand in), interleaved by travel time. |
 | Stop kinds | pickup, complete, turnin, item, manual, talk, train (profession), explore, enter (dungeon), learn (class spells). |
 | Whole-quest stops | Source items first, extra objectives in order, items bought or earned from another quest ("Buy 5 Rhapsody Malt from Innkeeper Firebrew"). |
-| Objective areas | Spawns grouped into camps. Within 80 yards: "In the area". Leave past 120 yards. Cleared camps rest 5 minutes; "Next spot", "Camp looks cleared", "~3 min left here". |
+| Objective areas | Spawns grouped into camps. Within 40 yards of a spawn: "In the area". Leave past 60 yards. Cleared camps rest 5 minutes; "Next spot", "Camp looks cleared", "~3 min left here". |
 | Re-planning | Automatic as you go, after hearth, portal or loading screen, at most every 10 seconds, never in flight. Only changes the next stop when another is clearly nearer. |
 | Reorder, drop, pin | In the overview: drag a stop, drop it (with the stops that need it), or lock it in place. |
 | Skip / do later | **Skip this stop** asks, then removes it. **Do this stop later** moves it after the next stop that doesn't need it. |

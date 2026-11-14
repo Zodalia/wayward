@@ -513,8 +513,9 @@ local BUSY_CENTRES = 300 -- spawns tried as the busy spot's centre at most (even
 -- open, the best area whatever it adds (you'd only be turned back at the
 -- hand-in).
 local VIA_YARDS = 250
--- Within VIA_RADIUS of an area's spawns you're in it: passed through.
-local VIA_RADIUS = 80
+-- Within VIA_RADIUS of an area's spawns you're in it: passed through. (The
+-- same as Navigator's AREA_RADIUS: among the spawns, not just near them.)
+local VIA_RADIUS = 40
 -- Within NEAR_YARDS of a spawn, a shopping list entry is around you.
 local NEAR_YARDS = 200
 Journey.VIA_YARDS, Journey.VIA_RADIUS, Journey.NEAR_YARDS = VIA_YARDS, VIA_RADIUS, NEAR_YARDS
