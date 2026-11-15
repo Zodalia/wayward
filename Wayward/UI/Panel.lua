@@ -230,14 +230,12 @@ function Panel.ShowTooltip(owner, r)
         ns.FormatDuration(hearth.saves), ns.FormatDuration(hearth.readyIn)), 0.6, 0.6, 0.6, true)
     end
     GameTooltip:AddLine("Click to start this journey", 0.5, 0.8, 0.7)
-    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your journey", 0.5, 0.8, 0.7) end
   elseif r.route then
     local route = ns.Router.WithZoneSteps(r.route)
     for i = 1, #route.steps do
       GameTooltip:AddLine(i .. ". " .. ns.Router.Describe(route, i), 1, 1, 1, true)
     end
     GameTooltip:AddLine("Click for directions", 0.5, 0.8, 0.7)
-    if ns.Nav.active then GameTooltip:AddLine("Shift-click to add it to your journey", 0.5, 0.8, 0.7) end
   end
   GameTooltip:Show()
   if r.item then pcall(showItem, r.item) end

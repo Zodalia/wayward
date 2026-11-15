@@ -258,7 +258,7 @@ item <link>` open Find on Quests or Items. Every result is a row like any
 other, on every page: its name with the facts under it, how long it takes to
 get there, and a **Directions** or **Start journey** button at the right
 (a click anywhere on the row does the same). Hover for the details and the
-route map. While a journey is on, a lighter **Add detour** (or shift-click)
+route map. While a journey is on, a lighter **Add detour**
 sits beside the button; otherwise that place has the page's own action
 where there is one ("Quests" on a dungeon, "In journey" on a quest). A person
 gets directions to where they stand (a talk stop when added); your own class
@@ -685,8 +685,8 @@ count as one step, and only quests your race, class and level can do count.
 **Journeys are flexible:** starting new directions while a journey is on
 asks whether to add them to it as a detour or switch to them; switching sets
 the journey on now aside, to resume later (see the journey overview, or
-`/ww journeys`). Shift-click any row in the panel, or its **Add detour**
-button, to add it to the journey you're on.
+`/ww journeys`). A row's or a card's **Add detour** adds it to the journey
+you're on without asking.
 
 ### Building on Wayward: pages and journeys
 

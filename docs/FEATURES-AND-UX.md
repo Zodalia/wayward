@@ -348,7 +348,7 @@ Every row, card, zone box and tile uses one path (`Panel.Activate`,
 |---|---|
 | Hover | Tooltip with every detail (up to 12 lines), the stops, and a route map under it. |
 | Click, or a list row's **Directions** / **Start journey** button | Start journey or directions. While a journey is on, asks (5.2). |
-| Shift-click, or **Add detour** | Adds it to the journey on now; starts one if none. |
+| **Add detour** | Adds it to the journey on now; starts one if none. |
 | "In journey" | Takes the quest out again. |
 | Shift-click a link | Puts an item or quest link into the search box. |
 | Mouse wheel | Scrolls a list or pages the cards. |
