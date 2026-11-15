@@ -1675,48 +1675,53 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/JourneyOverview.lua
 
-- 111: Set aside
-- 117: Set this journey aside
-- 118: It's kept with the stops you've done, to resume whenever you like.
-- 163: More: pin, move or remove this stop
-- 176: Show or hide the steps to this stop
-- 193: Pinned: click to unpin
-- 194: It keeps its place when the journey re-plans. Unpinned, re-plans can move it again.
-- 252: Drag to reorder
-- 300: + Add
-- 311: Set aside
-- 325: Forget
-- 330: Resume
-- 409: \|cff7fd1aedone\|r  
-- 410: \|cffffd200now\|r  
-- 412: \|cff80c0ffas you go\|r  
-- 541: Unpin stop
-- 542: Re-plans can move it again.
-- 544: Pin stop
-- 545: It keeps its place when the journey re-plans; the stops around it can still change.
-- 549: Like dragging it: the order is yours from then on, and re-plans keep it.
-- 551: Move up
-- 554: Move down
-- 557: Remove stop
-- 558: Takes it off the journey, with any stops that need it.
-- 581: %s%s  \|cff9d9d9d%d stop%s left, %s\|r
-- 582: :12:12\|t 
-- 598: Journeys set aside
-- 599: Resume one from where you are, or forget it.
-- 633: %d of %d stops done  ·  %s to go%s
-- 635:   ·  your order
-- 635:   ·  drag stops to reorder
-- 671: \|c%s%d\|r
-- 676: \|cffffd200>\|r 
-- 687: \|cff9d9d9d%s finished\|r  %s
-- 687: 1 stop
-- 688: (click to show)
-- 688: (click to hide)
-- 705: hearth to 
-- 730: %s%s  ·  scroll for more
-- 743: On the way: you could add
-- 866: Journey
-- 866: Journey
+- 114: Set aside
+- 120: Set this journey aside
+- 121: It's kept with the stops you've done, to resume whenever you like.
+- 166: More: pin, move or remove this stop
+- 179: Show or hide the steps to this stop
+- 196: Pinned: click to unpin
+- 197: It keeps its place when the journey re-plans. Unpinned, re-plans can move it again.
+- 255: Drag to reorder
+- 314: + Add
+- 325: Set aside
+- 339: Forget
+- 344: Resume
+- 364: Map
+- 368: Hide the map
+- 368: Show the map of the rest of the journey
+- 440: \|cff7fd1aedone\|r  
+- 441: \|cffffd200now\|r  
+- 443: \|cff80c0ffas you go\|r  
+- 572: Unpin stop
+- 573: Re-plans can move it again.
+- 575: Pin stop
+- 576: It keeps its place when the journey re-plans; the stops around it can still change.
+- 581: Do this stop later
+- 582: The journey does the next stop first and fits this one in after.
+- 585: Like dragging it: the order is yours from then on, and re-plans keep it.
+- 587: Move up
+- 590: Move down
+- 593: Remove stop
+- 594: Takes it off the journey, with any stops that need it.
+- 617: %s%s  \|cff9d9d9d%d stop%s left, %s\|r
+- 618: :12:12\|t 
+- 634: Journeys set aside
+- 635: Resume one from where you are, or forget it.
+- 670: %d of %d stops done  ·  %s to go%s
+- 672:   ·  your order
+- 672:   ·  drag stops to reorder
+- 711: \|c%s%d\|r
+- 716: \|cffffd200>\|r 
+- 727: \|cff9d9d9d%s finished\|r  %s
+- 727: 1 stop
+- 728: (click to show)
+- 728: (click to hide)
+- 745: hearth to 
+- 770: %s%s  ·  scroll for more
+- 783: On the way: you could add
+- 931: Journey
+- 931: Journey
 
 ## UI/Fanfare.lua
 

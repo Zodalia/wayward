@@ -10155,7 +10155,7 @@ do
     return false
   end
   check(order() == "First,Second,Third", "three stops, nearest first: " .. order())
-  check(labels("First") == "Pin stop,Move down,Remove stop", "the first stop's menu: " .. labels("First"))
+  check(labels("First") == "Pin stop,Do this stop later,Move down,Remove stop", "the first stop's menu: " .. labels("First"))
   check(labels("Second") == "Pin stop,Move up,Move down,Remove stop", "a middle stop's menu: " .. labels("Second"))
   check(labels("Third") == "Pin stop,Move up,Remove stop", "the last stop's menu: " .. labels("Third"))
 
@@ -10198,6 +10198,22 @@ do
 
   -- Remove takes the stop off the journey.
   check(pick("Third", "Remove stop") and order() == "Second,First", "Remove stop takes it off: " .. order())
+
+  -- The stop you're on is lit, and only that one.
+  check(O.IsLit(stop("Second")) and not O.IsLit(stop("First")), "the stop you're on is lit")
+  -- Do this stop later, from its menu: the >> of the directions box.
+  check(labels("First"):find("Do this stop later", 1, true) == nil, "only the stop you're on can be done later")
+  check(pick("Second", "Do this stop later") and order() == "First,Second" and O.IsLit(stop("First")),
+    "Do this stop later puts the next one first, and that one is lit: " .. order())
+
+  -- The map folds under its own line, and stays folded (per character).
+  local tall = O.Height()
+  check(O.MapShown() and O.EnsureFrame().mapHeader:IsShown(), "the map shows, under its Map line")
+  O.ToggleMap()
+  check(not O.MapShown() and not O.MapDrawn() and O.Height() <= tall and ns.charDB.overviewMapFolded == true,
+    "folded: no map, and the window is no taller: " .. tostring(tall) .. " -> " .. tostring(O.Height()))
+  O.EnsureFrame().mapHeader.scripts.OnClick(O.EnsureFrame().mapHeader)
+  check(O.MapShown() and ns.charDB.overviewMapFolded == nil, "a click on the Map line shows it again")
   ns.Nav.Stop()
   if O.IsShown() then O.Toggle() end
 end

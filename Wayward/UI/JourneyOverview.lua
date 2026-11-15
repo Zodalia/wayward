@@ -4,8 +4,10 @@ local _, ns = ...
 -- next, opened from the directions box (View details) and when a journey
 -- with several stops starts. Click an open stop to show or fold its steps.
 -- Its "..." menu (UI/Menu.lua) has what you do to a stop now and then: pin
--- it, move it up or down (the same as dragging, without the drag), remove it
--- (stops that need it go with it). Stops you've skipped or removed aren't listed.
+-- it, move it up or down (the same as dragging, without the drag), do the
+-- one you're on later (the directions box's >>), remove it (stops that need
+-- it go with it). The stop you're on is lit: a faint gold band and a bar
+-- down its left edge. Stops you've skipped or removed aren't listed.
 -- Each stop still to go has the number its badge has on the maps (the
 -- one here, the minimap's and the world map's), so you can find it there.
 -- Drag an open stop up or down by its handle (or the row) to reorder the
@@ -19,7 +21,8 @@ local _, ns = ...
 -- they fold by themselves once there are AUTO_FOLD of them, or when showing
 -- them would push open stops off the list.
 -- Under the stops: detours on the way (OnTheWay.lua), the journeys you set
--- aside (Nav.SetAside) with Resume and Forget, and a map of the rest.
+-- aside (Nav.SetAside) with Resume and Forget, and a map of the rest under
+-- a "Map" line that folds it (per character).
 -- "Set aside" at the top sets the journey on now aside. With no journey on,
 -- the window lists just the journeys set aside (the home screen's button).
 
@@ -260,6 +263,17 @@ local function create()
       if ResetCursor then ResetCursor() end
       GameTooltip:Hide()
     end)
+    -- The stop you're on: a faint gold band, and a bar down its left edge.
+    row.current = row:CreateTexture(nil, "BACKGROUND", nil, -1)
+    row.current:SetAllPoints()
+    row.current:SetColorTexture(1, 0.82, 0, 0.08)
+    row.current:Hide()
+    row.currentBar = row:CreateTexture(nil, "ARTWORK")
+    row.currentBar:SetPoint("TOPLEFT", -4, 0)
+    row.currentBar:SetPoint("BOTTOMLEFT", -4, 0)
+    row.currentBar:SetWidth(2)
+    row.currentBar:SetColorTexture(1, 0.82, 0, 0.9)
+    row.currentBar:Hide()
     row.hover = row:CreateTexture(nil, "BACKGROUND")
     row.hover:SetAllPoints()
     row.hover:SetColorTexture(1, 1, 1, 0.06)
@@ -339,7 +353,24 @@ local function create()
     row:Hide()
     f.aside[i] = row
   end
-  -- The rest of the journey on a map.
+  -- The rest of the journey on a map, under a line that folds it.
+  f.mapHeader = CreateFrame("Button", nil, f)
+  f.mapHeader:SetSize(356, 16)
+  f.mapHeader.toggle = f.mapHeader:CreateTexture(nil, "ARTWORK")
+  f.mapHeader.toggle:SetSize(14, 14)
+  f.mapHeader.toggle:SetPoint("LEFT", 0, 0)
+  f.mapHeader.text = f.mapHeader:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  f.mapHeader.text:SetPoint("LEFT", f.mapHeader.toggle, "RIGHT", 4, 0)
+  f.mapHeader.text:SetText("Map")
+  f.mapHeader:SetScript("OnClick", function() Overview.ToggleMap() end)
+  f.mapHeader:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(Overview.MapShown() and "Hide the map" or "Show the map of the rest of the journey")
+    GameTooltip:Show()
+  end)
+  f.mapHeader:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Text(f.mapHeader.text)
+  f.mapHeader:Hide()
   f.map = ns.RouteMap.NewView(f, 356)
   f.map.canvas:Hide()
 
@@ -545,6 +576,11 @@ function Overview.StopMenu(stop)
           tip = "It keeps its place when the journey re-plans; the stops around it can still change." }
       end
     end
+    -- The stop you're heading for: later, as the directions box's >> does.
+    if stop == ns.Nav.HeadingFor() and ns.Nav.MoveOnKind() == "later" then
+      items[#items + 1] = { text = "Do this stop later", onClick = function() ns.Nav.MoveOn() end,
+        tip = "The journey does the next stop first and fits this one in after." }
+    end
     local up, down = movableNeighbour(rows, at, -1), movableNeighbour(rows, at, 1)
     local yours = "Like dragging it: the order is yours from then on, and re-plans keep it."
     if up then
@@ -602,6 +638,7 @@ function Overview.RefreshSetAside()
   frame.suggestHeader:Hide()
   for _, row in ipairs(frame.suggest) do row:Hide() end
   frame.map.canvas:Hide()
+  frame.mapHeader:Hide()
   frame.marker:Hide()
   frame.more:SetText("")
   local y = Overview.LayoutSetAside(-44, false)
@@ -663,6 +700,9 @@ function Overview.Refresh()
     row.stop, row.rowIndex, row.header = r and r.stop, line and line.index, line and line.header
     row.canOpen, row.canPin = nil, nil
     row.expand:Hide()
+    local lit = r ~= nil and r.state == "now"
+    row.current:SetShown(lit)
+    row.currentBar:SetShown(lit)
     -- Stop rows leave room for the number; the other lines don't need it.
     row.text:ClearAllPoints()
     row.text:SetPoint("TOPLEFT", HANDLE_WIDTH + 4 + (r and NUMBER_WIDTH + 2 or 0), -2)
@@ -758,7 +798,13 @@ function Overview.Refresh()
   end
   y = Overview.LayoutSetAside(y, true)
   local mapHeight
-  if ns.RouteMap then
+  frame.mapHeader:ClearAllPoints()
+  frame.mapHeader:SetPoint("TOPLEFT", 12, y - 4)
+  frame.mapHeader.toggle:SetTexture(Overview.MapShown() and "Interface\\Buttons\\UI-MinusButton-Up"
+    or "Interface\\Buttons\\UI-PlusButton-Up")
+  frame.mapHeader:Show()
+  y = y - 4 - 16
+  if ns.RouteMap and Overview.MapShown() then
     local remaining = {}
     for k = a.index, #a.route.steps do remaining[#remaining + 1] = a.route.steps[k] end
     local ok, h = pcall(ns.RouteMap.Draw, frame.map, { route = { steps = remaining } })
@@ -830,6 +876,25 @@ function Overview.Move(from, to)
   local a, b = rows[from], rows[to]
   if not (a and b) then return false end
   return ns.Nav.MoveStop(a.stop, b.stop)
+end
+
+-- Whether the map under the stops shows (per character; shown unless you
+-- folded it), and folding or showing it.
+function Overview.MapShown()
+  return not (ns.charDB and ns.charDB.overviewMapFolded)
+end
+
+function Overview.ToggleMap()
+  if ns.charDB then ns.charDB.overviewMapFolded = Overview.MapShown() or nil end
+  Overview.Refresh()
+end
+
+-- Whether the map is drawn now, and whether row `stop` is lit as the one
+-- you're on (for tests).
+function Overview.MapDrawn() return frame ~= nil and frame.map.canvas:IsShown() end
+function Overview.IsLit(stop)
+  local row = Overview.RowFor(stop)
+  return row ~= nil and row.current:IsShown()
 end
 
 -- The window's height (for tests).

@@ -304,12 +304,12 @@ for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 | Part | Spec |
 |---|---|
 | Header | Journey title; **Set aside** (70 × 18). |
-| Stop row (356 × 30) | Drag handle (16), map number (gold for a stop, red for the goal), text with zone, a lock while pinned (click to unpin), +/- for its steps, a "..." menu (24 × 16). States: done, now, next. |
+| Stop row (356 × 30) | Drag handle (16), map number (gold for a stop, red for the goal), text with zone, a lock while pinned (click to unpin), +/- for its steps, a "..." menu (24 × 16). States: done, now, next. The stop you're on is lit: a faint gold band and a 2-wide gold bar down its left edge. |
 | Steps | 15-high lines under a stop; open under the current stop, with the step you're on marked. |
 | Finished stops | Fold into one line; by themselves from three, or when they would push open stops off the list. Skipped stops aren't listed. |
-| "On the way: you could add" | The drawer's offers, up to four rows of 18, each with **Add**. |
+| "On the way: you could add" | The drawer's offers, up to four rows of 18, each with **+ Add**. |
 | Set aside | Up to five rows, each with **Resume** (54 × 16) and **Forget** (50 × 16). |
-| Map | The rest of the journey. |
+| Map | The rest of the journey, under a "Map" line with +/- that folds it (remembered per character; open by default). |
 | No journey on | Lists only the journeys set aside. |
 
 ### 4.5 Maps
@@ -407,7 +407,9 @@ suggestion / row / quest pickup / Suggest a journey
 | Click a stop (or its +/-) | Shows or folds its steps. Letting go of a drag isn't a click. |
 | "..." > Pin stop / Unpin stop | Pins the stop: re-plans keep it in place, each side still ordered for you. Moving on from a pinned stop unpins it. Not offered once the order is yours. |
 | "..." > Move up / Move down | The same as dragging it past the next open stop, without the drag: same rules, and the order is yours from then on. |
+| "..." > Do this stop later | The stop you're on only: the directions box's >> (the next stop first, this one fitted in after). |
 | "..." > Remove stop | Takes it off with the stops that need it. |
+| Click the Map line | Folds or shows the map. |
 | Lock on a pinned stop | Unpins it. |
 | Click the folded line | Opens the finished stops. |
 | Add / Resume / Forget / Set aside | As labelled. |

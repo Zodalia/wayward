@@ -850,15 +850,17 @@ you're on without asking.
     four: a log quest with objectives on your way, a new suggestion, and
     things near the route that add 3 minutes of travel or less, quest
     givers with quests for you, quests in your log ready to hand in and
-    vendors you need), each with an Add button
+    vendors you need), each with a + Add button
     (a quest whose objectives and hand-in add under a minute more comes
     whole, not asked about once you pick it up; not when it's under a
     minute only by spending your Hearthstone, which a journey uses only
     where it saves 5 minutes or more); then "Set aside", the
     journeys you set aside, each with Resume and Forget; and a map of the
-    rest of the journey; the mouse wheel scrolls the list when it doesn't all
-    fit); each stop's "..." menu pins it, moves it up or down, or removes it
-    (together with the stops that need it), and a stop can be dragged up or
+    rest of the journey, under a "Map" line that folds it (per character);
+    the mouse wheel scrolls the list when it doesn't all fit). The stop
+    you're on is lit with a faint gold band. Each stop's "..." menu pins it,
+    moves it up or down, does the one you're on later (the directions box's
+    >>), or removes it (together with the stops that need it), and a stop can be dragged up or
     down by its handle to reorder the journey. A reordered
     journey keeps your order (`Journey.Move`); stops added later go where
     they add the least travel, and a stop can't move before one it needs (a
