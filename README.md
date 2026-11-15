@@ -525,10 +525,12 @@ achieved less than two things. Ending a journey early (the directions box's
 x, or skipping or abandoning what was left) shows the same frame, headed
 "Journey ended" and with the stops done, when it came to anything. When For you has a new major suggestion (a questing
 zone, a dungeon, a profession's next rank) and you aren't on a journey, a
-short "New journey available" toast pops up; click it to start the journey.
+short "New journey available" toast pops up; its **Start journey** button
+(or a click on the rest of it) starts the journey.
 On a journey it doesn't pop up over what you're doing: it's an offer in the
 directions box's drawer instead (see On the way). Both fade after a few seconds,
-not while the mouse is over them. For you checks for new ones after a level,
+not while the mouse is over them, with the notes' x and their draining time
+bar. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
 zones flown over wait for the landing); the first look after this update
 only learns what's there. `/ww toasts` or the options turn the toasts
@@ -542,11 +544,10 @@ sound alone.
 
 **Notes over the directions box.** Picking up a quest outside your journey
 lays a short note over the directions box for a moment: "You picked up X.
-Add it to your journey (about ~4 min more)?" with a **+** (add to journey)
-and a map (new journey: the one on now is set aside), or just the map
-(start a journey) with nothing on. A quest that goes in by itself (3 min or
-less, or a follow-up on the way) gets a note too, with a curved arrow to
-undo it. Hover an icon for what it does. A bar behind the words drains as
+Add it to your journey (about ~4 min more)?" with **Add detour** and **New
+journey** (the one on now is set aside) along its bottom edge, or just
+**Start journey** with nothing on. A quest that goes in by itself (3 min or
+less, or a follow-up on the way) gets a note too, with **Undo**. A bar behind the words drains as
 the note's time runs out (8 s, 15 s for a question); hovering holds it and
 shows the detail, and letting it run out, or its x, changes nothing and
 brings the directions back. One shows at a time; with no directions on, it

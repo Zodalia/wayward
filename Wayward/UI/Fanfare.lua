@@ -11,8 +11,11 @@ local _, ns = ...
 --     you click to start it (or add it as a detour, or switch to it: the
 --     usual question); a few seconds after a journey is done, the same toast
 --     says "Up next" with For you's top card.
--- Both fade after a while (not while the mouse is over them); a click on the
--- first, or the toast's x, closes it. /ww toasts or the options turn the
+-- Both fade after a while (not while the mouse is over them), with the
+-- notes' draining time bar behind them, and both have the notes' x
+-- (Snackbar.CloseButton). A click on the banner closes it too; the toast has
+-- a labelled button ("Start journey"), and a click on the rest of it does
+-- the same, as a card's does. /ww toasts or the options turn the
 -- new-journey toasts off. Their sounds: Sounds.lua (/ww sounds).
 
 local Fanfare = {}
@@ -23,17 +26,23 @@ local GOLD = { 1, 0.82, 0 }
 local TRIP_HOME = { "TOP", "TOP", 0, -150 }
 local TOAST_HOME = { "TOP", "TOP", 0, -96 }
 
--- Fades `f` after `seconds` on screen, unless the mouse is over it.
+local PAD = 10 -- the notes' padding (Snackbar.PAD; that file loads after this one)
+
+-- Fades `f` after `seconds` on screen, unless the mouse is over it (which
+-- holds its time bar too).
 local function fadeAfter(f, seconds)
-  f.left = seconds
+  f.left, f.total = seconds, seconds
   f:SetAlpha(1)
+  if f.bar then ns.Snackbar.DrawTimeBar(f.bar, f, 1) end
   f:SetScript("OnUpdate", function(self, dt)
     if self.IsMouseOver and self:IsMouseOver() then
       self.left = math.max(self.left, FADE)
       self:SetAlpha(1)
+      if self.bar then ns.Snackbar.DrawTimeBar(self.bar, self, self.left / self.total) end
       return
     end
     self.left = self.left - dt
+    if self.bar then ns.Snackbar.DrawTimeBar(self.bar, self, self.left / self.total) end
     if self.left <= 0 then
       self:SetScript("OnUpdate", nil)
       self:Hide()
@@ -119,8 +128,10 @@ local function createTrip()
   f:SetFrameStrata("HIGH")
   f:SetBackdropColor(0, 0, 0, 0.85)
   f:EnableMouse(true)
+  f.bar = ns.Snackbar.TimeBar(f)
+  f.close = ns.Snackbar.CloseButton(f, function() f:Hide() end, "Close")
   f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-  f.heading:SetPoint("TOP", 0, -12)
+  f.heading:SetPoint("TOP", 0, -PAD - 2)
   f.heading:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.title:SetPoint("TOP", f.heading, "BOTTOM", 0, -4)
@@ -178,22 +189,37 @@ end
 local toast
 local queue = {}
 
+-- The toast frame, or nil before the first (for tests).
+function Fanfare.ToastFrame() return toast end
+
+local TOAST_ICON, TOAST_BUTTON_HEIGHT = 40, 20
+
+-- Runs the toast's suggestion (start it, or the usual question on a
+-- journey) and moves on to the next toast.
+local function takeToast(f)
+  local r = f.result
+  f:Hide()
+  if r and not r.preview then ns.Panel.Activate(r) end
+  if f.onDone then f.onDone() end
+end
+
 local function createToast()
   local f = ns.Skin.CreateBox("WaywardJourneyToast")
-  f:SetSize(320, 64)
+  f:SetSize(320, 64 + TOAST_BUTTON_HEIGHT + 6)
   ns.RestorePosition(f, "toastPos", TOAST_HOME)
   f:SetFrameStrata("HIGH")
   f:SetBackdropColor(0, 0, 0, 0.85)
   f:EnableMouse(true)
+  f.bar = ns.Snackbar.TimeBar(f)
   f.icon = f:CreateTexture(nil, "ARTWORK")
-  f.icon:SetSize(40, 40)
-  f.icon:SetPoint("LEFT", 12, 0)
+  f.icon:SetSize(TOAST_ICON, TOAST_ICON)
+  f.icon:SetPoint("TOPLEFT", PAD, -PAD)
   if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   f.sheetIcon = f:CreateTexture(nil, "ARTWORK")
-  f.sheetIcon:SetSize(40, 40)
-  f.sheetIcon:SetPoint("LEFT", 12, 0)
+  f.sheetIcon:SetSize(TOAST_ICON, TOAST_ICON)
+  f.sheetIcon:SetPoint("TOPLEFT", PAD, -PAD)
   f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  f.heading:SetPoint("TOPLEFT", 62, -10)
+  f.heading:SetPoint("TOPLEFT", PAD + TOAST_ICON + PAD, -PAD)
   f.heading:SetText("New journey available")
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.title:SetPoint("TOPLEFT", f.heading, "BOTTOMLEFT", 0, -3)
@@ -205,17 +231,16 @@ local function createToast()
   f.sub:SetPoint("RIGHT", -28, 0)
   f.sub:SetJustifyH("LEFT")
   f.sub:SetWordWrap(false)
-  f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  f.close:SetSize(22, 22)
-  f.close:SetPoint("TOPRIGHT", -2, -2)
-  f.close:SetScript("OnClick", function() f:Hide(); if f.onDone then f.onDone() end end)
-  -- Click: start it, or add it as a detour or switch to it (the usual question when a journey is on).
-  f:SetScript("OnMouseUp", function(self)
-    local r = self.result
-    self:Hide()
-    if r and not r.preview then ns.Panel.Activate(r) end
-    if self.onDone then self.onDone() end
-  end)
+  f.close = ns.Snackbar.CloseButton(f, function() f:Hide(); if f.onDone then f.onDone() end end, "Not now")
+  -- The labelled action, bottom right as on a note: start it (or, with a
+  -- journey on, the usual question: add it as a detour or switch to it).
+  f.go = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.go:SetSize(104, TOAST_BUTTON_HEIGHT)
+  f.go:SetPoint("BOTTOMRIGHT", -PAD, PAD - 2)
+  f.go:SetScript("OnClick", function() takeToast(f) end)
+  ns.Skin.Button(f.go)
+  -- A click on the rest of it does the same, as a suggestion card's does.
+  f:SetScript("OnMouseUp", function(self) takeToast(self) end)
   f:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
     GameTooltip:SetText(self.result and self.result.title or "")
@@ -254,6 +279,8 @@ local function showNext()
     toast.icon:Show()
     toast.sheetIcon:Hide()
   end
+  toast.go:SetText("Start journey")
+  toast.go:SetEnabled(not r.preview)
   toast.onDone = showNext
   toast:Show()
   fadeAfter(toast, TOAST_SECONDS)

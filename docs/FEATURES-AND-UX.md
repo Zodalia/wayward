@@ -330,13 +330,18 @@ for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 
 | Surface | Content | Lifetime |
 |---|---|---|
-| Fanfare | Icon, title, "Journey complete!" or "Journey ended", 2 to 4 stats. Distance and time only pad a journey that achieved fewer than two things. | 12 s, 1 s fade; not while hovered; click closes. |
-| Toast | "New journey available" or "Up next", icon (40), title, x. Click starts it (or asks the usual question). | 8 s; not while hovered. |
-| Note: question | "You picked up X. Add it to your journey (about ~4 min more)?" with + (add) and a map icon (new journey). | 15 s, a gold bar drains behind the words. |
-| Note: notice | "Added X to your journey." with an undo arrow. | 8 s. |
+| Fanfare | Icon, title, "Journey complete!" or "Journey ended", 2 to 4 stats, x ("Close"). Distance and time only pad a journey that achieved fewer than two things. | 12 s, 1 s fade; click (or x) closes. |
+| Toast | "New journey available" or "Up next", icon (40), title, **Start journey** (104 × 20, bottom right), x ("Not now"). The button, or a click on the rest of it, starts it (or asks the usual question). | 8 s. |
+| Note: question | "You picked up X. Add it to your journey (about ~4 min more)?" with **Add detour** and **New journey** (or **Start journey** alone with nothing on). | 15 s. |
+| Note: notice | "Added X to your journey." with **Undo**. | 8 s. |
 
-One note at a time; the next waits. Hovering holds the bar and shows the
-detail. Letting it run out, or its x, changes nothing.
+All three share one look for what they have in common (`Snackbar.CloseButton`,
+`Snackbar.TimeBar`, `Snackbar.PAD`): the same x (20, inset 3, top right), the
+same faint gold bar draining behind the content as the time runs out, 10 of
+padding, and actions as labelled buttons (20 high) along the bottom right,
+the first on the right. Hovering holds the time and the bar. One note at a
+time; the next waits. Hovering a note shows its detail. Letting any of them
+run out, or the x, changes nothing.
 
 ## 5. UX spec: interactions and flows
 

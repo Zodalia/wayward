@@ -723,7 +723,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 746:  without it
 - 777: couldn't show a question (
 - 799: You %s %s. Add it to your journey (%s)?
-- 801: Add to journey
+- 801: Add detour
 - 802: New journey
 - 803: A journey for it alone (%s). The one on now is set aside, to resume later.
 - 812: You %s %s. Start a journey for it (%s)?
@@ -758,7 +758,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 1477:  continues with:
 - 1487: %s continues: added %s to your journey (%s more).
 - 1505: %s continues with %s (%s more). Add %s to your journey?
-- 1507: Add to journey
+- 1507: Add detour
 - 1619: resuming journey: 
 - 1619:  (/ww stop to end it)
 - 1625: resuming directions to 
@@ -1725,39 +1725,42 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Fanfare.lua
 
-- 75: Levels
-- 76: Quests done
-- 77: Ranks trained
-- 78: Flight paths
-- 79: Money
-- 80: Quests taken
-- 81: Stops done
-- 82: XP earned
-- 83: Distance
-- 84: Time
-- 140: Journey ended
-- 140: Journey complete!
-- 142: :16:16\|t 
-- 197: New journey available
-- 222: A sound test: clicking it starts nothing
-- 223: Click to add it to your journey as a detour, or switch to it
-- 223: Click to start it
-- 244: New journey available
-- 292: Up next
-- 302: Sample journey
-- 305: Sample journey
-- 305: Questing zone
-- 306: Westfall
-- 315: TripDone
-- 315: Journey complete
-- 317: NewJourney
-- 317: New journey toast
-- 321: /ww toasts - the 'new journey available' toasts on or off
-- 323: new journey toasts 
+- 84: Levels
+- 85: Quests done
+- 86: Ranks trained
+- 87: Flight paths
+- 88: Money
+- 89: Quests taken
+- 90: Stops done
+- 91: XP earned
+- 92: Distance
+- 93: Time
+- 132: Close
+- 151: Journey ended
+- 151: Journey complete!
+- 153: :16:16\|t 
+- 223: New journey available
+- 234: Not now
+- 247: A sound test: clicking it starts nothing
+- 248: Click to add it to your journey as a detour, or switch to it
+- 248: Click to start it
+- 269: New journey available
+- 282: Start journey
+- 319: Up next
+- 329: Sample journey
+- 332: Sample journey
+- 332: Questing zone
+- 333: Westfall
+- 342: TripDone
+- 342: Journey complete
+- 344: NewJourney
+- 344: New journey toast
+- 348: /ww toasts - the 'new journey available' toasts on or off
+- 350: new journey toasts 
 
 ## UI/Snackbar.lua
 
-- 103: Not now
+- 121: Not now
 
 ## UI/Drawer.lua
 

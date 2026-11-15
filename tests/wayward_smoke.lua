@@ -2978,7 +2978,7 @@ do
     and offer.quests[1].travel > 180 and not ns.Nav.TripHasQuest(13),
     "one quest's follow-up out of the way isn't added unasked")
   check(snack and snack.question and snack.text:find("Chain part 1 continues with Chain part 2 (~", 1, true)
-    and snack.text:find("Add it to your journey?", 1, true) and snack.actions[1].label == "Add to journey",
+    and snack.text:find("Add it to your journey?", 1, true) and snack.actions[1].label == "Add detour",
     "a snackbar asks about it: " .. tostring(snack and snack.text))
   ns.Snackbar.Click(1)
   check(ns.Nav.TripHasQuest(13) and ns.Snackbar.Current() == nil, "Add to journey adds it")
@@ -3212,10 +3212,12 @@ do
   runTimers()
   shown = newest()
   check(shown and shown.question and shown.text:find("Murloc Menace", 1, true) and shown.text:find("more)?", 1, true)
-    and shown.actions[1].label == "Add to journey" and shown.actions[2].label == "New journey"
+    and shown.actions[1].label == "Add detour" and shown.actions[2].label == "New journey"
     and shown.actions[2].tooltip:find("set aside", 1, true),
     "with a journey on and the option off: add it, with the time it adds, or a new journey: "
       .. tostring(shown and shown.text))
+  check(table.concat(ns.Snackbar.ButtonLabels(), ",") == "Add detour,New journey",
+    "the note's buttons say what they do: " .. table.concat(ns.Snackbar.ButtonLabels(), ","))
   ns.Snackbar.Click(1)
   check(ns.Nav.TripHasQuest(40) and ns.Nav.TripHasQuest(45), "Add to trip: both quests in it")
   ns.db.settings.autoAddPickups = nil
@@ -3681,8 +3683,20 @@ do
   SlashCmdList.WAYWARD("sounds test complete 2")
   check(last() == ns.Sounds.Options("complete")[2][1] and ns.Fanfare.lastTrip == lastTrip and ns.Nav.active == nil,
     "test complete shows the banner with sound 2, and isn't a real trip")
+  -- The banner has the notes' x and their time bar.
+  local banner = ns.Fanfare.TripFrame()
+  check(banner.close and banner.close:IsShown() and banner.bar and banner.bar:IsShown(),
+    "the banner has the same x and time bar as a note")
   SlashCmdList.WAYWARD("sounds test toast")
   check(last() == 73280 and ns.Nav.active == nil, "test toast shows a toast now, with the chosen sound")
+  -- The toast: a labelled button (a sample's starts nothing), the notes' x and time bar.
+  local toast = ns.Fanfare.ToastFrame()
+  check(toast:IsShown() and toast.go:GetText() == "Start journey" and not toast.go:IsEnabled()
+    and toast.close and toast.bar and toast.bar:IsShown(),
+    "the toast says Start journey on a button (off for a sample), with the notes' x and time bar")
+  toast.close.scripts.OnClick(toast.close)
+  check(not (toast:IsShown() and toast.result and toast.result.preview),
+    "and its x closes it (the next waiting toast, if any, takes its place)")
   ns.Snackbar.Clear()
   SlashCmdList.WAYWARD("sounds test popup")
   local shown = ns.Snackbar.Current()
@@ -7341,7 +7355,7 @@ do
   runTimers()
   ns.db.settings.autoAddPickups = nil
   local snack = ns.Snackbar.Current()
-  check(snack and snack.question and snack.actions[1].label == "Add to journey" and snack.actions[2].label == "New journey",
+  check(snack and snack.question and snack.actions[1].label == "Add detour" and snack.actions[2].label == "New journey",
     "picking up a quest on a journey offers to add it or start a new journey")
   ns.Snackbar.Click(2)
   check(ns.Nav.active.title == "Redridge Goulash" and #ns.Nav.SetAsideList() == 1 and ns.Nav.SetAsideList()[1].title == "On now",

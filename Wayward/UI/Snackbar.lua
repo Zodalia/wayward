@@ -1,39 +1,38 @@
 local _, ns = ...
 
 -- Snackbars: a short note laid over the directions box (UI/HUD.lua) for a
--- moment, with one or two icon buttons, that fades on its own. A bar behind
--- the words drains as its time runs out. They carry what used to be a dialog
+-- moment, with one or two labelled buttons along its bottom edge, that fades
+-- on its own. A bar behind the words drains as its time runs out. They carry what used to be a dialog
 -- in the middle of the screen: "You picked up X. Add it to your journey?"
 -- (add, new journey) and "Added X to your journey." (undo). Doing nothing is
 -- always an answer: it fades (not while the mouse is over it, which also
--- holds the bar) or the x closes it at once, and nothing changes. The icons
--- say what they do on hover; the box shows `detail` on hover, when it has
--- some. One at a time; the next waits for the one on screen to go. With no
+-- holds the bar) or the x closes it at once, and nothing changes. Each
+-- button says what it does on it; the box shows `detail` on hover, when it
+-- has some. One at a time; the next waits for the one on screen to go. With no
 -- directions on, it sits where the directions box would be.
 --
 -- Snackbar.Show{ text, note?, title? and detail? (the hover), actions = { {
---   label (the icon's tooltip), icon ("add" | "undo" | "journey"), run,
---   tooltip? } }, seconds?, sound?, quests? ({ [questID] = true }: which
---   quests it's about, for Snackbar.Drop) } queues one.
+--   label (the button's words), icon ("add" | "undo" | "journey": the kind
+--   of action), run, tooltip? } }, seconds?, sound?, quests? ({ [questID] =
+--   true }: which quests it's about, for Snackbar.Drop) } queues one.
+--
+-- The toast and the "Journey complete!" banner (Fanfare.lua) share its look
+-- for what they have in common: the close button (Snackbar.CloseButton), the
+-- time bar (Snackbar.TimeBar / Snackbar.DrawTimeBar) and the padding
+-- (Snackbar.PAD).
 
 local Snackbar = {}
 ns.Snackbar = Snackbar
 
-local PAD, ICON, CLOSE = 10, 22, 20
+local PAD, CLOSE, CLOSE_INSET = 10, 20, 3
+local BUTTON_HEIGHT, BUTTON_MIN, BUTTON_GAP = 20, 56, 6
 local MIN_HEIGHT = 48
 local NOTICE_SECONDS, QUESTION_SECONDS, FADE = 8, 15, 0.4
 local BOX_STRATA, CONTENT_STRATA = "HIGH", "DIALOG"
 local BAR_COLOR = { 1, 0.82, 0, 0.18 }
 local GREY = { 0.6, 0.6, 0.6 }
 
--- Each action's picture; its words are the button's tooltip.
-local ICONS = {
-  add = { "Interface\\Icons\\Spell_ChargePositive", 0.08, 0.92, 0.08, 0.92 },
-  journey = { "Interface\\Icons\\INV_Misc_Map_01", 0.08, 0.92, 0.08, 0.92 },
-  -- The model viewer's turn-left arrow: the curved arrow of "undo".
-  undo = { "Interface\\Buttons\\UI-RotationLeft-Button-Up", 0.2, 0.8, 0.2, 0.8 },
-}
-Snackbar.ICONS = ICONS
+Snackbar.PAD = PAD
 
 local frame
 local queue = {}
@@ -57,21 +56,47 @@ local function showTooltip(owner, title, lines)
   GameTooltip:Show()
 end
 
-local function iconButton(parent, i)
-  local b = CreateFrame("Button", nil, parent)
-  b:SetSize(ICON, ICON)
-  b.icon = b:CreateTexture(nil, "ARTWORK")
-  b.icon:SetAllPoints()
-  local glow = b:CreateTexture(nil, "HIGHLIGHT")
-  glow:SetAllPoints()
-  glow:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-  glow:SetBlendMode("ADD")
+-- The close button the note, the toast and the banner share: the same size
+-- and inset, top right, with `tip` on hover.
+function Snackbar.CloseButton(parent, onClick, tip)
+  local b = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
+  b:SetSize(CLOSE, CLOSE)
+  b:SetPoint("TOPRIGHT", -CLOSE_INSET, -CLOSE_INSET)
+  b:SetScript("OnClick", onClick)
+  b:SetScript("OnEnter", function(self) showTooltip(self, tip) end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.CloseButton(b)
+  return b
+end
+
+-- The time left, as a faint gold bar behind `owner`'s content that drains
+-- from the right; DrawTimeBar sets it to `share` (0..1) of `f`'s width.
+function Snackbar.TimeBar(owner)
+  local bar = owner:CreateTexture(nil, "BACKGROUND")
+  bar:SetPoint("TOPLEFT", 2, -2)
+  bar:SetPoint("BOTTOMLEFT", 2, 2)
+  bar:SetColorTexture(BAR_COLOR[1], BAR_COLOR[2], BAR_COLOR[3], BAR_COLOR[4])
+  return bar
+end
+
+function Snackbar.DrawTimeBar(bar, f, share)
+  local width = (f:GetWidth() or 0) - 4
+  share = math.max(0, math.min(1, share or 0))
+  bar:SetWidth(math.max(0.1, width * share))
+  bar:SetShown(share > 0)
+end
+
+-- An action: a labelled button, as wide as its words.
+local function actionButton(parent, i)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  b:SetHeight(BUTTON_HEIGHT)
   b:SetScript("OnClick", function() Snackbar.Click(i) end)
   b:SetScript("OnEnter", function(self)
     local a = frame and frame.item and frame.item.actions[i]
-    if a then showTooltip(self, a.label, a.tooltip and { a.tooltip }) end
+    if a and a.tooltip then showTooltip(self, a.label, { a.tooltip }) end
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(b)
   return b
 end
 
@@ -91,23 +116,15 @@ local function create()
   f.content:SetFrameStrata(CONTENT_STRATA)
 
   -- The time left, behind the words: drains from the right.
-  f.bar = f.content:CreateTexture(nil, "BACKGROUND")
-  f.bar:SetPoint("TOPLEFT", 2, -2)
-  f.bar:SetPoint("BOTTOMLEFT", 2, 2)
-  f.bar:SetColorTexture(BAR_COLOR[1], BAR_COLOR[2], BAR_COLOR[3], BAR_COLOR[4])
+  f.bar = Snackbar.TimeBar(f.content)
 
-  f.close = CreateFrame("Button", nil, f.content, "UIPanelCloseButton")
-  f.close:SetSize(CLOSE, CLOSE)
-  f.close:SetPoint("TOPRIGHT", -3, -3)
-  f.close:SetScript("OnClick", function() Snackbar.Dismiss() end)
-  f.close:SetScript("OnEnter", function(self) showTooltip(self, "Not now") end)
-  f.close:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  ns.Skin.CloseButton(f.close)
+  f.close = Snackbar.CloseButton(f.content, function() Snackbar.Dismiss() end, "Not now")
 
+  -- The actions along the bottom edge, the first on the right.
   f.buttons = {}
-  for i = 1, 2 do f.buttons[i] = iconButton(f.content, i) end
-  f.buttons[1]:SetPoint("RIGHT", -(CLOSE + 8), 0)
-  f.buttons[2]:SetPoint("RIGHT", f.buttons[1], "LEFT", -6, 0)
+  for i = 1, 2 do f.buttons[i] = actionButton(f.content, i) end
+  f.buttons[1]:SetPoint("BOTTOMRIGHT", -PAD, PAD - 2)
+  f.buttons[2]:SetPoint("RIGHT", f.buttons[1], "LEFT", -BUTTON_GAP, 0)
 
   f.text = f.content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   f.text:SetJustifyH("LEFT")
@@ -149,35 +166,35 @@ local function fit()
   if not item then return end
   local words = (frame.text:GetStringHeight() or 14)
     + (item.note and ((frame.note:GetStringHeight() or 12) + 4) or 0)
-  local height = math.max(MIN_HEIGHT, words + 2 * PAD)
+  -- The buttons' row under the words.
+  local buttons = #item.actions > 0 and (BUTTON_HEIGHT + 6) or 0
+  local height = math.max(MIN_HEIGHT, words + buttons + 2 * PAD)
   local hud = ns.HUD and ns.HUD.Frame and ns.HUD.Frame()
   if hud and hud:IsShown() then height = math.max(height, hud:GetHeight() or 0) end
-  local top = math.max(PAD, math.floor((height - words) / 2))
+  local top = math.max(PAD, math.floor((height - buttons - words) / 2))
   if height ~= frame.height or top ~= frame.top then
     frame.height, frame.top = height, top
     frame:SetHeight(height)
     frame.text:ClearAllPoints()
     frame.text:SetPoint("TOPLEFT", PAD, -top)
-    frame.text:SetPoint("RIGHT", frame.leftmost, "LEFT", -8, 0)
+    frame.text:SetPoint("RIGHT", frame.close, "LEFT", -6, 0)
   end
 end
 
 local function layout(item)
-  local leftmost = frame.close
   for i, b in ipairs(frame.buttons) do
     local a = item.actions[i]
     if a then
-      local art = ICONS[a.icon] or ICONS.add
-      b.icon:SetTexture(art[1])
-      b.icon:SetTexCoord(art[2], art[3], art[4], art[5])
+      b:SetText(a.label or "")
+      local fs = b.GetFontString and b:GetFontString()
+      local words = fs and fs:GetStringWidth() or 0
+      b:SetWidth(math.max(BUTTON_MIN, words + 20))
       b.kind = a.icon
       b:Show()
-      leftmost = b
     else
       b:Hide()
     end
   end
-  frame.leftmost = leftmost
   frame.text:SetText(item.text)
   frame.note:SetText(item.note or "")
   frame.note:SetShown(item.note ~= nil)
@@ -187,10 +204,7 @@ end
 
 -- How much of its time the one on screen has left (0..1; held while hovered).
 local function drawBar()
-  local width = (frame:GetWidth() or 0) - 4
-  local share = frame.total > 0 and math.max(0, frame.left / frame.total) or 0
-  frame.bar:SetWidth(math.max(0.1, width * share))
-  frame.bar:SetShown(share > 0)
+  Snackbar.DrawTimeBar(frame.bar, frame, frame.total > 0 and frame.left / frame.total or 0)
 end
 
 -- Fades after the item's time on screen, unless the mouse is over it.
@@ -245,6 +259,15 @@ function Snackbar.Queued() return queue end
 
 -- The snackbar's frame, once there's been one (for tests).
 function Snackbar.Frame() return frame end
+
+-- The words on the buttons shown, the first (rightmost) first (for tests).
+function Snackbar.ButtonLabels()
+  local out = {}
+  for _, b in ipairs(frame and frame.buttons or {}) do
+    if b:IsShown() then out[#out + 1] = b:GetText() end
+  end
+  return out
+end
 
 -- The share of its time the one on screen has left, 0..1 (for tests).
 function Snackbar.TimeLeft()

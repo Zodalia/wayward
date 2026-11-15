@@ -798,7 +798,7 @@ local function askAbout(ids, what, offer)
   if Nav.active and offer.extra then
     item.text = string.format("You %s %s. Add it to your journey (%s)?", what, offer.label, Nav.ExtraText(offer))
     item.actions = {
-      { label = "Add to journey", icon = "add", run = function() Nav.AddToTrip(offer.stops, offer.label) end },
+      { label = "Add detour", icon = "add", run = function() Nav.AddToTrip(offer.stops, offer.label) end },
       { label = "New journey", icon = "journey",
         tooltip = string.format("A journey for it alone (%s). The one on now is set aside, to resume later.",
           ns.FormatDuration(offer.alone)),
@@ -1504,7 +1504,7 @@ function offerFollowUps(stops, planned)
   ns.Snackbar.Show({ question = true, sound = "popup", quests = quests, detail = detail,
     text = string.format("%s continues with %s (%s more). Add %s to your journey?", before, label,
       ns.FormatDuration(seconds), #names == 1 and "it" or "them"),
-    actions = { { label = "Add to journey", icon = "add", run = function()
+    actions = { { label = "Add detour", icon = "add", run = function()
       local only = {}
       for _, e in ipairs(offer.quests) do if not e.parent then only[e.quest.id] = true end end
       addFollowUps(ask, label, only)
