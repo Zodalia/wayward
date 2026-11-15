@@ -305,6 +305,7 @@ local function results(trainers, plural, start, net)
     out[#out + 1] = {
       id = g[1].id,
       title = title,
+      count = #g, -- trainers in the room
       zone = ns.MapName(goal.mapID),
       goal = goal,
       route = ns.Router.Plan(start, goal, net),

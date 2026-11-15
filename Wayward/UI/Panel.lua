@@ -52,6 +52,7 @@ ns.Panel = Panel
 local MAX_ROWS = 13
 local MAIN_WIDTH = 840 -- the pane, at least; a card page's `width` can ask for more
 local HEIGHT = 728     -- fits 1080p at UI scale 1 (768 high)
+local SCREEN_MARGIN = 24 -- room kept around the window when it has to shrink to fit
 local ROW_HEIGHT = 38
 -- A list row, right to left: its button, a lighter action, the travel time;
 -- the title and the facts under it have the rest.
@@ -625,6 +626,27 @@ local function headline()
   return string.format("Level %d", level)
 end
 
+-- The window's scale: 1, or less when the screen (after the UI scale, or a
+-- UI suite's own) is too small for it, so all of it stays on screen. It
+-- never grows past 1.
+local scale = 1
+
+function Panel.FitToScreen()
+  if not frame then return scale end
+  local w, h = mainWidth() + RAIL, HEIGHT
+  local sw = UIParent and UIParent.GetWidth and UIParent:GetWidth()
+  local sh = UIParent and UIParent.GetHeight and UIParent:GetHeight()
+  local fit = 1
+  if type(sw) == "number" and sw > 0 then fit = math.min(fit, (sw - SCREEN_MARGIN) / w) end
+  if type(sh) == "number" and sh > 0 then fit = math.min(fit, (sh - SCREEN_MARGIN) / h) end
+  scale = math.max(0.5, fit)
+  if frame.SetScale then frame:SetScale(scale) end
+  return scale
+end
+
+-- The window's scale now (for tests).
+function Panel.Scale() return scale end
+
 local function create()
   -- ButtonFrameTemplate is Blizzard's standard window (title bar, close button,
   -- inset), so UI suites that restyle Blizzard windows know it too.
@@ -820,7 +842,11 @@ local function create()
 
   side = createSide(f, width)
   hookLinks()
-  f:SetScript("OnShow", function() Panel.Refresh() end)
+  -- Each time it opens: sized to the screen as it is now, and up to date.
+  f:SetScript("OnShow", function()
+    Panel.FitToScreen()
+    Panel.Refresh()
+  end)
   ns.Skin.Window(f)
   -- New frames start shown; hide so the first Toggle opens rather than closes.
   f:Hide()
@@ -1235,4 +1261,8 @@ local function portraitChanged(unit)
   end
 end
 ns.On("UNIT_PORTRAIT_UPDATE", portraitChanged)
+-- A new resolution or UI scale: the window fits the screen again.
+for _, event in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED" }) do
+  ns.On(event, function() Panel.FitToScreen() end)
+end
 ns.On("PORTRAITS_UPDATED", function() portraitChanged() end)

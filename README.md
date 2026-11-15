@@ -352,7 +352,7 @@ with their own jobs:
   (a list page) or **Go** (plain directions). Hover one for any detail.
 
 The window keeps one size (it fits a 1080p screen at UI
-scale 1): the home screen is the main window, and **Find** (the
+scale 1, and shrinks to fit a smaller one): the home screen is the main window, and **Find** (the
 "?": search everything, or the likely questions for right now; see
 [Find](#find)), **Quests**
 (Journal: your quest log and quest search; Hubs), **Vendors**, **Trainers**

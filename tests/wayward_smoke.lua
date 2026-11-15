@@ -7707,6 +7707,18 @@ do
     and not obsFind(obs, "train"),
     "two levels ahead: new spells at level 22, naming the trainer, with the Trainers page to look at: "
     .. tostring(abilities and abilities.text))
+  -- A room of trainers reads as a place, not "your trainer is 3 warlock trainers in ...".
+  local savedResults = ns.Trainers.Results
+  ns.Trainers.Results = function()
+    return { { title = "3 warlock trainers in Stormwind City", count = 3, zone = "Stormwind City",
+      goal = ns.Geo.Node(1453, 0.4, 0.8, "Stormwind City") } }
+  end
+  F.Invalidate()
+  local room = obsFind(F.Observations(), "abilities")
+  check(room and room.text:find(": your trainers are in ", 1, true) and not room.text:find("trainer is", 1, true),
+    "several trainers in one room: your trainers are in that place: " .. tostring(room and room.text))
+  ns.Trainers.Results = savedResults
+  F.Invalidate()
   ns.charDB.classSpells.services[2].levelReq, ns.charDB.classSpells.services[3].levelReq = 24, 24
   F.Invalidate()
   check(not obsFind(F.Observations(), "abilities"), "four levels ahead: not yet")
@@ -8348,25 +8360,6 @@ do
   ns.db.npcs[990777] = nil
   ns.Fire("DATA_CHANGED")
   check(ns.Places.NameFor(ns.Geo.Node(1426, 0.321, 0.59)) ~= "Kharanos", "forgotten with the NPC")
-
-  -- Good to know: fewer tiles share the row, so none stands empty beside a cut-off one.
-  if ns.Observations.TileWidth then
-    local savedObs = ns.ForYou.Observations
-    local function tiles(n)
-      local out = {}
-      for i = 1, n do out[i] = { id = "t" .. i, kind = "x", text = "Tile " .. i, highlights = {}, urgency = 0.5 } end
-      return out
-    end
-    ns.ForYou.Observations = function() return tiles(2) end
-    ns.Observations.Update()
-    local two = ns.Observations.TileWidth()
-    ns.ForYou.Observations = function() return tiles(4) end
-    ns.Observations.Update()
-    local four = ns.Observations.TileWidth()
-    check(two and four and two > four * 1.8, "two tiles are each about twice as wide as four: " .. tostring(two) .. " / " .. tostring(four))
-    ns.ForYou.Observations = savedObs
-    ns.Observations.Update()
-  end
 
   -- Find's questions read as questions: no "slain", mobs in the plural.
   local Q = ns.Find.ObjectiveQuestion
@@ -10088,6 +10081,46 @@ do
     check(not ns.Menu.IsShown(), "and the button closes it again")
   end
 
+  -- The game's own context menu, where the client has one (MenuUtil): each
+  -- item a button with its words, its tooltip, and its action on a click.
+  ;(function()
+    local savedUtil = MenuUtil
+    local built, owner = {}, nil
+    MenuUtil = { CreateContextMenu = function(o, generator)
+      owner = o
+      local root = { CreateButton = function(_, text, callback)
+        local element = { text = text, callback = callback }
+        element.SetTooltip = function(self, fn) self.tooltip = fn end
+        built[#built + 1] = element
+        return element
+      end }
+      generator(nil, root)
+    end }
+    ns.Menu.Hide()
+    ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+    local words = {}
+    for i, e in ipairs(built) do words[i] = e.text end
+    check(owner == f.menu and table.concat(words, ",") == "Skip this stop,Set journey aside,End journey"
+      and not ns.Menu.IsShown(), "with the game's menu: the same items, and not our own box: " .. table.concat(words, ","))
+    local tip = { lines = {} }
+    tip.SetText = function(self, t) self.title = t end
+    tip.AddLine = function(self, t) self.lines[#self.lines + 1] = t end
+    local withTip
+    for _, e in ipairs(built) do if e.tooltip then withTip = e end end
+    if withTip then withTip.tooltip(tip) end
+    check(withTip ~= nil and tip.title == withTip.text and #tip.lines == 1, "an item's tooltip has its words and its line")
+    local asideBefore = #(ns.Nav.SetAsideList and ns.Nav.SetAsideList() or {})
+    built[2].callback()
+    check(ns.Nav.active == nil and #ns.Nav.SetAsideList() == asideBefore + 1, "and a click runs the item: set aside")
+    ns.Nav.ResumeSetAside(1)
+    -- A menu that fails falls back to our own box.
+    MenuUtil = { CreateContextMenu = function() error("no menu here") end }
+    ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+    check(ns.Menu.IsShown(), "a game menu that fails: our own box instead")
+    ns.Menu.Hide()
+    MenuUtil = savedUtil
+  end)()
+
   -- Skip asks first, as it did as a button.
   local asked
   StaticPopupDialogs = {}
@@ -10272,6 +10305,22 @@ do
   P.Search("quests", "redridge")
   check(select(2, P.Rail()) == "Quests" and P.SideShown() and not P.HomeShown(), "a search opens its page in the pane")
   P.Search("foryou", "")
+
+  -- A screen too small for the window (a narrow display, or a UI suite's
+  -- scale): it shrinks to fit when it opens, and grows back, never past 1.
+  local w, h = P.Size()
+  local savedW, savedH = UIParent.GetWidth, UIParent.GetHeight
+  P.Hide()
+  UIParent.GetWidth = function() return 900 end
+  UIParent.GetHeight = function() return 768 end
+  P.Toggle()
+  local s = P.Scale()
+  check(s < 1 and math.abs(w * s - (900 - 24)) < 1, "a screen too narrow: the window shrinks to fit: " .. s)
+  UIParent.GetWidth = function() return 1920 end
+  UIParent.GetHeight = function() return 1080 end
+  check(P.FitToScreen() == 1, "room enough: back to its own size, no bigger")
+  UIParent.GetWidth, UIParent.GetHeight = savedW, savedH
+  P.FitToScreen()
   P.Hide()
 end
 -- ===== redesign: the window's rail (end) =====

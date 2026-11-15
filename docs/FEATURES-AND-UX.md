@@ -151,7 +151,7 @@ fill, a set-aside journey to resume.
 
 | Surface | File | Size | Default position | Shown when | Movable |
 |---|---|---|---|---|---|
-| Main window | `UI/Panel.lua` | 972+ wide × 728 high, fixed: a rail of 132 and a pane of 840+ | Centre | `/ww`, minimap button | Drag |
+| Main window | `UI/Panel.lua` | 972+ wide × 728 high: a rail of 132 and a pane of 840+; scaled down to fit (24 to spare) on a smaller screen, never up | Centre | `/ww`, minimap button | Drag |
 | List pane | `UI/Panel.lua` | The pane, in the home screen's place | Inside the main window | A list page is picked on the rail | With window |
 | Directions box | `UI/HUD.lua` | 330 wide, 84+ high (narrower without compass) | TOP, 0, -140 | Journey or directions on | Drag, Edit Mode |
 | Idle bar | `UI/HUD.lua` | 34 high | Same as directions box | Nothing on, option enabled | Same |
@@ -589,8 +589,11 @@ Found while writing this, worth a decision:
 2. **Overview from the keyboard.** Reorder no longer needs a drag (a
    stop's "..." menu has Move up and Move down), but there is still no
    keyboard way to reach the menu.
-3. **Fixed window size.** 840 × 728 fits 1080p at UI scale 1; behaviour at
-   larger UI scales or smaller screens isn't specified.
+3. **Window size.** 972 × 728 fits 1080p at UI scale 1. Where the screen is
+   smaller (a 5:4 display, or a UI suite's own scale on `UIParent`), the
+   window scales down to fit when it opens and when the resolution or UI
+   scale changes (`Panel.FitToScreen`); it never scales up. Not yet seen in
+   game at those sizes.
 
 Fixed on 2026-11-13 after this was written: the README's stale "R button"
 line, DESIGN.md's no-journey line and region count, and the toast option's

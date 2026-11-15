@@ -631,7 +631,11 @@ local function abilitiesNeed(ctx)
   local best = (try(ns.Trainers.Results) or {})[1]
   local where = ""
   if best and best.goal then
-    where = string.format(": your trainer is %s in %s", best.title, placeName(best.goal, best.zone))
+    -- A room of them reads as a place ("your trainers are in Stormwind City"),
+    -- not "your trainer is 3 warrior trainers in ...".
+    local place = placeName(best.goal, best.zone)
+    where = (best.count or 1) > 1 and string.format(": your trainers are in %s", place)
+      or string.format(": your trainer is %s in %s", best.title, place)
     if best.route then where = where .. ", " .. ns.FormatDuration(best.route.seconds) .. " away" end
   end
   local spells = plural(s.nextCount, "new spell")
