@@ -841,12 +841,18 @@ you're on without asking.
     stays saved, and `/ww resume` tries again). The directions box's
     **View details** (it pulses a few times when stops are added to
     the journey, rather than the overview popping open), opens an overview of
-    every stop (done / now / next; stops you skipped aren't listed; finished
+    the journey. At its top, a walkthrough: one stop and one of its steps
+    ("Stop 2 of 5", "Step 1 of 3 · Fly to Stormwind"), with < and > to go
+    back and forth along the steps, stop after stop, and Now to come back.
+    It opens on the step you're on; steps and stops you've done show a
+    green tick and "Done"; a click on a stop in the list shows it there, and
+    a click on it again goes back to where you are. The map below draws the
+    step you're on bold and the rest faded; with another stop or step
+    selected it zooms in on just that, so you can see where each step takes
+    you. The steps are shown there only. Under it, every stop (done / now / next; stops you skipped aren't listed; finished
     stops fold into one line you can click open, by themselves from three of
-    them or when they'd push open stops off the list; under the current
-    stop, the steps that get you there, walk, fly, boat, with the one you're
-    on marked, and a click on any stop (or its +/-) shows or hides its own, so you can see
-    where it's taking you and hearth instead; under the stops, "On the way:
+    them or when they'd push open stops off the list; a stop where the plan
+    uses your Hearthstone says so; under the stops, "On the way:
     you could add": the same offers as the directions box's drawer (up to
     four: a log quest with objectives on your way, a new suggestion, and
     things near the route that add 3 minutes of travel or less, quest
@@ -859,7 +865,8 @@ you're on without asking.
     journeys you set aside, each with Resume and Forget; and a map of the
     rest of the journey, under a "Map" line that folds it (per character);
     the mouse wheel scrolls the list when it doesn't all fit). The stop
-    you're on is lit with a faint gold band. Each stop's "..." menu pins it,
+    you're on is lit with a faint gold band, and the one the walkthrough
+    shows has a faint blue one. Each stop's "..." menu pins it,
     moves it up or down, does the one you're on later (the directions box's
     >>), or removes it (together with the stops that need it), and a stop can be dragged up or
     down by its handle to reorder the journey. A reordered

@@ -304,12 +304,12 @@ for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 | Part | Spec |
 |---|---|
 | Header | Journey title; **Set aside** (70 × 18). |
-| Stop row (356 × 30) | Drag handle (16), map number (gold for a stop, red for the goal), text with zone, a lock while pinned (click to unpin), +/- for its steps, a "..." menu (24 × 16). States: done, now, next. The stop you're on is lit: a faint gold band and a 2-wide gold bar down its left edge. |
-| Steps | 15-high lines under a stop; open under the current stop, with the step you're on marked. |
+| Walkthrough (356 × 70) | Under the header: "Stop 2 of 5" with done / now, **Now** (40 × 18, only away from the step you're on), **<** and **>** (24 × 18); the stop's text and zone; one step ("Step 1 of 3 · Fly to Stormwind · 2 min", travel icon, tagged Done with a green tick or Now). Opens on the step you're on; goes through every stop's steps in the list's order, done ones included (kept across re-plans). The only place steps are shown in the overview. A bar down its left edge: gold now, green done. |
+| Stop row (356 × 30) | Drag handle (16), map number (gold for a stop, red for the goal), text with zone, a lock while pinned (click to unpin), a "..." menu (24 × 16). States: done, now, next. The stop you're on is lit: a faint gold band and a 2-wide gold bar down its left edge. |
 | Finished stops | Fold into one line; by themselves from three, or when they would push open stops off the list. Skipped stops aren't listed. |
 | "On the way: you could add" | The drawer's offers, up to four rows of 18, each with **+ Add**. |
 | Set aside | Up to five rows, each with **Resume** (54 × 16) and **Forget** (50 × 16). |
-| Map | The rest of the journey, under a "Map" line with +/- that folds it (remembered per character; open by default). |
+| Map | The rest of the journey, under a "Map" line with +/- that folds it (remembered per character; open by default). On the step you're on, that step is drawn bold and opaque, its stop's other steps at 60%, the rest at 35%. With another stop selected from the list, the map shows only that stop's steps; with another step walked to (< >), only that step; zoomed in, from a start badge (no arrow for you) to the stop's badge with the list's number (green and unnumbered when done; none for a step that ends short of its stop). |
 | No journey on | Lists only the journeys set aside. |
 
 ### 4.5 Maps
@@ -409,7 +409,8 @@ suggestion / row / quest pickup / Suggest a journey
 | Input | Result |
 |---|---|
 | Drag a stop by its handle or row | Reorders; an insertion marker shows where. A stop can't go before one it needs. Dragging clears pins: the order is yours. |
-| Click a stop (or its +/-) | Shows or folds its steps. Letting go of a drag isn't a click. |
+| Click a stop | Shows it in the walkthrough (the stop you're on: the step you're on). A click on the stop already shown, away from where you are, goes back to the step you're on. Letting go of a drag isn't a click. |
+| Walkthrough < / > / Now | The step before or after, across stops; back to the step you're on. The selected stop has a faint blue band. |
 | "..." > Pin stop / Unpin stop | Pins the stop: re-plans keep it in place, each side still ordered for you. Moving on from a pinned stop unpins it. Not offered once the order is yours. |
 | "..." > Move up / Move down | The same as dragging it past the next open stop, without the drag: same rules, and the order is yours from then on. |
 | "..." > Do this stop later | The stop you're on only: the directions box's >> (the next stop first, this one fitted in after). |

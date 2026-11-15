@@ -19,7 +19,9 @@ local ZOOM_MARGIN = 1.5  -- the shown area is this much bigger than the route
 local MIN_VIEW = 0.12    -- the closest zoom: this share of the map's width
 local LINE_COLOR = { walk = { 1, 1, 1, 0.9 }, fly = { 0.45, 0.8, 1, 1 }, transport = { 0.25, 0.5, 1, 1 },
   hearth = { 0.75, 0.5, 1, 0.6 } }
-local MARK_COLOR = { start = { 0.3, 1, 0.3 }, stop = { 1, 0.82, 0 }, goal = { 1, 0.3, 0.2 } }
+local MARK_COLOR = { start = { 0.3, 1, 0.3 }, stop = { 1, 0.82, 0 }, goal = { 1, 0.3, 0.2 },
+  done = { 0.5, 0.82, 0.68 } } -- done: a stop behind you (the overview's "done" green)
+local FOCUS_WEIGHT = 1.6 -- opts.focus: that leg is drawn this much thicker
 -- An icon for each way of travel (by faction where it differs), best first:
 -- not every client has every icon, so the first that loads is used.
 local ICONS = "Interface\\Icons\\"
@@ -319,7 +321,8 @@ end
 --         (for an `at` that places nodes beyond what shows); with `radius`,
 --         at the circle that wide round the box's middle instead (a round
 --         minimap)
---   you   false: no arrow or start badge (a map that shows you already)
+--   you   false: no arrow or start badge (a map that shows you already);
+--         "start": the start badge, never your arrow (a step you're not on)
 --   gap   true: the first leg starts at you, so it begins PLAYER_GAP pixels
 --         along (times `size`) and the map's own arrow for you stays in
 --         view; a leg shorter than that isn't drawn (its stop is still marked)
@@ -329,6 +332,14 @@ end
 --   limit    only the first `limit` steps are drawn and their stops marked
 --            (numbered as in the whole route; the destination only if it's
 --            among them)
+--   focus    steps[focus]'s leg is drawn thicker (the journey overview's
+--            walkthrough: the step it shows); pair it with `alpha`
+--   numbers  { [i] = number } in place of StepNumbers(steps): a map that
+--            starts before the step you're on keeps the overview's numbers
+--   done     function(i): steps[i]'s stop is behind you (a green badge)
+--   last     the destination's badge: a MARK_COLOR kind in place of "goal"
+--            (a stop part way along), or false for none (a step that ends
+--            short of its stop)
 -- Legs between the same two places, either way, are drawn side by side.
 -- Returns what it drew (lines, chevrons, marks, numbers, lanes, ...), also
 -- kept as v.stats, for tests.
@@ -351,12 +362,13 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
 
   -- A stroke from (ax, ay) to (bx, by) in colour c over its outline, `a`
   -- opaque; the route's legs are on sublevels 1-2, chevrons over them on 3-4.
-  local function stroke(edges, cores, i, sublevel, ax, ay, bx, by, c, a)
+  local function stroke(edges, cores, i, sublevel, ax, ay, bx, by, c, a, weight)
     local edge, core = line(v, edges, i, sublevel), line(v, cores, i, sublevel + 1)
     if not core then return end
-    edge:SetThickness((LINE_THICKNESS + 2 * OUTLINE) * k)
+    weight = weight or 1
+    edge:SetThickness((LINE_THICKNESS * weight + 2 * OUTLINE) * k)
     edge:SetVertexColor(OUTLINE_COLOR[1], OUTLINE_COLOR[2], OUTLINE_COLOR[3], OUTLINE_COLOR[4] * a)
-    core:SetThickness(LINE_THICKNESS * k)
+    core:SetThickness(LINE_THICKNESS * weight * k)
     core:SetVertexColor(c[1], c[2], c[3], a)
     for _, seg in ipairs({ edge, core }) do
       seg:SetStartPoint("TOPLEFT", v.canvas, ax, ay)
@@ -413,7 +425,8 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
 
   -- Each leg, with chevrons along it pointing the way you go.
   local drawn, chevrons, icons = 0, 0, 0
-  local stats = { hearthShown = false, iconFiles = {}, alphas = {}, legs = {}, iconAt = {}, chevronAt = {} }
+  local stats = { hearthShown = false, iconFiles = {}, alphas = {}, legs = {}, iconAt = {}, chevronAt = {},
+    stepAlpha = {}, focus = nil }
   local iconSize = MODE_ICON_SIZE * k
   for i, step in ipairs(steps) do
     local e, lane = ends[i], lanes[i]
@@ -439,9 +452,11 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
     if x1 and x2 then
       drawn = drawn + 1
       local a = alphaOf(i)
-      stats.alphas[drawn], stats.legs[drawn] = a, { x1, y1, x2, y2 }
+      stats.alphas[drawn], stats.legs[drawn], stats.stepAlpha[i] = a, { x1, y1, x2, y2 }, a
       local c = LINE_COLOR[step.mode] or LINE_COLOR.walk
-      stroke(v.edges, v.lines, drawn, 1, x1, y1, x2, y2, c, a)
+      local weight = i == opts.focus and FOCUS_WEIGHT or 1
+      if weight ~= 1 then stats.focus = i end
+      stroke(v.edges, v.lines, drawn, 1, x1, y1, x2, y2, c, a, weight)
       local dx, dy = x2 - x1, y2 - y1
       local length = math.sqrt(dx * dx + dy * dy)
       -- A flight, hearthstone or boat says so with its icon mid-leg (legs
@@ -532,7 +547,7 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   v.you = v.you or v.pins:CreateTexture(nil, "OVERLAY")
   v.you:Hide()
   if opts.you ~= false then
-    local facing = points[1].label == "You" and GetPlayerFacing and GetPlayerFacing()
+    local facing = opts.you ~= "start" and points[1].label == "You" and GetPlayerFacing and GetPlayerFacing()
     local yx, yy = at(points[1])
     if facing and inside(yx, yy) then
       v.you:SetTexture(PLAYER_ARROW)
@@ -545,14 +560,14 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
       mark(points[1], "start")
     end
   end
-  local numberOf = RouteMap.StepNumbers(steps)
+  local numberOf = opts.numbers or RouteMap.StepNumbers(steps)
   for i, step in ipairs(steps) do
     if step.stop and i < #steps and i <= limit then
-      mark(step.to, "stop", numberOf[i], math.sqrt(alphaOf(i)))
+      mark(step.to, opts.done and opts.done(i) and "done" or "stop", numberOf[i], math.sqrt(alphaOf(i)))
     end
   end
-  if #steps <= limit then
-    mark(points[#points], "goal", numberOf[#steps], math.sqrt(alphaOf(#steps)))
+  if #steps <= limit and opts.last ~= false then
+    mark(points[#points], opts.last or "goal", numberOf[#steps], math.sqrt(alphaOf(#steps)))
   end
   for i = marked + 1, #v.marks do
     local b = v.marks[i]
@@ -565,9 +580,9 @@ function RouteMap.DrawRoute(v, steps, points, at, opts)
   return stats
 end
 
--- Draws `r`'s route (its journey or route) in view `v`; returns the map's
--- height when it did, else nil.
-function RouteMap.Draw(v, r)
+-- Draws `r`'s route (its journey or route) in view `v`, with DrawRoute's
+-- `opts` (optional); returns the map's height when it did, else nil.
+function RouteMap.Draw(v, r, opts)
   if not (r and available()) then return nil end
   local steps, points = routeOf(r)
   if not steps then return nil end
@@ -668,7 +683,7 @@ function RouteMap.Draw(v, r)
     if px < 0 or px > WIDTH or py < 0 or py > height then return nil end
     return px, -py
   end
-  local stats = RouteMap.DrawRoute(v, steps, points, at)
+  local stats = RouteMap.DrawRoute(v, steps, points, at, opts)
   RouteMap.hearthShown, RouteMap.iconFiles, RouteMap.modeIcons = stats.hearthShown, stats.iconFiles, stats.modeIcons
   RouteMap.youShown, RouteMap.chevrons, RouteMap.numbers = stats.youShown, stats.chevrons, stats.numbers
 

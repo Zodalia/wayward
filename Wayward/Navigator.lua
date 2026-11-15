@@ -484,8 +484,18 @@ local function planFrom(a, here)
   return ns.Router.Plan(here, a.goal, net)
 end
 
+-- The steps already behind you on a journey's plan, kept when it's planned
+-- again (a.walked, oldest first), so the journey overview can still show
+-- how you got to the stops you've done.
+local function keepWalked(a)
+  if not (a.journey and a.route and a.route.steps) then return end
+  a.walked = a.walked or {}
+  for k = 1, (a.index or 1) - 1 do a.walked[#a.walked + 1] = a.route.steps[k] end
+end
+
 local function adopt(a, route, journey)
   note("new plan: next %s", stopName(firstStop(route)))
+  keepWalked(a)
   a.route, a.index = ns.Router.WithZoneSteps(route), 1
   if journey then
     a.journey = journey

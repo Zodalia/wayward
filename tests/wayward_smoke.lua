@@ -5334,20 +5334,13 @@ do
     stops = { stopAt(0.52, "A"), stopAt(0.54, "B"), pickup, turnin } }))
   check(labels() == "A,B,Giver,Finisher", "planned nearest first: " .. labels())
   ns.JourneyOverview.Show()
-  local function stepLines()
-    local out = {}
-    for _, line in ipairs(ns.JourneyOverview.Lines()) do
-      if line.step then out[#out + 1] = line.state .. ":" .. ns.Router.Describe(ns.Nav.active.route, line.stepIndex, true) end
-    end
-    return table.concat(out, " / ")
+  local stepLines = 0
+  for _, line in ipairs(ns.JourneyOverview.Lines()) do
+    if not line.row and not line.header then stepLines = stepLines + 1 end
   end
-  check(stepLines() == "now:Walk to A", "the current stop shows the steps that get you there: " .. stepLines())
-  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[1])
-  check(stepLines() == "", "its - folds them")
-  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[1])
-  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[2])
-  check(stepLines() == "now:Walk to A / next:Walk to B", "and any stop's + shows its own: " .. stepLines())
-  ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[2])
+  local walkStep = ns.JourneyOverview.Walkthrough() and ns.JourneyOverview.Walkthrough().step or ""
+  check(stepLines == 0 and walkStep:find("Walk to A", 1, true),
+    "the steps that get you there are in the walkthrough, not the list: " .. walkStep)
   ns.HUD.Update()
   local lines = ns.HUD.Lines()
   check(lines[1] == "Errands" and lines[6] == "Stop 1 of 4" and lines[2] == "Visit A"
@@ -10214,20 +10207,17 @@ do
   check(table.concat(ns.Menu.Labels(), ",") == labels("Second"), "the button opens that menu")
   ns.Menu.Hide()
 
-  -- A click on the row shows its steps, another folds them; a drag's release doesn't.
+  -- No +/- and no steps under a stop: a click on it shows it at the top; a drag's release doesn't.
   local before = #O.Lines()
-  check(row.canOpen == true, "a stop with steps to it can be opened")
-  row.scripts.OnMouseDown(row, "LeftButton")
-  row.scripts.OnMouseUp(row, "LeftButton")
-  local open = #O.Lines()
-  check(open > before, "a click on a stop shows its steps: " .. before .. " -> " .. open)
-  row = O.RowFor(stop("Second"))
+  check(row.expand == nil and before == 3, "stops have no +/- and no step lines: " .. before .. " lines")
   row.dragged = true
   row.scripts.OnMouseUp(row, "LeftButton")
-  check(#O.Lines() == open, "letting go of a drag isn't a click")
+  check(O.Walkthrough().entry.stop == stop("First"), "letting go of a drag isn't a click")
   row.scripts.OnMouseDown(row, "LeftButton")
   row.scripts.OnMouseUp(row, "LeftButton")
-  check(#O.Lines() == before, "and another click folds them")
+  check(O.Walkthrough().entry.stop == stop("Second") and #O.Lines() == before,
+    "a click on a stop shows it in the walkthrough, and the list stays as it was")
+  O.FocusNow()
 
   -- Pin from the menu: the lock shows, and unpins on a click.
   check(pick("Second", "Pin stop") and ns.Journey.IsPinned(stop("Second")), "Pin stop pins it")
@@ -10482,6 +10472,120 @@ do
   P.Hide()
 end
 -- ===== redesign: the list rows (end) =====
+-- ===== journey overview: the walkthrough (begin) =====
+-- The selected stop and one of its steps at the top of the overview, < and >
+-- along the steps (done ones marked done), and the map drawing that step bold.
+do
+  io.write("journey overview: walkthrough\n")
+  local O = ns.JourneyOverview
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  local here = ns.Geo.PlayerNodeExact()
+  local function stopAt(dx, label)
+    return { node = ns.Geo.Node(here.mapID, here.x + dx, here.y, label), text = label,
+      action = { kind = "manual", text = label } }
+  end
+  C_Map.GetMapArtLayers = function() return { { tileWidth = 256, tileHeight = 256, layerWidth = 1002, layerHeight = 668 } } end
+  C_Map.GetMapArtLayerTextures = function() return { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 } end
+  ns.Nav.Stop()
+  local first, second, third = stopAt(0.02, "First"), stopAt(0.04, "Second"), stopAt(0.06, "Third")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Walkthrough", stops = { first, second, third } }))
+  if O.IsShown() then O.Toggle() end
+  O.Show()
+  local f = O.EnsureFrame()
+  local function map() return f.map.stats or {} end
+
+  -- Opens on the step you're on, in the stop you're on.
+  local w = O.Walkthrough()
+  check(w and w.entry.stop == first and w.entry.stepState == "now" and w.heading:find("Stop 1 of 3", 1, true)
+    and w.state:find("Now", 1, true) and w.step:find("^Step 1 of ") and not w.now and not w.prev and w.next,
+    "the walkthrough opens on the step you're on: " .. tostring(w and w.heading) .. " / " .. tostring(w and w.step))
+  check(O.RowFor(first).selected:IsShown() and not O.RowFor(second).selected:IsShown(),
+    "its stop is marked in the list")
+  check(map().focus == 1 and map().stepAlpha[1] == 1 and (map().stepAlpha[2] or 0) < 1,
+    "the map draws that step bold and the others faded")
+
+  -- > goes on along the steps, stop to stop; the map follows.
+  check(O.WalkBy(1) and O.Walkthrough().entry.stop == second and O.Walkthrough().entry.stepState == "next"
+    and O.Walkthrough().heading:find("Stop 2 of 3", 1, true) and O.Walkthrough().now,
+    "> shows the next step, in the next stop, with Now to go back: " .. tostring(O.Walkthrough().heading))
+  check(O.RowFor(second).selected:IsShown() and not O.RowFor(first).selected:IsShown(), "the list marks that stop")
+  check(map().lines == 1 and map().focus == 1 and map().stepAlpha[1] == 1,
+    "and the map zooms in on that step: " .. tostring(map().lines) .. " lines")
+  while O.WalkBy(1) do end
+  check(O.Walkthrough().entry.stop == third and not O.Walkthrough().next and not O.WalkBy(1),
+    "the last step is as far as it goes")
+  check(O.WalkBy(-1) and O.Walkthrough().index == O.Walkthrough().count - 1, "< goes back a step")
+  f.walk.now.scripts.OnClick(f.walk.now)
+  check(O.Walkthrough().entry.stop == first and not O.Walkthrough().now, "Now goes back to the step you're on")
+  O.WalkBy(1)
+  O.Toggle()
+  O.Show()
+  check(O.Walkthrough().entry.stop == first, "opened again, it's on the step you're on")
+
+  -- A click on a stop in the list selects it; on it again, back to where you are.
+  local row = O.RowFor(third)
+  local function click(r)
+    r.scripts.OnMouseDown(r, "LeftButton")
+    r.scripts.OnMouseUp(r, "LeftButton")
+  end
+  click(row)
+  check(O.Walkthrough().entry.stop == third and O.Walkthrough().now, "a click on a stop shows it at the top")
+  local hasSteps = false
+  for _, r in ipairs(f.rows) do
+    if r:IsShown() and not r.stop and not r.header then hasSteps = true end
+  end
+  check(not hasSteps, "and no steps open under it in the list")
+  click(O.RowFor(third))
+  check(O.Walkthrough().entry.stop == first and not O.Walkthrough().now,
+    "a click on the stop selected goes back to the stop and step you're on")
+  click(O.RowFor(second))
+  click(O.RowFor(third))
+  check(O.Walkthrough().entry.stop == third, "a click on another stop selects that one instead")
+  click(O.RowFor(first))
+  check(O.Walkthrough().entry.stop == first and O.Walkthrough().entry.stepState == "now" and not O.Walkthrough().now,
+    "a click on the stop you're on shows the step you're on")
+
+  -- Selected away from where you are, the map zooms in on just that.
+  local full = map().lines
+  click(O.RowFor(third))
+  check(map().lines == 1 and map().focus == 1 and not map().youShown and map().marks == 2
+    and map().numbers[2] == O.StopNumbers()[third],
+    "a stop selected: the map shows only its steps, from a start badge to its number: "
+    .. tostring(map().lines) .. " lines, " .. tostring(map().marks) .. " marks")
+  O.WalkBy(-1)
+  check(O.Walkthrough().entry.stop == second and map().lines == 1 and map().focus == 1,
+    "a step walked to: the map shows only that step")
+  O.FocusNow()
+  check(map().lines == full and full > 1 and map().youShown ~= nil, "back where you are: the rest of the journey again")
+
+  -- Done, and planned again from there: its steps are still there to walk back to.
+  player.mapID, player.x, player.y = first.node.mapID, first.node.x, first.node.y
+  ns.HUD.Update()
+  ns.Nav.MoveOn()
+  ns.Nav.Recalculate()
+  check(first.done and ns.Nav.active.walked and #ns.Nav.active.walked >= 1,
+    "a re-plan keeps the steps walked: " .. tostring(ns.Nav.active.walked and #ns.Nav.active.walked))
+  O.FocusNow()
+  check(O.Walkthrough().entry.state == "now" and O.Walkthrough().entry.stop ~= first
+    and O.Walkthrough().heading:find("Stop 2 of 3", 1, true),
+    "on to the next stop: " .. tostring(O.Walkthrough().heading))
+  check(O.WalkBy(-1), "< goes back to the stop done")
+  w = O.Walkthrough()
+  check(w.entry.stop == first and w.entry.stepState == "done" and w.state:find("Done", 1, true)
+    and w.heading:find("done", 1, true) and w.step:find("^Step 1 of "),
+    "a step done shows as done: " .. tostring(w.heading) .. " / " .. tostring(w.state))
+  local stats = map()
+  check(stats.lines == 1 and stats.focus == 1 and not stats.youShown and stats.numbers[1] == false
+    and stats.numbers[2] == false,
+    "the map zooms in on the step done: a start badge and its stop, green and unnumbered: "
+    .. tostring(stats.lines) .. " lines")
+
+  ns.Nav.Stop()
+  if O.IsShown() then O.Toggle() end
+  C_Map.GetMapArtLayers, C_Map.GetMapArtLayerTextures = nil, nil
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+end
+-- ===== journey overview: the walkthrough (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

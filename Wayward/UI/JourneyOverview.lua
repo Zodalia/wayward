@@ -2,7 +2,15 @@ local _, ns = ...
 
 -- The whole journey at a glance (View details): every stop with done / now /
 -- next, opened from the directions box (View details) and when a journey
--- with several stops starts. Click an open stop to show or fold its steps.
+-- with several stops starts.
+-- At the top, a walkthrough: the selected stop and one of its steps, with
+-- < and > to go back and forth along the steps, stop after stop (done ones
+-- too, marked done). The steps are shown there only, not in the list. It
+-- opens on the step you're on; a click on a stop in the list selects it,
+-- and a click on the selected stop (or Now) goes back. The map under the
+-- list draws the step you're on bold and the others faded; with another
+-- stop or step selected, it zooms in on just that, so you can walk the
+-- journey and see where each step takes you.
 -- Its "..." menu (UI/Menu.lua) has what you do to a stop now and then: pin
 -- it, move it up or down (the same as dragging, without the drag), do the
 -- one you're on later (the directions box's >>), remove it (stops that need
@@ -13,10 +21,7 @@ local _, ns = ...
 -- Drag an open stop up or down by its handle (or the row) to reorder the
 -- journey, or pin one so re-plans as you go leave it where it is
 -- (Nav.TogglePin); a pinned stop shows a lock, and clicking the lock unpins
--- it. Under an open stop, the steps that get you there (walk, fly, boat...),
--- with the one you're on marked: open under the current stop, and a click
--- on any stop (or its +/-) opens or folds them, so you can see where it's
--- taking you (and hearth instead).
+-- it.
 -- Finished stops fold into one line you can open;
 -- they fold by themselves once there are AUTO_FOLD of them, or when showing
 -- them would push open stops off the list.
@@ -31,8 +36,7 @@ ns.JourneyOverview = Overview
 
 local MAX_ROWS = 10        -- the list is this many stop rows tall
 local ROW_HEIGHT = 30
-local STEP_HEIGHT = 15     -- a step line under a stop
-local POOL = 24            -- rows drawn at most (stops and steps)
+local POOL = MAX_ROWS      -- rows drawn at most
 local SUGGESTIONS = 4      -- "Detours on the way" rows
 local SUGGEST_HEIGHT = 18
 local SET_ASIDE = 5        -- set-aside journey rows (Nav keeps that many)
@@ -44,10 +48,17 @@ local GRIP_COLOR = { 0.6, 0.6, 0.6, 0.8 }
 local AUTO_FOLD = 3
 local PIN_TEXTURE = "Interface\\Buttons\\LockButton-Locked-Up" -- on a pinned stop only
 
+local TOP = -44            -- under the title and info line
+local WALK_HEIGHT = 78     -- the walkthrough at the top, with the gap under it
+local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t"
+local DONE_COLOR, NOW_COLOR = { 0.5, 0.82, 0.68 }, { 1, 0.82, 0 } -- LOOK's done and now
+-- On the map, the step the walkthrough shows, the rest of its stop's steps, the others.
+local FOCUS_ALPHA = { step = 1, stop = 0.6, rest = 0.35 }
+
 local frame
 local HOME = { "TOPLEFT", "TOP", 170, -140 }
+local focus -- the walkthrough's { stop, step } (step nil on a stop with none); nil: the step you're on
 local unfolded -- nil: fold by the rule above; true / false: the player's choice for this journey
-local opened = setmetatable({}, { __mode = "k" }) -- [stop] = true / false: its steps shown (nil: the current stop's)
 local scroll = 0 -- lines scrolled past at the top (the mouse wheel)
 local dragging -- the row being dragged
 
@@ -133,6 +144,68 @@ local function create()
   ns.Skin.Text(f.title)
   ns.Skin.Text(f.info)
 
+  -- The walkthrough: the selected stop, one of its steps, and < > along them.
+  local w = CreateFrame("Frame", nil, f)
+  w:SetSize(356, WALK_HEIGHT - 8)
+  w:SetPoint("TOPLEFT", 12, TOP)
+  w.band = w:CreateTexture(nil, "BACKGROUND")
+  w.band:SetAllPoints()
+  w.band:SetColorTexture(1, 1, 1, 0.04)
+  -- Down its left edge, in the colour of what it shows: gold now, green done.
+  w.bar = w:CreateTexture(nil, "ARTWORK")
+  w.bar:SetPoint("TOPLEFT", -4, 0)
+  w.bar:SetPoint("BOTTOMLEFT", -4, 0)
+  w.bar:SetWidth(2)
+  w.heading = w:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  w.heading:SetPoint("TOPLEFT", 6, -5)
+  w.heading:SetJustifyH("LEFT")
+  local function walkButton(label, width, tip, onClick)
+    local b = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+    b:SetSize(width, 18)
+    b:SetText(label)
+    b:SetScript("OnClick", onClick)
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(tip)
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ns.Skin.Button(b)
+    return b
+  end
+  w.next = walkButton(">", 24, "Next step", function() Overview.WalkBy(1) end)
+  w.next:SetPoint("TOPRIGHT", -4, -3)
+  w.prev = walkButton("<", 24, "Previous step", function() Overview.WalkBy(-1) end)
+  w.prev:SetPoint("RIGHT", w.next, "LEFT", -2, 0)
+  w.now = walkButton("Now", 40, "Back to the step you're on", function() Overview.FocusNow() end)
+  w.now:SetPoint("RIGHT", w.prev, "LEFT", -6, 0)
+  w.title = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  w.title:SetPoint("TOPLEFT", 6, -22)
+  w.title:SetPoint("RIGHT", -6, 0)
+  w.title:SetJustifyH("LEFT")
+  w.title:SetWordWrap(false)
+  w.zone = w:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  w.zone:SetPoint("TOPLEFT", w.title, "BOTTOMLEFT", 0, -2)
+  w.zone:SetPoint("RIGHT", -6, 0)
+  w.zone:SetJustifyH("LEFT")
+  w.zone:SetWordWrap(false)
+  -- The step: how you travel it (no icon for walking), what to do, and done / now.
+  w.icon = w:CreateTexture(nil, "ARTWORK")
+  w.icon:SetSize(14, 14)
+  w.icon:SetPoint("TOPLEFT", 6, -50)
+  w.state = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  w.state:SetPoint("TOPRIGHT", -6, -51)
+  w.state:SetJustifyH("RIGHT")
+  w.step = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  w.step:SetPoint("RIGHT", -52, 0)
+  w.step:SetJustifyH("LEFT")
+  w.step:SetJustifyV("TOP")
+  w.step:SetWordWrap(true)
+  if w.step.SetMaxLines then w.step:SetMaxLines(2) end
+  for _, text in ipairs({ w.heading, w.title, w.zone, w.state, w.step }) do ns.Skin.Text(text) end
+  w:Hide()
+  f.walk = w
+
   f.rows = {}
   for i = 1, POOL do
     local row = CreateFrame("Frame", nil, f)
@@ -140,7 +213,7 @@ local function create()
     row:SetPoint("TOPLEFT", 12, -44 - (i - 1) * ROW_HEIGHT)
     row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.text:SetPoint("TOPLEFT", HANDLE_WIDTH + 4, -2)
-    row.text:SetPoint("RIGHT", -62, 0) -- short of the lock, +/- and "..."
+    row.text:SetPoint("RIGHT", -44, 0) -- short of the lock and "..."
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
     -- The stop's number on the maps, in a column of its own.
@@ -152,7 +225,7 @@ local function create()
     -- Where the stop is, so a journey across several zones reads at a glance.
     row.zone = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.zone:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
-    row.zone:SetPoint("RIGHT", -62, 0)
+    row.zone:SetPoint("RIGHT", -44, 0)
     row.zone:SetJustifyH("LEFT")
     ns.Skin.Text(row.zone)
     -- More: pin, move up or down, remove (Overview.StopMenu).
@@ -168,24 +241,11 @@ local function create()
     end)
     row.more:SetScript("OnLeave", function() GameTooltip:Hide() end)
     ns.Skin.Button(row.more)
-    -- Whether the steps to this stop show: a click on it (or anywhere on the
-    -- row) shows or folds them.
-    row.expand = CreateFrame("Button", nil, row)
-    row.expand:SetSize(14, 14)
-    row.expand:SetPoint("RIGHT", row.more, "LEFT", -6, 0)
-    row.expand:SetScript("OnClick", function() Overview.ToggleSteps(row.stop) end)
-    row.expand:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText("Show or hide the steps to this stop")
-      GameTooltip:Show()
-    end)
-    row.expand:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    row.expand:Hide()
     -- A lock on a pinned stop (Nav.TogglePin), so you can see why it stays
     -- put; click it to unpin. Pinning is in the "..." menu.
     row.pin = CreateFrame("Button", nil, row)
     row.pin:SetSize(14, 14)
-    row.pin:SetPoint("RIGHT", row.more, "LEFT", -24, 0)
+    row.pin:SetPoint("RIGHT", row.more, "LEFT", -6, 0)
     row.pin:SetNormalTexture(PIN_TEXTURE)
     row.pin:SetScript("OnClick", function()
       GameTooltip:Hide()
@@ -232,16 +292,16 @@ local function create()
     row.toggle:SetPoint("LEFT", 1, 0)
     row.toggle:SetScript("OnClick", function() Overview.ToggleFinished() end)
     row.toggle:Hide()
-    -- A click on the finished-stops line opens or folds them; on a stop, its
-    -- steps. Not at the end of a drag.
+    -- A click on the finished-stops line opens or folds them; on a stop, it
+    -- shows in the walkthrough (Overview.Select). Not at the end of a drag.
     row:SetScript("OnMouseDown", function(self) self.dragged = nil end)
     row:SetScript("OnMouseUp", function(self, button)
       if self.dragged then self.dragged = nil return end
       if button and button ~= "LeftButton" then return end
       if self.header then
         Overview.ToggleFinished()
-      elseif self.stop and self.canOpen then
-        Overview.ToggleSteps(self.stop)
+      elseif self.stop then
+        Overview.Select(self.stop)
       end
     end)
     row.handle:RegisterForDrag("LeftButton")
@@ -274,6 +334,11 @@ local function create()
     row.currentBar:SetWidth(2)
     row.currentBar:SetColorTexture(1, 0.82, 0, 0.9)
     row.currentBar:Hide()
+    -- The stop or step the walkthrough at the top shows: a faint blue band.
+    row.selected = row:CreateTexture(nil, "BACKGROUND", nil, -2)
+    row.selected:SetAllPoints()
+    row.selected:SetColorTexture(0.55, 0.75, 1, 0.12)
+    row.selected:Hide()
     row.hover = row:CreateTexture(nil, "BACKGROUND")
     row.hover:SetAllPoints()
     row.hover:SetColorTexture(1, 1, 1, 0.06)
@@ -445,16 +510,6 @@ local LOOK = {
 
 local FINISHED = { done = true }
 
--- The current route's steps that lead to `stop`: first, last (indexes), or nil.
-local function legOf(a, stop)
-  local first = 1
-  for i, step in ipairs(a.route.steps) do
-    if step.stop == stop then return first, i end
-    if step.stop then first = i + 1 end
-  end
-  return nil
-end
-
 -- Where your Hearthstone takes you on the way to `stop`, when the plan
 -- uses it there and you haven't yet (steps from `from` on), else nil: a line
 -- off to your inn on the map then has its reason in the list.
@@ -487,23 +542,9 @@ function Overview.StopNumbers()
   return numbers, goal
 end
 
-local function stepsOpen(stop, state)
-  if opened[stop] ~= nil then return opened[stop] end
-  return state == "now"
-end
-
-function Overview.ToggleSteps(stop)
-  if not stop then return end
-  local state
-  for _, r in ipairs(Overview.Rows()) do
-    if r.stop == stop then state = r.state end
-  end
-  opened[stop] = not stepsOpen(stop, state)
-  Overview.Refresh()
-end
-
 -- What the list shows, top to bottom: the finished stops' line (when there
--- are any), those stops unless folded, then the open ones.
+-- are any), those stops unless folded, then the open ones. Their steps are
+-- in the walkthrough at the top, not here.
 --   { header = true, count, folded } or { row = Rows() entry, index }
 function Overview.Lines()
   local rows = Overview.Rows()
@@ -515,28 +556,270 @@ function Overview.Lines()
     or (unfolded == nil and (finished >= AUTO_FOLD or #rows + 1 > MAX_ROWS))
   local lines = {}
   if finished > 0 then lines[1] = { header = true, count = finished, folded = folded } end
-  local a = ns.Nav.active
   for i, r in ipairs(rows) do
-    if not (folded and FINISHED[r.state]) then
-      lines[#lines + 1] = { row = r, index = i }
-      -- The steps that get you there, under an open stop.
-      local first, last = nil, nil
-      if a and not FINISHED[r.state] then first, last = legOf(a, r.stop) end
-      if first and stepsOpen(r.stop, r.state) then
-        for k = first, last do
-          lines[#lines + 1] = { step = a.route.steps[k], stepIndex = k,
-            state = k < a.index and "done" or k == a.index and "now" or "next" }
-        end
-      end
-      if first then lines[#lines].hasSteps = true end
-      if first then
-        for j = #lines, 1, -1 do
-          if lines[j].row then lines[j].stepsOpen, lines[j].canOpen = stepsOpen(r.stop, r.state), true break end
-        end
-      end
-    end
+    if not (folded and FINISHED[r.state]) then lines[#lines + 1] = { row = r, index = i } end
   end
   return lines, rows
+end
+
+-------------------------------------------------------------- walkthrough
+
+-- Every step of the journey so far and still to go: the ones walked before
+-- it was last planned again (Nav keeps them), then the plan's. Returns them
+-- as a route ({ steps }) and the index of the step you're on.
+function Overview.Trail()
+  local a = ns.Nav.active
+  if not (a and a.route and a.route.steps) then return { steps = {} }, 1 end
+  local steps = {}
+  for _, step in ipairs(a.walked or {}) do steps[#steps + 1] = step end
+  local walked = #steps
+  for _, step in ipairs(a.route.steps) do steps[#steps + 1] = step end
+  return { steps = steps }, walked + (a.index or 1)
+end
+
+-- The steps of `steps` that lead to `stop`: first, last (indexes), or nil.
+-- The last time it's reached, in case it was headed for before a re-plan.
+local function legIn(steps, stop)
+  for i = #steps, 1, -1 do
+    if steps[i].stop == stop then
+      local first = i
+      while first > 1 and not steps[first - 1].stop do first = first - 1 end
+      return first, i
+    end
+  end
+  return nil
+end
+
+-- What a stop with no steps of its own says in their place.
+local function noSteps(stop, state)
+  if state == "done" then return "Done along the way." end
+  if state == "gather" then return "Gathered as you go, wherever it turns up." end
+  if stop.joined then
+    return string.format("Done together with %s.", stop.joined.text or "the stop you're on")
+  end
+  return "No way there planned yet."
+end
+
+-- What the walkthrough goes through, in the list's order: each stop's
+-- steps one by one (one entry for a stop with none). Each entry:
+--   { stop, state (the stop's: done / now / gather / next), stopNumber,
+--     stops, step?, stepIndex? (in Trail), first?, last? (its stop's steps),
+--     stepNumber?, stepCount?, stepState? (done / now / next) }
+-- Returns the entries, the entry of the step you're on, and the trail.
+function Overview.Walk()
+  local a = ns.Nav.active
+  if not (a and a.journey) then return {}, nil end
+  local trail, cur = Overview.Trail()
+  local rows = Overview.Rows()
+  local out, at = {}, nil
+  for n, r in ipairs(rows) do
+    local first, last = legIn(trail.steps, r.stop)
+    if first then
+      for k = first, last do
+        out[#out + 1] = { stop = r.stop, state = r.state, stopNumber = n, stops = #rows,
+          step = trail.steps[k], stepIndex = k, first = first, last = last,
+          stepNumber = k - first + 1, stepCount = last - first + 1,
+          stepState = k < cur and "done" or k == cur and "now" or "next" }
+        if k == cur then at = #out end
+      end
+    else
+      out[#out + 1] = { stop = r.stop, state = r.state, stopNumber = n, stops = #rows }
+    end
+  end
+  if not at then
+    for i, p in ipairs(out) do
+      if p.state == "now" then at = i break end
+    end
+  end
+  return out, at or (#out > 0 and 1 or nil), trail, cur
+end
+
+-- The entry the walkthrough shows: the one selected, else the step you're on.
+local function focused(walk, at)
+  if focus then
+    for i, p in ipairs(walk) do
+      if focus.step and p.step == focus.step then return i end
+    end
+    for i, p in ipairs(walk) do
+      if p.stop == focus.stop then return i end
+    end
+    focus = nil -- gone from the journey
+  end
+  return at
+end
+
+-- Selects `stop` (its step `step`, else its first, or the one you're on if
+-- it's the stop you're on) for the walkthrough. `quiet`: not drawn yet (a
+-- refresh follows).
+function Overview.Focus(stop, step, quiet)
+  if not stop then return end
+  local walk, at = Overview.Walk()
+  local now = at and walk[at]
+  if now and now.stop == stop and (step == nil or step == now.step) then
+    focus = nil
+  else
+    focus = { stop = stop, step = step }
+  end
+  if not quiet then Overview.Refresh() end
+end
+
+-- A click on a stop in the list: shows it in the walkthrough. A click on
+-- the one shown, when it isn't where you are, goes back to the step you're on.
+function Overview.Select(stop)
+  if not stop then return end
+  local walk, at = Overview.Walk()
+  local i = at and focused(walk, at)
+  if i and i ~= at and walk[i].stop == stop then
+    focus = nil
+    Overview.Refresh()
+  else
+    Overview.Focus(stop)
+  end
+end
+
+-- Back to the step you're on.
+function Overview.FocusNow()
+  focus = nil
+  Overview.Refresh()
+end
+
+-- The walkthrough `by` steps on (1) or back (-1). False at either end.
+function Overview.WalkBy(by)
+  local walk, at = Overview.Walk()
+  local i = at and focused(walk, at)
+  local p = i and walk[i + by]
+  if not p then return false end
+  focus = (i + by ~= at) and { stop = p.stop, step = p.step } or nil
+  Overview.Refresh()
+  return true
+end
+
+-- Fills in the walkthrough for entry `i` of `walk`; returns its height
+-- (with the gap under it), 0 when there's nothing to show.
+function Overview.LayoutWalk(walk, i, at, trail)
+  local w = frame.walk
+  local p = i and walk[i]
+  Overview.walk = p and { index = i, count = #walk, entry = p } or nil
+  if not p then
+    w:Hide()
+    return 0
+  end
+  local a = ns.Nav.active
+  local tag = p.state == "done" and ("  ·  |cff7fd1ae" .. CHECK .. " done|r")
+    or p.state == "now" and "  ·  |cffffd200now|r" or p.state == "gather" and "  ·  |cff80c0ffas you go|r" or ""
+  w.heading:SetText(string.format("Stop %d of %d%s", p.stopNumber, p.stops, tag))
+  w.title:SetText(p.stop.text or (p.stop.node and p.stop.node.label) or "?")
+  w.title:SetAlpha(p.state == "done" and 0.7 or 1)
+  local zone = ns.Journey.StopZone(p.stop)
+  local hearth = p.state ~= "done" and Overview.HearthBefore(a.route.steps, a.index, p.stop)
+  if hearth then
+    hearth = "hearth to " .. hearth .. " first"
+    zone = zone and (zone .. "  ·  " .. hearth) or hearth
+  end
+  w.zone:SetText(zone or "")
+  local state = p.step and p.stepState or (p.state == "done" and "done") or (p.state == "now" and "now") or nil
+  local icon = p.step and ns.RouteMap.TravelIcon(p.step)
+  w.icon:SetTexture(icon)
+  w.icon:SetShown(icon ~= nil)
+  w.step:ClearAllPoints()
+  if icon then
+    w.step:SetPoint("TOPLEFT", w.icon, "TOPRIGHT", 4, -1)
+  else
+    w.step:SetPoint("TOPLEFT", 6, -51)
+  end
+  w.step:SetPoint("RIGHT", -52, 0)
+  if p.step then
+    w.step:SetText(string.format("Step %d of %d  ·  %s  ·  %s", p.stepNumber, p.stepCount,
+      ns.Router.Describe(trail, p.stepIndex, true), ns.FormatDuration(p.step.seconds)))
+  else
+    w.step:SetText(noSteps(p.stop, p.state))
+  end
+  w.step:SetAlpha(state == "done" and 0.6 or 1)
+  w.state:SetText(state == "done" and ("|cff7fd1ae" .. CHECK .. " Done|r") or state == "now" and "|cffffd200Now|r" or "")
+  local color = state == "done" and DONE_COLOR or state == "now" and NOW_COLOR
+  w.bar:SetShown(color and true or false)
+  if color then w.bar:SetColorTexture(color[1], color[2], color[3], 0.9) end
+  w.prev:SetEnabled(i > 1)
+  w.next:SetEnabled(i < #walk)
+  w.now:SetShown(i ~= at)
+  w:Show()
+  return WALK_HEIGHT
+end
+
+-- What the map draws with the walkthrough on entry `p`: the steps and
+-- DrawRoute's opts. On the step you're on: the rest of the journey from it
+-- (`cur`, in Trail's `steps`), that step bold and opaque, the rest of its
+-- stop's steps a little faded, the others more. With another stop or step
+-- selected (`away`): only that, so the map zooms in on it; a stop selected
+-- from the list shows all its steps, one walked to with < > just that step
+-- (bold, its stop's other steps left out). A start badge where it begins
+-- (not your arrow: you may be elsewhere), and its stop in the list's colour
+-- and number (green, unnumbered, when done).
+function Overview.MapFocus(p, steps, cur, away)
+  local opts = {}
+  if not (away and p) then
+    local drawn = {}
+    for k = cur, #steps do drawn[#drawn + 1] = steps[k] end
+    if p and p.step and p.stepIndex >= cur then
+      local f, first, last = p.stepIndex - cur + 1, p.first - cur + 1, p.last - cur + 1
+      opts.focus = f
+      opts.alpha = function(i)
+        if i == f then return FOCUS_ALPHA.step end
+        if i >= first and i <= last then return FOCUS_ALPHA.stop end
+        return FOCUS_ALPHA.rest
+      end
+    end
+    return drawn, opts
+  end
+  local numbers, goal = Overview.StopNumbers()
+  local function kindOf(stop)
+    if stop.done then return "done" end
+    return stop == goal and "goal" or "stop"
+  end
+  local drawn = {}
+  if not p.step then
+    -- A stop with no steps of its own: just where it is.
+    local node = p.stop.node
+    if not node then return {}, opts end
+    drawn[1] = { from = node, to = node, mode = "walk", seconds = 0, stop = p.stop }
+    opts.you = false
+  else
+    local wholeStop = not (focus and focus.step)
+    local from, to = p.stepIndex, p.stepIndex
+    if wholeStop then from, to = p.first, p.last end
+    for k = from, to do drawn[#drawn + 1] = steps[k] end
+    opts.you = "start"
+    if wholeStop and #drawn > 1 then
+      local f = p.stepIndex - from + 1
+      opts.focus = f
+      opts.alpha = function(i) return i == f and FOCUS_ALPHA.step or FOCUS_ALPHA.stop end
+    else
+      opts.focus = 1
+    end
+  end
+  local last = drawn[#drawn]
+  if last.stop then
+    opts.last = kindOf(last.stop)
+    opts.numbers = { [#drawn] = not last.stop.done and numbers[last.stop] or nil }
+  else
+    opts.last = false -- a step part way to its stop: nothing to mark where it ends
+    opts.numbers = {}
+  end
+  return drawn, opts
+end
+
+-- What the walkthrough shows (for tests): { index, count, entry, heading,
+-- title, step, state, prev, next, now } or nil.
+function Overview.Walkthrough()
+  local w = frame and frame.walk
+  if not (w and w:IsShown() and Overview.walk) then return nil end
+  local out = {}
+  for key, value in pairs(Overview.walk) do out[key] = value end
+  out.heading, out.title, out.step, out.state = w.heading:GetText(), w.title:GetText(), w.step:GetText(),
+    w.state:GetText()
+  out.now = w.now:IsShown()
+  out.prev, out.next = out.index > 1, out.index < out.count
+  return out
 end
 
 -- The nearest stop above (`by` -1) or below (+1) row `at` that can be moved,
@@ -634,6 +917,7 @@ function Overview.RefreshSetAside()
   frame.title:SetText("Journeys set aside")
   frame.info:SetText("Resume one from where you are, or forget it.")
   frame.setAside:Hide()
+  frame.walk:Hide()
   for _, row in ipairs(frame.rows) do row:Hide() end
   frame.suggestHeader:Hide()
   for _, row in ipairs(frame.suggest) do row:Hide() end
@@ -641,7 +925,7 @@ function Overview.RefreshSetAside()
   frame.mapHeader:Hide()
   frame.marker:Hide()
   frame.more:SetText("")
-  local y = Overview.LayoutSetAside(-44, false)
+  local y = Overview.LayoutSetAside(TOP, false)
   frame.height = -y + 14
   frame:SetHeight(frame.height)
   return true
@@ -670,27 +954,24 @@ function Overview.Refresh()
   frame.info:SetText(string.format("%d of %d stops done  ·  %s to go%s", done, #rows,
     ns.FormatDuration(ns.Nav.TimeLeft(ns.Geo.PlayerNode())),
     root.manual and "  ·  your order" or "  ·  drag stops to reorder"))
-  -- Rows one under the other (step lines are shorter), as many as fit.
-  -- Scrolled: from line scroll + 1, as many as fit. A list that needs
-  -- scrolling keeps the full height, and stops once its last line shows.
+  -- The walkthrough at the top, the list under it.
+  local walk, at, trail, cur = Overview.Walk()
+  local walkIndex = at and focused(walk, at)
+  local shownEntry = walkIndex and walk[walkIndex]
+  local top = TOP - Overview.LayoutWalk(walk, walkIndex, at, trail)
+  -- Rows one under the other, as many as fit. Scrolled: from line
+  -- scroll + 1. A list that needs scrolling keeps the full height, and
+  -- stops once its last line shows.
   local room, used, shown = MAX_ROWS * ROW_HEIGHT, 0, 0
-  local function heightOf(line) return line.step and STEP_HEIGHT or ROW_HEIGHT end
-  local maxScroll, fromEnd = 0, 0
-  for i = #lines, 1, -1 do
-    fromEnd = fromEnd + heightOf(lines[i])
-    if fromEnd > room then
-      maxScroll = i
-      break
-    end
-  end
+  local maxScroll = math.max(0, #lines - MAX_ROWS)
   scroll = math.max(0, math.min(scroll, maxScroll))
   Overview.maxScroll = maxScroll
   for i, row in ipairs(frame.rows) do
     local line = lines[scroll + i]
-    local height = line and (line.step and STEP_HEIGHT or ROW_HEIGHT) or 0
+    local height = line and ROW_HEIGHT or 0
     if line and used + height > room then line = nil end
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", 12, -44 - used)
+    row:SetPoint("TOPLEFT", 12, top - used)
     row:SetHeight(math.max(height, 1))
     if line then
       used = used + height
@@ -698,32 +979,20 @@ function Overview.Refresh()
     end
     local r = line and line.row
     row.stop, row.rowIndex, row.header = r and r.stop, line and line.index, line and line.header
-    row.canOpen, row.canPin = nil, nil
-    row.expand:Hide()
+    row.canPin = nil
     local lit = r ~= nil and r.state == "now"
     row.current:SetShown(lit)
     row.currentBar:SetShown(lit)
+    -- The stop the walkthrough shows.
+    row.selected:SetShown(shownEntry ~= nil and r ~= nil and r.stop == shownEntry.stop)
     -- Stop rows leave room for the number; the other lines don't need it.
     row.text:ClearAllPoints()
     row.text:SetPoint("TOPLEFT", HANDLE_WIDTH + 4 + (r and NUMBER_WIDTH + 2 or 0), -2)
-    row.text:SetPoint("RIGHT", -62, 0)
+    row.text:SetPoint("RIGHT", -44, 0)
     local number = r and not FINISHED[r.state] and numbers[r.stop]
     row.number:SetText(number and string.format("|c%s%d|r", NUMBER_COLOR[r.stop == goal and "goal" or "stop"], number)
       or "")
-    if line and line.step then
-      local route = a.route
-      local text = ns.Router.Describe(route, line.stepIndex, true) .. "  ·  " .. ns.FormatDuration(line.step.seconds)
-      local look = line.state == "now" and "|cffffd200>|r " or "   "
-      row.text:SetText("      " .. look .. text)
-      row.text:SetAlpha(line.state == "done" and 0.45 or 0.9)
-      row.zone:SetText("")
-      row.movable = false
-      row.more:Hide()
-      row.pin:Hide()
-      row.handle:Hide()
-      row.toggle:Hide()
-      row:Show()
-    elseif line and line.header then
+    if line and line.header then
       row.text:SetText(string.format("|cff9d9d9d%s finished|r  %s", line.count == 1 and "1 stop" or (line.count .. " stops"),
         line.folded and "(click to show)" or "(click to hide)"))
       row.zone:SetText("")
@@ -755,12 +1024,6 @@ function Overview.Refresh()
       row.pin:SetShown(row.canPin and ns.Journey.IsPinned(r.stop))
       row.handle:SetShown(row.movable)
       row.toggle:Hide()
-      row.canOpen = line.canOpen
-      if line.canOpen then
-        row.expand:SetNormalTexture(line.stepsOpen and "Interface\\Buttons\\UI-MinusButton-Up"
-          or "Interface\\Buttons\\UI-PlusButton-Up")
-        row.expand:Show()
-      end
       row:Show()
     else
       row:Hide()
@@ -773,7 +1036,7 @@ function Overview.Refresh()
 
   -- Under the stops: detours on the way, the journeys set aside, then the
   -- map. A scrolling list keeps its full height.
-  local y = -44 - (maxScroll > 0 and room or used) - 10
+  local y = top - (maxScroll > 0 and room or used) - 10
   -- The same offers as the directions box's drawer (Wayside.lua), so the two never disagree.
   local list = ns.Wayside and ns.Wayside.Get(true).offers or {}
   frame.suggestHeader:ClearAllPoints()
@@ -805,9 +1068,10 @@ function Overview.Refresh()
   frame.mapHeader:Show()
   y = y - 4 - 16
   if ns.RouteMap and Overview.MapShown() then
-    local remaining = {}
-    for k = a.index, #a.route.steps do remaining[#remaining + 1] = a.route.steps[k] end
-    local ok, h = pcall(ns.RouteMap.Draw, frame.map, { route = { steps = remaining } })
+    -- The rest of the journey with the step you're on bold, or just what's
+    -- selected, zoomed in (Overview.MapFocus).
+    local drawn, opts = Overview.MapFocus(shownEntry, trail.steps, cur, walkIndex ~= at)
+    local ok, h = pcall(ns.RouteMap.Draw, frame.map, { route = { steps = drawn } }, opts)
     mapHeight = ok and h or nil
   end
   frame.map.canvas:SetShown(mapHeight ~= nil)
@@ -908,6 +1172,7 @@ end
 
 function Overview.Show()
   frame = frame or create()
+  focus = nil -- the walkthrough opens on the step you're on
   -- Opened with no journey on: the journeys set aside.
   frame.listing = not (ns.Nav.active and ns.Nav.active.journey) or nil
   frame:Show()
@@ -935,8 +1200,8 @@ ns.Movers.Add({ key = "Journey", label = "Journey", posKey = "overviewPos", home
 -- options say so (off by default: View details on the directions box opens it any time).
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
-  opened = setmetatable({}, { __mode = "k" })
   scroll = 0
+  focus = nil
   if ns.db.settings.overviewOnStart == true then
     Overview.Show()
   elseif frame and frame:IsShown() then
