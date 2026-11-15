@@ -261,11 +261,11 @@ summary line; up and down arrows and "1-13 of 19" under the list.
           Murloc Fin 3/8 · Shimmerweed 0/6 ...
 +--------------------------------------------------------------+
 | (compass 42)  The Perfect Stout                  [>>][...]   |
-|               [==== 2 of 5 done ====]                        |
+|               Stop 3 of 5  [========        ]               |
 |               Walk to Loch Modan through South Gate Pass     |
 |               Step 2 of 4 to get there                       |
 |               objectives (up to 4, then "+N more")           |
-|               distance · time left                           |
+|               distance · ~4 min to stop                      |
 |--------------------------------------------------------------|
 | + On the way 3                                 View details  |
 +--------------------------------------------------------------+
@@ -276,9 +276,10 @@ summary line; up and down arrows and "1-13 of 19" under the list.
 |---|---|
 | Compass | 42 circle. Arrow while walking; otherwise an icon of what is ahead (pickup, hand-in, flight, explore, dungeon). Hidden in the air. Off: the box is narrower, text only. |
 | Title | Journey title; destination on plain directions. |
-| Progress | 4-high bar, "2 of 5 done". Journeys only. |
+| Stop count | "Stop 3 of 5" under the title, with a 4-high bar of stops done beside it. Journeys only. |
 | Step line | The current step. With detail set to "stops": the stop only, and the step on hover. |
 | Step count | "Step %d of %d to get there". |
+| Time | To the stop you're heading for ("~4 min to stop"); left off on lines that say you're there ("In the area", "You're here: ..."). Plain directions: the time to get there. The whole journey's time is in the overview. |
 | Objectives | Up to four lines; "In the area", "Next spot", "Camp looks cleared", "~3 min left here"; an **Another spot** button (92 × 20). |
 | Buttons (top right) | Do this stop later (>>, 22 × 22), a "..." menu (24 × 22; `UI/Menu.lua`). Journeys only. Plain directions have a close button instead (Stop directions); a journey has none, since the menu ends it. |
 | "..." menu | Skip this stop (asks), Set journey aside (doesn't ask: nothing is lost), End journey (asks). The game's context menu where the client has one; else a box of our own. |

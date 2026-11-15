@@ -343,10 +343,15 @@ local function create()
   f.title:SetJustifyH("LEFT")
   f.title:SetWordWrap(false)
 
-  -- Stops done, as a thin bar under the title (journeys only).
+  -- On a journey, under the title: which stop you're on ("Stop 3 of 5"),
+  -- and beside it the stops done as a thin bar.
+  f.stopCount = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  f.stopCount:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -3)
+  f.stopCount:SetJustifyH("LEFT")
+  f.stopCount:SetWordWrap(false)
   f.progress = CreateFrame("StatusBar", nil, f)
   f.progress:SetHeight(4)
-  f.progress:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
+  f.progress:SetPoint("LEFT", f.stopCount, "RIGHT", 8, 0)
   f.progress:SetPoint("RIGHT", -PADDING, 0)
   f.progress:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
   f.progress:SetStatusBarColor(1, 0.82, 0)
@@ -375,9 +380,9 @@ local function create()
   f.info:SetPoint("TOPLEFT", f.sub, "BOTTOMLEFT", 0, -5)
   f.info:SetPoint("RIGHT", -PADDING, 0)
   f.info:SetJustifyH("LEFT")
-  for _, fs in ipairs({ f.title, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
+  for _, fs in ipairs({ f.title, f.stopCount, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
   -- What the small bar hides; HUD.Update shows them again as each needs.
-  f.journeyParts = { f.holder, f.title, f.progress, f.step, f.sub, f.objectives, f.info, f.list, f.moveOn, f.menu,
+  f.journeyParts = { f.holder, f.title, f.stopCount, f.progress, f.step, f.sub, f.objectives, f.info, f.list, f.moveOn, f.menu,
     f.add, f.footRule, f.gathering, f.otherArea }
 
   local elapsed = 0
@@ -465,11 +470,12 @@ local function legPosition(a)
   return a.index - first + 1, last - first + 1
 end
 
--- Lays the text out under the title, or under the progress bar on a journey.
+-- Lays the text out under the title, or under the stop count on a journey.
 local function place(trip)
   frame.progress:SetShown(trip)
+  frame.stopCount:SetShown(trip)
   frame.step:ClearAllPoints()
-  frame.step:SetPoint("TOPLEFT", trip and frame.progress or frame.title, "BOTTOMLEFT", 0, trip and -7 or -5)
+  frame.step:SetPoint("TOPLEFT", trip and frame.stopCount or frame.title, "BOTTOMLEFT", 0, trip and -6 or -5)
   frame.step:SetPoint("RIGHT", -PADDING, 0)
   -- The title stops short of the buttons.
   local leftmost = trip and frame.moveOn or frame.close
@@ -689,15 +695,16 @@ function HUD.Update()
   refreshWayside()
   place(trip)
 
-  -- One count each: stops done in the title, steps to the next stop (or to
-  -- the destination) under the step, only when there's more than one.
+  -- One count each: the stop you're on under the title (with the stops done
+  -- as a bar beside it), steps to the next stop (or to the destination)
+  -- under the step, only when there's more than one.
   local progress = ns.Nav.Progress()
+  frame.title:SetText((trip and progress.title or a.title) or "")
   if trip then
-    frame.title:SetText(string.format("%s  |cff9d9d9d%d of %d done|r", progress.title or "", progress.done,
-      progress.total))
+    frame.stopCount:SetText(string.format("Stop %d of %d", progress.stopIndex, progress.total))
     frame.progress:SetValue(progress.total > 0 and progress.done / progress.total or 0)
   else
-    frame.title:SetText(a.title or "")
+    frame.stopCount:SetText("")
   end
   local position, count = legPosition(a)
   frame.stepText = ns.Router.Describe(a.route, a.index)
@@ -755,7 +762,12 @@ function HUD.Update()
   -- To where the arrow points (past an area gathered in on the way).
   local aim = ns.Nav.Aim() or step.to
   local distance = here and ns.Geo.Distance(here, aim) or math.huge
-  local remaining = TIME_ICON .. " " .. ns.FormatDuration(ns.Nav.RemainingSeconds(here))
+  -- The time to the stop you're heading for; the whole journey's is in its
+  -- overview (View details). Plain directions: the time to get there.
+  local remaining = TIME_ICON .. " " .. (trip and (ns.FormatDuration(ns.Nav.SecondsToStop(here)) .. " to stop")
+    or ns.FormatDuration(ns.Nav.RemainingSeconds(here)))
+  -- At the stop already, "to stop" says nothing: those lines leave it off.
+  local there = trip and "" or ("     " .. remaining)
   if gatherHere then
     -- Nothing waits for you here: walk on whenever you like.
     frame.info:SetText(string.format("|cff7fd1aeGathering here|r  ·  %s to go at your pace     %s",
@@ -763,11 +775,11 @@ function HUD.Update()
   elseif objective and ns.Nav.InArea() then
     -- Among what you need: no arrow, just how it's going (and how long, at your pace here).
     if ns.Camps.LooksCleared(step.stop) then
-      frame.info:SetText("|cffffd100Camp looks cleared|r     " .. remaining)
+      frame.info:SetText("|cffffd100Camp looks cleared|r" .. there)
     else
       local left = ns.Camps.TimeLeft(step.stop)
       frame.info:SetText("|cff7fd1aeIn the area|r"
-        .. (left and ("  ·  " .. ns.FormatDuration(left) .. " left here") or "") .. "     " .. remaining)
+        .. (left and ("  ·  " .. ns.FormatDuration(left) .. " left here") or "") .. there)
     end
   elseif objective and not gathering then
     -- On the way from a spot you've cleared to the next, or back to one respawning.
@@ -780,22 +792,22 @@ function HUD.Update()
   elseif ns.Nav.Interaction() == "hearth" then
     frame.info:SetText(string.format("Use your Hearthstone     %s", remaining))
   elseif ns.Nav.Interaction() == "use" then
-    frame.info:SetText(string.format("|cff7fd1aeYou're here:|r use %s     %s", (ns.Nav.TargetObject()), remaining))
+    frame.info:SetText(string.format("|cff7fd1aeYou're here:|r use %s%s", (ns.Nav.TargetObject()), there))
   elseif ns.Nav.Interaction() == "enter" then
-    frame.info:SetText("|cff7fd1aeYou're here:|r go in     " .. remaining)
+    frame.info:SetText("|cff7fd1aeYou're here:|r go in" .. there)
   elseif ns.Nav.Interaction() == "talk" and not (step.stop and step.stop.action and step.stop.action.kind == "manual") then
     local name = ns.Nav.TargetNPC()
     local action = step.stop and step.stop.action
     local kind = action and action.kind
-    frame.info:SetText(string.format("|cff7fd1aeYou're here:|r talk to %s%s     %s", name or "them",
+    frame.info:SetText(string.format("|cff7fd1aeYou're here:|r talk to %s%s%s", name or "them",
       kind == "train" and (action.book and ", buy the book and read it" or " and train it")
-        or kind == "learn" and " and train your spells" or "", remaining))
+        or kind == "learn" and " and train your spells" or "", there))
   elseif ns.Nav.Waiting() then
     -- A quest step only you can tell is done; spells to train.
     local kind = step.stop and step.stop.action and step.stop.action.kind
     frame.info:SetText((kind == "manual" and "|cff7fd1aeYou're here:|r do it, then move on (>>)"
       or kind == "learn" and "|cff7fd1aeYou're here:|r train your spells" or "|cff7fd1aeYou're here|r")
-      .. "     " .. remaining)
+      .. there)
   elseif distance < math.huge and step.mode == "walk" then
     frame.info:SetText(string.format("%s %d yd     %s", DISTANCE_ICON, math.floor(distance), remaining))
   else
@@ -805,7 +817,8 @@ function HUD.Update()
   -- Grow to fit the text (titles and steps can wrap).
   local subHeight = sub ~= "" and (3 + height(frame.sub)) or 0
   local objectivesHeight = besideHeight > 0 and (5 + besideHeight) or 0
-  frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title) + (trip and 16 or 5) + height(frame.step)
+  frame:SetHeight(math.max(MIN_HEIGHT, PADDING * 2 + height(frame.title)
+    + (trip and (3 + height(frame.stopCount) + 6) or 5) + height(frame.step)
     + subHeight + objectivesHeight + 5 + height(frame.info) + FOOTER_GAP + FOOTER))
 
   local heading = facing()
@@ -846,12 +859,14 @@ ns.Movers.Add({ key = "Directions", label = "Directions", posKey = "hudPos", hom
 function HUD.CompassShown() return frame ~= nil and frame.holder:IsShown() end
 function HUD.Width() return frame and frame.width end
 
--- The directions box's text: title, step, step count, status line, then the
--- objectives (shown between the step and the status; for tests).
+-- The directions box's text: title, step, step count, status line, the
+-- objectives (shown between the step and the status), then the stop count
+-- under the title ("" on plain directions; for tests).
 function HUD.Lines()
   if not frame then return {} end
   return { frame.title:GetText(), frame.step:GetText(), frame.sub:GetText(), frame.info:GetText(),
-    frame.objectives:IsShown() and frame.objectives:GetText() or "" }
+    frame.objectives:IsShown() and frame.objectives:GetText() or "",
+    frame.stopCount:IsShown() and frame.stopCount:GetText() or "" }
 end
 
 -- Pulses View details a few times: the journey has changed, its overview is a click away.

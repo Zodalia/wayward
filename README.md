@@ -101,9 +101,11 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   it), because Blizzard's on-screen navigation is off by default in Forever;
   without an arrow its circle shows what's ahead (quest pickup or hand-in,
   flight, a zone to explore, a dungeon to enter). On a journey it also shows
-  the journey's title, a bar of stops done ("2 of 5 done", `ns.Nav.Progress()`),
-  the step, which step of the way to the next stop you're on, and distance
-  and time left. Top right on a journey: **Do this stop later** (>>), a
+  the journey's title, which stop you're on ("Stop 3 of 5", `ns.Nav.Progress()`)
+  with a bar of stops done beside it, the step, which step of the way to the
+  next stop you're on, and distance and the time to that stop ("~4 min to
+  stop", left off once you're there; the whole journey's time is in its
+  overview). Top right on a journey: **Do this stop later** (>>), a
   "..." menu for what you use now and then or can't undo (**Skip this
   stop**, **Set journey aside**, **End journey**; End asks first). Plain directions
   have an x instead (Stop directions). Along the bottom,

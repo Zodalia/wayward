@@ -550,6 +550,27 @@ function Nav.RemainingSeconds(here)
   return total
 end
 
+-- Seconds to the stop you're heading for: RemainingSeconds up to and
+-- including the next step that ends at a stop (all of it on plain directions).
+function Nav.SecondsToStop(here)
+  local a = Nav.active
+  if not a then return nil end
+  local total = 0
+  for i = a.index, #a.route.steps do
+    local step = a.route.steps[i]
+    if i == a.index and here then
+      total = total + ns.Router.SecondsLeft(step, here, onTaxi()) + (ns.Camps.TimeLeft(step.stop) or 0)
+    else
+      total = total + step.seconds
+    end
+    if step.stop then
+      total = math.max(total, ns.Journey.RespawnIn(step.stop))
+      if a.journey then break end
+    end
+  end
+  return total
+end
+
 -- Learning a flight path mid-trip (e.g. talking to a flight master you were
 -- walking past) can make a much faster route; switch to it.
 ns.Listen("FLIGHTS_CHANGED", function()

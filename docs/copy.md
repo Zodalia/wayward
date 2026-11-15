@@ -714,158 +714,158 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 488: new plan: next %s
 - 505: no route from here.
 - 516: the plan's last stop is done
-- 563: faster route with your flight paths: 
-- 589: done: %s
-- 626: the quest log says %d more stop%s done
-- 674: %d quests
-- 721: , with a run of 
-- 725: , but only by using your Hearthstone: 
-- 725:  without it
-- 756: couldn't show a question (
-- 778: You %s %s. Add it to your journey (%s)?
-- 780: Add to journey
-- 781: New journey
-- 782: A journey for it alone (%s). The one on now is set aside, to resume later.
-- 791: You %s %s. Start a journey for it (%s)?
-- 793: Start journey
-- 808: picked up %s: added to your journey (%s more). The journey overview's x drops it.
-- 814: Added %s to your journey (%s more).
-- 856: picked up
-- 924: %s isn't offered yet (it needs earlier quests): dropped from the journey.
-- 925: that quest
-- 1154: no stops left.
-- 1165: you moved %s to %s's place
-- 1167: can't move that stop there: it comes after another stop.
-- 1208: no route to 
-- 1208:  from here.
-- 1216:  is already in your journey.
-- 1228: no route for the journey from here.
-- 1233: added %s to your journey: %d stops, %s
-- 1238: Added %s to your journey.
-- 1241: Undo
-- 1241: Takes it out of your journey again.
-- 1269: you removed %s
-- 1269: a detour
-- 1270:  out of your journey.
-- 1274: no stops left.
-- 1405:  to do it
-- 1407:  (a run of 
-- 1407: the dungeon
-- 1409:  (your average)
-- 1411: Quest 
-- 1412: : on the way; 
-- 1413: %s: %s more travel + %s
-- 1456:  continues with:
-- 1466: %s continues: added %s to your journey (%s more).
-- 1484: %s continues with %s (%s more). Add %s to your journey?
-- 1486: Add to journey
-- 1598: resuming journey: 
-- 1598:  (/ww stop to end it)
-- 1604: resuming directions to 
-- 1604:  (/ww stop to end them)
-- 1651: script ran too long
-- 1682: couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.
-- 1695: /ww resume - pick up the saved journey again
-- 1696: a journey is already on.
-- 1697: no saved journey.
-- 1746: set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.
-- 1759: no journey set aside there.
-- 1764: can't read your position here.
-- 1771: no route from here to what's left of 
-- 1771: ; it's kept.
-- 1775: nothing left to do on 
-- 1781: resuming journey: 
-- 1863: forgotten: 
-- 1871: just now
-- 1874: /ww journeys [aside \| resume <n> \| forget <n>] - the journey on now and the ones set aside
-- 1877: no journey on now.
-- 1882: no journey set aside there.
-- 1887: on now: %s (%d of %d stops done, %s to go)
-- 1890: no journey on now.
-- 1893: none set aside.
-- 1895: set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d
-- 1994: /ww detail steps\|stops - what the directions box shows: every step, or just the stop
-- 1998: directions box: the stop you're heading for; hover it for the step.
-- 1999: directions box: every step to the next stop.
-- 2018: re-route: %s
-- 2021: re-route found no route
-- 2024: re-routed from here (
-- 2036: you moved a long way
-- 2039: you're on another continent
-- 2043: you went another way
-- 2071: plain directions, not a journey
-- 2073: your own order (you dragged a stop)
-- 2074: on a flight
-- 2075: at a stop, waiting for it
-- 2077: no step
-- 2078: the step isn't on foot (
-- 2079: in the next stop's objective area
-- 2080: gathering where you are
-- 2091: one stop left
-- 2093: a re-plan is running
-- 2095: no game clock
-- 2096: looked %.0f s ago
-- 2098: re-planned %.0f s ago
-- 2104: moved %.0f of %d yards since the last look
-- 2113: no journey
-- 2121: re-plans as you go paused: 
-- 2121: re-plans as you go on again
-- 2151: it failed
-- 2151: no route from here
-- 2151: the journey ended
-- 2152: the journey changed
-- 2152: the route changed
-- 2153: a step was passed
-- 2153: a pin changed
-- 2155: re-plan as you go dropped: %s
-- 2163: re-plan as you go: same order, next %s
-- 2171: re-plan as you go: next %s instead of %s
-- 2173: %s is next now: it fits better from where you are.
-- 2173: another stop
-- 2176: re-plan as you go: %s
-- 2176: through another area on the way
-- 2176: straight on, nothing to gather on the way
-- 2178: re-plan as you go: another spot for %s
-- 2180: re-plan as you go: later stops reordered
-- 2239: left a cleared spot of %s
-- 2248: that spot's cleared: on to another for %s.
-- 2250: that spot's cleared: other stops first while it respawns (%s).
-- 2253: that spot's cleared: back when it respawns (%s).
-- 2298: progress on %s in its area: put first
-- 2302: you're doing %s here: it's next on the journey now.
-- 2330: made progress on
-- 2386: you abandoned %s: nothing left on the journey, so it's cancelled.
-- 2389: you abandoned %s: dropped from your journey.
-- 2435: you moved on from %s
-- 2438: nothing else on the journey to do first; skip it to take it off.
-- 2449: later: %s, after %d other stops.
-- 2449: that stop
-- 2451: later: %s, after %s.
-- 2451: that stop
-- 2451: the next stop
-- 2471: you asked for another spot for %s
-- 2475: another spot for %s.
-- 2490: Skip
-- 2490: Cancel
-- 2494: Skip \"%s\"?\n\nIt's taken off the journey%s.
-- 2494: this stop
-- 2495: , with \"%s\", which needs it
-- 2495: a stop
-- 2496: , with the %d stops that need it
-- 2510: End journey
-- 2510: Keep going
-- 2510: Set aside
-- 2517: End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; 
-- 2518: set it aside to keep it and resume it later.
-- 2518: this journey
-- 2593: WaypointAdded
-- 2670: at %s, still gathering, but no area to go through
-- 2673: at %s before it's all gathered: sent on through an area
-- 2674: not everything for %s yet: on through another spot, then back here.
-- 2799: reached: %s
-- 2807: reached: %s
-- 2819: left the area you were gathering in
-- 2823: gathering where you are, for %s
+- 584: faster route with your flight paths: 
+- 610: done: %s
+- 647: the quest log says %d more stop%s done
+- 695: %d quests
+- 742: , with a run of 
+- 746: , but only by using your Hearthstone: 
+- 746:  without it
+- 777: couldn't show a question (
+- 799: You %s %s. Add it to your journey (%s)?
+- 801: Add to journey
+- 802: New journey
+- 803: A journey for it alone (%s). The one on now is set aside, to resume later.
+- 812: You %s %s. Start a journey for it (%s)?
+- 814: Start journey
+- 829: picked up %s: added to your journey (%s more). The journey overview's x drops it.
+- 835: Added %s to your journey (%s more).
+- 877: picked up
+- 945: %s isn't offered yet (it needs earlier quests): dropped from the journey.
+- 946: that quest
+- 1175: no stops left.
+- 1186: you moved %s to %s's place
+- 1188: can't move that stop there: it comes after another stop.
+- 1229: no route to 
+- 1229:  from here.
+- 1237:  is already in your journey.
+- 1249: no route for the journey from here.
+- 1254: added %s to your journey: %d stops, %s
+- 1259: Added %s to your journey.
+- 1262: Undo
+- 1262: Takes it out of your journey again.
+- 1290: you removed %s
+- 1290: a detour
+- 1291:  out of your journey.
+- 1295: no stops left.
+- 1426:  to do it
+- 1428:  (a run of 
+- 1428: the dungeon
+- 1430:  (your average)
+- 1432: Quest 
+- 1433: : on the way; 
+- 1434: %s: %s more travel + %s
+- 1477:  continues with:
+- 1487: %s continues: added %s to your journey (%s more).
+- 1505: %s continues with %s (%s more). Add %s to your journey?
+- 1507: Add to journey
+- 1619: resuming journey: 
+- 1619:  (/ww stop to end it)
+- 1625: resuming directions to 
+- 1625:  (/ww stop to end them)
+- 1672: script ran too long
+- 1703: couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.
+- 1716: /ww resume - pick up the saved journey again
+- 1717: a journey is already on.
+- 1718: no saved journey.
+- 1767: set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.
+- 1780: no journey set aside there.
+- 1785: can't read your position here.
+- 1792: no route from here to what's left of 
+- 1792: ; it's kept.
+- 1796: nothing left to do on 
+- 1802: resuming journey: 
+- 1884: forgotten: 
+- 1892: just now
+- 1895: /ww journeys [aside \| resume <n> \| forget <n>] - the journey on now and the ones set aside
+- 1898: no journey on now.
+- 1903: no journey set aside there.
+- 1908: on now: %s (%d of %d stops done, %s to go)
+- 1911: no journey on now.
+- 1914: none set aside.
+- 1916: set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d
+- 2015: /ww detail steps\|stops - what the directions box shows: every step, or just the stop
+- 2019: directions box: the stop you're heading for; hover it for the step.
+- 2020: directions box: every step to the next stop.
+- 2039: re-route: %s
+- 2042: re-route found no route
+- 2045: re-routed from here (
+- 2057: you moved a long way
+- 2060: you're on another continent
+- 2064: you went another way
+- 2092: plain directions, not a journey
+- 2094: your own order (you dragged a stop)
+- 2095: on a flight
+- 2096: at a stop, waiting for it
+- 2098: no step
+- 2099: the step isn't on foot (
+- 2100: in the next stop's objective area
+- 2101: gathering where you are
+- 2112: one stop left
+- 2114: a re-plan is running
+- 2116: no game clock
+- 2117: looked %.0f s ago
+- 2119: re-planned %.0f s ago
+- 2125: moved %.0f of %d yards since the last look
+- 2134: no journey
+- 2142: re-plans as you go paused: 
+- 2142: re-plans as you go on again
+- 2172: it failed
+- 2172: no route from here
+- 2172: the journey ended
+- 2173: the journey changed
+- 2173: the route changed
+- 2174: a step was passed
+- 2174: a pin changed
+- 2176: re-plan as you go dropped: %s
+- 2184: re-plan as you go: same order, next %s
+- 2192: re-plan as you go: next %s instead of %s
+- 2194: %s is next now: it fits better from where you are.
+- 2194: another stop
+- 2197: re-plan as you go: %s
+- 2197: through another area on the way
+- 2197: straight on, nothing to gather on the way
+- 2199: re-plan as you go: another spot for %s
+- 2201: re-plan as you go: later stops reordered
+- 2260: left a cleared spot of %s
+- 2269: that spot's cleared: on to another for %s.
+- 2271: that spot's cleared: other stops first while it respawns (%s).
+- 2274: that spot's cleared: back when it respawns (%s).
+- 2319: progress on %s in its area: put first
+- 2323: you're doing %s here: it's next on the journey now.
+- 2351: made progress on
+- 2407: you abandoned %s: nothing left on the journey, so it's cancelled.
+- 2410: you abandoned %s: dropped from your journey.
+- 2456: you moved on from %s
+- 2459: nothing else on the journey to do first; skip it to take it off.
+- 2470: later: %s, after %d other stops.
+- 2470: that stop
+- 2472: later: %s, after %s.
+- 2472: that stop
+- 2472: the next stop
+- 2492: you asked for another spot for %s
+- 2496: another spot for %s.
+- 2511: Skip
+- 2511: Cancel
+- 2515: Skip \"%s\"?\n\nIt's taken off the journey%s.
+- 2515: this stop
+- 2516: , with \"%s\", which needs it
+- 2516: a stop
+- 2517: , with the %d stops that need it
+- 2531: End journey
+- 2531: Keep going
+- 2531: Set aside
+- 2538: End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; 
+- 2539: set it aside to keep it and resume it later.
+- 2539: this journey
+- 2614: WaypointAdded
+- 2691: at %s, still gathering, but no area to go through
+- 2694: at %s before it's all gathered: sent on through an area
+- 2695: not everything for %s yet: on through another spot, then back here.
+- 2820: reached: %s
+- 2828: reached: %s
+- 2840: left the area you were gathering in
+- 2844: gathering where you are, for %s
 
 ## PlanReport.lua
 
@@ -1613,53 +1613,54 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 309: Suggest a journey
 - 323: Open Wayward
 - 325: Open Wayward: suggestions, quests, places and more
-- 347: StatusBar
-- 449: \|cff9d9d9d+%d more\|r
-- 552: Skip this stop
-- 553: Takes this stop off the journey, with any stops that need it. Asks first.
-- 554: Set journey aside
-- 555: Keeps this journey to resume later, and ends directions for now.
-- 556: End journey
-- 557: Ends this journey. Asks first: it can't be undone.
-- 599: Suggest a journey
-- 599: Starts a journey from your quest log and where you are: quests to hand in, 
-- 600: or quests to finish close together.
-- 602: Suggest a journey
-- 604: Click to start it. Open Wayward for other ideas.
-- 628: The directions box now shows only while you're on a journey. /ww idle or the options bring the small bar back.
-- 643: Hide this bar while there's no journey (the options bring it back)
-- 688: End journey
-- 688: Stop directions
-- 696: %s  \|cff9d9d9d%d of %d done\|r
-- 704: Step %d of %d to get there
-- 704: Step %d of %d
-- 713: Gather here for 
-- 713: your quest
-- 715: Then: 
-- 715: the hand-in
-- 761: \|cff7fd1aeGathering here\|r  ·  %s to go at your pace     %s
-- 766: \|cffffd100Camp looks cleared\|r     
-- 769: \|cff7fd1aeIn the area\|r
-- 770:  left here
-- 775: \|cff9d9d9dRespawns in 
-- 776: \|cff9d9d9dNext spot\|r     
-- 779: Pick %s on the flight map     %s
-- 779: your destination
-- 781: Use your Hearthstone     %s
-- 783: \|cff7fd1aeYou're here:\|r use %s     %s
-- 785: \|cff7fd1aeYou're here:\|r go in     
-- 790: \|cff7fd1aeYou're here:\|r talk to %s%s     %s
-- 791: , buy the book and read it
-- 791:  and train it
-- 792:  and train your spells
-- 796: \|cff7fd1aeYou're here:\|r do it, then move on (>>)
-- 797: \|cff7fd1aeYou're here:\|r train your spells
-- 797: \|cff7fd1aeYou're here\|r
-- 800: %s %d yd     %s
-- 842: Directions
-- 842: Directions
-- 873: /ww idle - the small directions bar while there's no journey on or off
-- 875: small bar with no journey 
+- 352: StatusBar
+- 454: \|cff9d9d9d+%d more\|r
+- 558: Skip this stop
+- 559: Takes this stop off the journey, with any stops that need it. Asks first.
+- 560: Set journey aside
+- 561: Keeps this journey to resume later, and ends directions for now.
+- 562: End journey
+- 563: Ends this journey. Asks first: it can't be undone.
+- 605: Suggest a journey
+- 605: Starts a journey from your quest log and where you are: quests to hand in, 
+- 606: or quests to finish close together.
+- 608: Suggest a journey
+- 610: Click to start it. Open Wayward for other ideas.
+- 634: The directions box now shows only while you're on a journey. /ww idle or the options bring the small bar back.
+- 649: Hide this bar while there's no journey (the options bring it back)
+- 694: End journey
+- 694: Stop directions
+- 704: Stop %d of %d
+- 711: Step %d of %d to get there
+- 711: Step %d of %d
+- 720: Gather here for 
+- 720: your quest
+- 722: Then: 
+- 722: the hand-in
+- 767:  to stop
+- 773: \|cff7fd1aeGathering here\|r  ·  %s to go at your pace     %s
+- 778: \|cffffd100Camp looks cleared\|r
+- 781: \|cff7fd1aeIn the area\|r
+- 782:  left here
+- 787: \|cff9d9d9dRespawns in 
+- 788: \|cff9d9d9dNext spot\|r     
+- 791: Pick %s on the flight map     %s
+- 791: your destination
+- 793: Use your Hearthstone     %s
+- 795: \|cff7fd1aeYou're here:\|r use %s%s
+- 797: \|cff7fd1aeYou're here:\|r go in
+- 802: \|cff7fd1aeYou're here:\|r talk to %s%s%s
+- 803: , buy the book and read it
+- 803:  and train it
+- 804:  and train your spells
+- 808: \|cff7fd1aeYou're here:\|r do it, then move on (>>)
+- 809: \|cff7fd1aeYou're here:\|r train your spells
+- 809: \|cff7fd1aeYou're here\|r
+- 812: %s %d yd     %s
+- 855: Directions
+- 855: Directions
+- 888: /ww idle - the small directions bar while there's no journey on or off
+- 890: small bar with no journey 
 
 ## UI/TargetButton.lua
 

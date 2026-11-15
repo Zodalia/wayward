@@ -3766,6 +3766,7 @@ do
   local lines = ns.HUD.Lines()
   check(ns.Nav.InArea() and ns.Nav.Waiting() and not ns.Nav.ownsWaypoint,
     "near any of their spawns: in the area, no waypoint")
+  check(not lines[4]:find("to stop", 1, true), "in the area, no time to the stop you're at: " .. lines[4])
   check(lines[4]:find("In the area", 1, true) and lines[5] == "Murloc Forager slain: 2/8\nMurloc Scout slain: 0/5",
     "the box says so, with each objective on its own line: " .. lines[4] .. " | " .. lines[5])
   player.x = 0.53 -- 45 yards out: past the way in (40), short of the way out (60)
@@ -5335,9 +5336,9 @@ do
   ns.JourneyOverview.ToggleSteps(ns.Nav.active.journey.stops[2])
   ns.HUD.Update()
   local lines = ns.HUD.Lines()
-  check(lines[1]:find("Errands", 1, true) and lines[1]:find("0 of 4 done", 1, true) and lines[2] == "Visit A"
-    and lines[3] == "" and lines[4]:find("yd", 1, true),
-    "the directions box: trip and stops done, the step, distance and time (no step count for a one-step stop): "
+  check(lines[1] == "Errands" and lines[6] == "Stop 1 of 4" and lines[2] == "Visit A"
+    and lines[3] == "" and lines[4]:find("yd", 1, true) and lines[4]:find("to stop", 1, true),
+    "the directions box: the journey, which stop, the step, distance and time to the stop (no step count for a one-step stop): "
       .. table.concat(lines, " | "))
 
   local function shape()
@@ -7206,7 +7207,12 @@ do
   p = ns.Nav.Progress()
   check(p.done == 1 and p.total == 3 and p.stopIndex == 2 and p.stopText == "Visit P2",
     string.format("after a stop: %d of %d, stop %d (%s)", p.done, p.total, p.stopIndex, tostring(p.stopText)))
-  check(ns.HUD.Lines()[1]:find("1 of 3 done", 1, true), "the directions box shows the same count: " .. ns.HUD.Lines()[1])
+  check(ns.HUD.Lines()[6] == "Stop 2 of 3", "the directions box shows the same count: " .. ns.HUD.Lines()[6])
+  -- Its time is to the stop you're heading for, not the whole journey.
+  local toStop, toEnd = ns.Nav.SecondsToStop(ns.Geo.PlayerNode()), ns.Nav.RemainingSeconds(ns.Geo.PlayerNode())
+  check(toStop and toEnd and toStop > 0 and toStop < toEnd
+    and ns.HUD.Lines()[4]:find(ns.FormatDuration(toStop) .. " to stop", 1, true),
+    string.format("the box's time is to the next stop: %s of %s (%s)", tostring(toStop), tostring(toEnd), ns.HUD.Lines()[4]))
   ns.Nav.Drop(p2)
   p = ns.Nav.Progress()
   check(p.done == 1 and p.total == 2 and p.stopIndex == 2 and p.stopText == "Visit P3",
