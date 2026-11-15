@@ -240,10 +240,19 @@ levels, quest count ("3 quests left" where you are), travel to its first hub
 line with numbers in gold, at most one light action at the right. The region
 is as tall as its rows. Empty region: "Nothing to flag right now."
 
-**List row** (the pane's width, 804 × 42, 11 rows a page): title (optionally
-coloured by quest difficulty), subtitle or "zone · time · summary", one
-action button (72 × 20). Search box 400 wide; up to five category buttons
-(120 × 22 at most); summary line; up and down arrows under the list.
+**List row** (the pane's width, 804 × 38, 13 rows a page, a faint line
+under each), the same on Find and every browse page, left to right:
+
+| Element | Rule |
+|---|---|
+| Title | One line, cut short; optionally coloured by quest difficulty. |
+| Facts | One line under the title: the subtitle, or "zone · summary", without the travel time. |
+| Time | Its own column (64, right-aligned): the time in the subtitle wherever it sits, else the route's or the journey's. Empty with nowhere to go. |
+| Light action | One text action (84) left of the button; its place stays empty without one. **Add detour** while a journey is on and the row can join it; otherwise the page's own action ("Quests", "+3 quests", "In journey"). |
+| Button | 104 × 22 at the right: **Start journey**, or **Directions** when there is only a route; the same as a click on the row. A row with nowhere to go has its page's action here ("Show", "Look up"), or no button. |
+
+Search box 400 wide; up to five category buttons (120 × 22 at most);
+summary line; up and down arrows and "1-13 of 19" under the list.
 
 ### 4.3 Directions box
 
@@ -338,7 +347,7 @@ Every row, card, zone box and tile uses one path (`Panel.Activate`,
 | Input | Result |
 |---|---|
 | Hover | Tooltip with every detail (up to 12 lines), the stops, and a route map under it. |
-| Click | Start journey or directions. While a journey is on, asks (5.2). |
+| Click, or a list row's **Directions** / **Start journey** button | Start journey or directions. While a journey is on, asks (5.2). |
 | Shift-click, or **Add detour** | Adds it to the journey on now; starts one if none. |
 | "In journey" | Takes the quest out again. |
 | Shift-click a link | Puts an item or quest link into the search box. |

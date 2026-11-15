@@ -40,15 +40,26 @@ local _, ns = ...
 --   category for cards: what kind of suggestion it is ("Best quest"),
 --   role ("continue" | "explore" | "alternative") and why (one plain sentence)
 --     for cards: the tag and the line under the title (UI/Cards.lua),
---   actions = { {label, run = function(result) end} } (the first is shown as a button).
+--   actions = { {label, run = function(result) end} }: the page's own actions
+--     for a list row ("In journey", "Look up"); `detour = true` marks the one
+--     that adds the result to the journey on now. A row always has its
+--     Directions or Start journey button where there's a route or a journey;
+--     see rowActions for which of these go beside it.
 
 local Panel = {}
 ns.Panel = Panel
 
-local MAX_ROWS = 11
+local MAX_ROWS = 13
 local MAIN_WIDTH = 840 -- the pane, at least; a card page's `width` can ask for more
 local HEIGHT = 728     -- fits 1080p at UI scale 1 (768 high)
-local ROW_HEIGHT = 42
+local ROW_HEIGHT = 38
+-- A list row, right to left: its button, a lighter action, the travel time;
+-- the title and the facts under it have the rest.
+local ROW_PAD = 6
+local ACTION_W, ACTION_H = 104, 22 -- "Start journey" fits
+local LINK_W = 84                  -- "Add detour", "In journey"
+local TIME_W = 64                  -- "~1 h 5 min"
+local ROW_GAP = 8
 local MARGIN = 18      -- inside the main window's left and right edges
 local HEADER_TOP = -32 -- the portrait's top
 local PORTRAIT = 44
@@ -307,14 +318,80 @@ local function subtitle(r)
   return (r.zone or "") .. "  ·  no route found from here"
 end
 
--- "[9] Frostmane Hold  ·  Dun Morogh  ·  ~2 min" -> the rest, "~2 min".
--- Only a time at the very end ("<1 min", "~2 min", "~1 h 5 min"); otherwise
--- the text as it is and nil.
+local SEPARATOR = "  ·  "
+
+local function isTime(part)
+  return part:match("^[<~]%d[%d%s]*[hm][%sa-z%d]*$") ~= nil and (part:find("min$") or part:find("h$")) ~= nil
+end
+
+-- "Available  ·  ~2 min  ·  leads to The Deadmines" -> "Available  ·  leads
+-- to The Deadmines", "~2 min": the first part that is a time by itself
+-- ("<1 min", "~2 min", "~1 h 5 min") comes out, wherever it sits, so a row
+-- can show it in its own place. Without one: the text as it is and nil.
 function Panel.SplitTime(text)
   if not text then return "", nil end
-  local rest, time = text:match("^(.-)%s+·%s+([<~]%d[%d%s]*[hm][%sa-z%d]*)$")
-  if rest and time and (time:find("min$") or time:find("h$")) then return rest, time end
-  return text, nil
+  local parts, time, pos = {}, nil, 1
+  while true do
+    local from, to = text:find("%s+·%s+", pos)
+    local part = text:sub(pos, from and from - 1 or #text)
+    if not time and isTime(part) then
+      time = part
+    elseif part ~= "" then
+      parts[#parts + 1] = part
+    end
+    if not from then break end
+    pos = to + 1
+  end
+  if not time then return text, nil end
+  return table.concat(parts, SEPARATOR), time
+end
+
+-- A row's facts line and its travel time: the time is the subtitle's own
+-- where it has one, else the route's or the journey's.
+local function rowText(r)
+  local facts, time = Panel.SplitTime(subtitle(r))
+  if not time then
+    local seconds = (r.journey and r.journey.seconds) or (r.route and r.route.seconds)
+    if seconds and seconds ~= math.huge then time = ns.FormatDuration(seconds) end
+  end
+  return facts, time or ""
+end
+
+-- Add detour for a row whose page gave it none: the same as a card's.
+local ADD_DETOUR = { label = "Add detour", builtin = true, run = function(r) addDetour(r) end }
+
+-- What a row offers, as two actions at most: its button and a lighter one
+-- beside it. The button is Directions or Start journey wherever there is a
+-- route or a journey (what a click on the row does too). The lighter one is
+-- Add detour while a journey is on, else the page's own action ("In
+-- journey", "Quests"). A row with nowhere to go has its page's action as
+-- the button ("Show", "Look up").
+local function rowActions(r)
+  local detour, own
+  for _, action in ipairs(r.actions or {}) do
+    if action.detour then detour = detour or action else own = own or action end
+  end
+  local primary = (r.journey or r.route)
+    and { label = ns.Cards.ButtonFor(r), builtin = true, run = function(result) Panel.Activate(result) end } or nil
+  local light = {}
+  if ns.Nav.active then
+    light[#light + 1] = detour or (ns.Search.CanAdd(r) and ADD_DETOUR) or nil
+  elseif not primary then
+    -- No journey on: a page's detour action says Start journey, which is
+    -- the button's word already when the row has one.
+    light[#light + 1] = detour
+  end
+  light[#light + 1] = own
+  if not primary then primary = table.remove(light, 1) end
+  return primary, light[1]
+end
+
+local function runAction(row, which)
+  local r, action = row.result, row[which]
+  if not (r and action) then return end
+  action.run(r)
+  -- A page's own action changes what the rows say ("In journey").
+  if not action.builtin then Panel.Refresh() end
 end
 
 local function createRow(parent, index)
@@ -322,44 +399,62 @@ local function createRow(parent, index)
   row:SetSize(parent.inner, ROW_HEIGHT)
   row:SetPoint("TOPLEFT", parent.summary, "BOTTOMLEFT", 0, -10 - (index - 1) * ROW_HEIGHT)
   row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+  -- A faint line under each row: at this width the eye needs it to get from
+  -- the title to the buttons.
+  local rule = row:CreateTexture(nil, "BACKGROUND")
+  rule:SetColorTexture(1, 1, 1, 0.06)
+  rule:SetHeight(1)
+  rule:SetPoint("BOTTOMLEFT")
+  rule:SetPoint("BOTTOMRIGHT")
 
+  local function showTip() if row.result then Panel.ShowTooltip(row, row.result) end end
+  local function hideTip() GameTooltip:Hide() end
+
+  -- The button: the same size and place on every row of every page.
   row.action = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-  row.action:SetSize(72, 20)
-  row.action:SetPoint("TOPRIGHT", -4, -4)
-  row.action:SetScript("OnClick", function()
-    local r = row.result
-    local action = r and r.actions and r.actions[1]
-    if action then
-      action.run(r)
-      Panel.Refresh()
-    end
-  end)
+  row.action:SetSize(ACTION_W, ACTION_H)
+  row.action:SetPoint("RIGHT", -ROW_PAD, 0)
+  row.action:SetScript("OnClick", function() runAction(row, "primary") end)
+
+  -- The lighter action, left of it; its place stays empty without one, so
+  -- the time doesn't move from row to row.
+  row.link = ns.Skin.LinkButton(row, LINK_W, "", function() runAction(row, "secondary") end)
+  row.link:SetPoint("RIGHT", row.action, "LEFT", -ROW_GAP, 0)
+
+  -- The row's tooltip stays up over its buttons.
+  for _, b in ipairs({ row.action, row.link }) do
+    b:SetScript("OnEnter", showTip)
+    b:SetScript("OnLeave", hideTip)
+  end
+
+  row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  row.time:SetPoint("RIGHT", row.link, "LEFT", -ROW_GAP, 0)
+  row.time:SetWidth(TIME_W)
+  row.time:SetJustifyH("RIGHT")
+  row.time:SetWordWrap(false)
 
   -- One line each, cut short rather than wrapped into the next row (the
-  -- tooltip has it all); a travel time at the end of the subtitle gets its
-  -- own place at the right, so a long name can't push it out of sight.
+  -- tooltip has it all).
+  local textWidth = parent.inner - ROW_PAD * 2 - ACTION_W - LINK_W - TIME_W - ROW_GAP * 3
   row.title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  row.title:SetPoint("TOPLEFT", 6, -5)
-  row.title:SetPoint("RIGHT", row.action, "LEFT", -4, 0)
+  row.title:SetPoint("TOPLEFT", ROW_PAD, -4)
+  row.title:SetWidth(textWidth)
   row.title:SetJustifyH("LEFT")
   row.title:SetWordWrap(false)
 
-  row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  row.time:SetPoint("TOPRIGHT", row.action, "BOTTOMRIGHT", 0, -4)
-  row.time:SetJustifyH("RIGHT")
-
   row.sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   row.sub:SetPoint("TOPLEFT", row.title, "BOTTOMLEFT", 0, -3)
-  row.sub:SetPoint("RIGHT", row.time, "LEFT", -6, 0)
+  row.sub:SetWidth(textWidth)
   row.sub:SetJustifyH("LEFT")
   row.sub:SetWordWrap(false)
 
   ns.Skin.Button(row.action)
   ns.Skin.Text(row.title)
   ns.Skin.Text(row.sub)
+  ns.Skin.Text(row.time)
 
-  row:SetScript("OnEnter", function(self) if self.result then Panel.ShowTooltip(self, self.result) end end)
-  row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  row:SetScript("OnEnter", showTip)
+  row:SetScript("OnLeave", hideTip)
   row:SetScript("OnClick", function(self) if self.result then Panel.Activate(self.result) end end)
   return row
 end
@@ -798,14 +893,17 @@ local function paint()
       end
       local c = r.titleColor or row.titleDefault
       if c then row.title:SetTextColor(c.r, c.g, c.b) end
-      local text, time = Panel.SplitTime(subtitle(r))
-      row.sub:SetText(text)
-      row.time:SetText(time or "")
-      local action = r.actions and r.actions[1]
-      row.action:SetShown(action ~= nil)
-      if action then row.action:SetText(action.label) end
+      row.facts, row.travel = rowText(r)
+      row.sub:SetText(row.facts)
+      row.time:SetText(row.travel)
+      row.primary, row.secondary = rowActions(r)
+      row.action:SetShown(row.primary ~= nil)
+      if row.primary then row.action:SetText(row.primary.label) end
+      row.link:SetShown(row.secondary ~= nil)
+      if row.secondary then row.link:SetText(row.secondary.label) end
       row:Show()
     else
+      row.primary, row.secondary = nil, nil
       row:Hide()
     end
   end
@@ -974,6 +1072,37 @@ function Panel.VisibleResults()
     if row.result then out[#out + 1] = row.result end
   end
   return out
+end
+
+-- The rows on screen as drawn, top to bottom (for tests): each one's title,
+-- facts line, travel time ("" without one), and the labels of its button
+-- and of the lighter action beside it (nil without).
+function Panel.VisibleRows()
+  local out = {}
+  if not (side and side:IsShown()) then return out end
+  for _, row in ipairs(side.rows) do
+    if row.result then
+      out[#out + 1] = { title = row.result.title, facts = row.facts, time = row.travel,
+        button = row.primary and row.primary.label, link = row.secondary and row.secondary.label }
+    end
+  end
+  return out
+end
+
+-- Clicks row `i` on screen as the player would (for tests): its "button",
+-- its "link", or the row itself.
+function Panel.ClickRow(i, which)
+  local row = side and side:IsShown() and side.rows[i]
+  if not (row and row.result) then return end
+  if which == "button" then return runAction(row, "primary") end
+  if which == "link" then return runAction(row, "secondary") end
+  Panel.Activate(row.result)
+end
+
+-- How many rows a list page shows at once, and the "1-13 of 19" text under
+-- them ("" when they all fit), for tests.
+function Panel.ListPosition()
+  return MAX_ROWS, side and side.position:GetText() or ""
 end
 
 -- Back to the home screen from a list page.

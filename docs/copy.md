@@ -667,20 +667,20 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 205: Do 
 - 218: Hand in %s to %s
 - 218: the quest giver
-- 768: Do 
-- 775: Do 
-- 781: Gather for %s, then hand in%s
-- 1449: Explore 
-- 1449: the zone
-- 1451: Enter 
-- 1451: the dungeon
-- 1453: Train your new spells
-- 1455: Talk to 
-- 1457: Go to 
-- 2100: Your journey
-- 2100: Your trip
-- 2127: %s and %d more quest%s
-- 2129: Your journey
+- 769: Do 
+- 776: Do 
+- 782: Gather for %s, then hand in%s
+- 1450: Explore 
+- 1450: the zone
+- 1452: Enter 
+- 1452: the dungeon
+- 1454: Train your new spells
+- 1456: Talk to 
+- 1458: Go to 
+- 2101: Your journey
+- 2101: Your trip
+- 2128: %s and %d more quest%s
+- 2130: Your journey
 
 ## Camps.lua
 
@@ -827,45 +827,45 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 2176: straight on, nothing to gather on the way
 - 2178: re-plan as you go: another spot for %s
 - 2180: re-plan as you go: later stops reordered
-- 2236: left a cleared spot of %s
-- 2245: that spot's cleared: on to another for %s.
-- 2247: that spot's cleared: other stops first while it respawns (%s).
-- 2250: that spot's cleared: back when it respawns (%s).
-- 2295: progress on %s in its area: put first
-- 2299: you're doing %s here: it's next on the journey now.
-- 2327: made progress on
-- 2383: you abandoned %s: nothing left on the journey, so it's cancelled.
-- 2386: you abandoned %s: dropped from your journey.
-- 2432: you moved on from %s
-- 2435: nothing else on the journey to do first; skip it to take it off.
-- 2446: later: %s, after %d other stops.
-- 2446: that stop
-- 2448: later: %s, after %s.
-- 2448: that stop
-- 2448: the next stop
-- 2468: you asked for another spot for %s
-- 2472: another spot for %s.
-- 2487: Skip
-- 2487: Cancel
-- 2491: Skip \"%s\"?\n\nIt's taken off the journey%s.
-- 2491: this stop
-- 2492: , with \"%s\", which needs it
-- 2492: a stop
-- 2493: , with the %d stops that need it
-- 2507: End journey
-- 2507: Keep going
-- 2507: Set aside
-- 2514: End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; 
-- 2515: set it aside to keep it and resume it later.
-- 2515: this journey
-- 2590: WaypointAdded
-- 2667: at %s, still gathering, but no area to go through
-- 2670: at %s before it's all gathered: sent on through an area
-- 2671: not everything for %s yet: on through another spot, then back here.
-- 2796: reached: %s
-- 2804: reached: %s
-- 2816: left the area you were gathering in
-- 2820: gathering where you are, for %s
+- 2239: left a cleared spot of %s
+- 2248: that spot's cleared: on to another for %s.
+- 2250: that spot's cleared: other stops first while it respawns (%s).
+- 2253: that spot's cleared: back when it respawns (%s).
+- 2298: progress on %s in its area: put first
+- 2302: you're doing %s here: it's next on the journey now.
+- 2330: made progress on
+- 2386: you abandoned %s: nothing left on the journey, so it's cancelled.
+- 2389: you abandoned %s: dropped from your journey.
+- 2435: you moved on from %s
+- 2438: nothing else on the journey to do first; skip it to take it off.
+- 2449: later: %s, after %d other stops.
+- 2449: that stop
+- 2451: later: %s, after %s.
+- 2451: that stop
+- 2451: the next stop
+- 2471: you asked for another spot for %s
+- 2475: another spot for %s.
+- 2490: Skip
+- 2490: Cancel
+- 2494: Skip \"%s\"?\n\nIt's taken off the journey%s.
+- 2494: this stop
+- 2495: , with \"%s\", which needs it
+- 2495: a stop
+- 2496: , with the %d stops that need it
+- 2510: End journey
+- 2510: Keep going
+- 2510: Set aside
+- 2517: End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; 
+- 2518: set it aside to keep it and resume it later.
+- 2518: this journey
+- 2593: WaypointAdded
+- 2670: at %s, still gathering, but no area to go through
+- 2673: at %s before it's all gathered: sent on through an area
+- 2674: not everything for %s yet: on through another spot, then back here.
+- 2799: reached: %s
+- 2807: reached: %s
+- 2819: left the area you were gathering in
+- 2823: gathering where you are, for %s
 
 ## PlanReport.lua
 
@@ -1792,12 +1792,12 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 37: Spell_Arcane_Blink
 - 38: INV_Misc_Map_01
 - 51: Alliance
-- 519: You
+- 535: You
 
 ## UI/WorldMapRoute.lua
 
-- 154: /ww worldmap - your journey drawn on the world map, on or off
-- 156: journey on the world map 
+- 155: /ww worldmap - your journey drawn on the world map, on or off
+- 157: journey on the world map 
 
 ## UI/MinimapRoute.lua
 
@@ -1913,59 +1913,60 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Panel.lua
 
-- 99: Filter these results
-- 116: Quests
-- 117: Journal
-- 118: Hubs
-- 120: Vendors
-- 121: Vendors
-- 123: Trainers
-- 124: Class
-- 125: Weapons
-- 126: Professions
-- 128: Dungeons
-- 129: Dungeons
-- 167: ... and %d more
-- 181: GameTooltip
-- 210:     Hearth to %s (saves %s)
-- 218: Your Hearthstone (%s) would save %s, but it's ready in %s.
-- 221: Click to start this journey
-- 222: Shift-click to add it to your journey
-- 228: Click for directions
-- 229: Shift-click to add it to your journey
-- 273: %s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.
-- 274: Add as detour
-- 274: Cancel
-- 274: Switch journey
-- 283: You're on a journey: %s.
-- 284: You have directions to %s.
-- 300: %s  ·  %s  ·  %d stop%s
-- 307:   ·  no route found from here
-- 391: ChatEdit_InsertLink
-- 393: InsertLink
-- 401: Data: 
-- 401:  + places you visited. 
-- 402: Data: places you visited. 
-- 403: Quest
-- 404: Install 
-- 404:  for quests, items and every trainer. 
-- 408: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
-- 409: master once and routes will use your flight paths.\|r
-- 414: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
-- 415: paths here.\|r
-- 417: %d known flight path%s. Boat and zeppelin docks are approximate.
-- 531: Level %d  ·  %s
-- 532: Level %d
-- 591: CheckButton
-- 631: Options
-- 637: Wayward's settings. Also: right-click the minimap button, or /ww options.
-- 706: YOUR JOURNEY
-- 708: SOMETHING TO DO NEXT
-- 712: WHERE TO QUEST
-- 714: GOOD TO KNOW
-- 818: %d-%d of %d
-- 901: Search
-- 927: Getting the quest data ready...
+- 110: Filter these results
+- 127: Quests
+- 128: Journal
+- 129: Hubs
+- 131: Vendors
+- 132: Vendors
+- 134: Trainers
+- 135: Class
+- 136: Weapons
+- 137: Professions
+- 139: Dungeons
+- 140: Dungeons
+- 178: ... and %d more
+- 192: GameTooltip
+- 221:     Hearth to %s (saves %s)
+- 229: Your Hearthstone (%s) would save %s, but it's ready in %s.
+- 232: Click to start this journey
+- 233: Shift-click to add it to your journey
+- 239: Click for directions
+- 240: Shift-click to add it to your journey
+- 284: %s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.
+- 285: Add as detour
+- 285: Cancel
+- 285: Switch journey
+- 294: You're on a journey: %s.
+- 295: You have directions to %s.
+- 311: %s  ·  %s  ·  %d stop%s
+- 318:   ·  no route found from here
+- 361: Add detour
+- 486: ChatEdit_InsertLink
+- 488: InsertLink
+- 496: Data: 
+- 496:  + places you visited. 
+- 497: Data: places you visited. 
+- 498: Quest
+- 499: Install 
+- 499:  for quests, items and every trainer. 
+- 503: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
+- 504: master once and routes will use your flight paths.\|r
+- 509: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
+- 510: paths here.\|r
+- 512: %d known flight path%s. Boat and zeppelin docks are approximate.
+- 626: Level %d  ·  %s
+- 627: Level %d
+- 686: CheckButton
+- 726: Options
+- 732: Wayward's settings. Also: right-click the minimap button, or /ww options.
+- 801: YOUR JOURNEY
+- 803: SOMETHING TO DO NEXT
+- 807: WHERE TO QUEST
+- 809: GOOD TO KNOW
+- 916: %d-%d of %d
+- 999: Search
+- 1025: Getting the quest data ready...
 
 ## UI/MinimapButton.lua
 

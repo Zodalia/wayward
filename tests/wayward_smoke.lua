@@ -4800,13 +4800,13 @@ do
   ns.Panel.Search("many", "")
   local function first() local v = ns.Panel.VisibleResults() return v[1] and v[1].title, #v end
   local top, count = first()
-  check(top == "R1" and count == 11, "eleven results show (the taller window), starting at the first: " .. count)
+  check(top == "R1" and count == 13, "thirteen results show (the taller window, closer rows), starting at the first: " .. count)
   ns.Panel.Scroll(-3)
   check(first() == "R4", "scrolling down moves the list")
   ns.Panel.Scroll(-50)
-  check(first() == "R10", "scrolling stops at the last page")
+  check(first() == "R8", "scrolling stops at the last page")
   ns.Panel.Refresh()
-  check(first() == "R10", "a data refresh keeps your place")
+  check(first() == "R8", "a data refresh keeps your place")
   ns.Panel.Scroll(50)
   check(first() == "R1", "scrolling up returns to the top")
   ns.Panel.Scroll(-2)
@@ -10273,6 +10273,122 @@ do
   ns.Panel.Hide()
 end
 -- ===== redesign: the home screen's rows (end) =====
+-- ===== redesign: the list rows (begin) =====
+-- Find and the browse pages draw one row shape across the pane: title and
+-- facts, the travel time in its own place, a lighter action, and a labelled
+-- button that does what a click on the row does.
+do
+  io.write("redesign: list rows\n")
+  local P = ns.Panel
+  ns.Nav.Stop()
+  local function rows(page, text, category)
+    P.Search(page, text or "")
+    if category then P.Select(category) end
+    return P.VisibleRows()
+  end
+  local function all(list, test)
+    for _, r in ipairs(list) do
+      if not test(r) then return false end
+    end
+    return #list > 0
+  end
+
+  -- No journey on: the button names what a click does, and nothing else is offered twice.
+  local vendors = rows("vendors")
+  check(all(vendors, function(r) return r.button == "Directions" and r.link == nil end),
+    "a vendor's row has a Directions button: " .. tostring(vendors[1] and vendors[1].button))
+  check(all(vendors, function(r) return r.time ~= "" and not r.facts:find(r.time, 1, true) end),
+    "its travel time has its own place, out of the facts: " .. vendors[1].facts .. " | " .. vendors[1].time)
+  local quest = rows("quests", "goulash")[1]
+  check(quest and quest.button == "Start journey" and quest.link == nil and quest.time ~= ""
+    and not quest.facts:find(quest.time, 1, true),
+    "a quest's row has Start journey once, not twice: " .. tostring(quest and quest.button) .. " / " .. tostring(quest and quest.link))
+  local dungeon = rows("dungeons")[1]
+  check(dungeon and dungeon.button == "Directions" and dungeon.link == "Quests",
+    "a page's own action sits beside the button: " .. tostring(dungeon and dungeon.link))
+  for _, spec in ipairs({ { "find" }, { "quests", 1 }, { "quests", 2 }, { "trainers", 1 }, { "trainers", 2 }, { "trainers", 3 },
+    { "dungeons" } }) do
+    local list = rows(spec[1], "", spec[2])
+    local fits = true
+    local results = P.VisibleResults()
+    for i, r in ipairs(list) do
+      local goes = results[i].route ~= nil or results[i].journey ~= nil
+      local label = results[i].journey and "Start journey" or "Directions"
+      if goes and (r.button ~= label or r.time == "") then fits = false end
+      if not goes and (r.button == "Directions" or r.time ~= "") then fits = false end
+    end
+    check(fits, "every row of " .. spec[1] .. (spec[2] and (" " .. spec[2]) or "") .. " has the one shape (" .. #list .. ")")
+  end
+
+  -- The time comes out of the middle of a subtitle too; a row with nowhere
+  -- to go has its page's action as the button, or none.
+  local ran = 0
+  local shape = {
+    { title = "Comes in a clam", subtitle = "Open one  ·  ~3 min  ·  leads on", actions = { { label = "Look up", run = function() ran = ran + 1 end } } },
+    { title = "Nothing to do", subtitle = "plain" },
+  }
+  for i = 3, 20 do shape[i] = { title = "S" .. i, subtitle = "row " .. i } end
+  ns.RegisterPage({ id = "shape", label = "Shape", order = 98, searchable = true,
+    SummaryText = function() return "" end, EmptyText = function() return "" end,
+    Results = function() return shape end })
+  local drawn = rows("shape")
+  check(drawn[1].facts == "Open one  ·  leads on" and drawn[1].time == "~3 min", "a time in the middle is lifted out: " .. drawn[1].facts)
+  check(drawn[1].button == "Look up" and drawn[1].link == nil and drawn[2].button == nil and drawn[2].time == "",
+    "a row with nowhere to go has its own action as the button, or none")
+  P.ClickRow(1, "button")
+  check(ran == 1 and P.IsShown(), "and the button runs it")
+  local a, b = P.SplitTime("~2 min  ·  on foot")
+  check(a == "on foot" and b == "~2 min" and select(2, P.SplitTime("saves ~2 min  ·  on foot")) == nil,
+    "only a part that is a time by itself counts")
+
+  -- More rows a page, and the position under them keeps up.
+  local perPage, position = P.ListPosition()
+  check(perPage == 13 and #drawn == 13 and position == "1-13 of 20", "thirteen rows a page: " .. position)
+  P.Scroll(-50)
+  check(select(2, P.ListPosition()) == "8-20 of 20" and P.VisibleRows()[1].title == "S8", "the last page: " .. select(2, P.ListPosition()))
+  P.Scroll(50)
+  check(select(2, P.ListPosition()) == "1-13 of 20", "and back to the first")
+  check(select(2, (function() rows("vendors") return P.ListPosition() end)()) == "", "no position when they all fit")
+
+  -- The button does what a click on the row does: directions, and the window closes.
+  rows("vendors")
+  P.ClickRow(1, "button")
+  check(ns.Nav.active and ns.Nav.active.title == vendors[1].title and not P.IsShown(), "the button starts directions")
+  ns.Nav.Stop()
+  rows("vendors")
+  P.ClickRow(1)
+  check(ns.Nav.active and not P.IsShown(), "a click on the row still does too")
+  ns.Nav.Stop()
+
+  -- A journey on: Add detour is the lighter action beside the button.
+  ns.Nav.AddToTrip({ { node = ns.Geo.Node(1439, 0.4, 0.5, "Row spot"), text = "Go to Row spot" } }, "Row spot")
+  local stops = #ns.Nav.active.journey.stops
+  vendors = rows("vendors")
+  check(all(vendors, function(r) return r.button == "Directions" and r.link == "Add detour" end),
+    "on a journey every row with somewhere to go offers Add detour: " .. tostring(vendors[1].link))
+  dungeon = rows("dungeons")[1]
+  check(dungeon.button == "Directions" and dungeon.link == "Add detour", "Add detour takes the lighter place from a page's action")
+  rows("vendors")
+  P.ClickRow(1, "link")
+  check(ns.Nav.active and #ns.Nav.active.journey.stops == stops + 1 and P.IsShown(),
+    "Add detour adds the stop without asking, and the window stays")
+  local after = P.VisibleRows()[1]
+  check(after.button == "Directions" and after.link == nil, "a row that's in the journey doesn't offer it again")
+
+  -- A quest: Add detour, then In journey, which takes it out again.
+  quest = rows("quests", "goulash")[1]
+  local questID = P.VisibleResults()[1].questID
+  check(quest.button == "Start journey" and quest.link == "Add detour", "a quest's row on a journey: " .. tostring(quest.link))
+  P.ClickRow(1, "link")
+  check(ns.Nav.TripHasQuest(questID) and P.VisibleRows()[1].link == "In journey", "added, it says In journey: " .. tostring(P.VisibleRows()[1].link))
+  P.ClickRow(1, "link")
+  check(not ns.Nav.TripHasQuest(questID) and P.VisibleRows()[1].link == "Add detour", "and In journey takes it out again")
+
+  ns.Nav.Stop()
+  P.Search("foryou", "")
+  P.Hide()
+end
+-- ===== redesign: the list rows (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

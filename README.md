@@ -255,8 +255,12 @@ starting with what you typed, then names containing it, then matches on a
 role; shorter names first. The buttons under the box narrow it to **All**,
 **Quests**, **Items**, **People** or **Places**; `/ww quest <name>` and `/ww
 item <link>` open Find on Quests or Items. Every result is a row like any
-other: click it for directions or a journey, hover for the details and the
-route map, **Add detour** (or shift-click) while a journey is on. A person
+other, on every page: its name with the facts under it, how long it takes to
+get there, and a **Directions** or **Start journey** button at the right
+(a click anywhere on the row does the same). Hover for the details and the
+route map. While a journey is on, a lighter **Add detour** (or shift-click)
+sits beside the button; otherwise that place has the page's own action
+where there is one ("Quests" on a dungeon, "In journey" on a quest). A person
 gets directions to where they stand (a talk stop when added); your own class
 trainer gets the Trainers row with the spells you can learn there; a zone
 gets directions to its nearest flight-path town, or to where the way crosses
@@ -605,8 +609,9 @@ play it. `/ww sounds export` opens your choices as one line to copy
 
 Wayward's windows use Blizzard's standard templates (window, tabs, search
 box, tooltip-style boxes), so they follow UI addons that restyle those, and
-fall back to a plain look if a template is missing. Long result lists scroll
-with the mouse wheel or the arrows under the list.
+fall back to a plain look if a template is missing. A list page shows
+thirteen results at a time; longer lists scroll with the mouse wheel or the
+arrows under the list, which say where you are ("1-13 of 19").
 
 With [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) installed,
 Wayward also registers with its public skinning API (`EllesmereUI.RegisterSkin`)
@@ -689,7 +694,10 @@ button, to add it to the journey you're on.
   calls `ns.RegisterPage(page)`. The page contract (id, label, order,
   searchable, Summary/Empty/Results taking the search text, and the result
   shape with `route` or `journey` and optional row `actions`) is documented
-  at the top of `UI/Panel.lua`. The lowest `order` opens by default. Pages
+  at the top of `UI/Panel.lua`. A row with a `route` or a `journey` gets its
+  Directions or Start journey button, and Add detour while a journey is on,
+  without the page asking; a page's own action shows beside the button, or
+  as the button on a row with nowhere to go. The lowest `order` opens by default. Pages
   with `categories` (Quests, Trainers) show them as buttons; `categoryPage` in
   `UI/Panel.lua` builds such a page from providers. `ns.Panel.Search(pageID, text)` opens a page
   with a search, and shift-clicked links go into the search box.
