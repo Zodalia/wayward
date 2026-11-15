@@ -5,7 +5,8 @@ local _, ns = ...
 -- already gathers as you go has a section of its own above the box (HUD.lua).
 --
 --   On the way            what you could add: each with the time it adds,
---                         a + to add it and an x to wave it off for good
+--                         "+ Add" to add it, and a "..." whose "Not on this
+--                         journey" waves it off for the rest of the journey
 --   the icons on top      add a stop of your own: repair, vendor, mailbox,
 --                         bank... Pick one and the list is its places, least
 --                         out of the way first (Errands.lua); pick it again
@@ -34,6 +35,9 @@ local TITLE = "On the way"
 local OFFERS = "You could add"
 local NOTHING = "Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox..."
 local GREY = "|cff9d9d9d"
+local ADD = "+ Add"
+local WAVE_OFF = "Not on this journey"
+local WAVE_OFF_TIP = "It won't be offered again on this journey."
 
 local frame
 local selected -- the kind of stop listed, nil for what's on the way
@@ -81,16 +85,18 @@ end
 local function row(parent, i)
   local r = CreateFrame("Frame", nil, parent)
   r:SetSize(WIDTH - 2 * PADDING, ROW_HEIGHT)
-  r.dismiss = CreateFrame("Button", nil, r, "UIPanelCloseButton")
-  r.dismiss:SetSize(18, 18)
-  r.dismiss:SetPoint("RIGHT", 2, 0)
-  r.dismiss:SetScript("OnClick", function() Drawer.DismissLine(i) end)
-  r.dismiss:SetScript("OnEnter", function(self) tooltip(self, "Not this one", "It won't be offered again on this journey.") end)
-  r.dismiss:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- Waving an offer off is the lesser action, so it sits in the row's "..."
+  -- (the same menu as everywhere else) rather than beside Add.
+  r.more = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+  r.more:SetSize(24, 16)
+  r.more:SetPoint("RIGHT", 0, 0)
+  r.more:SetText("...")
+  r.more:SetScript("OnClick", function(self) ns.Menu.Show(self, Drawer.LineMenu(i)) end)
+  r.more:SetScript("OnEnter", function(self) tooltip(self, "More", WAVE_OFF) end)
+  r.more:SetScript("OnLeave", function() GameTooltip:Hide() end)
   r.add = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-  r.add:SetSize(46, 16)
-  r.add:SetPoint("RIGHT", r.dismiss, "LEFT", -2, 0)
-  r.add:SetText("Add")
+  r.add:SetSize(50, 16)
+  r.add:SetText(ADD)
   r.add:SetScript("OnClick", function() Drawer.AddLine(i) end)
   r.time = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   r.time:SetJustifyH("RIGHT")
@@ -105,7 +111,7 @@ local function row(parent, i)
   end)
   r:SetScript("OnLeave", function() GameTooltip:Hide() end)
   ns.Skin.Button(r.add)
-  ns.Skin.CloseButton(r.dismiss)
+  ns.Skin.Button(r.more)
   ns.Skin.Text(r.text)
   ns.Skin.Text(r.time)
   r:Hide()
@@ -248,8 +254,15 @@ function Drawer.Refresh()
       r.time:SetText(line.right or "")
       r.add:SetShown(line.add ~= nil)
       r.add:SetEnabled(not line.disabled)
-      r.dismiss:SetShown(line.dismiss ~= nil)
-      -- The time sits left of whichever buttons the line has.
+      r.more:SetShown(line.dismiss ~= nil)
+      -- Add at the right edge, or left of the "..."; the time left of
+      -- whichever buttons the line has.
+      r.add:ClearAllPoints()
+      if line.dismiss then
+        r.add:SetPoint("RIGHT", r.more, "LEFT", -4, 0)
+      else
+        r.add:SetPoint("RIGHT", 0, 0)
+      end
       r.time:ClearAllPoints()
       r.text:ClearAllPoints()
       r.text:SetPoint("LEFT", 2, 0)
@@ -348,6 +361,13 @@ function Drawer.DismissLine(i)
   return gone and true or false
 end
 
+-- The "..." menu of line `i`: waving the offer off. {} for a line without one.
+function Drawer.LineMenu(i)
+  local line = lines[i]
+  if not (line and line.dismiss) then return {} end
+  return { { text = WAVE_OFF, tip = WAVE_OFF_TIP, onClick = function() Drawer.DismissLine(i) end } }
+end
+
 -- Line numbers of the rows that aren't headings (for tests and AddRow).
 local function plain()
   local out = {}
@@ -368,8 +388,14 @@ function Drawer.DismissRow(i)
   return at ~= nil and Drawer.DismissLine(at) or false
 end
 
--- The kind shown and the rows' text (for tests): { text, time, add, dismiss,
--- kind (a Wayside row's) }, headings left out; Drawer.Headings() has those.
+-- The `i`th row's "..." menu (headings not counted).
+function Drawer.RowMenu(i)
+  local at = plain()[i]
+  return at ~= nil and Drawer.LineMenu(at) or {}
+end
+
+-- The kind shown and the rows' text (for tests): { text, time, add, dismiss
+-- (it has a "..." to wave it off), addLabel, kind (a Wayside row's) }, headings left out; Drawer.Headings() has those.
 function Drawer.Selected() return selected end
 function Drawer.Rows()
   local out = {}
@@ -377,7 +403,7 @@ function Drawer.Rows()
   for _, i in ipairs(plain()) do
     local r, line = frame.rows[i], lines[i]
     out[#out + 1] = { text = r.text:GetText(), time = r.time:GetText(), add = line.add ~= nil and not line.disabled,
-      dismiss = line.dismiss ~= nil, kind = line.row and line.row.kind }
+      dismiss = line.dismiss ~= nil, addLabel = r.add:GetText(), kind = line.row and line.row.kind }
   end
   return out
 end

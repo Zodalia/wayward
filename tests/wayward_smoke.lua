@@ -9082,7 +9082,7 @@ do
   devils[1] = { text = "Dust Devil slain: 0/2", finished = false }
 
   -- On the way, one surface: the sweep (in your log, off the journey) is an
-  -- offer in the drawer, with Add and a way to wave it off.
+  -- offer in the drawer, with "+ Add" and a "..." to wave it off.
   -- (In a function of its own: this block is at Lua's limit of 200 locals.)
   ;(function()
   ns.Drawer.Show()
@@ -9090,7 +9090,7 @@ do
     local out = {}
     for i, r in ipairs(ns.Drawer.Rows()) do
       if r.kind ~= "gather" then out[#out + 1] = { at = i, kind = r.kind, text = r.text, time = r.time, add = r.add,
-        dismiss = r.dismiss } end
+        dismiss = r.dismiss, addLabel = r.addLabel } end
     end
     return out
   end
@@ -9102,6 +9102,7 @@ do
   local sweep = offerOf("Smuggler Sweep")
   check(sweep and sweep.kind == "log" and sweep.add and sweep.dismiss and sweep.text:find("Defias Smuggler 0/6", 1, true),
     "a log quest with things on the way is an offer you can add: " .. tostring(sweep and sweep.text))
+  check(sweep and sweep.addLabel == "+ Add", "its button says + Add: " .. tostring(sweep and sweep.addLabel))
   local hasHeading = false
   for _, h in ipairs(ns.Drawer.Headings()) do if h == "You could add" then hasHeading = true end end
   check(hasHeading and ns.Drawer.Headings()[1] == "On the way", "under its own heading in the drawer")
@@ -9123,7 +9124,14 @@ do
     and first.time == "new", "a new suggestion on a journey is the first offer in the drawer, not a toast")
   check(ns.Wayside.Count() >= 2 and ns.HUD.Wayside().count >= 0, "and it counts on the + while the drawer's closed")
   -- Waved off: gone, and not offered again on this journey.
-  check(ns.Drawer.DismissRow(first.at) and not offerOf("Run The Test Mines"), "waved off: it's gone")
+  -- Waving off sits in the row's "...", not beside Add.
+  local menu = ns.Drawer.RowMenu(first.at)
+  check(#menu == 1 and menu[1].text == "Not on this journey" and menu[1].tip,
+    "a row's ... holds Not on this journey: " .. tostring(menu[1] and menu[1].text))
+  ns.Menu.Show(ns.Drawer.Frame(), menu)
+  check(ns.Menu.Labels()[1] == "Not on this journey", "and the menu shows it")
+  ns.Menu.Pick(1)
+  check(not offerOf("Run The Test Mines"), "waved off: it's gone")
   ns.Fanfare.NewJourney(mines)
   check(not offerOf("Run The Test Mines") and offerOf("Smuggler Sweep"), "and it isn't offered again on this journey")
   -- Added: the quest joins the journey and leaves the offers.

@@ -1682,7 +1682,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 193: Pinned: click to unpin
 - 194: It keeps its place when the journey re-plans. Unpinned, re-plans can move it again.
 - 252: Drag to reorder
-- 300: Add
+- 300: + Add
 - 311: Set aside
 - 325: Forget
 - 330: Resume
@@ -1755,20 +1755,21 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Drawer.lua
 
-- 33: On the way
-- 34: You could add
-- 35: Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox...
-- 75: Back to what's on the way
-- 75: Add one as a stop
-- 88: Not this one
-- 88: It won't be offered again on this journey.
-- 93: Add
-- 187: %s+%d more once these are dealt with\|r
-- 197: Couldn't list these here.
-- 203: in your journey\|r
-- 204: A detour of %s on your journey.
-- 231: %s  %sleast out of the way first\|r
-- 238: Couldn't list what's on the way here.
+- 34: On the way
+- 35: You could add
+- 36: Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox...
+- 38: + Add
+- 39: Not on this journey
+- 40: It won't be offered again on this journey.
+- 79: Back to what's on the way
+- 79: Add one as a stop
+- 95: More
+- 193: %s+%d more once these are dealt with\|r
+- 203: Couldn't list these here.
+- 209: in your journey\|r
+- 210: A detour of %s on your journey.
+- 237: %s  %sleast out of the way first\|r
+- 244: Couldn't list what's on the way here.
 
 ## UI/RouteMap.lua
 

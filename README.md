@@ -127,8 +127,8 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
 - **On the way**: the directions box's **+ On the way** (bottom left) opens a
   drawer under the box, for what you could add near the journey you're on
   (`Wayside.lua`, `UI/Drawer.lua`).
-  **You could add**: up to four offers, each with **Add** and an x to wave
-  it off: a quest in your log with objectives on your way ("on the way",
+  **You could add**: up to four offers, each with **+ Add**, and a **...**
+  whose **Not on this journey** waves it off: a quest in your log with objectives on your way ("on the way",
   "around you"; adding it takes in the rest of the quest), quest givers,
   hand-ins and vendors you need that add 3 minutes or less ("+2 min"), and
   a new suggestion from For you ("new"). An offer is only that: no sound,

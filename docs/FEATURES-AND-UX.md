@@ -293,7 +293,7 @@ for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 | Part | Spec |
 |---|---|
 | Top row | Icon chips (28): repair, vendor, mailbox, bank, inn, auction house, stable master (hunters). Pick one: the five places that add least, each with the time added and **Add**. Pick it again to go back. |
-| "You could add" | Up to four offers: a log quest on the way, a quest giver, a hand-in or a vendor adding 3 minutes or less ("+2 min"), a new suggestion ("new"). Each has **Add** (46 × 16) and an x (18) to wave it off for that journey. |
+| "You could add" | Up to four offers: a log quest on the way, a quest giver, a hand-in or a vendor adding 3 minutes or less ("+2 min"), a new suggestion ("new"). Each has **+ Add** (50 × 16) and a **...** (24 × 16) whose one item, **Not on this journey**, waves it off for that journey. |
 | Opens on | What's on the way; repairs when gear is at 75% or less; vendors when bags are full. |
 | Stays open | Until closed, per character. |
 | Empty | "Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox..." |
