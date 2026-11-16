@@ -444,7 +444,7 @@ local function create()
   ns.Skin.Text(f.more)
   ns.Skin.Box(f)
   -- A controller's cursor moves through it on Forever, and scrolls the
-  -- stops (the d-pad off the first or last shown, or the right stick).
+  -- stops (the d-pad off the first or last shown).
   ns.Pad.Window(f, { closeButton = f.close })
   ns.Pad.List(f, {
     rows = function() return f.rows end,

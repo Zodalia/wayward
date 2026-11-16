@@ -1,8 +1,8 @@
 # Controller support
 
 Status: **the main window works with a controller on WoW Forever; the other
-windows and the directions box have joined it but are not yet tried in
-game.** Findings are from Forever
+windows have joined it but are not yet tried in game. The directions box
+stays out of the cursor's way; a key binding gives it the cursor.** Findings are from Forever
 1.60.1 (build 70938), read from the game's exported interface code and
 tested in game on 2026-11-16. Classic Era has no controller interface;
 nothing here runs there.
@@ -41,13 +41,11 @@ Source: `BlizzardInterfaceCode/Interface/AddOns/Blizzard_GamepadSmartNavigation/
   "CloseButton" in its name.
 - **Focus.** Joining normally takes the cursor (the manager's "UI focus").
   A frame shown as a popup (`FrameShown(frame, true)`) with
-  `frame.skipGamepadAutoFocus` set is added without it: if nothing has the
-  cursor it becomes the frame "toggle UI focus" goes to, and if another
-  window has it, it stays there. Closing the focused window passes the cursor
-  to the leftmost open one, unless that window has `returnToPlayerControl`,
-  which gives the controller back to the game. The game's own always-on
-  frames (chat, buffs) instead join only when its radial menu asks, which
-  addons can't add to.
+  `frame.skipGamepadAutoFocus` set is added without it, and a frame with
+  `returnToPlayerControl` gives the controller back to the game as it
+  closes; but an addon can't use either (see Taint). The game's own
+  always-on frames (chat, buffs) join only when its radial menu asks, which
+  addons can't add to, and leave again on B.
 - **Is the controller in use?** `InputUtil.IsGamepadUIEnabled()`, which
   reads `C_InputInterfaceStyle.GetCurrentStyle()`. It follows the device
   last used, and `INPUT_DEVICE_INTERFACE_TRANSITION` (new style, old style)
@@ -68,10 +66,11 @@ Source: `BlizzardInterfaceCode/Interface/AddOns/Blizzard_GamepadSmartNavigation/
   `FocusedFrame`, `UnfocusedFrame`, `SelectedButtonUpdated` (no arguments;
   read `GetCurrentButton`). `FocusedFrame` and `UnfocusedFrame` are declared
   but never fired.
-- **Per-button overrides** (`SmartNavigation_AddJumpNavigationOverride`,
-  including "ignore this direction") set by an addon are tainted, and the
-  game refuses every navigation through one in combat with the "interface
-  action blocked" message, whatever it holds. We use the callbacks instead.
+- **Per-button overrides** (`SmartNavigation_AddJumpNavigationOverride`):
+  a frame or `true` is laundered and works in combat; a function is refused
+  in combat with the "interface action blocked" message each time it is
+  used. Scrolling a list needs to decide per press, so it uses the callbacks
+  instead.
 
 #- **Button prompts.** `GamepadMode.AddGamepadIconToButton(button, key)`
   (`Blizzard_GamepadSharedUtility/FrameReformUtility.lua`) puts an
@@ -81,6 +80,47 @@ Source: `BlizzardInterfaceCode/Interface/AddOns/Blizzard_GamepadSmartNavigation/
   Accept, B on Cancel, X and Y on a third and fourth); under the cursor, A
   presses whatever the cursor is on. The manager's `isUIFocused` and
   `focusedFrame` say which window has the cursor.
+
+## Taint
+
+Learnt the hard way (an `ADDON_ACTION_FORBIDDEN` for
+`SetPreferredGamepadInteractTarget()` at login): the game launders what an
+addon passes in (`SmartNavigationSecureHelper` reads the arguments through
+`securecallfunction`), but **not the fields it reads off those frames**. We
+had set `skipGamepadAutoFocus` on the directions box; the manager copied it
+into its own `isUIFocused`, so its state carried Wayward's taint, and when
+the chat window joined at login the manager's next protected call was
+refused in Wayward's name.
+
+So:
+
+- Set nothing on a window that the manager or Smart Navigation reads
+  (`skipGamepadAutoFocus`, `returnToPlayerControl`, `skipFrameDeactivation`,
+  `useCustomNavigation`, `FrameControlManagerGroup`, `dismissOnUnfocus`,
+  `disallowGamepadUnfocus`, `isScrollingMessageFrame`, ...), and hand it no
+  table of ours whose fields or functions it reads or calls in its own code
+  (the right-stick scroll frame is one). The smoke test checks the window
+  fields.
+- Safe: arguments to the wrapped calls; values set through the
+  `SmartNavigation_Set...` / `_Mark...` / `_Add...` helpers (they go through
+  `SecureHelper:SetSecureValue`, which launders them, a function excepted);
+  `SmartNavigationCloseHandler`, called through `securecallfunction`; and
+  callbacks on the `SmartNavigation` registry, each run through
+  `securecallfunction`.
+
+## The main menu wheel
+
+The controller's main menu wheel (`Blizzard_Gamepad/UI/Radials/GamepadRadial.lua`)
+has no way for addons to add an entry. Its entries are hard-coded in
+`GamepadRadial.segmentOptions` and placed on three pages in
+`GamepadRadial.mainMenuPages`; the right page has five empty slots. Both
+tables are reachable, so an addon *could* write a handler into an empty slot,
+but it would be the taint above again: as the wheel fills a page
+(`FillSegmentData`) it reads our handler, and the segments after it are set
+up from tainted code, so pressing one of the game's own entries (PvP on the
+same page) could be refused in Wayward's name. The game's own always-on
+frames (chat, buffs) are reached from it only because they're its own
+entries. So: no wheel entry; the key binding instead.
 
 ## What addons may call, and when
 
@@ -100,10 +140,9 @@ Allowed outside combat: `FrameShown`, `FrameHidden`,
 Never for addons (they check for secure code and refuse): `SelectButton`,
 `SetActiveFrame`, `Navigate`, `ActivateBinding`.
 
-Jump overrides set by an addon are refused in combat each time one is used,
-whether a function or a frame: the value keeps the addon's taint
-(`SecureHelper:SetSecureValue`), and the game checks `issecure()` after
-reading it.
+A jump override given as a *function* is refused in combat each time it is
+used; one given as a *frame* is not (`SetSecureValue` launders a frame, and
+wraps a function to run insecurely).
 
 ## What is built
 
@@ -114,17 +153,22 @@ reading it.
   `opts.close` when closing is more than that. Call it after the window's
   own `OnShow` / `OnHide` are set, since `SetScript` drops the hook.
 - **Quiet windows** (`opts.quiet`, true or a function asked as the window
-  opens) join as the game's unasked popups do, never taking the cursor (see
-  Focus above). Closing a window with only quiet ones left sets
-  `returnToPlayerControl`, so the controller goes back to the game rather
-  than to the directions box.
-- **The directions box** (`UI/HUD.lua`) is quiet: you reach it with the
-  game's "toggle UI focus" binding or the triggers. B there is `Pad.LetGo`:
-  the cursor goes back to the window that had it, or to the game, and the box
-  stays reachable. It never ends the journey, as the box's x (which the
-  manager would otherwise press) does.
+  opens) mustn't take the cursor, and can't be in the manager's list without
+  taking it (see Taint), so they stay out of it until reached:
+  `Pad.Reach(frame)` joins an open one normally, and `Pad.LetGo(frame)`
+  takes it out again, the manager handing the cursor back to the window that
+  had it, or to the game.
+- **The directions box** (`UI/HUD.lua`) is quiet. Its key binding,
+  "Controller cursor to the directions box" (Key Bindings > AddOns >
+  Wayward, `WAYWARD_DIRECTIONS_CURSOR` in `Bindings.xml`, which the player
+  can put on a controller button), gives it the cursor, and gives it back
+  when pressed again. B there is `Pad.LetGo` too: it never ends the
+  journey, as the box's x (which the manager would otherwise press) does.
+  `Pad.Reach` does nothing with a keyboard, and in combat it shows the
+  game's "can't do that in combat" line rather than waiting (a wait would
+  take the cursor when the fight ends, long after it was asked for).
 - **On the way** is quiet when it comes back by itself with a new journey
-  (you left it open), and takes the cursor when you open it.
+  (you left it open), and joins when you open it.
 - Windows that call it: the main window (`UI/Panel.lua`), the journey
   overview (`UI/JourneyOverview.lua`), the On the way pane (`UI/Drawer.lua`,
   B going through `Drawer.Hide` so it stays closed for the next journey as
@@ -151,10 +195,13 @@ reading it.
   below the list (or there is nothing below: `HitBottomEdge`), and the list
   has more, it scrolls one line and the cursor goes back onto that row, on
   the same button if it still shows. The same going up off the first row.
-  The right stick moves a stand-in that looks like a chat window to the game
-  (8 lines a second at full tilt, `STICK_SPEED`), handed over each time the
-  cursor lands in the window. In combat neither scrolls (the calls would be
-  refused); the cursor then leaves the list as it would without this.
+  In combat it doesn't scroll (the call would be refused); the cursor then
+  leaves the list as it would without this. **No right stick**: the stand-in
+  we tried (a table that looked like a chat window) would have tainted Smart
+  Navigation's update code, which reads its fields and calls its functions.
+  A real hidden ScrollFrame, whose `OnVerticalScroll` script moves our list,
+  might be safe (the game would only call its C methods), but whether a
+  script it fires that way taints the caller is untested.
 - **Picking up and putting down.** On `INPUT_DEVICE_INTERFACE_TRANSITION`,
   a tick later (after the game's own handlers): put down, we forget which
   windows joined, as the manager does; picked up, every Wayward window open
@@ -184,15 +231,12 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
 - Any window but the main one with the cursor: the overview, On the way,
   welcome, the copy box (its text is an EditBox: does A put the cursor in it,
   and does B still close it?) and the fallback menu.
-- The directions box: that "toggle UI focus" reaches it, that it doesn't
-  take the cursor as it appears, and that B on it gives the cursor back.
-- Closing a game window (bags, say) while the box is up: the game passes the
-  cursor to the leftmost open frame, which can be the box. We can only set
-  `returnToPlayerControl` on our own windows. If it happens and grates, the
-  fallback is to join the box only on demand (as chat and buffs do), from an
-  edge of another window, at the cost of not reaching it with nothing else
-  open.
-- B on the box in combat does nothing (the manager refuses us then).
+- That the `ADDON_ACTION_FORBIDDEN` at login is gone, and no other turns
+  up (BugGrabber), with a controller, the directions box up, and windows
+  opened and closed in and out of combat.
+- The directions box's key binding: bound to a controller button, that it
+  gives the box the cursor and gives it back, and that B on the box does
+  too.
 - Picking up the controller with a window open: the cursor should appear
   in it at once. With more than one of ours open, the last to join takes
   it (they join in the order they were first made).
@@ -200,12 +244,9 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
   and under a skin, and that it goes when the game's "toggle UI focus" takes
   the cursor away (we hear of that only if the game reports the cursor
   leaving its button, which isn't confirmed).
-- List scrolling: the d-pad off a list's end, and the right stick (its
-  direction, and whether 8 lines a second feels right). After a scroll the
+- List scrolling: the d-pad off a list's end. After a scroll the
   cursor stays on a row that now shows another line: its tooltip may still
   show the old one until the cursor moves.
-- The main window's home screen cards don't scroll with the stick (they
-  step with the mouse wheel); the d-pad reaches them as buttons anyway.
 - The row fix (cone and row-end jump). The two numbers are first guesses.
 - A pressing a button, and B closing the window.
 - Switching page or category with the cursor on a button that goes away.
@@ -217,9 +258,11 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
 ## Still to do
 
 1. ~~The other windows~~: done (see above), to try in game.
-2. ~~The directions box~~: done, it never takes the cursor (decided
-   2026-11-16), to try in game.
-3. ~~Lists~~: done (see above), to try in game.
+2. ~~The directions box~~: never takes the cursor (decided 2026-11-16), so
+   it stays out of the manager's list (see Taint); a key binding reaches it
+   (decided 2026-11-16). To try in game.
+3. ~~Lists~~: the d-pad done (see above), to try in game. The right stick
+   isn't (see Lists above).
 4. ~~Picking up the controller with a window already open~~: done (see
    above), to try in game. This also fixed putting the controller down and
    picking it up again with a window open, which had left that window

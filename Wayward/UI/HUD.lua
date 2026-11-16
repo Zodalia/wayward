@@ -24,6 +24,14 @@ local _, ns = ...
 local HUD = {}
 ns.HUD = HUD
 
+-- Its key binding (Key Bindings > AddOns > Wayward), for a controller: the
+-- box never takes the cursor itself, so this gives it the cursor, and gives
+-- it back when pressed again (as B does).
+_G.BINDING_NAME_WAYWARD_DIRECTIONS_CURSOR = "Controller cursor to the directions box"
+function WaywardBinding_DirectionsCursor()
+  HUD.ToggleCursor()
+end
+
 local frame
 local unpack = unpack or table.unpack
 local UPDATE_INTERVAL = 0.1
@@ -404,10 +412,10 @@ local function create()
     end
   end)
   ns.Skin.Box(f)
-  -- On Forever the controller's cursor can go to it, but it never takes the
-  -- cursor itself (it's on screen all journey long): the game's "toggle UI
-  -- focus" or the triggers reach it, and B gives the cursor back (it never
-  -- ends the journey, as the x would).
+  -- On Forever it never takes the controller's cursor itself (it's on screen
+  -- all journey long), so it stays out of the cursor's way until reached
+  -- (Pad.Reach). B there gives the cursor back; it never ends the journey,
+  -- as the x would.
   ns.Pad.Window(f, { quiet = true, close = ns.Pad.LetGo })
   return f
 end
@@ -821,6 +829,16 @@ function HUD.ArrowShown() return frame ~= nil and frame.arrow:IsShown() end
 
 -- The directions box (the target button sits beside it).
 function HUD.Frame() return frame end
+
+-- The binding: the controller's cursor to the box, or back from it.
+function HUD.ToggleCursor()
+  if not (frame and frame:IsShown()) then return end
+  if ns.Pad.Joined(frame) then return ns.Pad.LetGo(frame) end
+  local _, why = ns.Pad.Reach(frame)
+  if why == "combat" and UIErrorsFrame and UIErrorsFrame.AddMessage then
+    UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT or "You can't do that while in combat", 1, 0.1, 0.1)
+  end
+end
 
 -- The box, made (hidden) if there isn't one yet: edit modes move it anyway.
 function HUD.EnsureFrame()

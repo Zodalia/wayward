@@ -191,7 +191,8 @@ local function create()
   ns.Skin.Box(f)
   -- A controller's cursor moves through it on Forever; B closes it as its
   -- close button does (so it stays closed for the next journey). Back by
-  -- itself with a journey, it doesn't take the cursor from what you're doing.
+  -- itself with a journey, it stays out of the cursor's way (it would take
+  -- it from what you're doing); opened by you, it takes it.
   ns.Pad.Window(f, { close = function() Drawer.Hide() end, quiet = function() return byItself end,
     closeButton = f.close })
   f:Hide()

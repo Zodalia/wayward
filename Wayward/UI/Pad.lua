@@ -18,7 +18,8 @@ ns.Pad = Pad
 
 local windows = {}   -- each frame added, in order
 local joined = {}    -- frame -> true once the manager has been told it's open
-local quiet = {}     -- frame -> true while it's open without taking the cursor
+local quiet = {}     -- frame -> true while it's open but joins only when reached
+local reached = {}   -- frame -> true: a quiet window asked for (Pad.Reach)
 local waiting = false
 
 local function manager()
@@ -212,11 +213,10 @@ end
 -- Our lists draw a fixed set of rows and move an offset; the game only
 -- scrolls its own scroll frames. So we scroll them ourselves: the d-pad
 -- moving off the last row shown (or the first) scrolls one line and keeps
--- the cursor on that row, and the right stick scrolls through a stand-in the
--- game knows how to move (it takes it for a chat window, which also scrolls
--- by whole lines).
-local lists = {}    -- window -> { rows = fn, at = fn, scroll = fn, stick = {} }
-local STICK_SPEED = 8 -- lines a second, the stick pushed all the way
+-- the cursor on that row. Not the right stick: it reads the frame it scrolls
+-- from the game's own update code, and anything of ours it read there would
+-- carry our taint into Smart Navigation (see "Taint" in docs/CONTROLLER.md).
+local lists = {}    -- window -> { rows = fn, at = fn, scroll = fn }
 local previous      -- the button the cursor was on
 local moving = false -- we're moving the cursor ourselves
 
@@ -289,27 +289,6 @@ local function offList(from, to, way)
   if step(list, way) then land(window, landing(edge, from)) end
 end
 
--- The stand-in for the right stick (see above). Its offset counts up from
--- the bottom, as a chat window's does.
-local function stick(list)
-  if list.stick then return list.stick end
-  list.stick = {
-    isScrollingMessageFrame = true,
-    smartNavRightStickMaxScrollSpeed = STICK_SPEED,
-    IsObjectType = function() return false end,
-    GetMaxScrollRange = function()
-      local _, max = list.at()
-      return max or 0
-    end,
-    GetScrollOffset = function()
-      local at, max = list.at()
-      return (max or 0) - (at or 0)
-    end,
-    ScrollByAmount = function(_, amount) list.scroll(amount) end,
-  }
-  return list.stick
-end
-
 local function selected()
   if moving then return end
   local nav = SmartNavigation
@@ -319,8 +298,6 @@ local function selected()
   refreshPrompts()
   if restricted() then return end
   local window = current and windowOf(current)
-  local list = window and lists[window]
-  if list and nav.SetScrollFrameForFrame then pcall(nav.SetScrollFrameForFrame, nav, window, stick(list)) end
   if from and current and from ~= current and windowOf(from) == window then
     offList(from, current, 1)
     if previous == current then offList(from, current, -1) end
@@ -356,11 +333,6 @@ function Pad.List(window, list)
   if window and list then lists[window] = list end
 end
 
--- The stand-in the right stick moves for a window's list (for tests).
-function Pad.Stick(window)
-  return lists[window] and stick(lists[window])
-end
-
 -- A window's contents changed: any new buttons keep to their rows too.
 function Pad.Refresh(frame)
   if frame and joined[frame] then narrow(frame) end
@@ -371,36 +343,29 @@ function Pad.RowCone() return ROW_CONE end
 
 ---------------------------------------------------------------- windows
 
--- A quiet window joins as the game's popups do when nobody asked for them
--- (skipGamepadAutoFocus): it's in the list the triggers step through, and
--- "toggle UI focus" reaches it, but it never takes the cursor by itself.
+-- Taint: the game launders the windows we pass it, but not the fields it
+-- reads off them. Anything we set on a window that its frame manager reads
+-- (skipGamepadAutoFocus, returnToPlayerControl, ...) taints the manager's
+-- own state, and the next protected call it makes for any frame is refused
+-- in Wayward's name. So we pass windows and set nothing on them that it
+-- reads; the only field we set is the close handler, which it calls through
+-- securecallfunction. Hence a quiet window (one that mustn't take the
+-- cursor) can't be in its list without taking it: it stays out until it's
+-- reached (Pad.Reach), as the game's own chat window does.
 local function join(m, frame)
-  frame.skipGamepadAutoFocus = quiet[frame] or nil
-  return pcall(m.FrameShown, m, frame, quiet[frame] or nil)
-end
-
--- Whether every window the manager has open, but `frame`, is a quiet one.
-local function onlyQuietLeft(m, frame)
-  local open = m.shownFrames
-  if type(open) ~= "table" then return false end
-  for _, other in ipairs(open) do
-    if other ~= frame and not quiet[other] then return false end
-  end
-  return true
+  return pcall(m.FrameShown, m, frame)
 end
 
 local function leave(m, frame)
-  -- Closing a window with only quiet ones left gives the controller back to
-  -- the game, rather than the manager handing the cursor to one of those.
-  frame.returnToPlayerControl = onlyQuietLeft(m, frame) or nil
   pcall(m.FrameHidden, m, frame)
 end
 
--- Brings the manager's idea of one window in line with whether it's open.
+-- Brings the manager's idea of one window in line with whether it's open
+-- (and, for a quiet one, reached).
 local function sync(frame)
   local m = manager()
   if not m then return end
-  local shown = frame:IsShown() and true or false
+  local shown = frame:IsShown() and (not quiet[frame] or reached[frame] == true) or false
   if shown == (joined[frame] == true) then return end
   -- Leaving is owed even after the controller is put down; joining isn't.
   if shown and not padStyle() then return end
@@ -430,7 +395,8 @@ end
 --   close: how B closes it, when that's more than hiding it (as with its own
 --          close button); otherwise B hides it.
 --   quiet: true, or a function asked each time it opens: it opens without
---          taking the cursor (see join).
+--          taking the cursor, and so without joining (see join) until it's
+--          reached (Pad.Reach).
 --   closeButton: its x, which shows B's glyph while the window has the
 --          cursor (see prompts).
 -- Call it after the window's own OnShow and OnHide are set: setting one
@@ -457,21 +423,32 @@ function Pad.Window(frame, opts)
   if opts.closeButton then prompts[frame] = { button = opts.closeButton } end
   frame:HookScript("OnShow", shown)
   frame:HookScript("OnHide", function(self)
+    reached[self] = nil
     sync(self)
     promptShown(self, false)
   end)
   if frame:IsShown() then shown(frame) end
 end
 
+-- Gives an open quiet window the cursor, as asked. Only now: with a
+-- keyboard it does nothing, and in combat (the game would refuse it) it
+-- returns false, "combat" rather than waiting, which would take the cursor
+-- when the fight ends, long after it was asked for.
+function Pad.Reach(frame)
+  if not (frame and frame:IsShown() and padStyle() and manager()) then return false end
+  if restricted() then return false, "combat" end
+  reached[frame] = true
+  sync(frame)
+  return joined[frame] == true
+end
+
 -- Gives the cursor back without closing the window (B on the directions box):
--- to the window that had it, or to the game. The window stays reachable,
--- quietly.
+-- to the window that had it, or to the game. It leaves the game's list until
+-- it's reached again.
 function Pad.LetGo(frame)
-  local m = manager()
-  if not (m and joined[frame]) or restricted() then return end
-  leave(m, frame)
   quiet[frame] = true
-  joined[frame] = join(m, frame) or nil
+  reached[frame] = nil
+  sync(frame)
 end
 
 -- Whether the controller's cursor has been given this window (for tests).
@@ -479,7 +456,7 @@ function Pad.Joined(frame)
   return joined[frame] == true
 end
 
--- Whether it's open without taking the cursor (for tests).
+-- Whether it's open, kept out of the cursor's way (for tests).
 function Pad.Quiet(frame)
   return quiet[frame] == true
 end
@@ -492,7 +469,7 @@ end
 -- The controller picked up or put down (the interface follows the device in
 -- use). Put down, the game's frame manager forgets every window it had
 -- (ResetVars), so we forget them too; picked up, every window open now
--- joins, quiet ones quietly. A tick later: the game's own handlers for the
+-- joins, but for quiet ones not reached. A tick later: the game's own handlers for the
 -- same event set its cursor up first.
 local function transition()
   if not padStyle() then

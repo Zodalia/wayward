@@ -722,7 +722,7 @@ do
     check(type(edges.SelectedButtonUpdated) == "function" and type(edges.HitBottomEdge) == "function",
       "it hears the cursor move, and reach the bottom")
     go(buttons[3])
-    check(stickFor and stickFor == ns.Pad.Stick(win), "landing in the window hands the right stick its list")
+    check(stickFor == nil, "the right stick isn't handed anything of ours (it would carry our taint)")
     go(below)
     check(offset == 1 and landed == buttons[3], "down off the last row shown: the list scrolls a line, the cursor stays on that row")
     current = buttons[3]
@@ -742,12 +742,7 @@ do
     landed = nil
     go(below)
     check(offset == 5 and landed == nil, "at the end, down leaves the list as before")
-    local s = ns.Pad.Stick(win)
-    offset = 1
-    check(s.isScrollingMessageFrame and s:GetMaxScrollRange() == 5 and s:GetScrollOffset() == 4,
-      "the right stick's stand-in counts from the bottom, as a chat window does")
-    s:ScrollByAmount(1)
-    check(offset == 0, "and pushing up scrolls the list up")
+    offset = 0
     -- B's glyph on the x of the window with the cursor, and on no other.
     local m = GamepadMode.FrameControlsManager
     m.isUIFocused, m.focusedFrame = true, win
@@ -9400,15 +9395,25 @@ do
   -- With a controller, the overview, the pane and our menu take the cursor
   -- too; B on the pane closes it as its close button does.
   do
-    local joinedNow, popups = {}, {}
+    -- The game launders the windows it's handed, but not fields it reads off
+    -- them: none of those may be set (they'd taint its frame manager).
+    local joinedNow, readByGame = {}, {}
+    local GAME_READS = { "skipGamepadAutoFocus", "returnToPlayerControl", "skipFrameDeactivation",
+      "useCustomNavigation", "FrameControlManagerGroup", "dismissOnUnfocus", "disallowGamepadUnfocus" }
+    local function look(f)
+      for _, key in ipairs(GAME_READS) do
+        if rawget(f, key) ~= nil then readByGame[#readByGame + 1] = key end
+      end
+    end
     local manager = { shownFrames = {} }
     manager.FrameShown = function(_, f, isPopup)
+      look(f)
       joinedNow[f] = true
-      popups[f] = isPopup and f.skipGamepadAutoFocus or nil
       table.insert(manager.shownFrames, f)
     end
     manager.FrameHidden = function(_, f)
-      joinedNow[f], popups[f] = nil, nil
+      look(f)
+      joinedNow[f] = nil
       for i, g in ipairs(manager.shownFrames) do
         if g == f then table.remove(manager.shownFrames, i) break end
       end
@@ -9432,27 +9437,54 @@ do
     check(not ns.Menu.IsShown() and not joinedNow[box], "and B closes it")
     ov:Hide()
     check(not joinedNow[ov], "closing the overview lets the cursor go")
-    -- The directions box: there to go to, but it never takes the cursor.
+    -- The directions box never takes the cursor by itself: it stays out of
+    -- the game's list until it's reached.
     local hud = ns.HUD.Frame()
     hud:Hide()
     hud:Show()
-    check(joinedNow[hud] and popups[hud] and ns.Pad.Quiet(hud),
-      "the directions box joins without taking the cursor")
+    check(not joinedNow[hud] and ns.Pad.Quiet(hud), "the directions box doesn't join by itself")
+    -- Its key binding gives it the cursor, and gives it back. (The binding
+    -- calls HUD.ToggleCursor; the global points at the copy of the UI the
+    -- template checks above loaded, so these call ours directly.)
+    check(type(WaywardBinding_DirectionsCursor) == "function" and BINDING_NAME_WAYWARD_DIRECTIONS_CURSOR,
+      "the directions box has a key binding, with a name in Key Bindings")
+    ns.HUD.ToggleCursor()
+    check(joinedNow[hud], "pressed, it gives the box the cursor")
+    ns.HUD.ToggleCursor()
+    check(hud:IsShown() and not joinedNow[hud], "pressed again, it gives the cursor back")
+    ns.HUD.ToggleCursor()
     hud:SmartNavigationCloseHandler()
-    check(hud:IsShown() and ns.Nav.active and joinedNow[hud] and popups[hud],
-      "B on the box gives the cursor back; the box and the journey stay")
-    ns.JourneyOverview.Show()
-    check(joinedNow[ov] and not popups[ov], "the overview, opened by you, still takes it")
-    ov:Hide()
-    check(ov.returnToPlayerControl, "closed with only the box left, the controller goes back to the game")
-    -- On the way, back by itself because you left it open: quiet too.
+    check(hud:IsShown() and ns.Nav.active and not joinedNow[hud],
+      "B on the box gives the cursor back and it leaves the list; the box and the journey stay")
+    ns.HUD.ToggleCursor()
+    hud:Hide()
+    hud:Show()
+    check(not joinedNow[hud], "shown again, it waits to be reached again")
+    -- With a keyboard it does nothing; in combat it says so, and doesn't
+    -- take the cursor once the fight ends either.
+    InputUtil.IsGamepadUIEnabled = function() return false end
+    ns.HUD.ToggleCursor()
+    check(not joinedNow[hud], "with a keyboard the binding does nothing")
+    InputUtil.IsGamepadUIEnabled = function() return true end
+    local hadRestricted, hadEnum, hadErrors = C_RestrictedActions, Enum.AddOnRestrictionType, UIErrorsFrame
+    local said
+    UIErrorsFrame = { AddMessage = function(_, text) said = text end }
+    Enum.AddOnRestrictionType = { Combat = 0 }
+    C_RestrictedActions = { IsAddOnRestrictionActive = function() return true end }
+    ns.HUD.ToggleCursor()
+    check(not joinedNow[hud] and said, "in combat it says it can't: " .. tostring(said))
+    C_RestrictedActions.IsAddOnRestrictionActive = function() return false end
+    fire("PLAYER_REGEN_ENABLED")
+    check(not joinedNow[hud], "and the cursor doesn't jump to the box when the fight ends")
+    C_RestrictedActions, Enum.AddOnRestrictionType, UIErrorsFrame = hadRestricted, hadEnum, hadErrors
+    -- On the way, back by itself because you left it open: out of the way too.
     ns.Drawer.Show()
-    check(joinedNow[pane] and not popups[pane], "On the way, opened by you, takes the cursor")
+    check(joinedNow[pane] and not ns.Pad.Quiet(pane), "On the way, opened by you, takes the cursor")
     ns.Drawer.Hide(true)
     ns.Drawer.Sync()
-    check(ns.Drawer.IsShown() and joinedNow[pane] and popups[pane],
-      "back by itself, it doesn't take the cursor")
+    check(ns.Drawer.IsShown() and not joinedNow[pane], "back by itself, it stays out of the cursor's way")
     ns.Drawer.Hide(true)
+    check(#readByGame == 0, "nothing the game reads off a window is set on ours: " .. table.concat(readByGame, ", "))
     hud:Hide()
     GamepadMode, InputUtil = nil, nil
     hud:Show()

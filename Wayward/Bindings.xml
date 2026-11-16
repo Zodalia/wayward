@@ -1,3 +1,6 @@
 <Bindings>
   <Binding name="CLICK WaywardTargetButton:LeftButton" header="WAYWARD" category="ADDONS"/>
+  <Binding name="WAYWARD_DIRECTIONS_CURSOR" category="ADDONS">
+    WaywardBinding_DirectionsCursor()
+  </Binding>
 </Bindings>
