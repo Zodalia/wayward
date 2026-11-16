@@ -1,6 +1,6 @@
 local ADDON, ns = ...
 
-ns.VERSION = "0.3.0"
+ns.VERSION = "0.4.0"
 ns.MAX_SAMPLES = 5
 
 function ns.print(msg)
@@ -206,6 +206,8 @@ local HELP = {
   "/wfprobe waypoint - test the built-in waypoint arrow (/wfprobe waypoint clear)",
   "/wfprobe nav - diagnose why the waypoint arrow is or isn't showing",
   "/wfprobe plates - what nameplates show about nearby mobs (run once out of combat, once fighting)",
+  "/wfprobe pad - listen 10 seconds for controller buttons and sticks (press some)",
+  "/wfprobe comms [name] - send test addon messages to yourself and your party, and see which come back",
   "/wfprobe clear - delete stored probe data",
 }
 
@@ -227,6 +229,10 @@ SlashCmdList.WFPROBE = function(msg)
     ns.NavDiag()
   elseif cmd == "plates" then
     ns.ProbePlates()
+  elseif cmd == "pad" then
+    ns.ProbePad()
+  elseif cmd == "comms" then
+    ns.ProbeComms((msg:match("^%S*%s*(.-)%s*$")))   -- the name as typed, not lowered
   elseif cmd == "clear" then
     WFProbeDB.chars = {}
     ns.print("stored probe data cleared.")

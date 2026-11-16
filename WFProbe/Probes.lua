@@ -9,6 +9,7 @@ local probes = {}
 local function probe(category, name, fn)
   probes[#probes + 1] = { category = category, name = name, fn = fn }
 end
+ns.probe = probe   -- for the files after this one
 
 -- Where the player is, shared by the map-based probes.
 local ctx = {}

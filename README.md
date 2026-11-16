@@ -973,6 +973,14 @@ character-select AddOns screen; the probe reports the new number.
    `/wfprobe plates` near some mobs, once out of combat and once fighting,
    records what nameplates show (GUID, name, dead, tapped, each readable or
    secret), which camps rely on.
+   `/wfprobe pad` with a controller connected and switched on in the game's
+   settings: press buttons and move both sticks for the 10 seconds it
+   listens. It records whether a frame of ours receives them (what controller
+   support for Wayward's windows would rest on).
+   `/wfprobe comms` sends test addon messages to yourself and, in a group, to
+   your party or raid, and records what each send returned, the length limit,
+   how many go out in a row and which came back. Run it once alone, once in a
+   party, and once inside a dungeon (where messages may be locked down).
 5. Visit and interact with: a class trainer, a vendor, a flight master, the
    bank, a quest giver (open a quest and accept it), an NPC with a gossip menu.
    Each one is captured automatically ("captured …" in chat).
@@ -998,6 +1006,10 @@ If copying fails, the same data is in
 | Native waypoint arrow usable? | `C_Map.SetUserWaypoint`, `C_SuperTrack` |
 | Can we record NPC IDs and positions? | trainer, vendor, flight master, gossip, quest captures |
 | Do SavedVariables persist on the beta? | load counter across `/reload` |
+| Can Wayward's windows take a controller? | `C_GamePad`, frame gamepad scripts, pad bindings and settings, `/wfprobe pad` |
+| Can they join Forever's own controller navigation? | Smart Navigation globals, mixins, widget methods, events, `C_KeyBindings` contexts |
+| Can two players' Wayward talk to each other? | `C_ChatInfo` addon messages, `BNSendGameData`, lockdown checks, `/wfprobe comms` |
+| Can the client pack a journey for sending? | `C_EncodingUtil` serialise, compress and Base64 round trip; raw bytes in `/wfprobe comms` |
 | Forever-specific APIs? | `_G` scan for "Forever"/"Camelot", full `C_*` namespace list |
 
 ### Development

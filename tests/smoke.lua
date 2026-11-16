@@ -31,7 +31,7 @@ wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 tinsert = table.insert
 UISpecialFrames = {}
 ChatFontNormal = {}
-strsplit = function(sep, s) local r = {} for p in (s .. sep):gmatch("(.-)%" .. sep) do r[#r + 1] = p end return table.unpack(r) end
+strsplit = function(sep, s) local r = {} for p in (s .. sep):gmatch("(.-)%" .. sep) do r[#r + 1] = p end return (table.unpack or unpack)(r) end
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
 SlashCmdList = {}
 InCombatLockdown = function() return false end
@@ -112,11 +112,44 @@ GetMerchantNumItems =function() return 2 end
 GetMerchantItemInfo = function(i) return "Item" .. i, nil, 100, 1, -1, true end
 
 local ns = {}
-for _, f in ipairs({ "Core.lua", "Serialize.lua", "Probes.lua", "Events.lua", "Export.lua" }) do
+-- Addon messages loop straight back, except past 255 bytes and past ten in a row.
+local fire
+local sends = 0
+Enum.SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, InvalidMessage = 5 }
+C_ChatInfo = {
+  RegisterAddonMessagePrefix = function() registered = (registered or 0) + 1; return registered > 1 and 1 or 0 end,
+  SendAddonMessage = function(prefix, text, channel, target)
+    -- A whisper only arrives under both names; the send succeeds either way.
+    if channel == "WHISPER" and target ~= "Tester Smith" then return 0 end
+    if #text > 255 then return 5 end
+    sends = sends + 1
+    if sends > 10 then return 3 end
+    fire("CHAT_MSG_ADDON", prefix, text, channel, "Tester-Forever")
+    return 0
+  end,
+}
+-- Forever's own controller navigation, and the client's packing of tables.
+SmartNavigationMixin = { RegisterFrame = function() end, SetFocus = function() end }
+C_InputInterfaceStyle = { GetCurrentStyle = function() return 1 end }
+C_EncodingUtil = {
+  SerializeCBOR = function(t) packed = t; return string.rep("c", 120) end,
+  DeserializeCBOR = function() return packed end,
+  CompressString = function(s) return s:sub(1, 60) end,
+  DecompressString = function() return string.rep("c", 120) end,
+  EncodeBase64 = function(s) return s .. s:sub(1, 20) end,
+  DecodeBase64 = function(s) return s:sub(1, 60) end,
+}
+Enum.RegisterAddonMessagePrefixResult = { Success = 0, DuplicatePrefix = 1 }
+UnitFullName = function() return "Tester", "Smith" end
+GetNormalizedRealmName = function() return "Forever" end
+C_GamePad = { IsEnabled = function() return true end, SetVibration = function() error("probe must not call setters") end }
+UIParent = {}
+
+for _, f in ipairs({ "Core.lua", "Serialize.lua", "Probes.lua", "PadComms.lua", "Events.lua", "Export.lua" }) do
   assert(loadfile(dir .. "/" .. f))("WFProbe", ns)
 end
 
-local function fire(event, ...)
+function fire(event, ...)
   for _, f in ipairs(frames) do
     if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
   end
@@ -143,6 +176,16 @@ UnitIsDead = function(u) if u == "nameplate2" then return SECRET end return fals
 InCombatLockdown = function() return true end
 SlashCmdList.WFPROBE("plates")
 InCombatLockdown = function() return false end
+-- Controller: the listening frame gets a button, then its time runs out.
+SlashCmdList.WFPROBE("pad")
+for _, f in ipairs(frames) do
+  if f.scripts.OnGamePadButtonDown then f.scripts.OnGamePadButtonDown(f, "PADDUP") end
+end
+runTimers()
+-- Addon messages: sent, looped back, counted.
+SlashCmdList.WFPROBE("comms")
+runTimers()
+runTimers()
 SlashCmdList.WFPROBE("show")
 
 for _, line in ipairs(out) do io.write("[chat] ", line, "\n") end
@@ -167,4 +210,18 @@ assert(text:find('questPOI = "0"'), "known cvar missing")
 assert(text:find('guid = "secret"') and text:find('isDead = "secret"') and text:find("npcID = 6741"),
   "nameplate facts missing")
 assert(text:find("inCombat = true"), "plate snapshot doesn't say it was in combat")
+assert(text:find("gamepadAPI = true"), "gamepad headline missing")
+assert(text:find("PADDUP = 1"), "controller button not captured")
+assert(text:find("an addon frame received controller buttons"), "pad verdict missing")
+assert(text:find('whisper 1 to \\"Tester\\" %-> Success'), "addon message send result missing")
+assert(text:find('whisperName = "Tester Smith"'), "the name a whisper reaches wasn't found")
+assert(text:find('UnitFullName = "Tester \\124 Smith"'), "name facts missing")
+assert(text:find('"256 bytes %-> InvalidMessage"'), "over-long message result missing")
+assert(text:find("AddonMessageThrottle"), "throttle result missing")
+assert(text:find("receivedCount = 10"), "looped-back messages not counted")
+assert(text:find("SmartNavigationMixin = {") and text:find('functions = "RegisterFrame, SetFocus"'), "smart navigation mixin not listed")
+assert(text:find("smartNavigationTables = 2"), "smart navigation headline missing")
+assert(text:find("roundTrip = true") and text:find("base64 = 80"), "encoding round trip missing")
+assert(text:find('registerPrefix = "DuplicatePrefix"'), "prefix registration not read in its own codes")
+assert(text:find("arrived intact"), "binary message not checked")
 io.write("SMOKE OK\n")
