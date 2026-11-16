@@ -98,7 +98,7 @@ local function create()
     -- The TomTom question waited for this window.
     if ns.Options and ns.Options.AskTomTom then ns.Options.AskTomTom() end
   end)
-  ns.Pad.Window(f)
+  ns.Pad.Window(f, { closeButton = f.close })
   ns.Skin.Window(f)
   f:Hide()
   return f

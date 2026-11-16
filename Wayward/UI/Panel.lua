@@ -850,7 +850,7 @@ local function create()
   end)
   -- A controller's cursor moves through it on Forever, and scrolls the list
   -- pane (the d-pad off its first or last row, or the right stick).
-  ns.Pad.Window(f)
+  ns.Pad.Window(f, { closeButton = f.close })
   ns.Pad.List(f, {
     rows = function() return side and side.rows end,
     at = function() return Panel.ListAt() end,

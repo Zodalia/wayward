@@ -192,7 +192,8 @@ local function create()
   -- A controller's cursor moves through it on Forever; B closes it as its
   -- close button does (so it stays closed for the next journey). Back by
   -- itself with a journey, it doesn't take the cursor from what you're doing.
-  ns.Pad.Window(f, { close = function() Drawer.Hide() end, quiet = function() return byItself end })
+  ns.Pad.Window(f, { close = function() Drawer.Hide() end, quiet = function() return byItself end,
+    closeButton = f.close })
   f:Hide()
   return f
 end

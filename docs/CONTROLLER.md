@@ -73,7 +73,16 @@ Source: `BlizzardInterfaceCode/Interface/AddOns/Blizzard_GamepadSmartNavigation/
   game refuses every navigation through one in combat with the "interface
   action blocked" message, whatever it holds. We use the callbacks instead.
 
-### What addons may call, and when
+#- **Button prompts.** `GamepadMode.AddGamepadIconToButton(button, key)`
+  (`Blizzard_GamepadSharedUtility/FrameReformUtility.lua`) puts an
+  `InputIconTextureFrameTemplate` (shared XML, always loaded) on a button:
+  beside its text, or over its middle when it has none. The game labels only
+  buttons that a face button presses directly, as its popups do (A on
+  Accept, B on Cancel, X and Y on a third and fourth); under the cursor, A
+  presses whatever the cursor is on. The manager's `isUIFocused` and
+  `focusedFrame` say which window has the cursor.
+
+## What addons may call, and when
 
 The system guards itself against addon taint. Calls reach it through
 `SmartNavigationSecureHelper`, which allows them **only while the game is
@@ -151,6 +160,15 @@ reading it.
   windows joined, as the manager does; picked up, every Wayward window open
   then joins, the directions box and an On the way that came back by itself
   quietly. In combat that waits for combat to end, like any other join.
+- **B on the x.** `Pad.Window(frame, { closeButton = x })`: while that
+  window has the cursor (the manager's `focusedFrame`, checked as the cursor
+  moves), B's glyph stands in for its x, the x's own textures faded (a
+  skin's extra frames are left alone). Elsewhere, closed, or with a keyboard,
+  the x is back. On the main window, the overview, On the way, welcome and
+  the copy box. Not on the directions box (its x ends the journey, and B
+  there gives the cursor back) or the fallback menu (no x). No other
+  prompts: A presses whatever the cursor is on, so a glyph on one button
+  would say something untrue of the rest.
 - With a keyboard, or on Classic Era, none of it does anything.
 
 Covered in `tests/wayward_smoke.lua` under "controller".
@@ -178,6 +196,10 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
 - Picking up the controller with a window open: the cursor should appear
   in it at once. With more than one of ours open, the last to join takes
   it (they join in the order they were first made).
+- B's glyph on the x: that it shows, its size and look on our close buttons
+  and under a skin, and that it goes when the game's "toggle UI focus" takes
+  the cursor away (we hear of that only if the game reports the cursor
+  leaving its button, which isn't confirmed).
 - List scrolling: the d-pad off a list's end, and the right stick (its
   direction, and whether 8 lines a second feels right). After a scroll the
   cursor stays on a row that now shows another line: its tooltip may still
@@ -205,8 +227,7 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
 5. **Labels as stops.** If crossing a row is tedious, mark them ignored
    (`SmartNavigation_MarkFrameIgnored`); the cost is that a controller
    player loses those tooltips.
-6. **Button prompts.** The game can draw a controller glyph on a button
-   (`GamepadMode.AddGamepadIconToButton`); not looked into.
+6. ~~Button prompts~~: B on the x (see above), to try in game.
 
 ## Pillars (docs/DESIGN.md)
 

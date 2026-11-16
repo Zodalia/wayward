@@ -700,7 +700,15 @@ do
       at = function() return offset, 5 end,
       scroll = function(delta) offset = math.max(0, math.min(5, offset - delta)) end,
     })
-    ns.Pad.Window(win)
+    -- Its x, with one texture of its own.
+    local xAlpha = 1
+    local xTexture = newObj()
+    rawset(xTexture, "GetAlpha", function() return xAlpha end)
+    rawset(xTexture, "SetAlpha", function(_, a) xAlpha = a end)
+    local x = newObj()
+    rawset(x, "GetRegions", function() return xTexture end)
+    rawset(x, "GetHeight", function() return 20 end)
+    ns.Pad.Window(win, { closeButton = x })
     win:Hide()
     win:Show()
     local current, landed, stickFor
@@ -740,7 +748,19 @@ do
       "the right stick's stand-in counts from the bottom, as a chat window does")
     s:ScrollByAmount(1)
     check(offset == 0, "and pushing up scrolls the list up")
+    -- B's glyph on the x of the window with the cursor, and on no other.
+    local m = GamepadMode.FrameControlsManager
+    m.isUIFocused, m.focusedFrame = true, win
+    go(buttons[2])
+    check(ns.Pad.Prompted(win) and xAlpha == 0, "with the cursor in it, B's glyph stands in for its x")
+    m.focusedFrame = newObj() -- another window
+    go(buttons[1])
+    check(not ns.Pad.Prompted(win) and xAlpha == 1, "the cursor in another window: the x is back")
+    m.isUIFocused, m.focusedFrame = true, win
+    go(buttons[2])
     win:Hide()
+    check(not ns.Pad.Prompted(win) and xAlpha == 1, "closed, the x is back for next time")
+    m.isUIFocused, m.focusedFrame = nil, nil
   end
   rawset(panel, "GetChildren", nil)
   SmartNavigation, SmartNavigation_SetDirectionBufferThreshold, SMART_NAV_INPUT_DIRECTION = nil, nil, nil

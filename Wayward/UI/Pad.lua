@@ -148,6 +148,65 @@ local function offRow(side)
   if pick and nav.SetTargetButtonForFrame then nav:SetTargetButtonForFrame(window, frames[pick]) end
 end
 
+---------------------------------------------------------------- prompts
+
+-- The game labels a button with the controller button that presses it (its
+-- popups: A on Accept, B on Cancel). With the cursor, A presses whatever it's
+-- on, so the one label that holds for our windows is B on the close button,
+-- B closing the window. While the window has the cursor, B's glyph stands
+-- in for the x (the x's own textures fade; a skin's stay its own); otherwise,
+-- and with a keyboard, the x is back. Not on the directions box: its x ends
+-- the journey, and B there doesn't.
+local prompts = {}   -- window -> { button, icon, faded = { region -> alpha } }
+local PROMPT_SCALE = 0.8 -- of the close button's height, as the game's
+
+local function promptShown(window, on)
+  local p = prompts[window]
+  if not p or p.failed or (p.on or false) == on then return end
+  if on and not p.icon then
+    local ok, icon = pcall(CreateFrame, "Frame", nil, p.button, "InputIconTextureFrameTemplate")
+    if not (ok and icon and icon.SetInputKey) then
+      p.failed = true
+      return
+    end
+    pcall(icon.SetInputKey, icon, GAMEPAD_FACE_RIGHT or "PAD2")
+    local size = math.floor((p.button:GetHeight() or 24) * PROMPT_SCALE)
+    icon:SetSize(size, size)
+    icon:SetPoint("CENTER", p.button, "CENTER", 0, 0)
+    icon:SetFrameLevel((p.button:GetFrameLevel() or 0) + 2)
+    p.icon = icon
+  end
+  p.on = on
+  if p.icon then p.icon:SetShown(on) end
+  if on then
+    p.faded = {}
+    for _, region in ipairs({ p.button:GetRegions() }) do
+      if region.GetAlpha then
+        p.faded[region] = region:GetAlpha()
+        region:SetAlpha(0)
+      end
+    end
+  else
+    for region, alpha in pairs(p.faded or {}) do region:SetAlpha(alpha) end
+    p.faded = nil
+  end
+end
+
+-- B's glyph on the window that has the cursor, on none other.
+local function refreshPrompts()
+  local m = padStyle() and manager()
+  local focused = m and m.isUIFocused and m.focusedFrame
+  for window in pairs(prompts) do
+    promptShown(window, focused == window and joined[window] == true and window:IsShown())
+  end
+end
+
+-- Whether B's glyph shows on a window's close button (for tests).
+function Pad.Prompted(window)
+  local p = prompts[window]
+  return p ~= nil and p.on == true
+end
+
 ---------------------------------------------------------------- lists
 
 -- Our lists draw a fixed set of rows and move an offset; the game only
@@ -257,6 +316,7 @@ local function selected()
   local current = nav and nav.GetCurrentButton and nav:GetCurrentButton()
   local from = previous
   previous = current
+  refreshPrompts()
   if restricted() then return end
   local window = current and windowOf(current)
   local list = window and lists[window]
@@ -371,6 +431,8 @@ end
 --          close button); otherwise B hides it.
 --   quiet: true, or a function asked each time it opens: it opens without
 --          taking the cursor (see join).
+--   closeButton: its x, which shows B's glyph while the window has the
+--          cursor (see prompts).
 -- Call it after the window's own OnShow and OnHide are set: setting one
 -- replaces our hook.
 function Pad.Window(frame, opts)
@@ -392,8 +454,12 @@ function Pad.Window(frame, opts)
     quiet[self] = q and true or nil
     sync(self)
   end
+  if opts.closeButton then prompts[frame] = { button = opts.closeButton } end
   frame:HookScript("OnShow", shown)
-  frame:HookScript("OnHide", sync)
+  frame:HookScript("OnHide", function(self)
+    sync(self)
+    promptShown(self, false)
+  end)
   if frame:IsShown() then shown(frame) end
 end
 
@@ -432,6 +498,7 @@ local function transition()
   if not padStyle() then
     for frame in pairs(joined) do joined[frame] = nil end
     previous = nil
+    refreshPrompts()
     return
   end
   syncAll()
