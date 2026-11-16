@@ -50,7 +50,11 @@ Source: `BlizzardInterfaceCode/Interface/AddOns/Blizzard_GamepadSmartNavigation/
   addons can't add to.
 - **Is the controller in use?** `InputUtil.IsGamepadUIEnabled()`, which
   reads `C_InputInterfaceStyle.GetCurrentStyle()`. It follows the device
-  last used.
+  last used, and `INPUT_DEVICE_INTERFACE_TRANSITION` (new style, old style)
+  fires as it changes; addons can register it.
+- **Putting the controller down** resets the frame manager
+  (`UninitializeGamepad` → `ResetVars`): it forgets every window it had.
+  Picking it up doesn't bring any back.
 - **Scrolling.** The right stick scrolls the window's "current scroll
   frame" (`SmartNavigation:SetScrollFrameForFrame`, which needs the window
   to have had the cursor). It knows three kinds: a ScrollFrame, a ScrollBox,
@@ -142,6 +146,11 @@ reading it.
   (8 lines a second at full tilt, `STICK_SPEED`), handed over each time the
   cursor lands in the window. In combat neither scrolls (the calls would be
   refused); the cursor then leaves the list as it would without this.
+- **Picking up and putting down.** On `INPUT_DEVICE_INTERFACE_TRANSITION`,
+  a tick later (after the game's own handlers): put down, we forget which
+  windows joined, as the manager does; picked up, every Wayward window open
+  then joins, the directions box and an On the way that came back by itself
+  quietly. In combat that waits for combat to end, like any other join.
 - With a keyboard, or on Classic Era, none of it does anything.
 
 Covered in `tests/wayward_smoke.lua` under "controller".
@@ -166,6 +175,9 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
   edge of another window, at the cost of not reaching it with nothing else
   open.
 - B on the box in combat does nothing (the manager refuses us then).
+- Picking up the controller with a window open: the cursor should appear
+  in it at once. With more than one of ours open, the last to join takes
+  it (they join in the order they were first made).
 - List scrolling: the d-pad off a list's end, and the right stick (its
   direction, and whether 8 lines a second feels right). After a scroll the
   cursor stays on a row that now shows another line: its tooltip may still
@@ -186,9 +198,10 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
 2. ~~The directions box~~: done, it never takes the cursor (decided
    2026-11-16), to try in game.
 3. ~~Lists~~: done (see above), to try in game.
-4. **Picking up the controller with a window already open.** Nothing tells
-   us the style changed, so the cursor appears only when the window is next
-   opened.
+4. ~~Picking up the controller with a window already open~~: done (see
+   above), to try in game. This also fixed putting the controller down and
+   picking it up again with a window open, which had left that window
+   without the cursor until it was closed and opened again.
 5. **Labels as stops.** If crossing a row is tedious, mark them ignored
    (`SmartNavigation_MarkFrameIgnored`); the cost is that a controller
    player loses those tooltips.

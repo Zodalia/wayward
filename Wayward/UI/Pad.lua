@@ -423,6 +423,24 @@ function Pad.Waiting()
   return waiting
 end
 
+-- The controller picked up or put down (the interface follows the device in
+-- use). Put down, the game's frame manager forgets every window it had
+-- (ResetVars), so we forget them too; picked up, every window open now
+-- joins, quiet ones quietly. A tick later: the game's own handlers for the
+-- same event set its cursor up first.
+local function transition()
+  if not padStyle() then
+    for frame in pairs(joined) do joined[frame] = nil end
+    previous = nil
+    return
+  end
+  syncAll()
+end
+
+ns.On("INPUT_DEVICE_INTERFACE_TRANSITION", function()
+  ns.After(0, transition)
+end)
+
 local RETRY = 1
 
 ns.On("PLAYER_REGEN_ENABLED", function()

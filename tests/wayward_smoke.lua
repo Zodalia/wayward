@@ -608,6 +608,27 @@ do
   C_RestrictedActions.IsAddOnRestrictionActive = function() return false end
   fire("PLAYER_REGEN_ENABLED")
   check(table.concat(told, ",") == "shown,hidden,shown,hidden", "opened and closed in one fight tells it nothing more")
+  -- Picking the controller up with the window open: it joins then, not only
+  -- the next time it opens. Put down, the game forgets it; picked up again,
+  -- it joins again.
+  padOn = false
+  ns.Panel.Toggle()
+  check(#told == 4, "opened with the keyboard: nothing told")
+  padOn = true
+  fire("INPUT_DEVICE_INTERFACE_TRANSITION", 1, 0)
+  runTimers()
+  check(table.concat(told, ",") == "shown,hidden,shown,hidden,shown" and ns.Pad.Joined(panel),
+    "the controller picked up with the window open: it takes the cursor")
+  padOn = false
+  fire("INPUT_DEVICE_INTERFACE_TRANSITION", 0, 1)
+  runTimers()
+  check(#told == 5 and not ns.Pad.Joined(panel), "put down: the game forgets the window, and so do we")
+  padOn = true
+  fire("INPUT_DEVICE_INTERFACE_TRANSITION", 1, 0)
+  runTimers()
+  check(#told == 6 and ns.Pad.Joined(panel), "picked up again: it joins again")
+  ns.Panel.Hide()
+  check(#told == 7, "and lets go as it closes")
   -- Rows: each button of the window gets a narrow cone sideways, once.
   ns.Panel.Hide()
   local function fake(kind, x, y)
