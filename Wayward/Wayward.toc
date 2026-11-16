@@ -58,6 +58,7 @@ ForYou.lua
 UI\Skin.lua
 UI\Menu.lua
 UI\Movers.lua
+UI\Pad.lua
 UI\CopyBox.lua
 UI\HUD.lua
 UI\TargetButton.lua

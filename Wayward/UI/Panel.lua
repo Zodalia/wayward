@@ -847,6 +847,8 @@ local function create()
     Panel.FitToScreen()
     Panel.Refresh()
   end)
+  -- A controller's cursor moves through it on Forever.
+  ns.Pad.Window(f)
   ns.Skin.Window(f)
   -- New frames start shown; hide so the first Toggle opens rather than closes.
   f:Hide()
@@ -1077,6 +1079,7 @@ function Panel.Refresh(sideOnly)
   if side:IsShown() and sidePage then net = refreshSide() or net end
   markTabs()
   frame.footer:SetText(footerText(net or ns.Network.Build()))
+  ns.Pad.Refresh(frame)
 end
 
 -- Moves the list (positive goes up, towards the first result), or steps

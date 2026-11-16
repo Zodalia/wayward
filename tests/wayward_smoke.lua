@@ -71,7 +71,10 @@ local function newObj()
         elseif k == "SetTexCoord" then
           if rawget(self, "masked") then error("Cannot set tex coords when texture has mask", 2) end
         elseif k == "Show" then rawset(self, "shown", true); if self.scripts.OnShow then self.scripts.OnShow(self) end
-        elseif k == "Hide" then rawset(self, "shown", false)
+        elseif k == "Hide" then
+          local was = rawget(self, "shown")
+          rawset(self, "shown", false)
+          if was and self.scripts.OnHide then self.scripts.OnHide(self) end
         elseif k == "SetShown" then rawset(self, "shown", (...) and true or false)
         elseif k == "IsShown" then return rawget(self, "shown")
         elseif k == "CreateFontString" then
@@ -560,6 +563,99 @@ ns.Nav.Stop()
 io.write("panel\n")
 ns.Panel.Toggle()
 check(ns.Panel.IsShown(), "first /ww opens the panel")
+
+do
+  io.write("controller\n")
+  local panel
+  -- No controller interface (Classic Era, or a keyboard): nothing is told.
+  ns.Panel.Hide()
+  local told = {}
+  GamepadMode = { FrameControlsManager = {
+    FrameShown = function(_, f) told[#told + 1] = "shown"; panel = f end,
+    FrameHidden = function(_, f) told[#told + 1] = "hidden" end,
+  } }
+  local padOn = false
+  InputUtil = { IsGamepadUIEnabled = function() return padOn end }
+  ns.Panel.Toggle()
+  check(#told == 0, "with a keyboard the controller's cursor isn't told about the window")
+  ns.Panel.Hide()
+  padOn = true
+  ns.Panel.Toggle()
+  check(table.concat(told, ",") == "shown" and ns.Pad.Joined(panel),
+    "with a controller, opening the window gives it the cursor: " .. table.concat(told, ","))
+  check(type(panel.SmartNavigationCloseHandler) == "function", "and B has a way to close it")
+  panel:SmartNavigationCloseHandler()
+  check(not ns.Panel.IsShown() and table.concat(told, ",") == "shown,hidden" and not ns.Pad.Joined(panel),
+    "B closes the window and the cursor lets go: " .. table.concat(told, ","))
+  -- In combat the game refuses these calls: wait, then tell it.
+  C_RestrictedActions = { IsAddOnRestrictionActive = function() return true end }
+  Enum = Enum or {}
+  local hadKinds = Enum.AddOnRestrictionType
+  Enum.AddOnRestrictionType = { Combat = 0 }
+  ns.Panel.Toggle()
+  check(#told == 2 and ns.Pad.Waiting(), "opened in combat, it waits")
+  C_RestrictedActions.IsAddOnRestrictionActive = function() return false end
+  fire("PLAYER_REGEN_ENABLED")
+  check(table.concat(told, ",") == "shown,hidden,shown" and not ns.Pad.Waiting(),
+    "and joins once combat ends: " .. table.concat(told, ","))
+  -- Opened and closed within one fight: nothing to tell.
+  ns.Panel.Hide()
+  C_RestrictedActions.IsAddOnRestrictionActive = function() return true end
+  ns.Panel.Toggle()
+  ns.Panel.Hide()
+  C_RestrictedActions.IsAddOnRestrictionActive = function() return false end
+  fire("PLAYER_REGEN_ENABLED")
+  check(table.concat(told, ",") == "shown,hidden,shown,hidden", "opened and closed in one fight tells it nothing more")
+  -- Rows: each button of the window gets a narrow cone sideways, once.
+  ns.Panel.Hide()
+  local function fake(kind, x, y)
+    local f = newObj()
+    rawset(f, "IsObjectType", function(_, t) return t == kind end)
+    rawset(f, "IsVisible", function() return true end)
+    rawset(f, "GetScaledRect", function() return x - 10, y - 5, 20, 10 end)
+    rawset(f, "GetParent", function() return panel end)
+    return f
+  end
+  local button, label, later = fake("Button", 300, 200), fake("Frame", 100, 100), fake("Button", 100, 240)
+  local rail = fake("Button", 50, 400)
+  local kids = { button, label }
+  rawset(panel, "GetChildren", function() return (unpack or table.unpack)(kids) end)
+  local cones = {}
+  SMART_NAV_INPUT_DIRECTION = { LEFT = "left", RIGHT = "right", UP = "up", DOWN = "down" }
+  SmartNavigation_SetDirectionBufferThreshold = function(f, dir, degrees)
+    cones[#cones + 1] = (f == button and "button" or f == later and "later" or "other") .. ":" .. dir .. ":" .. degrees
+  end
+  local edges, target = {}, nil
+  SmartNavigation = {
+    RegisterCallback = function(_, event, fn) edges[event] = fn end,
+    GetCurrentButton = function() return button end,
+    SetTargetButtonForFrame = function(_, window, f) target = window == panel and f or "wrong window" end,
+  }
+  ns.Panel.Toggle()
+  check(table.concat(cones, " ") == "button:left:15 button:right:15",
+    "its buttons keep to their row going sideways, labels untouched: " .. table.concat(cones, " "))
+  table.insert(kids, later)
+  table.insert(kids, rail)
+  ns.Panel.Refresh()
+  check(table.concat(cones, " ") == "button:left:15 button:right:15 later:left:15 later:right:15 other:left:15 other:right:15",
+    "a button made later gets it at the next refresh, the first not again: " .. table.concat(cones, " "))
+  -- Off the end of a row: the nearest on that side, a step up or down counting double.
+  check(ns.Pad.Beyond({ x = 300, y = 200 }, { { x = 100, y = 240 }, { x = 50, y = 400 }, { x = 400, y = 200 } }, -1) == 1,
+    "past the end of a row it takes the nearest button on that side")
+  check(ns.Pad.Beyond({ x = 300, y = 200 }, { { x = 400, y = 200 } }, -1) == nil, "and stays put when nothing is there")
+  check(type(edges.HitLeftEdge) == "function" and type(edges.HitRightEdge) == "function", "it hears the cursor reach a row's end")
+  edges.HitLeftEdge()
+  check(target == later, "and sends it on to that button")
+  target = nil
+  edges.HitRightEdge()
+  check(target == nil, "nothing to the right: the cursor stays")
+  rawset(panel, "GetChildren", nil)
+  SmartNavigation, SmartNavigation_SetDirectionBufferThreshold, SMART_NAV_INPUT_DIRECTION = nil, nil, nil
+  GamepadMode, InputUtil, C_RestrictedActions = nil, nil, nil
+  Enum.AddOnRestrictionType = hadKinds
+  ns.Panel.Hide()
+  ns.Panel.Toggle()
+end
 
 do
   io.write("profile\n")
