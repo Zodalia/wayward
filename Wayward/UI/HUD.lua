@@ -404,6 +404,11 @@ local function create()
     end
   end)
   ns.Skin.Box(f)
+  -- On Forever the controller's cursor can go to it, but it never takes the
+  -- cursor itself (it's on screen all journey long): the game's "toggle UI
+  -- focus" or the triggers reach it, and B gives the cursor back (it never
+  -- ends the journey, as the x would).
+  ns.Pad.Window(f, { quiet = true, close = ns.Pad.LetGo })
   return f
 end
 

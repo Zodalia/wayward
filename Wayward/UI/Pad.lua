@@ -18,6 +18,7 @@ ns.Pad = Pad
 
 local windows = {}   -- each frame added, in order
 local joined = {}    -- frame -> true once the manager has been told it's open
+local quiet = {}     -- frame -> true while it's open without taking the cursor
 local waiting = false
 
 local function manager()
@@ -167,6 +168,31 @@ function Pad.RowCone() return ROW_CONE end
 
 ---------------------------------------------------------------- windows
 
+-- A quiet window joins as the game's popups do when nobody asked for them
+-- (skipGamepadAutoFocus): it's in the list the triggers step through, and
+-- "toggle UI focus" reaches it, but it never takes the cursor by itself.
+local function join(m, frame)
+  frame.skipGamepadAutoFocus = quiet[frame] or nil
+  return pcall(m.FrameShown, m, frame, quiet[frame] or nil)
+end
+
+-- Whether every window the manager has open, but `frame`, is a quiet one.
+local function onlyQuietLeft(m, frame)
+  local open = m.shownFrames
+  if type(open) ~= "table" then return false end
+  for _, other in ipairs(open) do
+    if other ~= frame and not quiet[other] then return false end
+  end
+  return true
+end
+
+local function leave(m, frame)
+  -- Closing a window with only quiet ones left gives the controller back to
+  -- the game, rather than the manager handing the cursor to one of those.
+  frame.returnToPlayerControl = onlyQuietLeft(m, frame) or nil
+  pcall(m.FrameHidden, m, frame)
+end
+
 -- Brings the manager's idea of one window in line with whether it's open.
 local function sync(frame)
   local m = manager()
@@ -180,14 +206,14 @@ local function sync(frame)
     return
   end
   if shown then
-    joined[frame] = pcall(m.FrameShown, m, frame) or nil
+    joined[frame] = join(m, frame) or nil
     if joined[frame] then
       listen()
       narrow(frame)
     end
   else
     joined[frame] = nil
-    pcall(m.FrameHidden, m, frame)
+    leave(m, frame)
   end
 end
 
@@ -197,26 +223,56 @@ local function syncAll()
 end
 
 -- Adds a window: the controller's cursor works in it while it's open, and B
--- closes it.
-function Pad.Window(frame)
+-- closes it. Options (`opts`, all optional):
+--   close: how B closes it, when that's more than hiding it (as with its own
+--          close button); otherwise B hides it.
+--   quiet: true, or a function asked each time it opens: it opens without
+--          taking the cursor (see join).
+-- Call it after the window's own OnShow and OnHide are set: setting one
+-- replaces our hook.
+function Pad.Window(frame, opts)
   if not frame then return end
   for _, known in ipairs(windows) do
     if known == frame then return end
   end
+  opts = opts or {}
   windows[#windows + 1] = frame
   -- What B does (the manager looks for this by name).
   frame.SmartNavigationCloseHandler = function(self)
-    self:Hide()
+    if opts.close then opts.close(self) else self:Hide() end
     return true
   end
-  frame:HookScript("OnShow", sync)
+  local function shown(self)
+    -- Decided as it opens, not when combat lets it join.
+    local q = opts.quiet
+    if type(q) == "function" then q = q(self) end
+    quiet[self] = q and true or nil
+    sync(self)
+  end
+  frame:HookScript("OnShow", shown)
   frame:HookScript("OnHide", sync)
-  if frame:IsShown() then sync(frame) end
+  if frame:IsShown() then shown(frame) end
+end
+
+-- Gives the cursor back without closing the window (B on the directions box):
+-- to the window that had it, or to the game. The window stays reachable,
+-- quietly.
+function Pad.LetGo(frame)
+  local m = manager()
+  if not (m and joined[frame]) or restricted() then return end
+  leave(m, frame)
+  quiet[frame] = true
+  joined[frame] = join(m, frame) or nil
 end
 
 -- Whether the controller's cursor has been given this window (for tests).
 function Pad.Joined(frame)
   return joined[frame] == true
+end
+
+-- Whether it's open without taking the cursor (for tests).
+function Pad.Quiet(frame)
+  return quiet[frame] == true
 end
 
 -- Whether a window is waiting for combat to end (for tests).

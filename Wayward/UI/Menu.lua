@@ -75,6 +75,9 @@ local function create()
   f:Hide()
   tinsert(UISpecialFrames, "WaywardMenu")
   f:SetScript("OnHide", function() if catcher then catcher:Hide() end end)
+  -- A controller's cursor moves through it on Forever (the game's own menu
+  -- looks after itself).
+  ns.Pad.Window(f, { close = hide })
   ns.Skin.Box(f)
   return f
 end
@@ -117,12 +120,17 @@ function Menu.Show(owner, items)
   currentOwner = owner
   catcher:Show()
   frame:Show()
+  -- Rows made while it was already open.
+  ns.Pad.Refresh(frame)
 end
 
 function Menu.Hide() hide() end
 
 -- Whether our own box is showing (the game's menu looks after itself).
 function Menu.IsShown() return frame ~= nil and frame:IsShown() end
+
+-- Our own box, if it has been made (for tests).
+function Menu.Frame() return frame end
 
 -- The items last shown, as their labels; and picking one (for tests).
 function Menu.Labels()

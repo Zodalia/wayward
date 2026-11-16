@@ -442,6 +442,8 @@ local function create()
   f.more:SetPoint("BOTTOMLEFT", 12, 8)
   ns.Skin.Text(f.more)
   ns.Skin.Box(f)
+  -- A controller's cursor moves through it on Forever.
+  ns.Pad.Window(f)
   f:Hide()
   return f
 end

@@ -38,6 +38,7 @@ local function create()
   f.edit:SetWidth(450)
   f.edit:SetScript("OnEscapePressed", function() f:Hide() end)
   scroll:SetScrollChild(f.edit)
+  ns.Pad.Window(f)
   ns.Skin.Window(f)
   return f
 end

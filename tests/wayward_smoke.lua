@@ -570,9 +570,11 @@ do
   -- No controller interface (Classic Era, or a keyboard): nothing is told.
   ns.Panel.Hide()
   local told = {}
+  -- Counting the main window only (the directions box joins too, quietly).
+  local function isPanel(f) return f ~= ns.HUD.Frame() end
   GamepadMode = { FrameControlsManager = {
-    FrameShown = function(_, f) told[#told + 1] = "shown"; panel = f end,
-    FrameHidden = function(_, f) told[#told + 1] = "hidden" end,
+    FrameShown = function(_, f) if isPanel(f) then told[#told + 1] = "shown"; panel = f end end,
+    FrameHidden = function(_, f) if isPanel(f) then told[#told + 1] = "hidden" end end,
   } }
   local padOn = false
   InputUtil = { IsGamepadUIEnabled = function() return padOn end }
@@ -9283,6 +9285,68 @@ do
   check(ns.Drawer.IsShown() and offerOf("Dust Devils"), "which opens the pane")
   ov.onTheWay.scripts.OnClick(ov.onTheWay)
   check(ns.Drawer.IsShown(), "and leaves it open when it's open already")
+
+  -- With a controller, the overview, the pane and our menu take the cursor
+  -- too; B on the pane closes it as its close button does.
+  do
+    local joinedNow, popups = {}, {}
+    local manager = { shownFrames = {} }
+    manager.FrameShown = function(_, f, isPopup)
+      joinedNow[f] = true
+      popups[f] = isPopup and f.skipGamepadAutoFocus or nil
+      table.insert(manager.shownFrames, f)
+    end
+    manager.FrameHidden = function(_, f)
+      joinedNow[f], popups[f] = nil, nil
+      for i, g in ipairs(manager.shownFrames) do
+        if g == f then table.remove(manager.shownFrames, i) break end
+      end
+    end
+    GamepadMode = { FrameControlsManager = manager }
+    InputUtil = { IsGamepadUIEnabled = function() return true end }
+    local pane = ns.Drawer.Frame()
+    ns.Drawer.Hide()
+    ov:Hide()
+    ns.JourneyOverview.Show()
+    ns.Drawer.Show()
+    check(joinedNow[ov] and joinedNow[pane] and ns.Pad.Joined(ov) and ns.Pad.Joined(pane),
+      "with a controller, the overview and On the way take the cursor")
+    pane:SmartNavigationCloseHandler()
+    check(not ns.Drawer.IsShown() and not ns.Drawer.Open() and not joinedNow[pane],
+      "B closes On the way, and it stays closed for the next journey")
+    ns.Menu.Show(ov, { { text = "One" }, { text = "Two" } })
+    local box = ns.Menu.IsShown() and ns.Menu.Frame()
+    check(box and joinedNow[box], "our own menu takes it while open")
+    box:SmartNavigationCloseHandler()
+    check(not ns.Menu.IsShown() and not joinedNow[box], "and B closes it")
+    ov:Hide()
+    check(not joinedNow[ov], "closing the overview lets the cursor go")
+    -- The directions box: there to go to, but it never takes the cursor.
+    local hud = ns.HUD.Frame()
+    hud:Hide()
+    hud:Show()
+    check(joinedNow[hud] and popups[hud] and ns.Pad.Quiet(hud),
+      "the directions box joins without taking the cursor")
+    hud:SmartNavigationCloseHandler()
+    check(hud:IsShown() and ns.Nav.active and joinedNow[hud] and popups[hud],
+      "B on the box gives the cursor back; the box and the journey stay")
+    ns.JourneyOverview.Show()
+    check(joinedNow[ov] and not popups[ov], "the overview, opened by you, still takes it")
+    ov:Hide()
+    check(ov.returnToPlayerControl, "closed with only the box left, the controller goes back to the game")
+    -- On the way, back by itself because you left it open: quiet too.
+    ns.Drawer.Show()
+    check(joinedNow[pane] and not popups[pane], "On the way, opened by you, takes the cursor")
+    ns.Drawer.Hide(true)
+    ns.Drawer.Sync()
+    check(ns.Drawer.IsShown() and joinedNow[pane] and popups[pane],
+      "back by itself, it doesn't take the cursor")
+    ns.Drawer.Hide(true)
+    hud:Hide()
+    GamepadMode, InputUtil = nil, nil
+    hud:Show()
+    ns.Drawer.Show()
+  end
 
   -- A new suggestion while you're on a journey: a row here, not a toast.
   local mines = { id = "dungeonTestMines", kind = "dungeon", title = "Run The Test Mines",

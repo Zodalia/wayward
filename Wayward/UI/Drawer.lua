@@ -129,6 +129,8 @@ local function row(parent, i)
   return r
 end
 
+local byItself = false -- opening again because you left it open, not asked
+
 local function create()
   local f = ns.Skin.CreateBox("WaywardErrandPicker")
   f:SetWidth(WIDTH)
@@ -187,6 +189,10 @@ local function create()
   f.empty:SetWordWrap(true)
   for _, fs in ipairs({ f.title, f.heading, f.empty }) do ns.Skin.Text(fs) end
   ns.Skin.Box(f)
+  -- A controller's cursor moves through it on Forever; B closes it as its
+  -- close button does (so it stays closed for the next journey). Back by
+  -- itself with a journey, it doesn't take the cursor from what you're doing.
+  ns.Pad.Window(f, { close = function() Drawer.Hide() end, quiet = function() return byItself end })
   f:Hide()
   return f
 end
@@ -356,7 +362,9 @@ function Drawer.Sync()
     Drawer.Refresh()
   elseif Drawer.Open() then
     selected = nil
+    byItself = true
     show()
+    byItself = false
   end
 end
 
