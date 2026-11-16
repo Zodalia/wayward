@@ -848,8 +848,14 @@ local function create()
     Panel.FitToScreen()
     Panel.Refresh()
   end)
-  -- A controller's cursor moves through it on Forever.
+  -- A controller's cursor moves through it on Forever, and scrolls the list
+  -- pane (the d-pad off its first or last row, or the right stick).
   ns.Pad.Window(f)
+  ns.Pad.List(f, {
+    rows = function() return side and side.rows end,
+    at = function() return Panel.ListAt() end,
+    scroll = function(delta) Panel.Scroll(delta) end,
+  })
   ns.Skin.Window(f)
   -- New frames start shown; hide so the first Toggle opens rather than closes.
   f:Hide()
@@ -944,6 +950,13 @@ local function paint()
   else
     side.position:SetText("")
   end
+end
+
+-- Lines scrolled past at the top of the list pane, and the most there can
+-- be (none while the home screen shows).
+function Panel.ListAt()
+  if not (side and side:IsShown()) then return 0, 0 end
+  return offset, math.max(0, #(side.results or {}) - MAX_ROWS)
 end
 
 local cardKey

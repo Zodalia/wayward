@@ -651,6 +651,76 @@ do
   target = nil
   edges.HitRightEdge()
   check(target == nil, "nothing to the right: the cursor stays")
+  -- Lists: three rows shown of eight lines (five more to scroll), a button
+  -- above the list and one below.
+  do
+    local win = CreateFrame("Frame", nil, UIParent)
+    local function spot(kind, y, parent, kids)
+      local f = newObj()
+      rawset(f, "IsObjectType", function(_, t) return t == kind end)
+      rawset(f, "IsVisible", function() return true end)
+      rawset(f, "IsShown", function() return true end)
+      rawset(f, "GetScaledRect", function() return 90, y - 5, 20, 10 end)
+      rawset(f, "GetParent", function() return parent end)
+      rawset(f, "GetChildren", function() return (unpack or table.unpack)(kids or {}) end)
+      return f
+    end
+    local rows, buttons = {}, {}
+    for i = 1, 3 do
+      rows[i] = spot("Frame", 300 - (i - 1) * 30, win, {})
+      buttons[i] = spot("Button", 300 - (i - 1) * 30, rows[i])
+      rawset(rows[i], "GetChildren", function() return buttons[i] end)
+    end
+    local above, below = spot("Button", 340, win), spot("Button", 200, win)
+    rawset(win, "GetChildren", function() return rows[1], rows[2], rows[3], above, below end)
+    local offset = 0
+    ns.Pad.List(win, {
+      rows = function() return rows end,
+      at = function() return offset, 5 end,
+      scroll = function(delta) offset = math.max(0, math.min(5, offset - delta)) end,
+    })
+    ns.Pad.Window(win)
+    win:Hide()
+    win:Show()
+    local current, landed, stickFor
+    SmartNavigation.GetCurrentButton = function() return current end
+    SmartNavigation.SetTargetButtonForFrame = function(_, window, f) landed = window == win and f or "wrong window" end
+    SmartNavigation.SetScrollFrameForFrame = function(_, window, s) stickFor = window == win and s end
+    local function go(f)
+      current = f
+      edges.SelectedButtonUpdated()
+    end
+    check(type(edges.SelectedButtonUpdated) == "function" and type(edges.HitBottomEdge) == "function",
+      "it hears the cursor move, and reach the bottom")
+    go(buttons[3])
+    check(stickFor and stickFor == ns.Pad.Stick(win), "landing in the window hands the right stick its list")
+    go(below)
+    check(offset == 1 and landed == buttons[3], "down off the last row shown: the list scrolls a line, the cursor stays on that row")
+    current = buttons[3]
+    go(buttons[2])
+    go(buttons[1])
+    landed = nil
+    go(above)
+    check(offset == 0 and landed == buttons[1], "up off the first row: back a line, the cursor on the first row")
+    current = buttons[1]
+    landed = nil
+    go(above)
+    check(offset == 0 and landed == nil, "at the top, up leaves the list as before")
+    go(buttons[3])
+    edges.HitBottomEdge()
+    check(offset == 1, "with nothing below the list, down from its last row still scrolls")
+    offset = 5
+    landed = nil
+    go(below)
+    check(offset == 5 and landed == nil, "at the end, down leaves the list as before")
+    local s = ns.Pad.Stick(win)
+    offset = 1
+    check(s.isScrollingMessageFrame and s:GetMaxScrollRange() == 5 and s:GetScrollOffset() == 4,
+      "the right stick's stand-in counts from the bottom, as a chat window does")
+    s:ScrollByAmount(1)
+    check(offset == 0, "and pushing up scrolls the list up")
+    win:Hide()
+  end
   rawset(panel, "GetChildren", nil)
   SmartNavigation, SmartNavigation_SetDirectionBufferThreshold, SMART_NAV_INPUT_DIRECTION = nil, nil, nil
   GamepadMode, InputUtil, C_RestrictedActions = nil, nil, nil

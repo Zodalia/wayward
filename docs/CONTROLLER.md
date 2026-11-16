@@ -51,9 +51,23 @@ Source: `BlizzardInterfaceCode/Interface/AddOns/Blizzard_GamepadSmartNavigation/
 - **Is the controller in use?** `InputUtil.IsGamepadUIEnabled()`, which
   reads `C_InputInterfaceStyle.GetCurrentStyle()`. It follows the device
   last used.
+- **Scrolling.** The right stick scrolls the window's "current scroll
+  frame" (`SmartNavigation:SetScrollFrameForFrame`, which needs the window
+  to have had the cursor). It knows three kinds: a ScrollFrame, a ScrollBox,
+  and anything with `isScrollingMessageFrame` (chat), which it moves by
+  whole lines through `GetMaxScrollRange`, `GetScrollOffset` (counting up
+  from the bottom) and `ScrollByAmount`, at
+  `smartNavRightStickMaxScrollSpeed` lines a second if set. The d-pad only
+  scrolls buttons it found inside a ScrollFrame or ScrollBox.
 - **Events.** None for addons to register. `SmartNavigation` is a callback
   registry: `HitLeftEdge`, `HitRightEdge`, `HitTopEdge`, `HitBottomEdge`,
-  `FocusedFrame`, `UnfocusedFrame`, `SelectedButtonUpdated`.
+  `FocusedFrame`, `UnfocusedFrame`, `SelectedButtonUpdated` (no arguments;
+  read `GetCurrentButton`). `FocusedFrame` and `UnfocusedFrame` are declared
+  but never fired.
+- **Per-button overrides** (`SmartNavigation_AddJumpNavigationOverride`,
+  including "ignore this direction") set by an addon are tainted, and the
+  game refuses every navigation through one in combat with the "interface
+  action blocked" message, whatever it holds. We use the callbacks instead.
 
 ### What addons may call, and when
 
@@ -73,8 +87,10 @@ Allowed outside combat: `FrameShown`, `FrameHidden`,
 Never for addons (they check for secure code and refuse): `SelectButton`,
 `SetActiveFrame`, `Navigate`, `ActivateBinding`.
 
-A jump override given as a *function* is refused in combat each time it is
-used; one given as a *frame* is not.
+Jump overrides set by an addon are refused in combat each time one is used,
+whether a function or a frame: the value keeps the addon's taint
+(`SecureHelper:SetSecureValue`), and the game checks `issecure()` after
+reading it.
 
 ## What is built
 
@@ -116,6 +132,16 @@ used; one given as a *frame* is not.
   so the rail is one press left of every row.
 - `Pad.Refresh(frame)` gives buttons made since the last look their cone;
   `Panel.Refresh` calls it.
+- **Lists.** `Pad.List(window, { rows, at, scroll })` hands a window's list
+  to the controller: the main window's list pane and the journey overview's
+  stops. When the cursor moves down off the last row shown into something
+  below the list (or there is nothing below: `HitBottomEdge`), and the list
+  has more, it scrolls one line and the cursor goes back onto that row, on
+  the same button if it still shows. The same going up off the first row.
+  The right stick moves a stand-in that looks like a chat window to the game
+  (8 lines a second at full tilt, `STICK_SPEED`), handed over each time the
+  cursor lands in the window. In combat neither scrolls (the calls would be
+  refused); the cursor then leaves the list as it would without this.
 - With a keyboard, or on Classic Era, none of it does anything.
 
 Covered in `tests/wayward_smoke.lua` under "controller".
@@ -140,6 +166,12 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
   edge of another window, at the cost of not reaching it with nothing else
   open.
 - B on the box in combat does nothing (the manager refuses us then).
+- List scrolling: the d-pad off a list's end, and the right stick (its
+  direction, and whether 8 lines a second feels right). After a scroll the
+  cursor stays on a row that now shows another line: its tooltip may still
+  show the old one until the cursor moves.
+- The main window's home screen cards don't scroll with the stick (they
+  step with the mouse wheel); the d-pad reaches them as buttons anyway.
 - The row fix (cone and row-end jump). The two numbers are first guesses.
 - A pressing a button, and B closing the window.
 - Switching page or category with the cursor on a button that goes away.
@@ -153,9 +185,7 @@ rail, cards and lists, tooltips show as it lands, and labels with tooltips
 1. ~~The other windows~~: done (see above), to try in game.
 2. ~~The directions box~~: done, it never takes the cursor (decided
    2026-11-16), to try in game.
-3. **Lists.** `SmartNavigation:SetScrollFrameForFrame` turns on right-stick
-   scrolling. Wayward's lists reuse a fixed set of rows and move an offset,
-   so the cursor reaching the last row needs to scroll the list itself.
+3. ~~Lists~~: done (see above), to try in game.
 4. **Picking up the controller with a window already open.** Nothing tells
    us the style changed, so the cursor appears only when the window is next
    opened.

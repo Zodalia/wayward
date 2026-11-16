@@ -148,6 +148,133 @@ local function offRow(side)
   if pick and nav.SetTargetButtonForFrame then nav:SetTargetButtonForFrame(window, frames[pick]) end
 end
 
+---------------------------------------------------------------- lists
+
+-- Our lists draw a fixed set of rows and move an offset; the game only
+-- scrolls its own scroll frames. So we scroll them ourselves: the d-pad
+-- moving off the last row shown (or the first) scrolls one line and keeps
+-- the cursor on that row, and the right stick scrolls through a stand-in the
+-- game knows how to move (it takes it for a chat window, which also scrolls
+-- by whole lines).
+local lists = {}    -- window -> { rows = fn, at = fn, scroll = fn, stick = {} }
+local STICK_SPEED = 8 -- lines a second, the stick pushed all the way
+local previous      -- the button the cursor was on
+local moving = false -- we're moving the cursor ourselves
+
+local function inside(f, ancestor)
+  local hops = 0
+  while f and hops < 40 do
+    if f == ancestor then return true end
+    f = f.GetParent and f:GetParent()
+    hops = hops + 1
+  end
+  return false
+end
+
+local function visibleRows(list)
+  local out = {}
+  for _, row in ipairs(list.rows() or {}) do
+    if row.IsShown and row:IsShown() then out[#out + 1] = row end
+  end
+  return out
+end
+
+-- The button to land on in `row` after it scrolled: `prefer` if it still
+-- shows, else the first that does.
+local function landing(row, prefer)
+  if prefer and prefer.IsVisible and prefer:IsVisible() and inside(prefer, row) then return prefer end
+  if focusable(row) and row:IsVisible() then return row end
+  local found
+  each(row, function(child)
+    if not found and child.IsVisible and child:IsVisible() and focusable(child) then found = child end
+  end)
+  return found
+end
+
+-- Scrolls `list` one line `way` (1 down, -1 up) if it has more that way.
+local function step(list, way)
+  local at, max = list.at()
+  if not (at and max) then return false end
+  if way > 0 and at >= max or way < 0 and at <= 0 then return false end
+  list.scroll(-way)
+  return true
+end
+
+-- Puts the cursor (back) on `button` in `window`.
+local function land(window, button)
+  local nav = SmartNavigation
+  if not (button and nav and nav.SetTargetButtonForFrame) then return end
+  moving = true
+  pcall(nav.SetTargetButtonForFrame, nav, window, button)
+  moving = false
+  previous = button
+end
+
+-- The cursor went from `from` to `to`. Off the end of a list with more in
+-- it: scroll instead, and back onto that row.
+local function offList(from, to, way)
+  local window = from and windowOf(from)
+  local list = window and lists[window]
+  if not list then return end
+  local rows = visibleRows(list)
+  local edge = way > 0 and rows[#rows] or rows[1]
+  if not (edge and inside(from, edge)) then return end
+  if to then
+    -- Still in the list, or not past that edge: nothing to do.
+    for _, row in ipairs(rows) do
+      if inside(to, row) then return end
+    end
+    local a, b = centre(from), centre(to)
+    if not (a and b) or (way > 0 and b.y >= a.y) or (way < 0 and b.y <= a.y) then return end
+  end
+  if step(list, way) then land(window, landing(edge, from)) end
+end
+
+-- The stand-in for the right stick (see above). Its offset counts up from
+-- the bottom, as a chat window's does.
+local function stick(list)
+  if list.stick then return list.stick end
+  list.stick = {
+    isScrollingMessageFrame = true,
+    smartNavRightStickMaxScrollSpeed = STICK_SPEED,
+    IsObjectType = function() return false end,
+    GetMaxScrollRange = function()
+      local _, max = list.at()
+      return max or 0
+    end,
+    GetScrollOffset = function()
+      local at, max = list.at()
+      return (max or 0) - (at or 0)
+    end,
+    ScrollByAmount = function(_, amount) list.scroll(amount) end,
+  }
+  return list.stick
+end
+
+local function selected()
+  if moving then return end
+  local nav = SmartNavigation
+  local current = nav and nav.GetCurrentButton and nav:GetCurrentButton()
+  local from = previous
+  previous = current
+  if restricted() then return end
+  local window = current and windowOf(current)
+  local list = window and lists[window]
+  if list and nav.SetScrollFrameForFrame then pcall(nav.SetScrollFrameForFrame, nav, window, stick(list)) end
+  if from and current and from ~= current and windowOf(from) == window then
+    offList(from, current, 1)
+    if previous == current then offList(from, current, -1) end
+  end
+end
+
+-- Nothing at all below (or above) the cursor: scroll if it's on a list's edge.
+local function hitEdge(way)
+  if restricted() then return end
+  local nav = SmartNavigation
+  local current = nav and nav.GetCurrentButton and nav:GetCurrentButton()
+  if current then offList(current, nil, way) end
+end
+
 local listening = false
 
 local function listen()
@@ -156,6 +283,22 @@ local function listen()
   listening = true
   pcall(nav.RegisterCallback, nav, "HitLeftEdge", function() pcall(offRow, -1) end, Pad)
   pcall(nav.RegisterCallback, nav, "HitRightEdge", function() pcall(offRow, 1) end, Pad)
+  pcall(nav.RegisterCallback, nav, "HitBottomEdge", function() pcall(hitEdge, 1) end, Pad)
+  pcall(nav.RegisterCallback, nav, "HitTopEdge", function() pcall(hitEdge, -1) end, Pad)
+  pcall(nav.RegisterCallback, nav, "SelectedButtonUpdated", function() pcall(selected) end, Pad)
+end
+
+-- Gives a window's list to the controller. `list`:
+--   rows():  its row frames, top to bottom (the hidden ones are skipped)
+--   at():    lines scrolled past at the top, and the most there can be
+--   scroll(delta): moves it, positive going up (as the mouse wheel)
+function Pad.List(window, list)
+  if window and list then lists[window] = list end
+end
+
+-- The stand-in the right stick moves for a window's list (for tests).
+function Pad.Stick(window)
+  return lists[window] and stick(lists[window])
 end
 
 -- A window's contents changed: any new buttons keep to their rows too.

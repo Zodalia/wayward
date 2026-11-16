@@ -442,8 +442,14 @@ local function create()
   f.more:SetPoint("BOTTOMLEFT", 12, 8)
   ns.Skin.Text(f.more)
   ns.Skin.Box(f)
-  -- A controller's cursor moves through it on Forever.
+  -- A controller's cursor moves through it on Forever, and scrolls the
+  -- stops (the d-pad off the first or last shown, or the right stick).
   ns.Pad.Window(f)
+  ns.Pad.List(f, {
+    rows = function() return f.rows end,
+    at = function() return scroll, Overview.maxScroll or 0 end,
+    scroll = function(delta) Overview.Scroll(delta) end,
+  })
   f:Hide()
   return f
 end
