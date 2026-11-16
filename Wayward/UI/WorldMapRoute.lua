@@ -9,7 +9,8 @@ local _, ns = ...
 -- in full and the next two fade out, so the way ahead stands out; the
 -- whole journey is on the overview's map. Plain directions show too.
 -- The options or /ww worldmap turn it off. UI/MinimapRoute.lua draws the
--- same on the minimap.
+-- same on the minimap. With OpenMap's seamless map it's drawn over its art
+-- and on past the zone underneath.
 
 local WorldMapRoute = {}
 ns.WorldMapRoute = WorldMapRoute
@@ -41,23 +42,52 @@ local function remaining()
   return steps, fromHere and here or nil
 end
 
--- The map's own layers: over the explored terrain, under the game's pins
--- where the map says where they go.
+-- OpenMap (another addon) paints its own seamless map on the same canvas,
+-- in the levels just above the explored terrain, and shows the zones round
+-- the one underneath too (docs/api.md in OpenMap: OpenMapAPI).
+local function openMap()
+  local api = OpenMapAPI
+  return type(api) == "table" and api or nil
+end
+
+-- Whether OpenMap's seamless map is the one showing.
+local function stitched()
+  local api = openMap()
+  if not (api and type(api.IsStitched) == "function") then return false end
+  local ok, on = pcall(api.IsStitched)
+  return ok and on == true
+end
+
+-- The map's own layers: over the explored terrain (and over OpenMap's art,
+-- which it builds once the map first opens), under the game's pins where
+-- the map says where they go.
 local function frameLevel(canvas)
   local ok, level = pcall(function()
     return map:GetPinFrameLevelsManager():GetValidFrameLevel("PIN_FRAME_LEVEL_MAP_EXPLORATION")
   end)
-  if ok and type(level) == "number" then return level + 1 end
-  return (canvas:GetFrameLevel() or 0) + 1
+  level = (ok and type(level) == "number") and level + 1 or (canvas:GetFrameLevel() or 0) + 1
+  local api = openMap()
+  if api and type(api.ArtTopLevel) == "function" then
+    local got, top = pcall(api.ArtTopLevel)
+    if got and type(top) == "number" and top >= level then level = top + 1 end
+  end
+  return level
+end
+
+-- Puts the route on its layer, again when that moved (not in combat:
+-- PLAYER_REGEN_ENABLED tries again).
+local function layer(v, canvas)
+  local level = frameLevel(canvas)
+  if v.layer == level or (InCombatLockdown and InCombatLockdown()) then return end
+  v.layer = level
+  v.canvas:SetFrameLevel(level)
+  v.pins:SetFrameLevel(level + 2)
 end
 
 local function newView(canvas)
   local v = ns.RouteMap.NewView(canvas, canvas:GetWidth() or 1)
   v.canvas:ClearAllPoints()
   v.canvas:SetAllPoints(canvas)
-  local level = frameLevel(canvas)
-  v.canvas:SetFrameLevel(level)
-  v.pins:SetFrameLevel(level + 2)
   v.label:Hide()
   v.canvas:SetScript("OnUpdate", function(_, elapsed)
     since = since + (elapsed or 0)
@@ -90,6 +120,10 @@ function WorldMapRoute.Refresh()
     return nil
   end
   view = view or newView(canvas)
+  layer(view, canvas)
+  -- OpenMap's seamless map runs on past the map underneath, so the route does too.
+  local seamless = stitched()
+  if view.canvas.SetClipsChildren then view.canvas:SetClipsChildren(not seamless) end
   local points = { steps[1].from }
   for _, step in ipairs(steps) do points[#points + 1] = step.to end
   -- Where a node is on this map, even beyond its edges: legs are cut where
@@ -106,7 +140,7 @@ function WorldMapRoute.Refresh()
   if not (scale and scale > 0) then scale = 1 end
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
-    { size = SIZE / scale, clip = { w = w, h = h }, you = false, gap = from ~= nil,
+    { size = SIZE / scale, clip = not seamless and { w = w, h = h } or nil, you = false, gap = from ~= nil,
       alpha = WorldMapRoute.Alpha, limit = SHOWN_STEPS })
   drawnFrom = from
   since = 0
@@ -117,6 +151,11 @@ end
 -- What's drawn now (for tests): RouteMap.DrawRoute's stats, or nil.
 function WorldMapRoute.Stats()
   return view and view.canvas:IsShown() and view.stats or nil
+end
+
+-- The frame level the route is drawn at (for tests), or nil.
+function WorldMapRoute.Level()
+  return view and view.canvas:GetFrameLevel()
 end
 
 local function refreshIfOpen()
@@ -147,6 +186,7 @@ ns.On("PLAYER_LOGIN", WorldMapRoute.Hook)
 ns.On("ADDON_LOADED", function(name)
   if name == "Blizzard_WorldMap" then WorldMapRoute.Hook() end
 end)
+ns.On("PLAYER_REGEN_ENABLED", refreshIfOpen)
 ns.Listen("NAV_CHANGED", refreshIfOpen)
 ns.Listen("JOURNEY_EXTENDED", refreshIfOpen)
 ns.Listen("SETTINGS_CHANGED", function(key) if key == "worldMapRoute" then refreshIfOpen() end end)

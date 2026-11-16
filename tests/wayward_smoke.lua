@@ -6223,6 +6223,32 @@ do
   check(#ns.RouteMap.Rest(ns.Geo.PlayerNodeExact()) > 3 and s.marks <= 3,
     "a journey with more steps than that shows only their stops: " .. tostring(s.marks) .. " marked")
 
+  -- OpenMap paints its seamless map on the same canvas, above the explored
+  -- terrain; the route goes over it, and on past the map underneath.
+  local function outside(st)
+    for _, l in ipairs(st and st.legs or {}) do
+      for i = 1, 3, 2 do
+        if l[i] < -0.5 or l[i] > 1000.5 or l[i + 1] > 0.5 or l[i + 1] < -667.5 then return true end
+      end
+    end
+    return false
+  end
+  -- (Looking at the Wetlands: the steps drawn are all in Redridge, off its edges.)
+  shownMap = 1437
+  check(not outside(W.Refresh()), "on the game's own map the route is cut at its edges")
+  local stitchedNow = true
+  OpenMapAPI = { ArtTopLevel = function() return 900 end, IsStitched = function() return stitchedNow end }
+  shownMap = 1433
+  s = W.Refresh()
+  check(s and s.lines >= 1, "with OpenMap the route is still drawn")
+  check((W.Level() or 0) > 900, "over OpenMap's map art: level " .. tostring(W.Level()))
+  shownMap = 1437
+  check(outside(W.Refresh()), "on OpenMap's seamless map the route runs on past the map underneath")
+  stitchedNow = false
+  check(not outside(W.Refresh()), "OpenMap showing the game's map: cut at its edges again")
+  OpenMapAPI, shownMap = nil, 1433
+  W.Refresh()
+
   ns.Nav.Stop()
   check(W.Stats() == nil, "the journey ended: it's gone from the map")
   WorldMapFrame:Hide()
