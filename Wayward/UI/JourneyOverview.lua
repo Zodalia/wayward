@@ -1,7 +1,7 @@
 local _, ns = ...
 
--- The whole journey at a glance (View details): every stop with done / now /
--- next, opened from the directions box (View details) and when a journey
+-- The whole journey at a glance (View Journey): every stop with done / now /
+-- next, opened from the directions box (View Journey) and when a journey
 -- with several stops starts.
 -- At the top, a walkthrough: the selected stop and one of its steps, with
 -- < and > to go back and forth along the steps, stop after stop (done ones
@@ -25,7 +25,8 @@ local _, ns = ...
 -- Finished stops fold into one line you can open;
 -- they fold by themselves once there are AUTO_FOLD of them, or when showing
 -- them would push open stops off the list.
--- Under the stops: detours on the way (OnTheWay.lua), the journeys you set
+-- Under the stops: an On the way button that opens that pane (UI/Drawer.lua:
+-- what's around you to add, and a stop of your own), the journeys you set
 -- aside (Nav.SetAside) with Resume and Forget, and a map of the rest under
 -- a "Map" line that folds it (per character).
 -- "Set aside" at the top sets the journey on now aside. With no journey on,
@@ -37,8 +38,9 @@ ns.JourneyOverview = Overview
 local MAX_ROWS = 10        -- the list is this many stop rows tall
 local ROW_HEIGHT = 30
 local POOL = MAX_ROWS      -- rows drawn at most
-local SUGGESTIONS = 4      -- "Detours on the way" rows
-local SUGGEST_HEIGHT = 18
+local SUGGEST_HEIGHT = 18  -- a set-aside row
+local WAY_WIDTH = 96       -- the On the way button
+local WAY_HEIGHT = 20
 local SET_ASIDE = 5        -- set-aside journey rows (Nav keeps that many)
 local HANDLE_WIDTH = 16
 local NUMBER_WIDTH = 16    -- the stop's map number, before its name
@@ -361,29 +363,26 @@ local function create()
   f.marker:SetColorTexture(1, 0.82, 0, 0.9)
   f.marker:Hide()
 
-  -- Detours on the way: things to add that cost little (OnTheWay.lua).
-  f.suggestHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  f.suggestHeader:SetJustifyH("LEFT")
-  f.suggest = {}
-  for i = 1, SUGGESTIONS do
-    local row = CreateFrame("Frame", nil, f)
-    row:SetSize(356, SUGGEST_HEIGHT)
-    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.text:SetPoint("LEFT", 4, 0)
-    row.text:SetPoint("RIGHT", -56, 0)
-    row.text:SetJustifyH("LEFT")
-    row.text:SetWordWrap(false)
-    row.add = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.add:SetSize(50, 16)
-    row.add:SetPoint("RIGHT", 0, 0)
-    row.add:SetText("+ Add")
-    row.add:SetScript("OnClick", function() if row.suggestion then ns.Wayside.Add(row.suggestion) end end)
-    ns.Skin.Button(row.add)
-    ns.Skin.Text(row.text)
-    row:Hide()
-    f.suggest[i] = row
-  end
-  ns.Skin.Text(f.suggestHeader)
+  -- What's around you to add, and a stop of your own: in the On the way
+  -- pane (UI/Drawer.lua), a click away rather than listed here.
+  f.onTheWay = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.onTheWay:SetSize(WAY_WIDTH, WAY_HEIGHT)
+  f.onTheWay:SetText("On the way")
+  -- Opens it, or brings it to the front when it's open already.
+  f.onTheWay:SetScript("OnClick", function()
+    local pane = ns.Drawer.IsShown() and ns.Drawer.Frame()
+    if not pane then ns.Drawer.Toggle() elseif pane.Raise then pane:Raise() end
+  end)
+  f.onTheWay:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("On the way")
+    GameTooltip:AddLine("What's around you that you could add, and a detour of your own: repair, vendor, mailbox, "
+      .. "bank...", 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+  end)
+  f.onTheWay:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(f.onTheWay)
+  f.onTheWay:Hide()
   -- Journeys set aside: resume one (the journey on now is set aside in its place), or forget it.
   f.asideHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   f.asideHeader:SetJustifyH("LEFT")
@@ -919,8 +918,7 @@ function Overview.RefreshSetAside()
   frame.setAside:Hide()
   frame.walk:Hide()
   for _, row in ipairs(frame.rows) do row:Hide() end
-  frame.suggestHeader:Hide()
-  for _, row in ipairs(frame.suggest) do row:Hide() end
+  frame.onTheWay:Hide()
   frame.map.canvas:Hide()
   frame.mapHeader:Hide()
   frame.marker:Hide()
@@ -1034,31 +1032,13 @@ function Overview.Refresh()
     scroll > 0 and (scroll .. " above") or "", below > 0 and ((scroll > 0 and ", " or "") .. below .. " below") or "") or "")
   Overview.scrolled, Overview.shownLines = scroll, shown
 
-  -- Under the stops: detours on the way, the journeys set aside, then the
-  -- map. A scrolling list keeps its full height.
+  -- Under the stops: the On the way button, the journeys set aside, then
+  -- the map. A scrolling list keeps its full height.
   local y = top - (maxScroll > 0 and room or used) - 10
-  -- The same offers as the directions box's drawer (Wayside.lua), so the two never disagree.
-  local list = ns.Wayside and ns.Wayside.Get(true).offers or {}
-  frame.suggestHeader:ClearAllPoints()
-  frame.suggestHeader:SetPoint("TOPLEFT", 12, y)
-  frame.suggestHeader:SetShown(#list > 0)
-  if #list > 0 then
-    frame.suggestHeader:SetText("On the way: you could add")
-    y = y - 16
-  end
-  for i, row in ipairs(frame.suggest) do
-    local s = list[i]
-    row.suggestion = s
-    if s then
-      row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", 12, y)
-      row.text:SetText(string.format("%s  |cff9d9d9d%s|r", s.text, s.right or ""))
-      row:Show()
-      y = y - SUGGEST_HEIGHT
-    else
-      row:Hide()
-    end
-  end
+  frame.onTheWay:ClearAllPoints()
+  frame.onTheWay:SetPoint("TOPLEFT", 12, y)
+  frame.onTheWay:Show()
+  y = y - WAY_HEIGHT - 6
   y = Overview.LayoutSetAside(y, true)
   local mapHeight
   frame.mapHeader:ClearAllPoints()
@@ -1197,7 +1177,7 @@ ns.Movers.Add({ key = "Journey", label = "Journey", posKey = "overviewPos", home
   frame = Overview.EnsureFrame })
 
 -- A new journey folds by the rule again. It opens the overview only when the
--- options say so (off by default: View details on the directions box opens it any time).
+-- options say so (off by default: View Journey on the directions box opens it any time).
 ns.Listen("JOURNEY_STARTED", function()
   unfolded = nil
   scroll = 0
@@ -1209,7 +1189,7 @@ ns.Listen("JOURNEY_STARTED", function()
   end
 end)
 -- Stops added to the journey: shown if it's open, without opening it (the
--- directions box's View details pulses instead).
+-- directions box's View Journey pulses instead).
 ns.Listen("JOURNEY_EXTENDED", Overview.Refresh)
 ns.Listen("NAV_CHANGED", Overview.Refresh)
 ns.Listen("JOURNEYS_CHANGED", Overview.Refresh)

@@ -3,13 +3,12 @@ local _, ns = ...
 -- Directions box shown while navigating: current step, distance, and our own
 -- compass (an arrow in a circle; /ww compass or the options turn it off, and
 -- the box gets narrower). Along the bottom, two labelled actions: "On the
--- way" opens the drawer (UI/Drawer.lua) with what you could add and a stop of
--- your own (repair, mail, ...), and carries a count of the offers while it's
--- closed; "View details" opens the journey overview. Top right on a journey:
--- Do this stop later (the one you reach for while playing, so it stays a
--- button) and a "..." menu (UI/Menu.lua) for Skip this stop, Set journey
--- aside and End journey. No x on a journey: it would only ask what the menu
--- already offers. Plain directions and the small bar keep theirs.
+-- way" opens its own pane (UI/Drawer.lua) with what's around you to add and
+-- a stop of your own (repair, mail, ...), and carries a count of what's
+-- nearby while that's closed; "View Journey" opens the journey overview.
+-- Top right on a journey, a button each: Skip this stop, Do this stop later
+-- and End journey (the x). Setting the journey aside is the overview's.
+-- Plain directions and the small bar have the x only.
 -- Above the box, a section of its own: "Gathering as you go", what the
 -- journey takes in on the way, shown whenever there's something.
 -- Blizzard's on-screen navigation is off by default in Forever
@@ -35,7 +34,7 @@ local CIRCLE = 42
 local TEXT_LEFT = PADDING + CIRCLE + 10
 local FOOTER = 20          -- the row of labelled actions along the bottom
 local FOOTER_GAP = 6       -- between the last line and that row's rule
-local WAY_WIDTH, DETAILS_WIDTH = 86, 78
+local WAY_WIDTH, DETAILS_WIDTH = 86, 84
 local WAY_LABEL = "+ On the way"
 local HOME = { "TOP", "TOP", 0, -140 }
 local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the journey gains stops
@@ -174,31 +173,27 @@ local function create()
   if f.icon.SetMask then pcall(f.icon.SetMask, f.icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   f.icon:Hide()
 
-  -- Top right on a journey: do this stop later and more actions. No
+  -- Top right on a journey: skip this stop, do it later, end the journey. No
   -- recalculate: the journey re-plans itself as you go (Navigator, liveCheck).
   f.close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   f.close:SetSize(24, 24)
   f.close:SetPoint("TOPRIGHT", -3, -3)
-  -- The x: stops plain directions, or hides the small bar (the options bring
-  -- it back). Hidden on a journey, where the menu has its place in the corner.
+  -- The x: ends the journey (asks first) or stops plain directions, or hides
+  -- the small bar (the options bring it back).
   f.close:SetScript("OnClick", function()
     if ns.Nav.active then ns.Nav.End() else HUD.HideIdle() end
   end)
   tooltip(f.close, "Stop directions")
   ns.Skin.CloseButton(f.close)
-  -- What you use now and then, or can't undo, behind one button.
-  f.menu = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  f.menu:SetSize(24, 22)
-  f.menu:SetText("...")
-  f.menu:SetPoint("TOPRIGHT", -5, -4)
-  f.menu:SetScript("OnClick", function(self) ns.Menu.Show(self, HUD.MenuItems()) end)
-  tooltip(f.menu, "More: skip this stop, set the journey aside, end it")
-  ns.Skin.Button(f.menu)
   f.moveOn = squareButton(f, "RIGHT", nil, ">>", function() ns.Nav.MoveOn() end, "Do this stop later")
   fastForward(f.moveOn)
-  f.moveOn:SetPoint("RIGHT", f.menu, "LEFT", -2, 0)
+  f.moveOn:SetPoint("RIGHT", f.close, "LEFT", -2, 0)
+  -- Asks first: the stops that need it go with it.
+  f.skip = squareButton(f, nil, "Interface\\Buttons\\UI-GroupLoot-Pass-Up", "x", function() ns.Nav.Skip() end,
+    "Skip this stop")
+  f.skip:SetPoint("RIGHT", f.moveOn, "LEFT", -2, 0)
 
-  -- Along the bottom, under a faint rule: what's on the way (UI/Drawer.lua)
+  -- Along the bottom, under a faint rule: what's around you (UI/Drawer.lua)
   -- and the journey overview, as words rather than icons. The rule is on its
   -- own frame: skins fade every texture of the box itself.
   f.footRule = CreateFrame("Frame", nil, f)
@@ -208,7 +203,7 @@ local function create()
   local rule = f.footRule:CreateTexture(nil, "ARTWORK")
   rule:SetAllPoints()
   rule:SetColorTexture(1, 1, 1, 0.12)
-  -- Closed, On the way says how many offers there are; nothing else asks for a look.
+  -- With its pane closed, On the way says how many things are nearby; nothing else asks for a look.
   f.add = ns.Skin.LinkButton(f, WAY_WIDTH, WAY_LABEL, function() ns.Drawer.Toggle() end)
   f.add:SetPoint("BOTTOMLEFT", PADDING - 2, 6)
   f.add:SetScript("OnEnter", function(self)
@@ -216,7 +211,7 @@ local function create()
     GameTooltip:SetText("On the way")
     local n = frame and frame.waysideCount or 0
     if n > 0 then
-      GameTooltip:AddLine(string.format("%d thing%s you could add on the way.", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
+      GameTooltip:AddLine(string.format("%d thing%s around you that you could add.", n, n == 1 and "" or "s"), 0.6, 0.6, 0.6, true)
     end
     GameTooltip:AddLine("And a detour of your own: repair, vendor, mailbox, bank...", 0.6, 0.6, 0.6, true)
     GameTooltip:Show()
@@ -224,10 +219,10 @@ local function create()
   f.add:SetScript("OnLeave", function() GameTooltip:Hide() end)
   f.add.count = f.add:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
   f.add.count:SetPoint("LEFT", f.add, "RIGHT", 2, 0)
-  f.list = ns.Skin.LinkButton(f, DETAILS_WIDTH, "View details", function() ns.JourneyOverview.Toggle() end)
+  f.list = ns.Skin.LinkButton(f, DETAILS_WIDTH, "View Journey", function() ns.JourneyOverview.Toggle() end)
   f.list:SetPoint("BOTTOMRIGHT", -(PADDING - 2), 6)
-  tooltip(f.list, "View details")
-  -- A glow behind View details, pulsed when the journey gains stops (HUD.FlashJourney).
+  tooltip(f.list, "View Journey")
+  -- A glow behind View Journey, pulsed when the journey gains stops (HUD.FlashJourney).
   f.listGlow = f.list:CreateTexture(nil, "BACKGROUND")
   f.listGlow:SetColorTexture(1, 0.82, 0, 0.3)
   f.listGlow:SetAllPoints()
@@ -382,7 +377,7 @@ local function create()
   f.info:SetJustifyH("LEFT")
   for _, fs in ipairs({ f.title, f.stopCount, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
   -- What the small bar hides; HUD.Update shows them again as each needs.
-  f.journeyParts = { f.holder, f.title, f.stopCount, f.progress, f.step, f.sub, f.objectives, f.info, f.list, f.moveOn, f.menu,
+  f.journeyParts = { f.holder, f.title, f.stopCount, f.progress, f.step, f.sub, f.objectives, f.info, f.list, f.moveOn, f.skip,
     f.add, f.footRule, f.gathering, f.otherArea }
 
   local elapsed = 0
@@ -478,7 +473,7 @@ local function place(trip)
   frame.step:SetPoint("TOPLEFT", trip and frame.stopCount or frame.title, "BOTTOMLEFT", 0, trip and -6 or -5)
   frame.step:SetPoint("RIGHT", -PADDING, 0)
   -- The title stops short of the buttons.
-  local leftmost = trip and frame.moveOn or frame.close
+  local leftmost = trip and frame.skip or frame.close
   frame.title:SetPoint("RIGHT", leftmost, "LEFT", -6, 0)
 end
 
@@ -505,9 +500,9 @@ local function showGathering(rows)
 end
 
 -- Looks again at what's on the way (every WAYSIDE_EVERY seconds, or now
--- when `force`): Gathering as you go above the box, the count of offers on
--- the + button while the drawer is closed, and the drawer itself while it's
--- open (or when you left it open).
+-- when `force`): Gathering as you go above the box, the count of what's
+-- nearby on On the way while its pane is closed, and the pane itself while
+-- it's open (or when you left it open).
 local function refreshWayside(force)
   local now = GetTime and GetTime()
   if not force and now and frame.waysideAt and now - frame.waysideAt < WAYSIDE_EVERY then return end
@@ -541,27 +536,6 @@ function HUD.Gathering()
     if r:IsShown() then rows[#rows + 1] = r.text:GetText() end
   end
   return { shown = frame.gathering:IsShown(), heading = frame.gathering.heading:GetText(), rows = rows }
-end
-
--- What the drawer opens above when there's no room under the box: the
--- section above it when that shows, else the box.
-function HUD.Top()
-  if frame and frame.gathering:IsShown() then return frame.gathering end
-  return frame
-end
-
--- The "..." menu on a journey: what you use now and then, and what can't be
--- undone. Skip and End ask first; setting aside keeps the journey, so it doesn't.
-function HUD.MenuItems()
-  if not (ns.Nav.active and ns.Nav.active.journey) then return {} end
-  return {
-    { text = "Skip this stop", onClick = function() ns.Nav.Skip() end,
-      tip = "Takes this stop off the journey, with any stops that need it. Asks first." },
-    { text = "Set journey aside", onClick = function() ns.Nav.SetAside() end,
-      tip = "Keeps this journey to resume later, and ends directions for now." },
-    { text = "End journey", onClick = function() ns.Nav.End() end,
-      tip = "Ends this journey. Asks first: it can't be undone." },
-  }
 end
 
 -- The step and its count, for the tooltip when the box shows only the stop
@@ -689,8 +663,8 @@ function HUD.Update()
   local trip = a.journey ~= nil
   frame.list:SetShown(trip)
   frame.moveOn:SetShown(trip)
-  frame.menu:SetShown(trip)
-  frame.close:SetShown(not trip)
+  frame.skip:SetShown(trip)
+  frame.close:Show()
   frame.close.tip = trip and "End journey" or "Stop directions"
   refreshWayside()
   place(trip)
@@ -763,7 +737,7 @@ function HUD.Update()
   local aim = ns.Nav.Aim() or step.to
   local distance = here and ns.Geo.Distance(here, aim) or math.huge
   -- The time to the stop you're heading for; the whole journey's is in its
-  -- overview (View details). Plain directions: the time to get there.
+  -- overview (View Journey). Plain directions: the time to get there.
   local remaining = TIME_ICON .. " " .. (trip and (ns.FormatDuration(ns.Nav.SecondsToStop(here)) .. " to stop")
     or ns.FormatDuration(ns.Nav.RemainingSeconds(here)))
   -- At the stop already, "to stop" says nothing: those lines leave it off.
@@ -869,12 +843,12 @@ function HUD.Lines()
     frame.stopCount:IsShown() and frame.stopCount:GetText() or "" }
 end
 
--- Pulses View details a few times: the journey has changed, its overview is a click away.
+-- Pulses View Journey a few times: the journey has changed, its overview is a click away.
 function HUD.FlashJourney()
   if frame then frame.flashLeft = FLASH_PERIOD * FLASH_PULSES end
 end
 
--- Whether View details is pulsing (for tests).
+-- Whether View Journey is pulsing (for tests).
 function HUD.Flashing() return frame ~= nil and frame.flashLeft ~= nil end
 
 ns.Listen("SETTINGS_CHANGED", function(key)

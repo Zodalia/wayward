@@ -3399,7 +3399,36 @@ do
   local labels = {}
   for _, sug in ipairs(onTheWay) do labels[#labels + 1] = sug.kind .. ":" .. sug.label .. " +" .. math.floor(sug.extra) end
   check(#onTheWay > 0 and onTheWay[1].extra <= 180 and onTheWay[1].kind == "pickup",
-    "suggestions on the way, 3 min or less: " .. table.concat(labels, " | "))
+    "suggestions near you, 3 min or less from you: " .. table.concat(labels, " | "))
+  local sorted = true
+  for i = 2, #onTheWay do
+    if onTheWay[i].extra < onTheWay[i - 1].extra then sorted = false end
+  end
+  check(sorted, "nearest to you first")
+  local times, plusless = {}, false
+  for _, r in ipairs(ns.Wayside.Get(true).offers) do
+    if r.kind == "way" then
+      times[#times + 1] = r.right
+      plusless = (#times == 1 or plusless) and not r.right:find("+", 1, true) and r.right:find("min", 1, true) ~= nil
+    end
+  end
+  check(#times > 0 and plusless, "their times are the time to get there, with no +: " .. table.concat(times, ", "))
+  -- From where you are, not along the journey: the same journey, you far
+  -- from it, and what's by its stops isn't offered.
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1429, 0.1, 0.9
+  ns.Nav.StartJourney(ns.Journey.Plan(ns.Geo.PlayerNode(), { title = "Errands", stops = {
+    { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" },
+    { node = ns.Geo.Node(1433, 0.56, 0.5, "Second"), text = "Visit Second" } } }))
+  local far = {}
+  for _, sug in ipairs(ns.OnTheWay.Get()) do far[#far + 1] = sug.label end
+  check(#far == 0, "far from you, what's by the journey's stops isn't offered: " .. table.concat(far, " | "))
+  ns.Nav.Stop()
+  player.mapID, player.x, player.y = 1433, 0.5, 0.5
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Errands", stops = {
+    { node = ns.Geo.Node(1433, 0.53, 0.5, "First"), text = "Visit First" },
+    { node = ns.Geo.Node(1433, 0.56, 0.5, "Second"), text = "Visit Second" } } }))
+  onTheWay = ns.OnTheWay.Get()
   local firstQuest = onTheWay[1] and onTheWay[1].stops[1].action.questID
   check(firstQuest and ns.OnTheWay.Add(onTheWay[1]) and ns.Nav.TripHasQuest(firstQuest), "Add puts it in the trip")
   local still = false
@@ -3469,19 +3498,23 @@ do
   local hud = ns.HUD.Frame()
   check(hud.add and hud.add.scripts.OnClick, "the directions box has a + button")
 
-  -- Worn gear: it opens on repairs, least out of the way first, your side only.
+  -- Worn gear: it opens on repairs, nearest to you first, your side only.
   durability = { 10, 50 }
   hud.add.scripts.OnClick(hud.add)
   check(ns.ErrandPicker.IsShown() and ns.ErrandPicker.Selected() == "repair",
     "+ opens the list, on repairs with worn gear: " .. tostring(ns.ErrandPicker.Selected()))
   local repairs = ns.Errands.Get("repair")
-  check(repairs[1] and repairs[1].npc == "Redridge Smith", "the repairer by the trip comes first: " .. rowText())
+  check(repairs[1] and repairs[1].npc == "Redridge Smith", "the repairer nearest you comes first: " .. rowText())
   local sorted = true
   for i = 2, #repairs do
     if repairs[i].extra < repairs[i - 1].extra then sorted = false end
   end
-  check(sorted, "sorted by the time each adds to the trip")
-  check(ns.ErrandPicker.Rows()[1].time:find("^%+"), "each row says the time it adds: " .. rowText())
+  check(sorted, "sorted by the time to get there from you")
+  local plusless = #ns.ErrandPicker.Rows() > 0
+  for _, r in ipairs(ns.ErrandPicker.Rows()) do
+    if r.time:find("+", 1, true) or not r.time:find("min", 1, true) then plusless = false end
+  end
+  check(plusless, "each row says the time to get there, with no +: " .. rowText())
   durability = { 50, 50 }
 
   -- Kinds: a stable master only for hunters.
@@ -3548,8 +3581,16 @@ do
   ns.ErrandPicker.Toggle()
   check(not ns.ErrandPicker.IsShown() and not ns.Drawer.Open(), "the + closes it again, and it stays closed")
   ns.ErrandPicker.Toggle()
-  check(ns.ErrandPicker.IsShown() and ns.ErrandPicker.Selected() == nil and ns.Drawer.Headings()[1] == "On the way",
-    "opened again: on what's on the way")
+  check(ns.ErrandPicker.IsShown() and ns.ErrandPicker.Selected() == nil and ns.Drawer.Headings()[1] == "On the way"
+    and ns.Drawer.Headings()[2]:find("^Nearby"), "opened again: on Nearby")
+  local tabs = ns.Drawer.Tabs()
+  check(tabs[1] and tabs[1].label == "Nearby" and tabs[1].selected and tabs[2].label == "Repair" and not tabs[2].selected,
+    "Nearby is a tab of its own, first, beside the kinds of stop")
+  ns.ErrandPicker.Select("repair")
+  ns.Drawer.Frame().chips[2].scripts.OnClick(ns.Drawer.Frame().chips[2])
+  check(ns.ErrandPicker.Selected() == "repair", "a kind's tab clicked again stays on it")
+  ns.Drawer.Frame().chips[1].scripts.OnClick(ns.Drawer.Frame().chips[1])
+  check(ns.ErrandPicker.Selected() == nil, "the Nearby tab goes back to what's around you")
 
   -- A mailbox stop: an object, done when you get there.
   ns.ErrandPicker.Select("mailbox")
@@ -4753,6 +4794,22 @@ do
   local buttons = {}
   for _, btn in ipairs(ns.Panel.ControlButtons()) do buttons[btn:GetText()] = btn end
   check(buttons["15"] and buttons["30"] and buttons["60"] and buttons.Any, "For you has 15 / 30 / 60 / Any buttons")
+  -- On the line of Something to do next's heading, since they filter its cards.
+  do
+    local heading = ns.Panel.ControlsHeading()
+    local spots = {}
+    local function record(o) o.SetPoint = function(self, ...) spots[self] = { ... } end end
+    record(heading)
+    for _, btn in ipairs(ns.Panel.ControlButtons()) do record(btn) end
+    ns.Panel.Layout()
+    local hy = spots[heading] and spots[heading][3]
+    local same = hy ~= nil
+    for _, btn in ipairs(ns.Panel.ControlButtons()) do
+      if not (spots[btn] and spots[btn][5] == hy + 1) then same = false end
+    end
+    check(heading:GetText() == "SOMETHING TO DO NEXT" and same,
+      "the time buttons sit on Something to do next's heading line: " .. tostring(hy))
+  end
   buttons["30"].scripts.OnClick(buttons["30"])
   check(ns.charDB.budgetMinutes == 30 and ns.ForYou.SummaryText():find("^Fits in 30 min:"), "30 sets a 30 minute budget")
   local badge = ns.Cards.Badge(1)
@@ -5540,11 +5597,11 @@ do
   check(labels() == "Giver,Finisher,Far", "planned nearest first: " .. labels())
   ns.HUD.Update()
   local f = ns.HUD.Frame()
-  check(f.moveOn:IsShown() and f.menu:IsShown() and f.skip == nil and f.next == nil and f.prev == nil,
-    "a trip's box has move on and the more menu, no next or back")
+  check(f.skip:IsShown() and f.moveOn:IsShown() and f.close:IsShown() and f.menu == nil and f.next == nil
+    and f.prev == nil, "a trip's box has skip, move on and the x as buttons, no more menu, no next or back")
   local function tip(b) b.scripts.OnEnter(b) return GameTooltip:GetText() end
-  check(tip(f.moveOn) == "Do this stop later" and ns.HUD.MenuItems()[1].text == "Skip this stop"
-    and tip(f.list) == "View details" and tip(f.close) == "End journey", "the buttons' tooltips")
+  check(tip(f.skip) == "Skip this stop" and tip(f.moveOn) == "Do this stop later"
+    and tip(f.list) == "View Journey" and tip(f.close) == "End journey", "the buttons' tooltips")
 
   -- The x on a journey asks first; Keep going (or Escape) leaves it on.
   do
@@ -5694,7 +5751,7 @@ do
   local trainer = ns.Trainers.Results()[1]
   ns.Nav.Start(trainer.title, trainer.goal, trainer.route)
   ns.HUD.Update()
-  check(not f.moveOn:IsShown() and not f.menu:IsShown() and #ns.HUD.MenuItems() == 0 and ns.Nav.MoveOnKind() == nil,
+  check(not f.moveOn:IsShown() and not f.skip:IsShown() and f.close:IsShown() and ns.Nav.MoveOnKind() == nil,
     "plain directions: no move on or skip")
   check(tip(f.close) == "Stop directions", "and the x stops directions, not a journey")
   StaticPopupDialogs = {}
@@ -6021,13 +6078,12 @@ do
       tostring(s and s.lines), tostring(s and s.marks)))
   check(s and not s.youShown, "no arrow of ours: the world map shows you")
   check(s and s.chevrons >= 1, "chevrons point the way")
-  local legs = s and s.lines or 0
 
   shownMap = 1415
   providers[1]:OnMapChanged()
   local c = W.Stats()
-  check(c and c.lines >= legs and W.mapID == 1415,
-    "on the continent the rest of it shows too: " .. tostring(c and c.lines) .. " lines")
+  check(c and c.lines >= 1 and c.lines <= 3 and c.stepAlpha[4] == nil and W.mapID == 1415,
+    "on the continent the same three steps show, no more: " .. tostring(c and c.lines) .. " lines")
   check(c and c.numbers[#c.numbers] ~= false and c.numbers[1] == 1, "the stops are numbered in order")
 
   -- The other continent's map holds none of it.
@@ -6048,12 +6104,16 @@ do
   ns.commands.worldmap.run("")
   check(ns.db.settings.worldMapRoute == true and W.Stats() ~= nil, "/ww worldmap puts it back")
 
-  -- The next few steps in full, the ones after fading step by step.
-  check(W.Alpha(1) == 1 and W.Alpha(3) == 1 and W.Alpha(4) < 1 and W.Alpha(5) < W.Alpha(4) and W.Alpha(40) > 0.2,
-    string.format("steps fade the further ahead they are: %.2f %.2f %.2f", W.Alpha(4), W.Alpha(5), W.Alpha(40)))
+  -- The next three steps only: the one you're on in full, the next two fading out.
+  check(W.Alpha(1) == 1 and W.Alpha(2) < 1 and W.Alpha(3) < W.Alpha(2) and W.Alpha(3) > 0 and W.Alpha(4) == 0,
+    string.format("the second and third steps fade, none after: %.2f %.2f %.2f", W.Alpha(2), W.Alpha(3), W.Alpha(4)))
   s = W.Refresh()
-  check(s and s.alphas[1] == 1 and (s.lines < 4 or s.alphas[s.lines] < 1),
-    "drawn so: the step you're on in full, the last ones faded")
+  check(s and s.lines <= 3 and s.stepAlpha[1] == 1 and s.stepAlpha[4] == nil
+    and (s.stepAlpha[2] == nil or s.stepAlpha[2] < 1) and (s.stepAlpha[3] == nil or s.stepAlpha[3] < (s.stepAlpha[2] or 1)),
+    string.format("drawn so: %s lines, %s %s %s", tostring(s and s.lines), tostring(s and s.stepAlpha[1]),
+      tostring(s and s.stepAlpha[2]), tostring(s and s.stepAlpha[3])))
+  check(#ns.RouteMap.Rest(ns.Geo.PlayerNodeExact()) > 3 and s.marks <= 3,
+    "a journey with more steps than that shows only their stops: " .. tostring(s.marks) .. " marked")
 
   ns.Nav.Stop()
   check(W.Stats() == nil, "the journey ended: it's gone from the map")
@@ -6180,7 +6240,7 @@ do
   check(faded.alphas[1] == 1 and faded.alphas[2] < 1,
     string.format("drawn so: the leg you're on in full, the next faded (%.2f)", faded.alphas[2] or -1))
 
-  -- In the area of the stop you're on: no line to it, its badge and the way on stay.
+  -- In the area of the stop you're on: no line to it and none on to the next step; its badge stays.
   M.Tick(1)
   local before = M.Stats()
   local current = ns.Nav.CurrentStep()
@@ -6192,9 +6252,11 @@ do
   for _, l in ipairs(inside.legs) do
     if math.abs(l[1] - 70) < 0.5 and math.abs(l[2] + 70) < 0.5 then fromYou = true end
   end
-  check(not fromYou and inside.lines == before.lines - 1 and inside.marks == before.marks,
-    string.format("in its area, the line to it goes but the stops stay marked: %d lines (was %d), %d marks (was %d)",
-      inside.lines, before.lines, inside.marks, before.marks))
+  check(before.lines == 2 and before.marks >= 2, string.format("before: the way there and on (%d lines, %d marks)",
+    before.lines, before.marks))
+  check(not fromYou and inside.lines == 0 and inside.chevrons == 0 and inside.marks == 1,
+    string.format("in its area, only its badge stays, no way on to the next step: %d lines, %d chevrons, %d marks",
+      inside.lines, inside.chevrons, inside.marks))
   current.stop.inArea = nil
   check(M.Tick(1) and M.Stats().lines == before.lines, "out of it again, the line is back")
 
@@ -7018,7 +7080,7 @@ do
   local function trip() return ns.Journey.Plan(here, { title = "Two stops", stops = { stop(0.6, "A"), stop(0.7, "B") } }) end
   ns.Nav.StartJourney(trip())
   check(ns.Nav.active and ns.Nav.active.journey and not ns.JourneyOverview.IsShown(),
-    "by default, a new journey doesn't open the overview (the directions box's View details does)")
+    "by default, a new journey doesn't open the overview (the directions box's View Journey does)")
   ns.Nav.Stop()
   ns.db.settings.overviewOnStart = true
   ns.Nav.StartJourney(trip())
@@ -7908,7 +7970,7 @@ do
   check(Box.State() == "directions" and lines[1] == "Camp" and lines[2]:find("^Directions") and lines[3]:find("remaining$"),
     "plain directions: the destination and Directions (" .. table.concat(lines, " / ") .. ")")
   local continue, details = Box.Buttons()
-  check(continue == "Continue" and details == nil, "with Continue and no View details")
+  check(continue == "Continue" and details == nil, "with Continue and no View Journey")
   check(Box.Frame().height > collapsed, "the box opens up for it")
   ns.Nav.Stop()
   check(Box.State() == "none", "ending the directions collapses it again")
@@ -7926,7 +7988,7 @@ do
     "a journey: title, the current stop on its own line, where it is with stops done and time left, what comes next ("
       .. table.concat(lines, " / ") .. ")")
   continue, details = Box.Buttons()
-  check(continue == "Continue journey" and details == "View details", "with Continue journey and View details")
+  check(continue == "Continue journey" and details == "View Journey", "with Continue journey and View Journey")
   local a = ns.Nav.active
   check(Box.Progress().stopIndex == 1 and Box.Progress().total == 3 and Box.Progress().done == 0,
     "the local progress helper counts the stops")
@@ -7955,7 +8017,7 @@ do
     "Continue journey closes the window and shows the directions box")
   ns.Panel.Toggle()
   Box.Frame().details.scripts.OnClick()
-  check(ns.JourneyOverview.IsShown(), "View details opens the journey overview")
+  check(ns.JourneyOverview.IsShown(), "View Journey opens the journey overview")
   ns.JourneyOverview.Toggle()
 
   -- Something to do next: the role tags, the why line, the facts, the button.
@@ -9168,7 +9230,8 @@ do
     and lines[1].entry.quest == "Smuggler Sweep" and lines[1].text:find("0/6", 1, true),
     "a log quest off the journey, its smugglers on the way: listed, though not spread; the dust devils aren't: "
     .. #lines)
-  check(ns.HUD.Wayside().badge == "1", "the + counts it: " .. ns.HUD.Wayside().badge)
+  check(ns.HUD.Wayside().badge == "", "on the way but not around you: not counted on On the way, which is "
+    .. "what's nearby: " .. ns.HUD.Wayside().badge)
   check(ns.Nav.HeadingFor() == docks3 and not ns.Nav.CurrentStep().via, "the journey isn't changed for it")
   -- Walked on past the docks' way to the dust devils: around you, so listed.
   player.x, player.y = 0.94, 0.94
@@ -9183,8 +9246,9 @@ do
   check(#lines == 1 and lines[1].entry.name == "Defias Smuggler", "the dust devils done: off the list: " .. #lines)
   devils[1] = { text = "Dust Devil slain: 0/2", finished = false }
 
-  -- On the way, one surface: the sweep (in your log, off the journey) is an
-  -- offer in the drawer, with "+ Add" and a "..." to wave it off.
+  -- On the way, one surface: the dust devils (in your log, off the journey,
+  -- around you) are an offer on its Nearby tab, with "+ Add" and a "..." to
+  -- wave it off. The sweep, on the way but not around you, isn't.
   -- (In a function of its own: this block is at Lua's limit of 200 locals.)
   ;(function()
   ns.Drawer.Show()
@@ -9201,20 +9265,24 @@ do
       if o.text:find(text, 1, true) then return o end
     end
   end
-  local sweep = offerOf("Smuggler Sweep")
-  check(sweep and sweep.kind == "log" and sweep.add and sweep.dismiss and sweep.text:find("Defias Smuggler 0/6", 1, true),
-    "a log quest with things on the way is an offer you can add: " .. tostring(sweep and sweep.text))
+  local sweep = offerOf("Dust Devils")
+  check(sweep and sweep.kind == "log" and sweep.add and sweep.dismiss and sweep.text:find("Dust Devil 0/2", 1, true)
+    and sweep.time == "around you", "a log quest with things around you is an offer you can add: "
+    .. tostring(sweep and sweep.text))
+  check(not offerOf("Smuggler Sweep"), "one with things only farther along the journey isn't")
   check(sweep and sweep.addLabel == "+ Add", "its button says + Add: " .. tostring(sweep and sweep.addLabel))
-  local hasHeading = false
-  for _, h in ipairs(ns.Drawer.Headings()) do if h == "You could add" then hasHeading = true end end
-  check(hasHeading and ns.Drawer.Headings()[1] == "On the way", "under its own heading in the drawer")
-  -- The journey overview lists the same offers.
+  check(ns.Drawer.Headings()[1] == "On the way" and ns.Drawer.Headings()[2]:find("^Nearby"),
+    "in the On the way pane, on its Nearby tab")
+  -- The journey overview doesn't list them: a button opens the pane.
+  ns.Drawer.Hide()
   ns.JourneyOverview.Show()
-  local inOverview = false
-  for _, row in ipairs(ns.JourneyOverview.EnsureFrame().suggest) do
-    if row.suggestion and row.suggestion.id == "log:4601" then inOverview = true end
-  end
-  check(inOverview, "and the journey overview lists the same offer")
+  local ov = ns.JourneyOverview.EnsureFrame()
+  check(ov.suggest == nil and ov.onTheWay:IsShown() and ov.onTheWay:GetText() == "On the way",
+    "the journey overview has an On the way button, not the offers")
+  ov.onTheWay.scripts.OnClick(ov.onTheWay)
+  check(ns.Drawer.IsShown() and offerOf("Dust Devils"), "which opens the pane")
+  ov.onTheWay.scripts.OnClick(ov.onTheWay)
+  check(ns.Drawer.IsShown(), "and leaves it open when it's open already")
 
   -- A new suggestion while you're on a journey: a row here, not a toast.
   local mines = { id = "dungeonTestMines", kind = "dungeon", title = "Run The Test Mines",
@@ -9235,10 +9303,10 @@ do
   ns.Menu.Pick(1)
   check(not offerOf("Run The Test Mines"), "waved off: it's gone")
   ns.Fanfare.NewJourney(mines)
-  check(not offerOf("Run The Test Mines") and offerOf("Smuggler Sweep"), "and it isn't offered again on this journey")
+  check(not offerOf("Run The Test Mines") and offerOf("Dust Devils"), "and it isn't offered again on this journey")
   -- Added: the quest joins the journey and leaves the offers.
-  sweep = offerOf("Smuggler Sweep")
-  check(ns.Drawer.AddRow(sweep.at) and ns.Nav.TripHasQuest(4601) and not offerOf("Smuggler Sweep") and ns.Drawer.IsShown(),
+  sweep = offerOf("Dust Devils")
+  check(ns.Drawer.AddRow(sweep.at) and ns.Nav.TripHasQuest(4605) and not offerOf("Dust Devils") and ns.Drawer.IsShown(),
     "Add puts the quest on the journey; it's no longer an offer, and the drawer stays")
   -- With no journey on, a new suggestion is a toast as before.
   ns.Drawer.Hide()
@@ -10151,28 +10219,27 @@ do
   start()
   local f = ns.HUD.Frame()
 
-  -- One primary control stays on the box; the rest is behind "...".
-  check(f.moveOn:IsShown() and f.menu:IsShown() and not f.close:IsShown(),
-    "on a journey: do this stop later and the more menu; no x beside a menu that ends it")
+  -- A button each top right: skip, do this stop later, end the journey. No "..." menu.
+  check(f.skip:IsShown() and f.moveOn:IsShown() and f.close:IsShown() and f.menu == nil,
+    "on a journey: skip, do this stop later and the x, each a button; no more menu")
   check(f.add:IsShown() and f.list:IsShown() and f.footRule:IsShown(),
     "and two labelled actions along the bottom")
-  check(f.add:GetText() == "+ On the way" and f.list:GetText() == "View details",
+  check(f.add:GetText() == "+ On the way" and f.list:GetText() == "View Journey",
     "they say what they open: " .. tostring(f.add:GetText()) .. " / " .. tostring(f.list:GetText()))
 
-  -- The menu: what's used now and then, or can't be undone.
-  ns.Menu.Hide()
-  f.menu.scripts.OnClick(f.menu)
-  check(table.concat(ns.Menu.Labels(), ",") == "Skip this stop,Set journey aside,End journey",
-    "the menu's actions: " .. table.concat(ns.Menu.Labels(), ","))
-  if not (MenuUtil and MenuUtil.CreateContextMenu) then
-    check(ns.Menu.IsShown(), "it opens under its button")
-    f.menu.scripts.OnClick(f.menu)
-    check(not ns.Menu.IsShown(), "and the button closes it again")
-  end
-
-  -- The game's own context menu, where the client has one (MenuUtil): each
+  -- The shared menu (the overview's stops and the On the way rows use it):
+  -- the game's own context menu where the client has one (MenuUtil), each
   -- item a button with its words, its tooltip, and its action on a click.
   ;(function()
+    local ran
+    local items = {
+      { text = "One", tip = "The first", onClick = function() ran = 1 end },
+      { text = "Two", onClick = function() ran = 2 end },
+    }
+    ns.Menu.Hide()
+    ns.Menu.Show(f.list, items)
+    check(table.concat(ns.Menu.Labels(), ",") == "One,Two", "the menu's items: " .. table.concat(ns.Menu.Labels(), ","))
+    ns.Menu.Hide()
     local savedUtil = MenuUtil
     local built, owner = {}, nil
     MenuUtil = { CreateContextMenu = function(o, generator)
@@ -10185,11 +10252,10 @@ do
       end }
       generator(nil, root)
     end }
-    ns.Menu.Hide()
-    ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+    ns.Menu.Show(f.list, items)
     local words = {}
     for i, e in ipairs(built) do words[i] = e.text end
-    check(owner == f.menu and table.concat(words, ",") == "Skip this stop,Set journey aside,End journey"
+    check(owner == f.list and table.concat(words, ",") == "One,Two"
       and not ns.Menu.IsShown(), "with the game's menu: the same items, and not our own box: " .. table.concat(words, ","))
     local tip = { lines = {} }
     tip.SetText = function(self, t) self.title = t end
@@ -10198,56 +10264,54 @@ do
     for _, e in ipairs(built) do if e.tooltip then withTip = e end end
     if withTip then withTip.tooltip(tip) end
     check(withTip ~= nil and tip.title == withTip.text and #tip.lines == 1, "an item's tooltip has its words and its line")
-    local asideBefore = #(ns.Nav.SetAsideList and ns.Nav.SetAsideList() or {})
     built[2].callback()
-    check(ns.Nav.active == nil and #ns.Nav.SetAsideList() == asideBefore + 1, "and a click runs the item: set aside")
-    ns.Nav.ResumeSetAside(1)
+    check(ran == 2, "and a click runs the item")
     -- A menu that fails falls back to our own box.
     MenuUtil = { CreateContextMenu = function() error("no menu here") end }
-    ns.Menu.Show(f.menu, ns.HUD.MenuItems())
+    ns.Menu.Show(f.list, items)
     check(ns.Menu.IsShown(), "a game menu that fails: our own box instead")
     ns.Menu.Hide()
     MenuUtil = savedUtil
   end)()
 
-  -- Skip asks first, as it did as a button.
+  -- Skip asks first; so does the x, which ends the journey.
   local asked
   StaticPopupDialogs = {}
   StaticPopup_Show = function(which) asked = which return {} end
-  ns.Menu.Show(f.menu, ns.HUD.MenuItems())
-  ns.Menu.Pick(1)
-  check(asked == "WAYWARD_SKIP" and ns.Nav.active ~= nil and not ns.Menu.IsShown(),
+  f.skip.scripts.OnClick(f.skip)
+  check(asked == "WAYWARD_SKIP" and ns.Nav.active ~= nil,
     "Skip this stop asks before it takes the stop off: " .. tostring(asked))
-  -- End journey asks too, and offers to set it aside.
   asked = nil
-  ns.Menu.Show(f.menu, ns.HUD.MenuItems())
-  ns.Menu.Pick(3)
+  f.close.scripts.OnClick(f.close)
   check(asked == "WAYWARD_END" and ns.Nav.active ~= nil, "End journey asks first: " .. tostring(asked))
-  -- Setting aside keeps the journey, so it doesn't ask.
-  asked = nil
-  ns.Menu.Show(f.menu, ns.HUD.MenuItems())
-  ns.Menu.Pick(2)
-  check(asked == nil and ns.Nav.active == nil and #ns.Nav.SetAsideList() == math.min(before + 1, 5),
-    "Set journey aside keeps it and ends directions, without a question")
+  StaticPopupDialogs, StaticPopup_Show = saveDialogs, saveShow
+  -- Setting aside is the overview's: it keeps the journey, so it doesn't ask.
+  ns.JourneyOverview.Show()
+  local ov = ns.JourneyOverview.EnsureFrame()
+  check(ov.setAside:IsShown(), "Set aside is in the journey overview")
+  ov.setAside.scripts.OnClick(ov.setAside)
+  check(ns.Nav.active == nil and #ns.Nav.SetAsideList() == math.min(before + 1, 5),
+    "and keeps the journey, ending directions, without a question")
   check(ns.Nav.SetAsideList()[1].title == "Controls", "it's the first of those set aside")
   table.remove(ns.Nav.SetAsideList(), 1)
-  StaticPopupDialogs, StaticPopup_Show = saveDialogs, saveShow
+  if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
 
-  -- View details still opens the overview, and pulses when the journey gains stops.
+  -- View Journey opens the overview, and pulses when the journey gains stops.
   start()
   if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
   f.list.scripts.OnClick(f.list)
-  check(ns.JourneyOverview.IsShown(), "View details opens the journey overview")
+  check(ns.JourneyOverview.IsShown(), "View Journey opens the journey overview")
   if ns.JourneyOverview.IsShown() then ns.JourneyOverview.Toggle() end
   ns.HUD.FlashJourney()
-  check(ns.HUD.Flashing(), "View details pulses when asked")
+  check(ns.HUD.Flashing(), "View Journey pulses when asked")
   ns.Nav.Stop()
   ns.Menu.Hide()
-  -- Plain directions have no menu, so they keep the x; so does the small bar.
+  -- Plain directions have the x only; so does the small bar.
   local dest = stopAt(here.x + 0.02, "Somewhere").node
   ns.Nav.Start("Somewhere", dest, ns.Router.Plan(here, dest, ns.Network.Build()))
   ns.HUD.Update()
-  check(ns.Nav.active ~= nil and f.close:IsShown() and not f.menu:IsShown(), "plain directions: the x, no menu")
+  check(ns.Nav.active ~= nil and f.close:IsShown() and not f.skip:IsShown() and not f.moveOn:IsShown(),
+    "plain directions: the x, no skip or move on")
   ns.Nav.Stop()
   ns.HUD.Refresh()
   check(not ns.HUD.IdleShown() or f.close:IsShown(), "the small bar keeps its x")

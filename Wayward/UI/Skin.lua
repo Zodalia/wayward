@@ -182,7 +182,7 @@ function Skin.Text(fs) add("text", fs) end
 
 -- A secondary action: its label as plain text, no button frame, underlined
 -- while the mouse is over it, so it reads lighter than the primary button
--- beside it ("View details" next to "Continue journey"). `color` is the
+-- beside it ("View Journey" next to "Continue journey"). `color` is the
 -- text's colour (gold when nil); `size` the font size (11 when nil);
 -- `underlined` keeps a faint underline on all the time (on busy art, where
 -- plain text alone doesn't read as something to click). The label is

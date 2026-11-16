@@ -7,7 +7,7 @@ local _, ns = ...
 -- remaining ("Stop 3 of 5 · 2 complete · ~6 min remaining"), a progress bar,
 -- a line of what comes next, then Continue journey (the primary action:
 -- closes the window and makes sure the directions box shows) and the lighter
--- View details (the journey overview, where it can be reordered, added to or
+-- View Journey (the journey overview, where it can be reordered, added to or
 -- set aside), with a map of the rest of the journey on the right. With plain
 -- directions: the destination and "Directions", and Continue. With nothing
 -- active the region is one line, so the suggestions move up; journeys set
@@ -27,7 +27,7 @@ local GOLD = { 1, 0.82, 0 }
 local GREY = { 0.72, 0.72, 0.72 }
 local WHITE = { 1, 1, 1 }
 local NONE_TEXT = "No journey on the go. Pick something below."
-local LAST_STOP = "The last stop. View details to reorder, add a detour or set it aside."
+local LAST_STOP = "The last stop. View Journey to reorder, add a detour or set it aside."
 local DIRECTIONS_DESCRIPTION = "Directions to one place. Starting a journey folds it in as a stop."
 
 local DEFAULT_ICON = "Interface\\Icons\\INV_Misc_Map_01"
@@ -214,9 +214,9 @@ function Box.Create(parent, width)
   f.continue = actionButton(f, 140, "Continue journey", continueJourney)
   f.continue:SetPoint("BOTTOMLEFT", LEFT - 2, PAD)
   explain(f.continue, "Continue journey", "Closes this window; the directions box shows the next step to your current stop.")
-  f.details = ns.Skin.LinkButton(f, 96, "View details", function() ns.JourneyOverview.Show() end)
+  f.details = ns.Skin.LinkButton(f, 96, "View Journey", function() ns.JourneyOverview.Show() end)
   f.details:SetPoint("LEFT", f.continue, "RIGHT", 8, 0)
-  explain(f.details, "View details", "Every stop of the journey. Reorder or skip stops, add a detour, or set the journey aside and resume it later: Wayward plans again around you.")
+  explain(f.details, "View Journey", "Every stop of the journey. Reorder or skip stops, add a detour, or set the journey aside and resume it later: Wayward plans again around you.")
 
   -- The map of what's left, at the right.
   f.map = ns.RouteMap.NewView(f, MAP_WIDTH)

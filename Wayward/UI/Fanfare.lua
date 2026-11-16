@@ -289,7 +289,7 @@ end
 
 -- Shows "New journey available" for `r` (queued behind one on screen).
 -- On a journey it doesn't pop up over what you're doing: it's a row on the
--- directions box's drawer instead (Wayside.Offer), to add or wave off.
+-- On the way pane instead (Wayside.Offer), to add or wave off.
 function Fanfare.NewJourney(r)
   if ns.db.settings.toasts == false then return end
   Fanfare.lastNew = r

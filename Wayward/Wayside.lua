@@ -7,25 +7,27 @@ local _, ns = ...
 --              (Journey.ShoppingList). Nothing to add: it's on the journey.
 --              Shown in a section of its own above the directions box
 --              (UI/HUD.lua), whenever there's something.
---   offers     what you could add, each with a + and the time it adds where
---              that's known: quests in your log with something on the way,
---              quest givers, hand-ins and vendors you need near the way
---              (OnTheWay.lua), and a new suggestion from For you (which
---              would have been a toast, were you not on a journey).
---              Shown in the drawer behind the directions box's + button
---              (UI/Drawer.lua) and the journey overview, never unasked.
+--   offers     what you could add around where you are now, each with the
+--              time it takes to get there from you where that's known:
+--              quests in your log with objectives around you, quest givers,
+--              hand-ins and vendors you need near you (OnTheWay.lua), and a
+--              new suggestion from For you (which would have been a toast,
+--              were you not on a journey). Shown on the Nearby tab of the
+--              On the way pane (UI/Drawer.lua), opened from the directions
+--              box and the journey overview, never unasked.
 --
 -- Wayside.Get(routed) -> { gathering = { row... }, more (gathering things
 --   past the rows), offers = { row... } }
 -- row = { id, kind ("gather" | "log" | "way" | "card"), text, right (the
---   time it adds, or a word), tip = { title, line... }, entry / questID /
+--   time to get there, or a word), tip = { title, line... }, entry / questID /
 --   suggestion / result (what it's made from) }
 --
 -- An offer is a suggestion and no more (pillar 1): it makes no sound, the
 -- arrow doesn't move for it, and one you dismiss stays away for the rest of
 -- the journey. `routed`: also the offers that need routes worked out
 -- (OnTheWay.Get); without it only what's cheap to know, for the section
--- above the directions box and the count on the + button, every second.
+-- above the directions box and the count on its On the way action, every
+-- second.
 
 local Wayside = {}
 ns.Wayside = Wayside
@@ -105,26 +107,26 @@ local function gatherRow(line)
       or "Farther off"), "The journey takes you through these when they're on the way; it carries on whenever you do." } }
 end
 
--- A quest in your log, off the journey, with things on the way: one row a quest.
+-- A quest in your log, off the journey, with things around you: one row a
+-- quest. Things only farther along the journey aren't nearby, so not offered.
 local function logRows(entries)
   local rows, byQuest = {}, {}
   for _, e in ipairs(entries) do
-    local row = byQuest[e.questID]
-    if not row then
-      row = { id = "log:" .. e.questID, kind = "log", questID = e.questID, quest = e.quest, things = {}, near = false }
+    local row = e.near and byQuest[e.questID]
+    if e.near and not row then
+      row = { id = "log:" .. e.questID, kind = "log", questID = e.questID, quest = e.quest, things = {}, near = true }
       byQuest[e.questID] = row
       rows[#rows + 1] = row
     end
-    row.things[#row.things + 1] = e
-    row.near = row.near or e.near
+    if row then row.things[#row.things + 1] = e end
   end
   for _, row in ipairs(rows) do
     local first = row.things[1]
     local count = countText(first)
     row.text = string.format("|cffffffff%s|r  %s%s%s%s|r", row.quest, GREY, first.name, count and (" " .. count) or "",
       #row.things > 1 and string.format(", +%d more", #row.things - 1) or "")
-    row.right = row.near and "around you" or "on the way"
-    row.tip = { row.quest, "In your quest log, not on this journey: its objectives are on your way." }
+    row.right = "around you"
+    row.tip = { row.quest, "In your quest log, not on this journey: its objectives are around you." }
     for _, e in ipairs(row.things) do
       row.tip[#row.tip + 1] = string.format("%s%s", e.name, countText(e) and (" " .. countText(e)) or "")
     end
@@ -135,8 +137,9 @@ end
 
 local function wayRow(s)
   return { id = "way:" .. s.kind .. ":" .. s.label, kind = "way", suggestion = s, text = s.label,
-    right = "+" .. ns.FormatDuration(s.extra), extra = s.extra,
-    tip = { s.label, string.format("A detour of %s on your journey.", ns.FormatDuration(s.extra)) } }
+    right = ns.FormatDuration(s.extra), extra = s.extra,
+    tip = { s.label, string.format("%s from where you are. Add it and the journey fits it in.",
+      ns.FormatDuration(s.extra)) } }
 end
 
 local function cardRow(r)
@@ -174,7 +177,7 @@ function Wayside.Get(routed)
   return out
 end
 
--- How many things are on offer, for the + button's count (the cheap ones:
+-- How many things are on offer, for On the way's count (the cheap ones:
 -- see `routed`). What you're gathering is on screen already, so not counted.
 function Wayside.Count()
   local w = Wayside.Get(false)

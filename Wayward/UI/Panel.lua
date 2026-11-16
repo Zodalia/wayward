@@ -3,9 +3,10 @@ local _, ns = ...
 -- The Wayward window: a rail down the left (an icon and a name for each
 -- page) and one pane beside it, which shows the page picked. It opens on For
 -- you, the home screen, in four regions under a header (your portrait,
--- "Level 8 · Dun Morogh", the summary line and the time buttons): Your
--- journey (UI/JourneyBox.lua), Something to do next (the card page's results
--- as cards, UI/Cards.lua), Where to quest (the zones with quests for you,
+-- "Level 8 · Dun Morogh" and the summary line): Your journey
+-- (UI/JourneyBox.lua), Something to do next (the card page's results as
+-- cards, UI/Cards.lua, with the time buttons on its heading's line, since
+-- they filter the cards), Where to quest (the zones with quests for you,
 -- UI/ZoneBand.lua; while it's on show the cards leave zones to it) and Good
 -- to know (UI/Observations.lua). The other pages (Find, Quests, Vendors,
 -- Trainers, Dungeons, Items) are lists that take the pane's place, so the
@@ -26,7 +27,7 @@ local _, ns = ...
 --   page.Results(query)        -- returns results, err, net
 --   page.categories            -- optional { {label, provider}, ... } shown as buttons,
 --   page.selected              --   and the selected one (see categoryPage below)
---   page.controls              -- card pages: small buttons right of the summary line,
+--   page.controls              -- card pages: small buttons right of the cards' heading,
 --                              --   { label, tooltip, choices = { {text, value}, ... }, get(), set(value) }
 --                              --   (the one whose value get() returns is lit)
 -- A result:
@@ -280,7 +281,7 @@ function Panel.Choose(r)
     return start(r)
   end
   StaticPopupDialogs.WAYWARD_SWITCH = StaticPopupDialogs.WAYWARD_SWITCH or {
-    text = "%s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.",
+    text = "%s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View Journey.",
     button1 = "Add as detour", button2 = "Cancel", button3 = "Switch journey",
     OnAccept = function(_, data) addDetour(data.result) end,
     OnAlt = function(_, data)
@@ -781,15 +782,16 @@ local function create()
   f.summary:SetWordWrap(true)
   if f.summary.SetMaxLines then f.summary:SetMaxLines(2) end
 
-  -- The page's own buttons at the right of the header (For you: how long you have).
+  -- The page's own buttons (For you: how long you have), right of the cards'
+  -- heading, since what they choose is which cards show. Panel.Layout puts
+  -- them on that heading's line.
   f.controls = {}
+  f.controlsRight = width - MARGIN
   local controls = mainPage and mainPage.controls
   if controls then
-    local n = #controls.choices
-    for i, choice in ipairs(controls.choices) do
+    for _, choice in ipairs(controls.choices) do
       local b = CreateFrame("Button", nil, home, "UIPanelButtonTemplate")
       b:SetSize(CONTROL_WIDTH, 20)
-      b:SetPoint("TOPRIGHT", home, "TOPLEFT", width - MARGIN - (n - i) * (CONTROL_WIDTH + CONTROL_GAP), HEADER_TOP - 2)
       b:SetText(choice.text)
       b.choice = choice
       b:SetScript("OnClick", function()
@@ -805,13 +807,12 @@ local function create()
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
       end
       ns.Skin.Button(b)
-      f.controls[i] = b
+      f.controls[#f.controls + 1] = b
     end
     f.controlLabel = home:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.controlLabel:SetPoint("RIGHT", f.controls[1], "LEFT", -6, 0)
     f.controlLabel:SetText(controls.label or "")
     ns.Skin.Text(f.controlLabel)
-    f.summary:SetWidth(width - MARGIN * 2 - PORTRAIT - 12 - n * (CONTROL_WIDTH + CONTROL_GAP) - 50)
   end
 
   -- The regions, each under its heading; Panel.Layout places them, since
@@ -973,6 +974,13 @@ function Panel.Layout()
   end
   place(f.journeyHeading, f.journey, journeyHeight)
   place(f.cardsHeading, f.cards, ns.Cards.Height())
+  -- The time buttons at the right of the cards' heading.
+  local n = #f.controls
+  for i, b in ipairs(f.controls) do
+    b:ClearAllPoints()
+    b:SetPoint("TOPRIGHT", f.home, "TOPLEFT", f.controlsRight - (n - i) * (CONTROL_WIDTH + CONTROL_GAP),
+      y + ns.Cards.Height() + HEADING_H + 1)
+  end
   local zonesHeight = ns.ZoneBand.Height()
   f.zonesHeading:SetShown(zonesHeight > 0)
   if zonesHeight > 0 then place(f.zonesHeading, f.zones, zonesHeight) end
@@ -1184,6 +1192,11 @@ end
 -- The main window's control buttons (each with its `choice`), for tests.
 function Panel.ControlButtons()
   return frame and frame.controls or {}
+end
+
+-- The heading the control buttons sit beside (for tests).
+function Panel.ControlsHeading()
+  return frame and frame.cardsHeading
 end
 
 function Panel.IsShown()

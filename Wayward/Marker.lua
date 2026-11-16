@@ -3,8 +3,10 @@ local _, ns = ...
 -- Showing you the NPC the current step is for (Nav.TargetNPC: the flight
 -- master, the quest giver, the trainer), within what addons may do: raid
 -- markers are protected, so instead
---   * a star over their nameplate (friendly NPC nameplates have to be on: the
---     options can turn the game's setting on), and
+--   * a star over their nameplate (friendly NPC nameplates have to be on in
+--     the game's own options; Wayward only reads that setting: an addon
+--     calling SetCVar on it taints the CVar, and Blizzard's nameplate code
+--     then errors on secret health values when it reads it back), and
 --   * a line in their tooltip when you mouse over them;
 -- both only near where the step goes, so a namesake elsewhere isn't picked.
 -- The directions box's target button (UI/HUD.lua) targets them for you.
@@ -84,14 +86,6 @@ function Marker.FriendlyNameplates()
   return GetCVarBool and GetCVarBool("nameplateShowFriendlyNPCs") or false
 end
 
-function Marker.SetFriendlyNameplates(on)
-  if InCombatLockdown and InCombatLockdown() then
-    ns.print("can't change nameplates in combat; try again after.")
-    return
-  end
-  if SetCVar then SetCVar("nameplateShowFriendlyNPCs", on and "1" or "0") end
-end
-
 ---------------------------------------------------------------- tooltips
 
 -- The line added to their tooltip, or nil.
@@ -120,5 +114,5 @@ end
 ns.RegisterCommand("marker", "/ww marker - the star over the NPC you're heading for, and their tooltip line, on or off", function()
   ns.SetSetting("markNPCs", not enabled())
   ns.print("NPC star and tooltip line " .. (enabled() and "on" or "off")
-    .. (enabled() and not Marker.FriendlyNameplates() and " (the star needs friendly NPC nameplates: see /ww options)" or ""))
+    .. (enabled() and not Marker.FriendlyNameplates() and " (the star needs friendly NPC nameplates: turn them on in the game's options)" or ""))
 end)

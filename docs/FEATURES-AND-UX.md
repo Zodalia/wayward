@@ -62,11 +62,11 @@ Words the player reads:
 
 | Feature | What it does |
 |---|---|
-| Your journey | The active journey: icon, title, current stop, "Stop 3 of 5 · 2 complete · ~6 min remaining", progress bar, "Then: ..." line, route map, **Continue journey**, **View details**. |
+| Your journey | The active journey: icon, title, current stop, "Stop 3 of 5 · 2 complete · ~6 min remaining", progress bar, "Then: ..." line, route map, **Continue journey**, **View Journey**. |
 | Something to do next | Suggestion cards, three per page, picked by role (continue, explore, alternative) from a relevance score, not by rank. |
 | Where to quest | Up to four zones: the one you're in first, then level fit, then distance. Never by XP. Not hidden by the time budget. |
 | Good to know | Up to four observations, most urgent first, each with at most one action: **Add detour**, **Show ...**, **Go** or **Resume**. |
-| Time budget | 15 / 30 / 60 / Any buttons (`/ww time`). Filters suggestions to what fits; if nothing fits, offers the quickest "a bit over". |
+| Time budget | 15 / 30 / 60 / Any buttons on the Something to do next heading's line (`/ww time`). Filters suggestions to what fits; if nothing fits, offers the quickest "a bit over". |
 | Learned quest time | Times quests accepted and handed in within a session; after 5, the average of the last 20 replaces the 5-minute default. |
 | Profile bar | A percentage of what makes suggestions good (flight map per continent, class trainer, Hearthstone, quest data). Gone the session after 100%. |
 
@@ -112,10 +112,10 @@ fill, a set-aside journey to resume.
 | Compass | Wayward's own arrow in the directions box. Without an arrow, the circle shows what is ahead. |
 | Map pin | The game's waypoint per step (Forever only). TomTom's arrow and pins when chosen. |
 | NPC marker | A star over the step's NPC nameplate, a line in their tooltip, and a target button with a key binding. |
-| Route on world map | The rest of the journey drawn on any map: next three steps in full, later ones fading. |
+| Route on world map | The next three steps drawn on any map: the one you're on in full, the next two fading out; none after. |
 | Route on minimap | The current and next step drawn round the player arrow, following zoom, rotation and shape. |
 | Gathering as you go | What the journey collects on the way, with counts, nearest first. |
-| On the way | Offers near the journey, plus a detour of your own (repair, vendor, mailbox, bank, inn, auction house, stable master). |
+| On the way | A pane of its own: what's around you to add (the Nearby tab), plus a tab for each detour of your own (repair, vendor, mailbox, bank, inn, auction house, stable master). Times are from where you are. |
 
 ### 3.4 Find and the browse pages
 
@@ -156,10 +156,10 @@ fill, a set-aside journey to resume.
 | Directions box | `UI/HUD.lua` | 330 wide, 84+ high (narrower without compass) | TOP, 0, -140 | Journey or directions on | Drag, Edit Mode |
 | Idle bar | `UI/HUD.lua` | 34 high | Same as directions box | Nothing on, option enabled | Same |
 | Gathering as you go | `UI/HUD.lua` | Box width, up to 5 lines of 14 | 3 above the box | The journey gathers something | With box |
-| On the way drawer | `UI/Drawer.lua` | 330 wide, up to 8 lines of 20 | 4 under the box; above it if under 220 of room below | The box's + | With box |
+| On the way | `UI/Drawer.lua` | 330 wide, up to 8 lines of 20 | Left of the box (TOP -175, -140) | The box's **+ On the way**, the overview's **On the way** | Drag, Edit Mode |
 | Target button | `UI/TargetButton.lua` | 26 × 26 | Beside the directions box | The step has an NPC | With box |
 | Note (snackbar) | `UI/Snackbar.lua` | Box width (330 alone), 48+ high | Over the directions box | A pickup, an auto-add, an undo | No |
-| Journey overview | `UI/JourneyOverview.lua` | 380 wide, 10 rows of 30 | Right of the box (TOP +170, -140) | View details | Drag, Edit Mode |
+| Journey overview | `UI/JourneyOverview.lua` | 380 wide, 10 rows of 30 | Right of the box (TOP +170, -140) | View Journey | Drag, Edit Mode |
 | Fanfare | `UI/Fanfare.lua` | 380 × 112 | TOP, 0, -150 | Journey done or ended, 12 s | Edit Mode |
 | Toast | `UI/Fanfare.lua` | 320 × 64 | TOP, 0, -96 | New suggestion, Up next, 8 s | Edit Mode |
 | Route map | `UI/RouteMap.lua` | 280 wide, 2:3 | Under a tooltip | Hover a row or card with a route | No |
@@ -175,7 +175,7 @@ fill, a set-aside journey to resume.
 
 ```
 +------------+--------------------------------------------------------------------+
-| For you    | [portrait 44] Level 8 · Dun Morogh        Time: [15][30][60][Any]  |
+| For you    | [portrait 44] Level 8 · Dun Morogh                                 |
 | Find       |               summary line                                         |
 | Quests     +--------------------------------------------------------------------+
 | Vendors    | YOUR JOURNEY                                    156 high, or 26    |
@@ -184,9 +184,9 @@ fill, a set-aside journey to resume.
 | Items      |           Stop 3 of 5 · 2 complete · ~6 min remaining              |
 |            |           [progress bar 8]                                         |
 |            |           Then: Do Frostmane Hold, and 3 more stops                |
-|            |           [Continue journey] [View details]                        |
+|            |           [Continue journey] [View Journey]                        |
 |            +--------------------------------------------------------------------+
-|            | SOMETHING TO DO NEXT                            3 cards, 180 high  |
+|            | SOMETHING TO DO NEXT           Time: [15][30][60][Any]  180 high   |
 |            | [card] [card] [card]                            [<] page [>]       |
 |            +--------------------------------------------------------------------+
 |            | WHERE TO QUEST                                  up to 4, 42 high   |
@@ -213,7 +213,7 @@ Rules:
 
 | Form | Content |
 |---|---|
-| On a journey | Icon (56), title, current stop on its own line, position line, progress bar, "Then:" line, route map (220 wide), **Continue journey** (primary), **View details** (lighter). On the last stop: "The last stop. View details to reorder, add a detour or set it aside." |
+| On a journey | Icon (56), title, current stop on its own line, position line, progress bar, "Then:" line, route map (220 wide), **Continue journey** (primary), **View Journey** (lighter). On the last stop: "The last stop. View details to reorder, add a detour or set it aside." |
 | Plain directions | Destination, "Directions", "Directions to one place. Starting a journey folds it in as a stop.", **Continue**. |
 | Nothing on | One line, 26 high: "No journey on the go. Pick something below." plus an "N set aside" button only while there are any. |
 
@@ -260,16 +260,15 @@ summary line; up and down arrows and "1-13 of 19" under the list.
           Gathering as you go                    (own section, above)
           Murloc Fin 3/8 · Shimmerweed 0/6 ...
 +--------------------------------------------------------------+
-| (compass 42)  The Perfect Stout                  [>>][...]   |
+| (compass 42)  The Perfect Stout                [x][>>][X]    |
 |               Stop 3 of 5  [========        ]               |
 |               Walk to Loch Modan through South Gate Pass     |
 |               Step 2 of 4 to get there                       |
 |               objectives (up to 4, then "+N more")           |
 |               distance · ~4 min to stop                      |
 |--------------------------------------------------------------|
-| + On the way 3                                 View details  |
+| + On the way 3                                 View Journey  |
 +--------------------------------------------------------------+
-  On the way drawer hangs here when open
 ```
 
 | Element | Spec |
@@ -281,23 +280,24 @@ summary line; up and down arrows and "1-13 of 19" under the list.
 | Step count | "Step %d of %d to get there". |
 | Time | To the stop you're heading for ("~4 min to stop"); left off on lines that say you're there ("In the area", "You're here: ..."). Plain directions: the time to get there. The whole journey's time is in the overview. |
 | Objectives | Up to four lines; "In the area", "Next spot", "Camp looks cleared", "~3 min left here"; an **Another spot** button (92 × 20). |
-| Buttons (top right) | Do this stop later (>>, 22 × 22), a "..." menu (24 × 22; `UI/Menu.lua`). Journeys only. Plain directions have a close button instead (Stop directions); a journey has none, since the menu ends it. |
-| "..." menu | Skip this stop (asks), Set journey aside (doesn't ask: nothing is lost), End journey (asks). The game's context menu where the client has one; else a box of our own. |
-| Footer (20 high, under a rule) | Text actions. Left: **+ On the way**, opens the drawer; closed, it carries the count of offers and nothing else. Right: **View details** (journeys only; pulses 3 times at 0.8 s when the journey gains stops). |
+| Buttons (top right) | On a journey: Skip this stop (x icon, 22 × 22; asks), Do this stop later (>>, 22 × 22), End journey (the close button; asks). Plain directions: the close button only (Stop directions). Setting a journey aside is the overview's **Set aside**. |
+| Footer (20 high, under a rule) | Text actions. Left: **+ On the way**, opens the On the way pane; with it closed, it carries the count of what's nearby and nothing else. Right: **View Journey** (journeys only; pulses 3 times at 0.8 s when the journey gains stops). |
 | No recalculate | Re-planning is automatic. |
 
 **Idle bar** (34 high): Wayward icon, **Suggest a journey** (124 wide; hover
 for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 
-**On the way drawer**:
+**On the way pane** (a window of its own, titled "On the way", with a close
+button; drag it or move it in Edit Mode):
 
 | Part | Spec |
 |---|---|
-| Top row | Icon chips (28): repair, vendor, mailbox, bank, inn, auction house, stable master (hunters). Pick one: the five places that add least, each with the time added and **Add**. Pick it again to go back. |
-| "You could add" | Up to four offers: a log quest on the way, a quest giver, a hand-in or a vendor adding 3 minutes or less ("+2 min"), a new suggestion ("new"). Each has **+ Add** (50 × 16) and a **...** (24 × 16) whose one item, **Not on this journey**, waves it off for that journey. |
-| Opens on | What's on the way; repairs when gear is at 75% or less; vendors when bags are full. |
+| Tabs | Icon tabs (28): **Nearby** first, then repair, vendor, mailbox, bank, inn, auction house, stable master (hunters). The tab shown has a gold frame. |
+| Nearby | Up to four offers around you: a quest in your log with objectives around you ("around you"), a quest giver, a hand-in or a vendor 3 minutes or less from you ("<1 min", no +), a new suggestion ("new"). Each has **+ Add** (50 × 16) and a **...** (24 × 16) whose one item, **Not on this journey**, waves it off for that journey. Worked out from where you are, not along the journey. |
+| A kind's tab | The five places nearest you, each with the time to get there ("~2 min", no +) and **Add**. Adding one goes back to Nearby. |
+| Opens on | Nearby; repairs when gear is at 75% or less; vendors when bags are full. |
 | Stays open | Until closed, per character. |
-| Empty | "Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox..." |
+| Empty | "Nothing to add around you right now. The tabs above list a stop of your own: a repair, a vendor, a mailbox..." |
 
 ### 4.4 Journey overview
 
@@ -307,7 +307,7 @@ for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 | Walkthrough (356 × 70) | Under the header: "Stop 2 of 5" with done / now, **Now** (40 × 18, only away from the step you're on), **<** and **>** (24 × 18); the stop's text and zone; one step ("Step 1 of 3 · Fly to Stormwind · 2 min", travel icon, tagged Done with a green tick or Now). Opens on the step you're on; goes through every stop's steps in the list's order, done ones included (kept across re-plans). The only place steps are shown in the overview. A bar down its left edge: gold now, green done. |
 | Stop row (356 × 30) | Drag handle (16), map number (gold for a stop, red for the goal), text with zone, a lock while pinned (click to unpin), a "..." menu (24 × 16). States: done, now, next. The stop you're on is lit: a faint gold band and a 2-wide gold bar down its left edge. |
 | Finished stops | Fold into one line; by themselves from three, or when they would push open stops off the list. Skipped stops aren't listed. |
-| "On the way: you could add" | The drawer's offers, up to four rows of 18, each with **+ Add**. |
+| On the way | A button (96 × 20) under the stops that opens the On the way pane (or brings it to the front). The offers aren't listed here. |
 | Set aside | Up to five rows, each with **Resume** (54 × 16) and **Forget** (50 × 16). |
 | Map | The rest of the journey, under a "Map" line with +/- that folds it (remembered per character; open by default). On the step you're on, that step is drawn bold and opaque, its stop's other steps at 60%, the rest at 35%. With another stop selected from the list, the map shows only that stop's steps; with another step walked to (< >), only that step; zoomed in, from a start badge (no arrow for you) to the stop's badge with the list's number (green and unnumbered when done; none for a step that ends short of its stop). |
 | No journey on | Lists only the journeys set aside. |
@@ -323,8 +323,8 @@ for which and why), **Open Wayward** (96 wide), an x that turns the bar off.
 | Line | 2 thick with a 2 dark outline; a chevron every 45 pixels, none on legs under 20; a travel icon (14) mid-leg. |
 | Badges | Numbered in the order you reach them: start green, stop gold, goal red. Same numbers in the overview. |
 | There and back | The two lines sit side by side. |
-| World map | Next three steps in full; each later step 15% fainter, down to 30%. |
-| Minimap | The current step and the next (fainter). Cut at the rim, round or square. The line goes once you're in the objectives' area; the badge stays. |
+| World map | The next three steps only: the one you're on at 100%, then 55%, then 30% (badges fade less). |
+| Minimap | The current step and the next (fainter). Cut at the rim, round or square. Once you're in the objectives' area only the stop's badge stays: no line there, none on to the next step. |
 
 ### 4.6 Banners, toasts and notes
 
@@ -393,7 +393,7 @@ suggestion / row / quest pickup / Suggest a journey
 |---|---|
 | Start | Start sound; the directions box appears. The overview opens only if the option is on. |
 | Stop reached | The step advances by itself; waits at pickups and hand-ins until the quest is accepted or handed in; talk stops finish on talking. |
-| Stops added | View details pulses three times; the overview does not pop open. |
+| Stops added | View Journey pulses three times; the overview does not pop open. |
 | Quest picked up, adds 3 min or less | Joins by itself; a notice with undo. |
 | Quest picked up, adds more | A question note: add, new journey, or let it fade for not now. Quests picked up one after another are asked together. Asked once per quest. |
 | Quest picked up, nothing on | A note with the map icon: start a journey. |
@@ -466,7 +466,7 @@ suggestion / row / quest pickup / Suggest a journey
 | No zones to list | The Where to quest region isn't there. |
 | No observations | "Nothing to flag right now." |
 | Nothing to suggest from the log | "Nothing in your quest log to go on from here. Open Wayward (/ww) for other ideas." |
-| No offers on the way | The drawer's empty line; the + has no count. |
+| Nothing nearby | The Nearby tab's empty line; **+ On the way** has no count. |
 | No quest data (no QuestieDB) | No quest search, hubs or item sources. The log lists without directions. Trainers and vendors are those you've visited. Dungeons rank by level fit and travel. The summary line says which. |
 | No class trainer visit yet | "New spells" comes from the bundled class spell data. |
 | Classic Era | No map pin; the compass or TomTom shows the way. |
@@ -503,7 +503,7 @@ suggestion / row / quest pickup / Suggest a journey
 | Answer to what you just did | A pickup, an auto-add, an undo. | A note over the box, with a sound. |
 | Between journeys | A new major suggestion, Up next. | A toast, with a sound. |
 | On a journey | Any new suggestion or nearby offer. | A count on **+ On the way**. No sound, no arrow change. |
-| On request | Everything else. | Hover, click, the drawer, the overview, Find. |
+| On request | Everything else. | Hover, click, the On the way pane, the overview, Find. |
 
 A new-suggestion check runs after a level, a hand-in or a new zone; never in
 combat or in flight.
@@ -542,7 +542,6 @@ Options > AddOns > Wayward. All checkboxes.
 | | Every step in the directions box | On ("steps") | Character | `/ww detail` |
 | | Small bar with no journey on | On | Account | `/ww idle` |
 | NPCs | Star over the NPC you're heading for | On | Account | `/ww marker` |
-| | Friendly NPC nameplates | The game's own setting | Game | |
 | Journeys and quests | Automatically add quest pickups | On | Account | |
 | | Ask about quests outside your journey | On | Account | |
 | | Open the journey overview when a journey starts | Off | Account | |
@@ -553,11 +552,11 @@ Options > AddOns > Wayward. All checkboxes.
 | | Minimap button | Shown | Account | `/ww minimap` |
 | Windows and help | Reset positions · Show welcome again · List slash commands | Buttons | | `/ww reset`, `/ww welcome`, `/ww help` |
 
-Not in the options panel: the time budget (header buttons), sound choices
-(`/ww sounds`), the skin (`/ww skin`), whether the drawer is open.
+Not in the options panel: the time budget (the buttons by Something to do next), sound choices
+(`/ww sounds`), the skin (`/ww skin`), whether the On the way pane is open.
 
 Saved per character: the active journey and up to five set aside, time
-budget, detail setting, drawer state, learned quest times, the learned
+budget, detail setting, On the way pane state, learned quest times, the learned
 weight per kind of journey, cards seen, profile completion. Saved per
 account: settings, window positions, what was learned in game (NPCs, flight
 paths, docks, crossings, entrances, vendor goods).

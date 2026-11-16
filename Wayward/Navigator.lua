@@ -302,7 +302,7 @@ local function ask(label, detour, start)
   if not (StaticPopupDialogs and StaticPopup_Show) then return switch() end
   StaticPopupDialogs.WAYWARD_TRIP = StaticPopupDialogs.WAYWARD_TRIP or {
     text = "You're on a journey: %s.\n\nAdd \"%s\" to it as a detour, or switch to it? "
-      .. "Switching sets your journey aside, to resume later (View details in the directions box).",
+      .. "Switching sets your journey aside, to resume later (View Journey in the directions box).",
     button1 = "Add as detour", button2 = "Cancel", button3 = "Switch journey",
     OnAccept = function(_, data) data.add() end,
     OnAlt = function(_, data) data.switch() end,

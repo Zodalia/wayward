@@ -2,18 +2,19 @@ local _, ns = ...
 
 -- Errands: detours you add to a journey for yourself, not for a quest
 -- (repair, sell, mail, bank, ...), like a road map's "add a stop: petrol".
--- Each kind lists the places that add least to the journey on now
--- (OnTheWay.Added), from NPCs you've talked to (Harvest.lua), the data
--- sources' NPC flags and, for mailboxes, the ones you've opened and the
--- sources' objects named "Mailbox". UI/Drawer.lua lists them, from the
--- icons along the top of the directions box's drawer.
+-- Each kind lists the places nearest to where you are now, by travel time
+-- from you (OnTheWay.Seconds), from NPCs you've talked to (Harvest.lua), the
+-- data sources' NPC flags and, for mailboxes, the ones you've opened and the
+-- sources' objects named "Mailbox". UI/Drawer.lua lists them, each kind a
+-- tab of the On the way pane.
 
 local Errands = {}
 ns.Errands = Errands
 
-local CANDIDATES = 8   -- nearest places to the way (straight line) that get a full route
+local CANDIDATES = 8   -- nearest places to you (straight line) that get a full route
 local MAX = 5          -- places listed per kind
 local KEEP = 20        -- seconds a list is reused
+local MOVED = 40       -- yards you walk before it's worked out again
 local WORN = 0.75      -- gear at or under this: the list opens on repairs
 local FULL_BAGS = 2    -- free bag slots at or under this: it opens on vendors
 local SAME_MAILBOX = 10 -- yards: a mailbox opened again where one is recorded
@@ -63,8 +64,8 @@ local function freeBagSlots()
 end
 
 -- The kind you plainly need now: repairs when your gear is worn, a vendor
--- when your bags are full. Nil otherwise: the drawer opens on what's on the
--- way (UI/Drawer.lua).
+-- when your bags are full. Nil otherwise: the On the way pane opens on
+-- Nearby (UI/Drawer.lua).
 function Errands.UrgentKind()
   local durability = ns.Vendors.Durability()
   if durability and durability <= WORN then return "repair" end
@@ -216,9 +217,9 @@ local function inTrip(a)
   end
 end
 
--- A kind's places for the journey on now, least out of the way first:
--- { {npc?, node, place, extra (seconds it adds), inTrip}, ... }, and a line
--- to show instead when there are none.
+-- A kind's places, nearest to you first: { {npc?, node, place, extra
+-- (seconds of travel from you), inTrip}, ... }, and a line to show instead
+-- when there are none.
 function Errands.Get(key)
   local kind = byKey[key]
   local a = ns.Nav.active
@@ -227,15 +228,12 @@ function Errands.Get(key)
   local now = GetTime and GetTime() or 0
   local tripKey = tostring(a) .. ":" .. a.index .. ":" .. #(a.journey and a.journey.stops or {})
   local hit = cache[key]
-  if hit and hit.tripKey == tripKey and now - hit.at < KEEP then return hit.list, hit.empty end
-
-  local stops, near = ns.OnTheWay.RoutePoints(a, here)
-  local all = places(kind, here)
-  for _, p in ipairs(all) do
-    local d = math.huge
-    for _, n in ipairs(near) do d = math.min(d, ns.Geo.Distance(n, p.node)) end
-    p.distance = d
+  if hit and hit.tripKey == tripKey and now - hit.at < KEEP and ns.Geo.Distance(hit.here, here) <= MOVED then
+    return hit.list, hit.empty
   end
+
+  local all = places(kind, here)
+  for _, p in ipairs(all) do p.distance = ns.Geo.Distance(here, p.node) end
   table.sort(all, function(x, y) return x.distance < y.distance end)
   local net = ns.Network.Build()
   local going = inTrip(a)
@@ -243,7 +241,7 @@ function Errands.Get(key)
   for i = 1, math.min(#all, CANDIDATES) do
     local p = all[i]
     if p.distance < math.huge then
-      p.extra = ns.OnTheWay.Added(p.node, stops, net)
+      p.extra = ns.OnTheWay.Seconds(here, p.node, net)
       if p.extra < math.huge then
         p.place = (p.subZone ~= "" and p.subZone) or ns.Places.NameFor(p.node) or ns.MapName(p.node.mapID)
         p.inTrip = going(p)
@@ -262,11 +260,11 @@ function Errands.Get(key)
     if key == "mailbox" then
       empty = "No mailboxes known yet. Open one once and Wayward remembers it, or install " .. ns.Data.ADDON .. "."
     else
-      empty = string.format("None known near your journey. Talk to one once and Wayward remembers where they are, "
+      empty = string.format("None known near you. Talk to one once and Wayward remembers where they are, "
         .. "or install %s.", ns.Data.ADDON)
     end
   end
-  cache[key] = { tripKey = tripKey, at = now, list = list, empty = empty }
+  cache[key] = { tripKey = tripKey, at = now, here = here, list = list, empty = empty }
   return list, empty
 end
 

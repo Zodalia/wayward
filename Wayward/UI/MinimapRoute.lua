@@ -8,8 +8,8 @@ local _, ns = ...
 -- follows you as you walk, turns with a minimap that turns, keeps to the
 -- minimap's zoom (indoors too) and is cut at its rim, round or square. Plain
 -- directions show too. Once you're in the area of the objectives you're on,
--- the line there goes (you're there: the minimap shows the area); the stop's
--- badge and the way on stay.
+-- only the stop's badge stays: no line there (you're there: the minimap shows
+-- the area) and no way on to the next step (that's for when you're done).
 -- The options or /ww minimap journey turn it off.
 
 local MinimapRoute = {}
@@ -153,7 +153,7 @@ local function draw(here)
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
     { size = SIZE, clip = clip, you = false, gap = fromHere, alpha = MinimapRoute.Alpha,
-      skipLeg = now.inArea and 1 or nil, limit = SHOWN })
+      skipLeg = now.inArea and 1 or nil, limit = now.inArea and 1 or SHOWN })
   drawn = now
   return stats
 end

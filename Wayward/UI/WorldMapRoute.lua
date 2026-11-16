@@ -1,13 +1,13 @@
 local _, ns = ...
 
--- Your journey on the world map: the rest of it from the step you're on,
--- drawn as on the route maps (UI/RouteMap.lua: a colour for each way of
+-- Your journey on the world map: the next three steps from the one you're
+-- on, drawn as on the route maps (UI/RouteMap.lua: a colour for each way of
 -- travel, chevrons pointing the way, travel icons, the stops numbered in
--- order) on whichever map you're looking at, as much of it as that map
+-- order) on whichever map you're looking at, as much of them as that map
 -- holds. The map's own arrow is you, so a walk you're on starts where you
--- stand and follows you while the map is open. The next few steps are drawn
--- in full and the ones after fade, step by step, so the next part of the way
--- stands out. Plain directions show too.
+-- stand and follows you while the map is open. The step you're on is drawn
+-- in full and the next two fade out, so the way ahead stands out; the
+-- whole journey is on the overview's map. Plain directions show too.
 -- The options or /ww worldmap turn it off. UI/MinimapRoute.lua draws the
 -- same on the minimap.
 
@@ -18,13 +18,12 @@ local AZEROTH = 947
 local SIZE = 1.3       -- lines and badges this much bigger on screen than on the small maps
 local MOVED = 5         -- yards you walk before the line's start catches up with you
 local CHECK_EVERY = 0.5 -- seconds between looks at where you are while the map is open
-local CLEAR_STEPS = 3   -- steps drawn in full, the one you're on first
-local FADE_PER_STEP = 0.15
-local FAINTEST = 0.3    -- the furthest steps fade no further than this
+local SHOWN_STEPS = 3    -- steps drawn, the one you're on first; none after them
+local STEP_ALPHA = { 1, 0.55, 0.3 } -- the one you're on in full, the next two fading out
 
--- How opaque the i-th step still to go is drawn.
+-- How opaque the i-th step still to go is drawn (0: not drawn).
 function WorldMapRoute.Alpha(i)
-  return math.max(FAINTEST, 1 - FADE_PER_STEP * math.max(0, i - CLEAR_STEPS))
+  return STEP_ALPHA[i] or 0
 end
 
 local map, view
@@ -108,7 +107,7 @@ function WorldMapRoute.Refresh()
   view.canvas:Show()
   local stats = ns.RouteMap.DrawRoute(view, steps, points, at,
     { size = SIZE / scale, clip = { w = w, h = h }, you = false, gap = from ~= nil,
-      alpha = WorldMapRoute.Alpha })
+      alpha = WorldMapRoute.Alpha, limit = SHOWN_STEPS })
   drawnFrom = from
   since = 0
   WorldMapRoute.mapID = mapID

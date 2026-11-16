@@ -105,11 +105,11 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   with a bar of stops done beside it, the step, which step of the way to the
   next stop you're on, and distance and the time to that stop ("~4 min to
   stop", left off once you're there; the whole journey's time is in its
-  overview). Top right on a journey: **Do this stop later** (>>), a
-  "..." menu for what you use now and then or can't undo (**Skip this
-  stop**, **Set journey aside**, **End journey**; End asks first). Plain directions
-  have an x instead (Stop directions). Along the bottom,
-  two labelled actions: **+ On the way** and **View details** (the journey
+  overview). Top right on a journey, a button each: **Skip this stop**,
+  **Do this stop later** (>>) and **End journey** (the x); Skip and End ask
+  first. Setting a journey aside is in its overview. Plain directions
+  have the x only (Stop directions). Along the bottom,
+  two labelled actions: **+ On the way** and **View Journey** (the journey
   overview). There's no recalculate
   button: the journey re-plans as you go, and only changes which stop is
   next when another is clearly nearer, so skirting the halfway point between
@@ -126,24 +126,27 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   counts, what's around you first (up to four, then "+N more"); hover a
   line for which quest it's for and where the nearest are. It's already on
   the journey, so there's nothing to add and nothing to wave off.
-- **On the way**: the directions box's **+ On the way** (bottom left) opens a
-  drawer under the box, for what you could add near the journey you're on
-  (`Wayside.lua`, `UI/Drawer.lua`).
-  **You could add**: up to four offers, each with **+ Add**, and a **...**
-  whose **Not on this journey** waves it off: a quest in your log with objectives on your way ("on the way",
-  "around you"; adding it takes in the rest of the quest), quest givers,
-  hand-ins and vendors you need that add 3 minutes or less ("+2 min"), and
+- **On the way**: the directions box's **+ On the way** (bottom left), or
+  the journey overview's **On the way**, opens a pane of its own (drag it,
+  or move it in Edit Mode) for what you could add around where you are now
+  (`Wayside.lua`, `UI/Drawer.lua`). Everything in it is worked out from
+  where you stand, not along the whole journey, and its times are the time
+  to get there from you ("<1 min", no "+"); adding something, the journey
+  fits it in where it goes best. Along the top, a tab each:
+  **Nearby**: up to four offers, each with **+ Add**, and a **...**
+  whose **Not on this journey** waves it off: a quest in your log with objectives
+  around you ("around you"; adding it takes in the rest of the quest), quest givers,
+  hand-ins and vendors you need 3 minutes or less from you ("~2 min"), and
   a new suggestion from For you ("new"). An offer is only that: no sound,
   the arrow doesn't move for it, and one you wave off isn't offered again
-  on that journey. Along the top, **a detour of your own**, like a road
+  on that journey. Beside it, **a detour of your own**, like a road
   map's "petrol on the way": repair, vendor (sell and buy), mailbox, bank,
   inn, auction house and, for hunters, stable master. Pick one and the list
-  is the five places that add least to the journey, each with the time it
-  adds and Add; pick it again to go back. The drawer stays open until you
-  close it (per character). Closed, **+ On the way** carries a count of the offers
-  and nothing else asks for a look. It opens on what's on the way, or on
-  repairs when your gear is at 75% or less and on vendors when your bags
-  are full. Plain
+  is the five places nearest you, each with the time to get there and Add.
+  The pane stays open until you close it (per character). Closed,
+  **+ On the way** carries a count of what's nearby and nothing else asks
+  for a look. It opens on Nearby, or on repairs when your gear is at 75% or
+  less and on vendors when your bags are full. Plain
   directions become a journey with the place as one more stop. NPCs come
   from the ones you've talked to and from the data source's NPC flags (your
   faction's); mailboxes from the ones you've opened and the data source's
@@ -161,19 +164,19 @@ rework plan are in [docs/DESIGN.md](docs/DESIGN.md). New work follows it.
   you've learned one of them, or anything on their list, there (talking has
   to do where the client can't show the trainer's list). The NPC the step is for (flight master, quest giver, the one you
   hand in to, trainer, vendor) is easy to find near there: a star over their
-  nameplate (friendly NPC nameplates have to be on; the options can switch
-  the game's setting), a Wayward line in their tooltip, and a target button
+  nameplate (friendly NPC nameplates have to be on, in the game's own
+  options), a Wayward line in their tooltip, and a target button
   beside the directions box that targets them (`/target`, with a key binding
   under Key Bindings > AddOns > Wayward). Raid markers would be simpler,
   but addons may not set them. `/ww marker` or the options turn the star and
   the tooltip line off. Quests handed in to (or started from) an object, like
   Buzzbox 323, say "use" instead, with nothing to target.
-- **Your journey on the world map**: open the map and the rest of your
-  journey (or your directions) is drawn on it as on the route maps: white
-  for walking, blue for flights and boats, purple for the hearthstone,
-  chevrons pointing the way and the stops numbered in order. The next three
-  steps are drawn in full and the ones after fade, so the next part of the
-  way stands out. There and back on the same path, the two lines sit side
+- **Your journey on the world map**: open the map and the next three steps
+  of your journey (or your directions) are drawn on it as on the route maps:
+  white for walking, blue for flights and boats, purple for the hearthstone,
+  chevrons pointing the way and the stops numbered in order. The step
+  you're on is drawn in full and the next two fade out, so the way ahead
+  stands out; the whole journey is on the journey overview's map. There and back on the same path, the two lines sit side
   by side with their chevrons between each other's. It shows on whichever
   map you look at, as far as that map goes, and a walk starts from the
   map's own arrow. `/ww worldmap` or the options turn it off.
@@ -296,8 +299,9 @@ Find's (`ns.Search.Find(text, "item")`).
 ### For you
 
 The main window is the home screen: under a header with your portrait,
-"Level 8 · Dun Morogh", the summary line and the time buttons, four regions
-with their own jobs:
+"Level 8 · Dun Morogh" and the summary line, four regions with their own
+jobs (the time buttons, 15 / 30 / 60 / Any, sit at the right of Something
+to do next's heading, since they filter its cards):
 
 - **Your journey**: the journey you're on, with its icon, title, the current
   stop on a line of its own ("Find Shimmerweed in Dun Morogh"; the stop, not
@@ -307,7 +311,7 @@ with their own jobs:
   quest), a progress bar, what comes next ("Then: Do Frostmane Hold, and 3
   more stops"), a map of what's left, **Continue journey** (the main button:
   closes the window and makes sure the directions box is up) and the lighter
-  **View details** (the journey overview, where you reorder, skip, add a
+  **View Journey** (the journey overview, where you reorder, skip, add a
   detour or set the journey aside; its tooltip says so). A detour never renames a journey: one started from a suggestion
   keeps its name, and one you put together yourself is named after its
   quests ("The Perfect Stout and 2 more quests"). On plain directions it shows the
@@ -528,7 +532,7 @@ zone, a dungeon, a profession's next rank) and you aren't on a journey, a
 short "New journey available" toast pops up; its **Start journey** button
 (or a click on the rest of it) starts the journey.
 On a journey it doesn't pop up over what you're doing: it's an offer in the
-directions box's drawer instead (see On the way). Both fade after a few seconds,
+On the way pane instead (see On the way). Both fade after a few seconds,
 not while the mouse is over them, with the notes' x and their draining time
 bar. For you checks for new ones after a level,
 a quest handed in or a new zone (not in combat, and not on a flight: the
@@ -820,7 +824,7 @@ you're on without asking.
     plans keep (`Journey.Postpone`, saved with the journey; your newest
     choice wins), so the rest is still ordered for you; in a journey you
     ordered yourself it moves.
-  - **Skip this stop** (in the box's "..." menu) asks first, then takes the stop
+  - **Skip this stop** (a button on the directions box) asks first, then takes the stop
     off the journey with the stops that need it (a hand-in when you skip the
     objectives), like the overview's Remove stop.
   - Quest data can miss a step of a chain, so a follow-up looks available
@@ -839,7 +843,7 @@ you're on without asking.
     reload, re-planned from where you are (tried again for half a minute
     while the game isn't ready to place you; a journey it still can't re-plan
     stays saved, and `/ww resume` tries again). The directions box's
-    **View details** (it pulses a few times when stops are added to
+    **View Journey** (it pulses a few times when stops are added to
     the journey, rather than the overview popping open), opens an overview of
     the journey. At its top, a walkthrough: one stop and one of its steps
     ("Stop 2 of 5", "Step 1 of 3 · Fly to Stormwind"), with < and > to go
@@ -852,16 +856,12 @@ you're on without asking.
     you. The steps are shown there only. Under it, every stop (done / now / next; stops you skipped aren't listed; finished
     stops fold into one line you can click open, by themselves from three of
     them or when they'd push open stops off the list; a stop where the plan
-    uses your Hearthstone says so; under the stops, "On the way:
-    you could add": the same offers as the directions box's drawer (up to
-    four: a log quest with objectives on your way, a new suggestion, and
-    things near the route that add 3 minutes of travel or less, quest
-    givers with quests for you, quests in your log ready to hand in and
-    vendors you need), each with a + Add button
-    (a quest whose objectives and hand-in add under a minute more comes
-    whole, not asked about once you pick it up; not when it's under a
-    minute only by spending your Hearthstone, which a journey uses only
-    where it saves 5 minutes or more); then "Set aside", the
+    uses your Hearthstone says so; under the stops, an **On the way**
+    button that opens the On the way pane (what's around you to add; a
+    quest added from there whose objectives and hand-in add under a minute
+    more comes whole, not asked about once you pick it up; not when it's
+    under a minute only by spending your Hearthstone, which a journey uses
+    only where it saves 5 minutes or more); then "Set aside", the
     journeys you set aside, each with Resume and Forget; and a map of the
     rest of the journey, under a "Map" line that folds it (per character);
     the mouse wheel scrolls the list when it doesn't all fit). The stop

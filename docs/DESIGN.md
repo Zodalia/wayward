@@ -34,7 +34,7 @@ wins and why in the commit message.
 | **Journey** | The overall adventure or goal the player has chosen: "The Perfect Stout", "Quest in Redridge Mountains", "Run The Deadmines". One journey is active at a time. | trip, route, run |
 | **Stop** | A meaningful objective or destination within a journey: pick up a quest, kill the boars, hand in, talk to the trainer, enter the dungeon, reach a zone. | leg, waypoint, objective (as a UI word) |
 | **Step** | An individual instruction required to reach or complete a stop: "Walk to Lakeshire", "Fly to Stormwind", "Take the boat". The directions box shows the current step. | leg, hop |
-| **Detour** | An optional stop inserted into an existing journey: a repair, a mailbox, a nearby pickup, a vendor on the way. The "+" on the directions box adds one. | errand, side trip, convenience stop |
+| **Detour** | An optional stop inserted into an existing journey: a repair, a mailbox, a nearby pickup, a vendor on the way. The On the way pane (the directions box's "+ On the way") adds one. | errand, side trip, convenience stop |
 | **Directions** | The plain A-to-B case with no journey: steps to one place. Starting a journey while on plain directions folds the destination into the journey as a stop. | trip |
 | **Suggestion** | A possible journey on the home screen (a card). | recommendation, option |
 | **Observation** | A small useful fact on the home screen (a "Good to know" tile), usually with a one-click action. | need, alert, nag |
@@ -52,8 +52,8 @@ strings, tooltips, README and comments that face the reader change):
 | "Skip this step" / "Move to the next step and do this later" (HUD; they act on the stop) | "Skip this stop" / "Do this stop later" |
 | "Step %d of %d to get there" | unchanged (these are steps) |
 | "Add a stop: repair, vendor, mailbox, bank..." | "Add a detour: repair, vendor, mailbox, bank..." |
-| "On the way (3 min or less more)" | "On the way: you could add" (was "Detours on the way (3 min or less)" until the drawer) |
-| "See full journey" | "View details" (and the button in the Your Journey box) |
+| "On the way (3 min or less more)" | The On the way pane's "Nearby" tab (was "Detours on the way (3 min or less)" until the drawer, then "On the way: you could add") |
+| "See full journey" | "View Journey" (and the button in the Your Journey box; "View details" until 2026-11-15) |
 | "Journey complete!", "New journey available", "Up next" | unchanged |
 | "Due now", "Worth a visit" (card categories) | gone as cards; these become observations |
 
@@ -68,7 +68,7 @@ layout is described here so it can be built without it).
 
 ```
 +----------------------------------------------------------------------+---+
-| [portrait] Level 8 · Dun Morogh            Time: [15][30][60][Any]   | ? |
+| [portrait] Level 8 · Dun Morogh                                      | ? |
 |            A few good options from where you are.                    | $ |
 +----------------------------------------------------------------------+ B |
 | YOUR JOURNEY                                                         | K |
@@ -77,9 +77,9 @@ layout is described here so it can be built without it).
 |        2 of 5 stops complete · ~6 min remaining                      |   |
 |        [=========------]                                             |   |
 |        A flexible plan you can continue, reorder or expand.          |   |
-|        [Continue journey] [View details]                             |   |
+|        [Continue journey] [View Journey]                             |   |
 +----------------------------------------------------------------------+   |
-| SOMETHING TO DO NEXT                                                 |   |
+| SOMETHING TO DO NEXT                       Time: [15][30][60][Any]   |   |
 | [QUESTING card] [EXPLORE card] [ALTERNATIVE card]   (page arrows)    |   |
 |  title, why, meta row (nearby · level · time), [Start journey]       |   |
 +----------------------------------------------------------------------+   |
@@ -97,7 +97,7 @@ never compete on one ranking:
    mockup says "Step 1 of 2" there, which is the old vocabulary and is
    wrong), stops done, time remaining, progress bar, a RouteMap of the rest
    of the journey, **Continue journey** (closes the panel and makes sure the
-   directions box is showing the current step) and **View details** (opens
+   directions box is showing the current step) and **View Journey** (opens
    the journey overview). With plain directions the box shows the
    destination and "Directions". With nothing active the region collapses to
    one line ("No journey on the go. Pick something below.")
@@ -117,7 +117,9 @@ never compete on one ranking:
    **Show ...** (opens a side page), or **Go** (plain directions). Ordered
    by urgency, then usefulness. No time budget filtering.
 
-The header keeps the summary line and the time buttons; the side tabs stay
+The header keeps the summary line; the time buttons sit on the Something to
+do next heading's line (moved there 2026-11-15: they filter the cards, so
+they belong with them). The side tabs stay
 (the mockup's "?" becomes the unified Find page, see
 [One assistance system](#one-assistance-system-im-stuck)).
 
@@ -287,18 +289,25 @@ ideas of "near the way". Now:
 - **Two places, by kind** (changed 2026-11-10): `gathering` is a section of
   its own above the directions box ("Gathering as you go", `UI/HUD.lua`),
   shown whenever there's something, since it's what the journey you chose
-  already does. `offers` stay in the drawer (`UI/Drawer.lua`, the
-  directions box's +), with along the top a detour of your own (repair,
-  mailbox...). The journey overview shows the same offers.
+  already does. `offers` are the Nearby tab of the On the way pane
+  (`UI/Drawer.lua`, opened from the directions box's "+ On the way"), with
+  a tab beside it for each detour of your own (repair, mailbox...). The
+  journey overview has a button that opens the pane, not the offers.
+- **Around you, not along the journey** (changed 2026-11-15): offers and a
+  kind's places are worked out from where you stand, with the time to get
+  there from you ("<1 min", no "+"), not the time each adds to the whole
+  journey. Adding one, the journey fits it in where it goes best. A quest in
+  your log is offered only when its objectives are around you. The pane is
+  a window of its own, no longer hanging off the directions box.
 - **Who speaks when.** A note over the box answers something you just did
   (picked up a quest, undo). A toast is for a new suggestion between
-  journeys. On a journey a new suggestion is an offer in the drawer.
+  journeys. On a journey a new suggestion is an offer in the On the way pane.
 - **Pillars 1 and 2.** An offer never makes a sound or moves the arrow; the
-  closed drawer shows a count of the offers and no more; waved off, an
+  closed pane shows a count of the offers and no more; waved off, an
   offer stays away for that journey. Gathering as you go is on screen
   unasked because it isn't extra guidance: it's your journey's own way,
   like the objectives in the box. Offers are suggestions, so they wait
-  behind the +.
+  behind "+ On the way".
 - Vocabulary: "On the way" is the surface; what you add from it is still a
   **detour**. "Shopping list" and "errand" are gone from what the player
   reads (module names `ns.Errands`, `ns.ErrandPicker` stay).

@@ -1,10 +1,12 @@
 local _, ns = ...
 
--- Detours on the way (shown in the journey overview): quests you can pick
--- up, quests in your log ready to hand in, and vendors you need, that are
--- near the way and add little to it: SLACK seconds of travel or less (the
--- same as follow-up quests). Each comes with the stops to add; a pickup
--- brings its quest's objectives and hand-in along when they add under
+-- Nearby (the On the way pane's first tab, UI/Drawer.lua): quests you can
+-- pick up, quests in your log ready to hand in, and vendors you need, around
+-- where you are now: NEAR yards or less in a straight line and SLACK seconds
+-- of travel or less from you. Worked out from where you stand, not along the
+-- whole journey: what's near you, and how long it takes to get there. Each
+-- comes with the stops to add (the journey places them where they fit); a
+-- pickup brings its quest's objectives and hand-in along when they add under
 -- AUTO_ADD seconds more.
 
 local OnTheWay = {}
@@ -12,30 +14,21 @@ ns.OnTheWay = OnTheWay
 
 local unpack = unpack or table.unpack
 
-local SLACK = 180       -- seconds of travel a suggestion may add
-local NEAR = 600        -- yards from the route (straight line) to be worth planning
+local SLACK = 180       -- seconds of travel from you, at most
+local NEAR = 600        -- yards from you (straight line) to be worth planning
 local CANDIDATES = 8    -- nearest candidates that get a full route
 local MAX = 4           -- suggestions shown
 local KEEP = 20         -- seconds a set of suggestions is reused
+local MOVED = 40        -- yards you walk before they're worked out again
 local AUTO_ADD = 60     -- seconds: a pickup whose objectives and hand-in add less brings them along
 
 local cache
 
--- The journey's points: where you are, then its open stops in order (or the
--- destination), and every place its route passes (for "near the way").
--- Errands.lua ranks its places by these too.
-function OnTheWay.RoutePoints(a, here)
-  local stops, near = { here }, { here }
-  if a.journey then
-    for _, stop in ipairs(a.journey.stops) do
-      if not stop.done and not stop.skipped and stop.node then stops[#stops + 1] = stop.node end
-    end
-  elseif a.goal then
-    stops[#stops + 1] = a.goal
-  end
-  for k = a.index, #a.route.steps do near[#near + 1] = a.route.steps[k].to end
-  for _, n in ipairs(stops) do near[#near + 1] = n end
-  return stops, near
+-- Seconds of travel from `here` to `node` (math.huge when there's no way).
+-- Errands.lua times its places by this too.
+function OnTheWay.Seconds(here, node, net)
+  local r = ns.Router.Plan(here, node, net)
+  return r and r.seconds or math.huge
 end
 
 local function inTrip(a)
@@ -95,57 +88,37 @@ local function candidates(a, here)
   return out
 end
 
--- Seconds of travel `node` adds to the journey at its best place among `stops`.
-function OnTheWay.Added(node, stops, net)
-  local plans = {}
-  local function cost(from, to)
-    local key = tostring(from) .. ">" .. tostring(to)
-    if plans[key] == nil then
-      local r = ns.Router.Plan(from, to, net)
-      plans[key] = r and r.seconds or math.huge
-    end
-    return plans[key]
-  end
-  local best = cost(stops[#stops], node) -- at the end
-  for i = 1, #stops - 1 do
-    local extra = cost(stops[i], node) + cost(node, stops[i + 1]) - cost(stops[i], stops[i + 1])
-    if extra < best then best = extra end
-  end
-  return math.max(0, best)
-end
-
--- The detours for the journey on now, best first: { {kind, label, stops, extra} }.
+-- What's nearby to add, nearest first: { {kind, label, stops, node, extra
+-- (seconds from you)} }.
 function OnTheWay.Get()
   local a = ns.Nav.active
   local here = ns.Geo.PlayerNode()
   if not (a and here) then return {} end
   local now = GetTime and GetTime()
   local key = tostring(a) .. ":" .. a.index .. ":" .. #(a.journey and a.journey.stops or {})
-  if cache and cache.key == key and now and now - cache.at < KEEP then return cache.list end
+  if cache and cache.key == key and now and now - cache.at < KEEP and cache.here
+    and ns.Geo.Distance(cache.here, here) <= MOVED then
+    return cache.list
+  end
 
-  local stops, near = OnTheWay.RoutePoints(a, here)
   local list = {}
   local ok, all = pcall(candidates, a, here)
   if ok then
-    -- The nearest to the way get a full plan.
-    for _, c in ipairs(all) do
-      local d = math.huge
-      for _, p in ipairs(near) do d = math.min(d, ns.Geo.Distance(p, c.node)) end
-      c.distance = d
-    end
+    -- The nearest to you get a full plan.
+    for _, c in ipairs(all) do c.distance = ns.Geo.Distance(here, c.node) end
     table.sort(all, function(x, y) return x.distance < y.distance end)
     local net = ns.Network.Build()
     for i = 1, math.min(#all, CANDIDATES) do
       local c = all[i]
       if c.distance <= NEAR then
-        c.extra = OnTheWay.Added(c.node, stops, net)
+        c.extra = OnTheWay.Seconds(here, c.node, net)
         if c.extra <= SLACK then list[#list + 1] = c end
       end
     end
     table.sort(list, function(x, y) return x.extra < y.extra end)
     while #list > MAX do table.remove(list) end
   end
-  cache = { key = key, at = now or 0, list = list }
+  cache = { key = key, at = now or 0, here = here, list = list }
   return list
 end
 

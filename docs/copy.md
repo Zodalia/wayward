@@ -702,7 +702,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 266: a stop
 - 266: ; left out.
 - 304: You're on a journey: %s.\n\nAdd \"%s\" to it as a detour, or switch to it? 
-- 305: Switching sets your journey aside, to resume later (View details in the directions box).
+- 305: Switching sets your journey aside, to resume later (View Journey in the directions box).
 - 306: Add as detour
 - 306: Cancel
 - 306: Switch journey
@@ -711,161 +711,161 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 330: Train your new spells at 
 - 441: couldn't show the journey's fanfare: 
 - 466: you have arrived: 
-- 488: new plan: next %s
-- 505: no route from here.
-- 516: the plan's last stop is done
-- 584: faster route with your flight paths: 
-- 610: done: %s
-- 647: the quest log says %d more stop%s done
-- 695: %d quests
-- 742: , with a run of 
-- 746: , but only by using your Hearthstone: 
-- 746:  without it
-- 777: couldn't show a question (
-- 799: You %s %s. Add it to your journey (%s)?
-- 801: Add detour
-- 802: New journey
-- 803: A journey for it alone (%s). The one on now is set aside, to resume later.
-- 812: You %s %s. Start a journey for it (%s)?
-- 814: Start journey
-- 829: picked up %s: added to your journey (%s more). The journey overview's x drops it.
-- 835: Added %s to your journey (%s more).
-- 877: picked up
-- 945: %s isn't offered yet (it needs earlier quests): dropped from the journey.
-- 946: that quest
-- 1175: no stops left.
-- 1186: you moved %s to %s's place
-- 1188: can't move that stop there: it comes after another stop.
-- 1229: no route to 
-- 1229:  from here.
-- 1237:  is already in your journey.
-- 1249: no route for the journey from here.
-- 1254: added %s to your journey: %d stops, %s
-- 1259: Added %s to your journey.
-- 1262: Undo
-- 1262: Takes it out of your journey again.
-- 1290: you removed %s
-- 1290: a detour
-- 1291:  out of your journey.
-- 1295: no stops left.
-- 1426:  to do it
-- 1428:  (a run of 
-- 1428: the dungeon
-- 1430:  (your average)
-- 1432: Quest 
-- 1433: : on the way; 
-- 1434: %s: %s more travel + %s
-- 1477:  continues with:
-- 1487: %s continues: added %s to your journey (%s more).
-- 1505: %s continues with %s (%s more). Add %s to your journey?
-- 1507: Add detour
-- 1619: resuming journey: 
-- 1619:  (/ww stop to end it)
-- 1625: resuming directions to 
-- 1625:  (/ww stop to end them)
-- 1672: script ran too long
-- 1703: couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.
-- 1716: /ww resume - pick up the saved journey again
-- 1717: a journey is already on.
-- 1718: no saved journey.
-- 1767: set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.
-- 1780: no journey set aside there.
-- 1785: can't read your position here.
-- 1792: no route from here to what's left of 
-- 1792: ; it's kept.
-- 1796: nothing left to do on 
-- 1802: resuming journey: 
-- 1884: forgotten: 
-- 1892: just now
-- 1895: /ww journeys [aside \| resume <n> \| forget <n>] - the journey on now and the ones set aside
-- 1898: no journey on now.
-- 1903: no journey set aside there.
-- 1908: on now: %s (%d of %d stops done, %s to go)
-- 1911: no journey on now.
-- 1914: none set aside.
-- 1916: set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d
-- 2015: /ww detail steps\|stops - what the directions box shows: every step, or just the stop
-- 2019: directions box: the stop you're heading for; hover it for the step.
-- 2020: directions box: every step to the next stop.
-- 2039: re-route: %s
-- 2042: re-route found no route
-- 2045: re-routed from here (
-- 2057: you moved a long way
-- 2060: you're on another continent
-- 2064: you went another way
-- 2092: plain directions, not a journey
-- 2094: your own order (you dragged a stop)
-- 2095: on a flight
-- 2096: at a stop, waiting for it
-- 2098: no step
-- 2099: the step isn't on foot (
-- 2100: in the next stop's objective area
-- 2101: gathering where you are
-- 2112: one stop left
-- 2114: a re-plan is running
-- 2116: no game clock
-- 2117: looked %.0f s ago
-- 2119: re-planned %.0f s ago
-- 2125: moved %.0f of %d yards since the last look
-- 2134: no journey
-- 2142: re-plans as you go paused: 
-- 2142: re-plans as you go on again
-- 2172: it failed
-- 2172: no route from here
-- 2172: the journey ended
-- 2173: the journey changed
-- 2173: the route changed
-- 2174: a step was passed
-- 2174: a pin changed
-- 2176: re-plan as you go dropped: %s
-- 2184: re-plan as you go: same order, next %s
-- 2192: re-plan as you go: next %s instead of %s
-- 2194: %s is next now: it fits better from where you are.
-- 2194: another stop
-- 2197: re-plan as you go: %s
-- 2197: through another area on the way
-- 2197: straight on, nothing to gather on the way
-- 2199: re-plan as you go: another spot for %s
-- 2201: re-plan as you go: later stops reordered
-- 2260: left a cleared spot of %s
-- 2269: that spot's cleared: on to another for %s.
-- 2271: that spot's cleared: other stops first while it respawns (%s).
-- 2274: that spot's cleared: back when it respawns (%s).
-- 2319: progress on %s in its area: put first
-- 2323: you're doing %s here: it's next on the journey now.
-- 2351: made progress on
-- 2407: you abandoned %s: nothing left on the journey, so it's cancelled.
-- 2410: you abandoned %s: dropped from your journey.
-- 2456: you moved on from %s
-- 2459: nothing else on the journey to do first; skip it to take it off.
-- 2470: later: %s, after %d other stops.
-- 2470: that stop
-- 2472: later: %s, after %s.
-- 2472: that stop
-- 2472: the next stop
-- 2492: you asked for another spot for %s
-- 2496: another spot for %s.
-- 2511: Skip
-- 2511: Cancel
-- 2515: Skip \"%s\"?\n\nIt's taken off the journey%s.
-- 2515: this stop
-- 2516: , with \"%s\", which needs it
-- 2516: a stop
-- 2517: , with the %d stops that need it
-- 2531: End journey
-- 2531: Keep going
-- 2531: Set aside
-- 2538: End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; 
-- 2539: set it aside to keep it and resume it later.
-- 2539: this journey
-- 2614: WaypointAdded
-- 2691: at %s, still gathering, but no area to go through
-- 2694: at %s before it's all gathered: sent on through an area
-- 2695: not everything for %s yet: on through another spot, then back here.
-- 2820: reached: %s
-- 2828: reached: %s
-- 2840: left the area you were gathering in
-- 2844: gathering where you are, for %s
+- 497: new plan: next %s
+- 515: no route from here.
+- 526: the plan's last stop is done
+- 594: faster route with your flight paths: 
+- 620: done: %s
+- 657: the quest log says %d more stop%s done
+- 705: %d quests
+- 752: , with a run of 
+- 756: , but only by using your Hearthstone: 
+- 756:  without it
+- 787: couldn't show a question (
+- 809: You %s %s. Add it to your journey (%s)?
+- 811: Add detour
+- 812: New journey
+- 813: A journey for it alone (%s). The one on now is set aside, to resume later.
+- 822: You %s %s. Start a journey for it (%s)?
+- 824: Start journey
+- 839: picked up %s: added to your journey (%s more). The journey overview's x drops it.
+- 845: Added %s to your journey (%s more).
+- 887: picked up
+- 955: %s isn't offered yet (it needs earlier quests): dropped from the journey.
+- 956: that quest
+- 1185: no stops left.
+- 1196: you moved %s to %s's place
+- 1198: can't move that stop there: it comes after another stop.
+- 1239: no route to 
+- 1239:  from here.
+- 1247:  is already in your journey.
+- 1259: no route for the journey from here.
+- 1264: added %s to your journey: %d stops, %s
+- 1269: Added %s to your journey.
+- 1272: Undo
+- 1272: Takes it out of your journey again.
+- 1300: you removed %s
+- 1300: a detour
+- 1301:  out of your journey.
+- 1305: no stops left.
+- 1436:  to do it
+- 1438:  (a run of 
+- 1438: the dungeon
+- 1440:  (your average)
+- 1442: Quest 
+- 1443: : on the way; 
+- 1444: %s: %s more travel + %s
+- 1487:  continues with:
+- 1497: %s continues: added %s to your journey (%s more).
+- 1515: %s continues with %s (%s more). Add %s to your journey?
+- 1517: Add detour
+- 1629: resuming journey: 
+- 1629:  (/ww stop to end it)
+- 1635: resuming directions to 
+- 1635:  (/ww stop to end them)
+- 1682: script ran too long
+- 1713: couldn't re-plan your journey from here yet; it's kept: /ww resume tries again.
+- 1726: /ww resume - pick up the saved journey again
+- 1727: a journey is already on.
+- 1728: no saved journey.
+- 1777: set aside: %s (%d stop%s left). Resume it from the journey overview or /ww journeys.
+- 1790: no journey set aside there.
+- 1795: can't read your position here.
+- 1802: no route from here to what's left of 
+- 1802: ; it's kept.
+- 1806: nothing left to do on 
+- 1812: resuming journey: 
+- 1894: forgotten: 
+- 1902: just now
+- 1905: /ww journeys [aside \| resume <n> \| forget <n>] - the journey on now and the ones set aside
+- 1908: no journey on now.
+- 1913: no journey set aside there.
+- 1918: on now: %s (%d of %d stops done, %s to go)
+- 1921: no journey on now.
+- 1924: none set aside.
+- 1926: set aside %d: %s (%d stop%s left, %s) - /ww journeys resume %d, /ww journeys forget %d
+- 2025: /ww detail steps\|stops - what the directions box shows: every step, or just the stop
+- 2029: directions box: the stop you're heading for; hover it for the step.
+- 2030: directions box: every step to the next stop.
+- 2049: re-route: %s
+- 2052: re-route found no route
+- 2055: re-routed from here (
+- 2067: you moved a long way
+- 2070: you're on another continent
+- 2074: you went another way
+- 2102: plain directions, not a journey
+- 2104: your own order (you dragged a stop)
+- 2105: on a flight
+- 2106: at a stop, waiting for it
+- 2108: no step
+- 2109: the step isn't on foot (
+- 2110: in the next stop's objective area
+- 2111: gathering where you are
+- 2122: one stop left
+- 2124: a re-plan is running
+- 2126: no game clock
+- 2127: looked %.0f s ago
+- 2129: re-planned %.0f s ago
+- 2135: moved %.0f of %d yards since the last look
+- 2144: no journey
+- 2152: re-plans as you go paused: 
+- 2152: re-plans as you go on again
+- 2182: it failed
+- 2182: no route from here
+- 2182: the journey ended
+- 2183: the journey changed
+- 2183: the route changed
+- 2184: a step was passed
+- 2184: a pin changed
+- 2186: re-plan as you go dropped: %s
+- 2194: re-plan as you go: same order, next %s
+- 2202: re-plan as you go: next %s instead of %s
+- 2204: %s is next now: it fits better from where you are.
+- 2204: another stop
+- 2207: re-plan as you go: %s
+- 2207: through another area on the way
+- 2207: straight on, nothing to gather on the way
+- 2209: re-plan as you go: another spot for %s
+- 2211: re-plan as you go: later stops reordered
+- 2270: left a cleared spot of %s
+- 2279: that spot's cleared: on to another for %s.
+- 2281: that spot's cleared: other stops first while it respawns (%s).
+- 2284: that spot's cleared: back when it respawns (%s).
+- 2329: progress on %s in its area: put first
+- 2333: you're doing %s here: it's next on the journey now.
+- 2361: made progress on
+- 2417: you abandoned %s: nothing left on the journey, so it's cancelled.
+- 2420: you abandoned %s: dropped from your journey.
+- 2466: you moved on from %s
+- 2469: nothing else on the journey to do first; skip it to take it off.
+- 2480: later: %s, after %d other stops.
+- 2480: that stop
+- 2482: later: %s, after %s.
+- 2482: that stop
+- 2482: the next stop
+- 2502: you asked for another spot for %s
+- 2506: another spot for %s.
+- 2521: Skip
+- 2521: Cancel
+- 2525: Skip \"%s\"?\n\nIt's taken off the journey%s.
+- 2525: this stop
+- 2526: , with \"%s\", which needs it
+- 2526: a stop
+- 2527: , with the %d stops that need it
+- 2541: End journey
+- 2541: Keep going
+- 2541: Set aside
+- 2548: End \"%s\"?\n\nYou've done %d of %d stops. Ending the journey can't be undone; 
+- 2549: set it aside to keep it and resume it later.
+- 2549: this journey
+- 2624: WaypointAdded
+- 2701: at %s, still gathering, but no area to go through
+- 2704: at %s before it's all gathered: sent on through an area
+- 2705: not everything for %s yet: on through another spot, then back here.
+- 2830: reached: %s
+- 2838: reached: %s
+- 2850: left the area you were gathering in
+- 2854: gathering where you are, for %s
 
 ## PlanReport.lua
 
@@ -938,76 +938,74 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## OnTheWay.lua
 
-- 62: Pick up %s from %s
-- 62: the quest giver
-- 67: Pick up %s (%s)
-- 68: Pick up %d quests from %s
-- 80: Hand in %s (%s)
-- 82: Hand in %s to %s
-- 82: the quest giver
-- 220: handing in %s adds under a minute: added too.
-- 223: handing in %s adds under a minute only by using your Hearthstone, so it isn't 
-- 224: added unasked.
+- 55: Pick up %s from %s
+- 55: the quest giver
+- 60: Pick up %s (%s)
+- 61: Pick up %d quests from %s
+- 73: Hand in %s (%s)
+- 75: Hand in %s to %s
+- 75: the quest giver
+- 193: handing in %s adds under a minute: added too.
+- 196: handing in %s adds under a minute only by using your Hearthstone, so it isn't 
+- 197: added unasked.
 
 ## Errands.lua
 
-- 23: Repair
-- 23: Repair at %s
-- 25: Vendor
-- 25: Sell and buy at %s
-- 27: Mailbox
-- 27: Check your mail
-- 29: Bank
-- 29: Bank with %s
-- 31: Inn
-- 31: Visit %s
-- 33: Auction house
-- 33: Auction house: %s
-- 35: Stable master
-- 35: Stable with %s
-- 90: Npc
-- 102: Neutral
-- 154: ObjectIDs
-- 159: Mailbox
-- 161: Mailbox
-- 175: Mailbox
-- 226: Can't read your position here.
-- 263: No mailboxes known yet. Open one once and Wayward remembers it, or install 
-- 265: None known near your journey. Talk to one once and Wayward remembers where they are, 
-- 266: or install %s.
+- 24: Repair
+- 24: Repair at %s
+- 26: Vendor
+- 26: Sell and buy at %s
+- 28: Mailbox
+- 28: Check your mail
+- 30: Bank
+- 30: Bank with %s
+- 32: Inn
+- 32: Visit %s
+- 34: Auction house
+- 34: Auction house: %s
+- 36: Stable master
+- 36: Stable with %s
+- 91: Npc
+- 103: Neutral
+- 155: ObjectIDs
+- 160: Mailbox
+- 162: Mailbox
+- 176: Mailbox
+- 227: Can't read your position here.
+- 261: No mailboxes known yet. Open one once and Wayward remembers it, or install 
+- 263: None known near you. Talk to one once and Wayward remembers where they are, 
+- 264: or install %s.
 
 ## Wayside.lua
 
-- 54:   ·  near 
-- 81: %s+%d more\|r
-- 93: Also gathering
-- 99: gather:more
-- 103: gather:
-- 104: For %s. %s.
-- 104: Around you
-- 104: Nearest near 
-- 105: Farther off
-- 105: The journey takes you through these when they're on the way; it carries on whenever you do.
-- 114: log:
-- 125: , +%d more
-- 126: around you
-- 126: on the way
-- 127: In your quest log, not on this journey: its objectives are on your way.
-- 131: Add it and the journey takes in the rest of the quest.
-- 137: way:
-- 139: A detour of %s on your journey.
-- 144: card:
-- 145: A new suggestion from For you.
-- 145: Add it to this journey as a detour.
+- 56:   ·  near 
+- 83: %s+%d more\|r
+- 95: Also gathering
+- 101: gather:more
+- 105: gather:
+- 106: For %s. %s.
+- 106: Around you
+- 106: Nearest near 
+- 107: Farther off
+- 107: The journey takes you through these when they're on the way; it carries on whenever you do.
+- 117: log:
+- 127: , +%d more
+- 128: around you
+- 129: In your quest log, not on this journey: its objectives are around you.
+- 133: Add it and the journey takes in the rest of the quest.
+- 139: way:
+- 141: %s from where you are. Add it and the journey fits it in.
+- 147: card:
+- 148: A new suggestion from For you.
+- 148: Add it to this journey as a detour.
 
 ## Marker.lua
 
-- 89: can't change nameplates in combat; try again after.
-- 101: this step
-- 117: OnTooltipSetUnit
-- 120: /ww marker - the star over the NPC you're heading for, and their tooltip line, on or off
-- 122: NPC star and tooltip line 
-- 123:  (the star needs friendly NPC nameplates: see /ww options)
+- 95: this step
+- 111: OnTooltipSetUnit
+- 114: /ww marker - the star over the NPC you're heading for, and their tooltip line, on or off
+- 116: NPC star and tooltip line 
+- 117:  (the star needs friendly NPC nameplates: turn them on in the game's options)
 
 ## Docks.lua
 
@@ -1595,73 +1593,67 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/HUD.lua
 
-- 39: + On the way
-- 51: Gathering as you go
-- 60: Nothing in your quest log to go on from here. Open Wayward (/ww) for other ideas.
-- 187: Stop directions
-- 195: More: skip this stop, set the journey aside, end it
-- 197: Do this stop later
-- 216: On the way
-- 219: %d thing%s you could add on the way.
-- 221: And a detour of your own: repair, vendor, mailbox, bank...
-- 225: NumberFontNormalSmall
-- 227: View details
-- 229: View details
-- 286: Another spot
-- 290: Another spot
-- 291: Camped, respawning or too busy? Head for another place to do this quest. 
-- 292: This one's left alone for a while, like a camp you've cleared.
-- 309: Suggest a journey
-- 323: Open Wayward
-- 325: Open Wayward: suggestions, quests, places and more
-- 352: StatusBar
-- 454: \|cff9d9d9d+%d more\|r
-- 558: Skip this stop
-- 559: Takes this stop off the journey, with any stops that need it. Asks first.
-- 560: Set journey aside
-- 561: Keeps this journey to resume later, and ends directions for now.
-- 562: End journey
-- 563: Ends this journey. Asks first: it can't be undone.
-- 605: Suggest a journey
-- 605: Starts a journey from your quest log and where you are: quests to hand in, 
-- 606: or quests to finish close together.
-- 608: Suggest a journey
-- 610: Click to start it. Open Wayward for other ideas.
-- 634: The directions box now shows only while you're on a journey. /ww idle or the options bring the small bar back.
-- 649: Hide this bar while there's no journey (the options bring it back)
-- 694: End journey
-- 694: Stop directions
-- 704: Stop %d of %d
-- 711: Step %d of %d to get there
-- 711: Step %d of %d
-- 720: Gather here for 
-- 720: your quest
-- 722: Then: 
-- 722: the hand-in
-- 767:  to stop
-- 773: \|cff7fd1aeGathering here\|r  ·  %s to go at your pace     %s
-- 778: \|cffffd100Camp looks cleared\|r
-- 781: \|cff7fd1aeIn the area\|r
-- 782:  left here
-- 787: \|cff9d9d9dRespawns in 
-- 788: \|cff9d9d9dNext spot\|r     
-- 791: Pick %s on the flight map     %s
-- 791: your destination
-- 793: Use your Hearthstone     %s
-- 795: \|cff7fd1aeYou're here:\|r use %s%s
-- 797: \|cff7fd1aeYou're here:\|r go in
-- 802: \|cff7fd1aeYou're here:\|r talk to %s%s%s
-- 803: , buy the book and read it
-- 803:  and train it
-- 804:  and train your spells
-- 808: \|cff7fd1aeYou're here:\|r do it, then move on (>>)
-- 809: \|cff7fd1aeYou're here:\|r train your spells
-- 809: \|cff7fd1aeYou're here\|r
-- 812: %s %d yd     %s
-- 855: Directions
-- 855: Directions
-- 888: /ww idle - the small directions bar while there's no journey on or off
-- 890: small bar with no journey 
+- 38: + On the way
+- 50: Gathering as you go
+- 59: Nothing in your quest log to go on from here. Open Wayward (/ww) for other ideas.
+- 186: Stop directions
+- 188: Do this stop later
+- 193: Skip this stop
+- 211: On the way
+- 214: %d thing%s around you that you could add.
+- 216: And a detour of your own: repair, vendor, mailbox, bank...
+- 220: NumberFontNormalSmall
+- 222: View Journey
+- 224: View Journey
+- 281: Another spot
+- 285: Another spot
+- 286: Camped, respawning or too busy? Head for another place to do this quest. 
+- 287: This one's left alone for a while, like a camp you've cleared.
+- 304: Suggest a journey
+- 318: Open Wayward
+- 320: Open Wayward: suggestions, quests, places and more
+- 347: StatusBar
+- 449: \|cff9d9d9d+%d more\|r
+- 579: Suggest a journey
+- 579: Starts a journey from your quest log and where you are: quests to hand in, 
+- 580: or quests to finish close together.
+- 582: Suggest a journey
+- 584: Click to start it. Open Wayward for other ideas.
+- 608: The directions box now shows only while you're on a journey. /ww idle or the options bring the small bar back.
+- 623: Hide this bar while there's no journey (the options bring it back)
+- 668: End journey
+- 668: Stop directions
+- 678: Stop %d of %d
+- 685: Step %d of %d to get there
+- 685: Step %d of %d
+- 694: Gather here for 
+- 694: your quest
+- 696: Then: 
+- 696: the hand-in
+- 741:  to stop
+- 747: \|cff7fd1aeGathering here\|r  ·  %s to go at your pace     %s
+- 752: \|cffffd100Camp looks cleared\|r
+- 755: \|cff7fd1aeIn the area\|r
+- 756:  left here
+- 761: \|cff9d9d9dRespawns in 
+- 762: \|cff9d9d9dNext spot\|r     
+- 765: Pick %s on the flight map     %s
+- 765: your destination
+- 767: Use your Hearthstone     %s
+- 769: \|cff7fd1aeYou're here:\|r use %s%s
+- 771: \|cff7fd1aeYou're here:\|r go in
+- 776: \|cff7fd1aeYou're here:\|r talk to %s%s%s
+- 777: , buy the book and read it
+- 777:  and train it
+- 778:  and train your spells
+- 782: \|cff7fd1aeYou're here:\|r do it, then move on (>>)
+- 783: \|cff7fd1aeYou're here:\|r train your spells
+- 783: \|cff7fd1aeYou're here\|r
+- 786: %s %d yd     %s
+- 829: Directions
+- 829: Directions
+- 862: /ww idle - the small directions bar while there's no journey on or off
+- 864: small bar with no journey 
 
 ## UI/TargetButton.lua
 
@@ -1676,53 +1668,69 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/JourneyOverview.lua
 
-- 114: Set aside
-- 120: Set this journey aside
-- 121: It's kept with the stops you've done, to resume whenever you like.
-- 166: More: pin, move or remove this stop
-- 179: Show or hide the steps to this stop
-- 196: Pinned: click to unpin
-- 197: It keeps its place when the journey re-plans. Unpinned, re-plans can move it again.
-- 255: Drag to reorder
-- 314: + Add
-- 325: Set aside
-- 339: Forget
-- 344: Resume
-- 364: Map
-- 368: Hide the map
-- 368: Show the map of the rest of the journey
-- 440: \|cff7fd1aedone\|r  
-- 441: \|cffffd200now\|r  
-- 443: \|cff80c0ffas you go\|r  
-- 572: Unpin stop
-- 573: Re-plans can move it again.
-- 575: Pin stop
-- 576: It keeps its place when the journey re-plans; the stops around it can still change.
-- 581: Do this stop later
-- 582: The journey does the next stop first and fits this one in after.
-- 585: Like dragging it: the order is yours from then on, and re-plans keep it.
-- 587: Move up
-- 590: Move down
-- 593: Remove stop
-- 594: Takes it off the journey, with any stops that need it.
-- 617: %s%s  \|cff9d9d9d%d stop%s left, %s\|r
-- 618: :12:12\|t 
-- 634: Journeys set aside
-- 635: Resume one from where you are, or forget it.
-- 670: %d of %d stops done  ·  %s to go%s
-- 672:   ·  your order
-- 672:   ·  drag stops to reorder
-- 711: \|c%s%d\|r
-- 716: \|cffffd200>\|r 
-- 727: \|cff9d9d9d%s finished\|r  %s
-- 727: 1 stop
-- 728: (click to show)
-- 728: (click to hide)
-- 745: hearth to 
-- 770: %s%s  ·  scroll for more
-- 783: On the way: you could add
-- 931: Journey
-- 931: Journey
+- 127: Set aside
+- 133: Set this journey aside
+- 134: It's kept with the stops you've done, to resume whenever you like.
+- 178: Next step
+- 180: Previous step
+- 182: Now
+- 182: Back to the step you're on
+- 241: More: pin, move or remove this stop
+- 258: Pinned: click to unpin
+- 259: It keeps its place when the journey re-plans. Unpinned, re-plans can move it again.
+- 317: Drag to reorder
+- 370: On the way
+- 378: On the way
+- 379: What's around you that you could add, and a detour of your own: repair, vendor, mailbox, 
+- 389: Set aside
+- 403: Forget
+- 408: Resume
+- 428: Map
+- 432: Hide the map
+- 432: Show the map of the rest of the journey
+- 504: \|cff7fd1aedone\|r  
+- 505: \|cffffd200now\|r  
+- 507: \|cff80c0ffas you go\|r  
+- 594: Done along the way.
+- 595: Gathered as you go, wherever it turns up.
+- 597: Done together with %s.
+- 597: the stop you're on
+- 599: No way there planned yet.
+- 707:  done\|r
+- 708:   ·  \|cffffd200now\|r
+- 708:   ·  \|cff80c0ffas you go\|r
+- 709: Stop %d of %d%s
+- 715: hearth to 
+- 731: Step %d of %d  ·  %s  ·  %s
+- 737:  Done\|r
+- 737: \|cffffd200Now\|r
+- 854: Unpin stop
+- 855: Re-plans can move it again.
+- 857: Pin stop
+- 858: It keeps its place when the journey re-plans; the stops around it can still change.
+- 863: Do this stop later
+- 864: The journey does the next stop first and fits this one in after.
+- 867: Like dragging it: the order is yours from then on, and re-plans keep it.
+- 869: Move up
+- 872: Move down
+- 875: Remove stop
+- 876: Takes it off the journey, with any stops that need it.
+- 899: %s%s  \|cff9d9d9d%d stop%s left, %s\|r
+- 900: :12:12\|t 
+- 916: Journeys set aside
+- 917: Resume one from where you are, or forget it.
+- 952: %d of %d stops done  ·  %s to go%s
+- 954:   ·  your order
+- 954:   ·  drag stops to reorder
+- 991: \|c%s%d\|r
+- 994: \|cff9d9d9d%s finished\|r  %s
+- 994: 1 stop
+- 995: (click to show)
+- 995: (click to hide)
+- 1012: hearth to 
+- 1031: %s%s  ·  scroll for more
+- 1176: Journey
+- 1176: Journey
 
 ## UI/Fanfare.lua
 
@@ -1765,50 +1773,54 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Drawer.lua
 
-- 34: On the way
-- 35: You could add
-- 36: Nothing on the way right now. The icons above add a stop of your own: a repair, a vendor, a mailbox...
-- 38: + Add
-- 39: Not on this journey
-- 40: It won't be offered again on this journey.
-- 79: Back to what's on the way
-- 79: Add one as a stop
-- 95: More
-- 193: %s+%d more once these are dealt with\|r
-- 203: Couldn't list these here.
-- 209: in your journey\|r
-- 210: A detour of %s on your journey.
-- 237: %s  %sleast out of the way first\|r
-- 244: Couldn't list what's on the way here.
+- 39: On the way
+- 40: Nearby
+- 42: Quests, hand-ins and things you need around you
+- 43: Nothing to add around you right now. The tabs above list a stop of your own: a repair, a vendor, 
+- 44: a mailbox...
+- 46: + Add
+- 47: Not on this journey
+- 48: It won't be offered again on this journey.
+- 89: Add one as a stop: nearest to you first
+- 106: More
+- 204: %s+%d more once these are dealt with\|r
+- 213: Couldn't list these here.
+- 219: in your journey\|r
+- 220: %s from where you are.
+- 250: %s  %snearest first\|r
+- 253: %s  %saround you\|r
+- 257: Couldn't list what's around you here.
+- 452: OnTheWay
+- 452: On the way
 
 ## UI/RouteMap.lua
 
-- 27: Ability_Mount_Gryphon_01
-- 28: Ability_Mount_Wyvern_01
-- 29: INV_Misc_Rune_01
-- 31: INV_AllianceShipMountClassic
-- 31: INV_AllianceShipMount
-- 31: INV_Misc_Anchor
-- 32: INV_Misc_Spyglass_02
-- 32: INV_Misc_Map_01
-- 33: INV_HordeZeppelinMountClassic
-- 33: INV_HordeZeppelinMount
-- 34: Achievement_Dungeon_HordeAirship
-- 34: Ability_Mount_Gyrocoptor
+- 29: Ability_Mount_Gryphon_01
+- 30: Ability_Mount_Wyvern_01
+- 31: INV_Misc_Rune_01
+- 33: INV_AllianceShipMountClassic
+- 33: INV_AllianceShipMount
+- 33: INV_Misc_Anchor
+- 34: INV_Misc_Spyglass_02
 - 34: INV_Misc_Map_01
-- 35: Trade_Engineering
-- 36: Spell_Arcane_PortalStormwind
-- 36: Spell_Arcane_Blink
-- 37: Spell_Arcane_PortalOrgrimmar
-- 37: Spell_Arcane_Blink
-- 38: INV_Misc_Map_01
-- 51: Alliance
-- 535: You
+- 35: INV_HordeZeppelinMountClassic
+- 35: INV_HordeZeppelinMount
+- 36: Achievement_Dungeon_HordeAirship
+- 36: Ability_Mount_Gyrocoptor
+- 36: INV_Misc_Map_01
+- 37: Trade_Engineering
+- 38: Spell_Arcane_PortalStormwind
+- 38: Spell_Arcane_Blink
+- 39: Spell_Arcane_PortalOrgrimmar
+- 39: Spell_Arcane_Blink
+- 40: INV_Misc_Map_01
+- 53: Alliance
+- 550: You
 
 ## UI/WorldMapRoute.lua
 
-- 155: /ww worldmap - your journey drawn on the world map, on or off
-- 157: journey on the world map 
+- 154: /ww worldmap - your journey drawn on the world map, on or off
+- 156: journey on the world map 
 
 ## UI/MinimapRoute.lua
 
@@ -1839,7 +1851,7 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 ## UI/JourneyBox.lua
 
 - 29: No journey on the go. Pick something below.
-- 30: The last stop. View details to reorder, add a detour or set it aside.
+- 30: The last stop. View Journey to reorder, add a detour or set it aside.
 - 31: Directions to one place. Starting a journey folds it in as a stop.
 - 79: the next stop
 - 80: Then: 
@@ -1849,8 +1861,8 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 214: Continue journey
 - 216: Continue journey
 - 216: Closes this window; the directions box shows the next step to your current stop.
-- 217: View details
-- 219: View details
+- 217: View Journey
+- 219: View Journey
 - 219: Every stop of the journey. Reorder or skip stops, add a detour, or set the journey aside and resume it later: Wayward plans again around you.
 - 238: Journeys set aside
 - 238: The journeys you set aside, with the stops left on each. Resume one from where you are, or forget it.
@@ -1924,58 +1936,58 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 
 ## UI/Panel.lua
 
-- 111: Filter these results
-- 128: Quests
-- 129: Journal
-- 130: Hubs
-- 132: Vendors
+- 112: Filter these results
+- 129: Quests
+- 130: Journal
+- 131: Hubs
 - 133: Vendors
-- 135: Trainers
-- 136: Class
-- 137: Weapons
-- 138: Professions
-- 140: Dungeons
+- 134: Vendors
+- 136: Trainers
+- 137: Class
+- 138: Weapons
+- 139: Professions
 - 141: Dungeons
-- 179: ... and %d more
-- 193: GameTooltip
-- 222:     Hearth to %s (saves %s)
-- 230: Your Hearthstone (%s) would save %s, but it's ready in %s.
-- 233: Click to start this journey
-- 239: Click for directions
-- 283: %s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View details.
-- 284: Add as detour
-- 284: Cancel
-- 284: Switch journey
-- 293: You're on a journey: %s.
-- 294: You have directions to %s.
-- 310: %s  ·  %s  ·  %d stop%s
-- 317:   ·  no route found from here
-- 360: Add detour
-- 485: ChatEdit_InsertLink
-- 487: InsertLink
-- 495: Data: 
-- 495:  + places you visited. 
-- 496: Data: places you visited. 
-- 497: Quest
-- 498: Install 
-- 498:  for quests, items and every trainer. 
-- 502: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
-- 503: master once and routes will use your flight paths.\|r
-- 508: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
-- 509: paths here.\|r
-- 511: %d known flight path%s. Boat and zeppelin docks are approximate.
-- 625: Level %d  ·  %s
-- 626: Level %d
-- 706: CheckButton
-- 746: Options
-- 752: Wayward's settings. Also: right-click the minimap button, or /ww options.
-- 821: YOUR JOURNEY
-- 823: SOMETHING TO DO NEXT
-- 827: WHERE TO QUEST
-- 829: GOOD TO KNOW
-- 940: %d-%d of %d
-- 1023: Search
-- 1049: Getting the quest data ready...
+- 142: Dungeons
+- 180: ... and %d more
+- 194: GameTooltip
+- 223:     Hearth to %s (saves %s)
+- 231: Your Hearthstone (%s) would save %s, but it's ready in %s.
+- 234: Click to start this journey
+- 240: Click for directions
+- 284: %s\n\nAdd \"%s\" as a detour, or switch to it? Switching sets your journey aside; you can resume it from View Journey.
+- 285: Add as detour
+- 285: Cancel
+- 285: Switch journey
+- 294: You're on a journey: %s.
+- 295: You have directions to %s.
+- 311: %s  ·  %s  ·  %d stop%s
+- 318:   ·  no route found from here
+- 361: Add detour
+- 486: ChatEdit_InsertLink
+- 488: InsertLink
+- 496: Data: 
+- 496:  + places you visited. 
+- 497: Data: places you visited. 
+- 498: Quest
+- 499: Install 
+- 499:  for quests, items and every trainer. 
+- 503: \|cffffd200No flight paths known yet, so routes are on foot. Talk to any flight 
+- 504: master once and routes will use your flight paths.\|r
+- 509: \|cffffd200Open any flight map in %s once so Wayward knows your flight 
+- 510: paths here.\|r
+- 512: %d known flight path%s. Boat and zeppelin docks are approximate.
+- 626: Level %d  ·  %s
+- 627: Level %d
+- 707: CheckButton
+- 747: Options
+- 753: Wayward's settings. Also: right-click the minimap button, or /ww options.
+- 822: YOUR JOURNEY
+- 824: SOMETHING TO DO NEXT
+- 828: WHERE TO QUEST
+- 830: GOOD TO KNOW
+- 941: %d-%d of %d
+- 1031: Search
+- 1057: Getting the quest data ready...
 
 ## UI/MinimapButton.lua
 
@@ -2004,46 +2016,44 @@ Every player-facing string in the addon, by file and line, for auditing. Generat
 - 43: from your quest log and where you are. Off: the box shows only while you're on a journey. /ww idle changes it too.
 - 47: NPCs
 - 48: Star over the NPC you're heading for
-- 49: A star over the nameplate of the flight master, quest giver, trainer or vendor the current step is for, and a line in their tooltip. The star needs friendly NPC nameplates (below).
-- 52: Friendly NPC nameplates
-- 53: The game's own setting: nameplates over friendly NPCs. Needed for the star; off by default in the game.
-- 57: Journeys and quests
-- 58: Automatically add quest pickups
-- 59: When you pick up a quest on a journey and doing it adds 3 min or less, it goes straight into the journey, and a note over the directions box says so, with an undo to take it out again (later, the journey overview's x drops it). Quests that add more are asked about (below). Plain directions are never changed.
-- 62: Ask about quests outside your journey
-- 63: When you pick up a quest that isn't in your journey, or make progress on one while a journey is on, a note over the directions box offers to add it to the journey (with the time it adds) or start a new journey for it (the one on now is set aside). Let it fade or close it for not now. Each quest is asked about once, and progress never in combat.
-- 66: Open the journey overview when a journey starts
-- 67: The list of every stop opens by itself when a journey starts. Off by default: open it from View details on the directions box, or shift-right-click the minimap button on a journey.
-- 70: New journey toasts
-- 71: A short message when For you has something new for you: a questing zone, a dungeon, a profession's next rank. Click it to start the journey.
-- 74: Suggest a journey after one is done
-- 75: A few seconds after a journey ends, For you's top suggestion as an \"Up next\" toast. Click it to start the journey.
-- 79: Maps
-- 80: Your journey on the world map
-- 81: The rest of your journey (or your directions) drawn on the world map when you open it: the way to go, how you travel each part, and the stops numbered in order. /ww worldmap turns it on or off too.
-- 84: Your journey on the minimap
-- 85: The rest of your journey (or your directions) drawn on the minimap while you travel, round its arrow: the way to go and the stops on it, cut at the minimap's edge. /ww minimap journey turns it on or off too.
-- 88: Minimap button
-- 89: The Wayward button on the minimap. Right-click it for these options; /ww minimap brings it back.
-- 119: windows and boxes put back where they started
-- 157: Windows and help
-- 158: Windows and boxes
-- 158: Reset positions
-- 159: Put the Wayward window, the directions box, the journey overview and the banners back where they started.
-- 160: Welcome
-- 160: Show again
-- 162: The short introduction shown on the first login: what Wayward does and how it learns.
-- 163: Slash commands
-- 163: List in chat
-- 164: Every /ww command, printed to the chat window.
-- 175: options: /ww compass, /ww tomtom, /ww toasts, /ww marker, /ww worldmap, /ww minimap journey, /ww minimap and /ww idle turn those on or off; 
-- 176: /ww detail steps\|stops sets what the directions box shows.
-- 188: Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow instead of 
-- 189: Wayward's compass? You can change this, or use both, in the options (/ww options).
-- 190: Use TomTom
-- 190: No thanks
-- 212: /ww options - open Wayward's options
-- 213: /ww reset - put every window and box back where it started
+- 49: A star over the nameplate of the flight master, quest giver, trainer or vendor the current step is for, and a line in their tooltip. The star needs friendly NPC nameplates, the game's own setting (off by default): turn them on in the game's options.
+- 53: Journeys and quests
+- 54: Automatically add quest pickups
+- 55: When you pick up a quest on a journey and doing it adds 3 min or less, it goes straight into the journey, and a note over the directions box says so, with an undo to take it out again (later, the journey overview's x drops it). Quests that add more are asked about (below). Plain directions are never changed.
+- 58: Ask about quests outside your journey
+- 59: When you pick up a quest that isn't in your journey, or make progress on one while a journey is on, a note over the directions box offers to add it to the journey (with the time it adds) or start a new journey for it (the one on now is set aside). Let it fade or close it for not now. Each quest is asked about once, and progress never in combat.
+- 62: Open the journey overview when a journey starts
+- 63: The list of every stop opens by itself when a journey starts. Off by default: open it from View Journey on the directions box, or shift-right-click the minimap button on a journey.
+- 66: New journey toasts
+- 67: A short message when For you has something new for you: a questing zone, a dungeon, a profession's next rank. Click it to start the journey.
+- 70: Suggest a journey after one is done
+- 71: A few seconds after a journey ends, For you's top suggestion as an \"Up next\" toast. Click it to start the journey.
+- 75: Maps
+- 76: Your journey on the world map
+- 77: The rest of your journey (or your directions) drawn on the world map when you open it: the way to go, how you travel each part, and the stops numbered in order. /ww worldmap turns it on or off too.
+- 80: Your journey on the minimap
+- 81: The rest of your journey (or your directions) drawn on the minimap while you travel, round its arrow: the way to go and the stops on it, cut at the minimap's edge. /ww minimap journey turns it on or off too.
+- 84: Minimap button
+- 85: The Wayward button on the minimap. Right-click it for these options; /ww minimap brings it back.
+- 115: windows and boxes put back where they started
+- 153: Windows and help
+- 154: Windows and boxes
+- 154: Reset positions
+- 155: Put the Wayward window, the directions box, the journey overview and the banners back where they started.
+- 156: Welcome
+- 156: Show again
+- 158: The short introduction shown on the first login: what Wayward does and how it learns.
+- 159: Slash commands
+- 159: List in chat
+- 160: Every /ww command, printed to the chat window.
+- 171: options: /ww compass, /ww tomtom, /ww toasts, /ww marker, /ww worldmap, /ww minimap journey, /ww minimap and /ww idle turn those on or off; 
+- 172: /ww detail steps\|stops sets what the directions box shows.
+- 184: Wayward: TomTom is installed.\n\nShow Wayward's directions with TomTom's arrow instead of 
+- 185: Wayward's compass? You can change this, or use both, in the options (/ww options).
+- 186: Use TomTom
+- 186: No thanks
+- 208: /ww options - open Wayward's options
+- 209: /ww reset - put every window and box back where it started
 
 ## UI/Welcome.lua
 
