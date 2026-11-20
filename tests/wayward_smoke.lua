@@ -4231,8 +4231,22 @@ do
   ns.HUD.Update()
   check(ns.Camps.LooksCleared(camp) and ns.HUD.Lines()[4]:find("Camp looks cleared", 1, true),
     "none for 10 s: the camp looks cleared: " .. ns.HUD.Lines()[4])
-  before = #chat
+  -- Stay or move on: the choice is in the directions box, nothing pops up.
+  local campHud = ns.HUD.Frame()
+  check(campHud.stay:IsShown() and campHud.otherArea:IsShown() and campHud.otherArea:GetText() == "Move on",
+    "it asks: Stay, or Move on")
+  campHud.stay.scripts.OnClick(campHud.stay)
   clock = 5023
+  ns.HUD.Update()
+  check(not ns.Camps.LooksCleared(camp) and not campHud.stay:IsShown()
+    and campHud.otherArea:GetText() == "Another spot", "Stay: not asked again straight away")
+  clock = 5040
+  ns.HUD.Update()
+  check(not ns.Camps.LooksCleared(camp), "still empty, nothing killed since: still not asked")
+  kill(6, 5041)
+  check(ns.Camps.LooksCleared(camp), "a kill since, and empty: asked again")
+  before = #chat
+  clock = 5042
   player.x, player.y = 0.6, 0.4
   ns.HUD.Update()
   check(ns.Journey.ClearedAreas(ns.Nav.CurrentStep().stop) == 1
@@ -4353,6 +4367,50 @@ do
   local markerText = ns.PlanReport.Build()
   check(markerText:find("far from the game's marker: left out", 1, true), "and the plan report says so:\n" .. markerText)
   ns.Nav.Stop()
+  -- But the marker is one point and the game can mark more than one place
+  -- (Apprentice's Duties in the Wetlands: 6 crocolisks by the marker, 7 up
+  -- by the wreck): a far camp as big as the marked one isn't a stray.
+  check(ns.Journey.RivalsMarker(7, 6) and not ns.Journey.RivalsMarker(5, 21) and not ns.Journey.RivalsMarker(2, 2),
+    "a far area counts when it's more than a stray and half the size of the one at the marker")
+  local savedForager, savedScout = NPCS[9101].spawns, NPCS[9102].spawns
+  local function camp(x, y)
+    local out = {}
+    for k = 0, 5 do out[#out + 1] = { x + (k % 3) * 0.4, y + math.floor(k / 3) * 0.4 } end
+    return out
+  end
+  NPCS[9102].spawns = { [44] = camp(30, 30) }
+  NPCS[9101].spawns = { [44] = camp(80, 80) }
+  refreshData()
+  local rivalCounted = false
+  for _, area in ipairs(ns.Journey.OpenAreas(43)) do
+    if at(area.nodes[1], 0.8, 0.8) then rivalCounted = true end
+  end
+  check(rivalCounted, "a camp of 6 far from the marker on a camp of 6 still counts")
+  -- In your own order, after a stop by that far camp and before one on the
+  -- way back to the marked camp: aimed at the far camp, next to the stop
+  -- before it (Apprentice's Duties dragged after the Cursed Crew).
+  player.x, player.y = 0.3, 0.36
+  here = ns.Geo.PlayerNode()
+  local sweepStops = ns.Journey.QuestStops(43, here)
+  local sweep = sweepStops[1]
+  local before43 = { node = ns.Geo.Node(1433, 0.78, 0.76), text = "By the far camp" }
+  local after43 = { node = ns.Geo.Node(1433, 0.42, 0.42), text = "On the way back" }
+  local ownOrder = { before43, sweep, after43 }
+  for k = 2, #sweepStops do ownOrder[#ownOrder + 1] = sweepStops[k] end
+  ns.Journey.Plan(here, { title = "Own order", stops = ownOrder, manual = true })
+  local aimed = sweep.aimArea
+  check(aimed and at(sweep.node, 0.8, 0.8),
+    string.format("after the stop by the far camp, its camp's aimed for (%.2f, %.2f)", sweep.node.x, sweep.node.y))
+  -- A what-if with the same stops in a fresh order (what a pickup would
+  -- add) leaves that be; planning them unmeasured is what aimed it at the
+  -- marked camp.
+  local fresh = ns.Journey.Measure(ownOrder, ns.Journey.Plan, here, { stops = ownOrder })
+  check(fresh and sweep.aimArea == aimed and at(sweep.node, 0.8, 0.8),
+    "a what-if in another order doesn't move the aim of the plan you're on")
+  ns.Journey.Plan(here, { stops = ownOrder })
+  check(sweep.aimArea ~= aimed, "(planning them for real in that order would have)")
+  NPCS[9101].spawns, NPCS[9102].spawns = savedForager, savedScout
+  refreshData()
   markerOn = false
   check(#ns.Journey.OpenAreas(43) == 3, "without a marker, every camp in the data counts")
   C_QuestLog.GetQuestsOnMap, C_QuestLog.GetLogIndexForQuestID, GetTime = savedOnMap, savedLogIndex, savedGetTime
@@ -4420,6 +4478,178 @@ do
   check(#ns.Journey.OpenAreas(400) == 3, "lone spawns all over: every one counts")
   ns.Nav.Stop()
   QUESTS[400], NPCS[9161] = nil, nil
+
+  ;(function()
+    -- Drop chances (prototype): six hides at 40% a crocolisk, two camps of six
+    -- crocolisks. One camp should give 2.4: the quest is two stops, Progress
+    -- at the first camp and Continue at the other, both before the hand-in.
+    local function camp6(x, y)
+      local out = {}
+      for k = 0, 5 do out[#out + 1] = { x + (k % 3) * 0.4, y + math.floor(k / 3) * 0.4 } end
+      return out
+    end
+    local crocs = camp6(20, 20)
+    for _, p in ipairs(camp6(70, 70)) do crocs[#crocs + 1] = p end
+    NPCS[9170] = { name = "Test Crocolisk", minLevel = 18, maxLevel = 19, spawns = { [44] = crocs } }
+    ITEMS[9170] = { name = "Test Hide", npcDrops = { 9170 } }
+    QUESTS[401] = { name = "Hide Hunt", questLevel = 19, requiredLevel = 15, startedBy = { { 344 } },
+      finishedBy = { { 345 } }, objectives = { nil, nil, { { 9170 } } } }
+    local savedChances = ns.DropChances[9170]
+    ns.DropChances[9170] = { n = { 9170, 40 } }
+    refreshData()
+    C_QuestLog.GetInfo = function() return { questID = 401, isHeader = false } end
+    local hides = { { text = "Test Hide: 0/6", finished = false } }
+    C_QuestLog.GetQuestObjectives = function(id) return id == 401 and hides or {} end
+    local left = ns.Quests.GroupsLeft(401)
+    check(left[1] == 6, "how many hides are left, from the quest log: " .. tostring(left[1]))
+    local yield, short = ns.Journey.AreaYield(401, 1)
+    check(short and math.abs(yield[1].expect - 2.4) < 1e-6 and yield[1].left == 6,
+      "a camp of six at 40% should give 2.4 of the 6: short")
+    player.x, player.y = 0.18, 0.18
+    here = ns.Geo.PlayerNode()
+    local hunt = ns.Journey.QuestStops(401, here)
+    local progress, continue, handIn
+    for _, s in ipairs(hunt) do
+      if s.action.part == "progress" then progress = s end
+      if s.action.part == "continue" then continue = s end
+      if s.action.kind == "turnin" then handIn = s end
+    end
+    check(progress and continue and progress.text == "Progress Hide Hunt" and continue.text == "Continue Hide Hunt"
+      and ns.Journey.ProgressOf(continue) == progress,
+      "short of what it needs: Progress Hide Hunt, then Continue Hide Hunt")
+    local handInWaits = {}
+    for _, s in ipairs(handIn and handIn.after or {}) do handInWaits[s] = true end
+    check(handInWaits[progress] and handInWaits[continue], "the hand-in waits for both")
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Hide Hunt", stops = hunt }))
+    local planned = ns.Nav.active.journey.stops
+    check(planned[1] == progress and planned[2] == continue and at(progress.node, 0.2, 0.2)
+      and ns.Journey.AimedArea(continue) ~= ns.Journey.AimedArea(progress),
+      string.format("Progress at the camp near you, Continue at the other (%.2f, %.2f)", continue.node.x, continue.node.y))
+    -- Moving on from the first camp: Progress is done, Continue's next, and
+    -- the camp you left counts as cleared for it too.
+    player.x, player.y = 0.205, 0.205
+    ns.HUD.Update()
+    check(ns.Nav.InArea() and ns.Nav.MoveOnKind() == "cleared", "in the first camp")
+    hides[1] = { text = "Test Hide: 2/6", finished = false }
+    ns.Nav.MoveOn()
+    check(progress.done and ns.Nav.CurrentStep().stop == continue and ns.Journey.Cleared(continue, ns.Journey.AimedArea(progress) or 1)
+      and at(continue.node, 0.7, 0.7) or false, "move on: Progress done, on to Continue at the other camp")
+    -- The quest done there: Continue's done like any quest's objectives.
+    hides[1] = { text = "Test Hide: 6/6", finished = true }
+    -- Enough in one camp (100%): one stop, as before.
+    ns.Nav.Stop()
+    hides[1] = { text = "Test Hide: 0/6", finished = false }
+    ns.DropChances[9170] = { n = { 9170, 100 } }
+    refreshData()
+    local whole = ns.Journey.QuestStops(401, here)
+    local parts = 0
+    for _, s in ipairs(whole) do
+      if s.action.part then parts = parts + 1 end
+    end
+    check(parts == 0 and whole[1].text == "Do Hide Hunt", "a camp that should cover it: one Do stop")
+    -- No chance known: never split on a guess.
+    ns.DropChances[9170] = nil
+    refreshData()
+    local _, unknownShort = ns.Journey.AreaYield(401, 1)
+    check(not unknownShort, "drop chance unknown: not counted as short")
+    -- A journey saved and loaded keeps the two stops linked.
+    ns.DropChances[9170] = { n = { 9170, 40 } }
+    refreshData()
+    local again = ns.Journey.QuestStops(401, here)
+    local loaded = ns.Journey.Load(ns.Journey.Save({ def = { title = "Hide Hunt", stops = again } }))
+    local loadedContinue
+    for _, s in ipairs(loaded.stops) do
+      if s.action.part == "continue" then loadedContinue = s end
+    end
+    check(loadedContinue and ns.Journey.ProgressOf(loadedContinue) ~= nil, "saved and loaded: Continue still follows Progress")
+
+    -- A rare drop (5%: 0.3 a camp, no camp gives even one): not split, it's
+    -- a stay-a-while quest.
+    ns.DropChances[9170] = { n = { 9170, 5 } }
+    refreshData()
+    local rareParts = 0
+    for _, s in ipairs(ns.Journey.QuestStops(401, here)) do
+      if s.action.part then rareParts = rareParts + 1 end
+    end
+    check(ns.Journey.RareDrops(401) and rareParts == 0, "a rare drop: one Do stop, not walked between camps")
+
+    -- Of two camps about as far, the one that should cover what's left:
+    -- two crocolisks by you, six a little further, five hides to go.
+    local near2 = { { 20, 20 }, { 20.4, 20 } }
+    local far6 = camp6(42, 20)
+    local mixed = {}
+    for _, p in ipairs(near2) do mixed[#mixed + 1] = p end
+    for _, p in ipairs(far6) do mixed[#mixed + 1] = p end
+    NPCS[9170].spawns = { [44] = mixed }
+    ns.DropChances[9170] = { n = { 9170, 100 } }
+    refreshData()
+    hides[1] = { text = "Test Hide: 1/6", finished = false }
+    player.x, player.y = 0.17, 0.2
+    here = ns.Geo.PlayerNode()
+    local cover = { node = here, action = { kind = "complete", questID = 401 }, resolve = { kind = "objectives", questID = 401 } }
+    local coverNode, coverIndex = ns.Journey.PickArea(cover, here)
+    local nearIndex, farIndex
+    for index, area in ipairs(ns.Quests.ObjectiveAreas(401)) do
+      if #area == 2 then nearIndex = index else farIndex = index end
+    end
+    check(ns.Journey.Shortfall(401, nearIndex) > 0 and ns.Journey.Shortfall(401, farIndex) == 0 and coverIndex == farIndex,
+      string.format("five to go: the camp of six a little further, not the two by you (%.2f, %.2f; the six %.0f yd, the two %.0f yd)",
+        coverNode.x, coverNode.y, ns.Geo.Distance(here, (ns.Data.Nearest(ns.Journey.OpenAreas(401)[farIndex].nodes, here))),
+        ns.Geo.Distance(here, (ns.Data.Nearest(ns.Journey.OpenAreas(401)[nearIndex].nodes, here)))))
+
+    -- Killing one of a later stop's creatures in its area puts it first, even
+    -- when nothing drops (the Stone of Relu at 1.5%): you're doing it.
+    ns.DropChances[9170] = { n = { 9170, 1.5 } }
+    refreshData()
+    hides[1] = { text = "Test Hide: 0/6", finished = false }
+    player.x, player.y = 0.5, 0.5
+    here = ns.Geo.PlayerNode()
+    -- A quest step first (Blisters on The Land, in your journey): it waits for you.
+    local elsewhere = { node = ns.Geo.Node(1433, 0.9, 0.9), text = "Somewhere else",
+      action = { kind = "manual", questID = 401 } }
+    local later = { elsewhere }
+    for _, s in ipairs(ns.Journey.QuestStops(401, here)) do later[#later + 1] = s end
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Own order", stops = later, manual = true }))
+    check(ns.Nav.CurrentStep().stop == elsewhere, "(somewhere else first, in your own order)")
+    player.x, player.y = 0.422, 0.202
+    ns.HUD.Update()
+    -- Forever keeps the combat log from addons: the corpse you loot says
+    -- whose it is.
+    local saved = { UnitGUID, UnitExists, UnitIsDead, UnitIsTapDenied, GetNumLootItems, GetLootSourceInfo }
+    local corpse = "Creature-0-1-0-2-1234-AB"
+    GetNumLootItems = function() return 1 end
+    GetLootSourceInfo = function() return corpse, 1 end
+    fire("LOOT_OPENED")
+    check(ns.Nav.CurrentStep().stop == elsewhere,
+      "looting something the quest doesn't want: nothing changes: " .. tostring(ns.Nav.CurrentStep().stop.text))
+    corpse = "Creature-0-1-0-2-9170-AB"
+    before = #chat
+    fire("LOOT_OPENED")
+    local doing = ns.Nav.CurrentStep().stop
+    check(doing.action.questID == 401 and doing.action.kind == "complete"
+      and table.concat(chat, "\n", before + 1):find("you're doing Hide Hunt here", 1, true),
+      "a crocolisk looted in its camp, no hide: Hide Hunt's next, and it says so: " .. tostring(doing.text))
+    -- Or the fight ends with your target dead, tapped by you (nothing to loot).
+    ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Own order", stops = later, manual = true }))
+    ns.HUD.Update()
+    check(ns.Nav.CurrentStep().stop == elsewhere, "(again somewhere else first)")
+    local target = { guid = "Creature-0-1-0-2-9170-CD", dead = true, denied = true }
+    UnitExists = function(u) return u == "target" or u == "player" end
+    UnitGUID = function(u) return u == "target" and target.guid or u == "player" and "Player-1-00000001" or nil end
+    UnitIsDead = function(u) return u == "target" and target.dead end
+    UnitIsTapDenied = function(u) return u == "target" and target.denied end
+    fire("PLAYER_REGEN_ENABLED")
+    check(ns.Nav.CurrentStep().stop == elsewhere, "someone else's kill: nothing changes")
+    target.denied = false
+    fire("PLAYER_REGEN_ENABLED")
+    check(ns.Nav.CurrentStep().stop.action.questID == 401, "your target dead as the fight ends: Hide Hunt's next")
+    UnitGUID, UnitExists, UnitIsDead, UnitIsTapDenied, GetNumLootItems, GetLootSourceInfo =
+      saved[1], saved[2], saved[3], saved[4], saved[5], saved[6]
+    ns.Nav.Stop()
+    ns.DropChances[9170] = savedChances
+    QUESTS[401], NPCS[9170], ITEMS[9170] = nil, nil, nil
+    refreshData()
+  end)()
 
   UnitGUID, UnitName, UnitIsDead, UnitIsTapDenied, UnitIsDeadOrGhost = savedGUID, savedName, nil, nil, nil
   QUESTS[49], NPCS[9160] = nil, nil

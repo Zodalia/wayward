@@ -144,7 +144,7 @@ local function withHandIns(stops)
   local function plan(list)
     local all = { unpack(open) }
     for _, st in ipairs(list) do all[#all + 1] = st end
-    return ns.Journey.Plan(here, { stops = all })
+    return ns.Journey.Measure(all, ns.Journey.Plan, here, { stops = all })
   end
   local out, whole, hearthOnly = { unpack(stops) }, {}, {}
   local base = plan(out)

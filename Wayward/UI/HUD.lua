@@ -49,6 +49,7 @@ local FLASH_PERIOD = 0.8 -- seconds per pulse of the book button when the journe
 local FLASH_PULSES = 3
 local MAX_OBJECTIVES = 4 -- lines of objectives under the step; past that, "+N more"
 local OTHER_WIDTH, OTHER_HEIGHT = 92, 20 -- the Another spot button, right of the objectives
+local STAY_WIDTH = 52 -- Stay, left of it once the camp looks cleared
 local WAYSIDE_EVERY = 1    -- seconds between looks at what's on the way
 local GATHER_ROWS = 5      -- lines in "Gathering as you go": four things and "+N more" (Wayside.lua)
 local GATHER_GAP = 3       -- the section sits this far above the box
@@ -284,20 +285,43 @@ local function create()
   -- Beside the objectives, when they're in more than one area: another spot
   -- for them (this one's camped, respawning, too busy). A labelled button,
   -- since it's the one you reach for in a hurry. Placed by HUD.Update.
+  -- Once the camp you're in looks cleared it reads "Move on", with "Stay"
+  -- beside it: yours to choose, nothing pops up.
   f.otherArea = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
   f.otherArea:SetSize(OTHER_WIDTH, OTHER_HEIGHT)
   f.otherArea:SetText("Another spot")
-  f.otherArea:SetScript("OnClick", function() ns.Nav.OtherArea() end)
+  f.otherArea:SetScript("OnClick", function(self)
+    if self.cleared then ns.Nav.MoveOn() else ns.Nav.OtherArea() end
+  end)
   f.otherArea:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:SetText("Another spot")
-    GameTooltip:AddLine("Camped, respawning or too busy? Head for another place to do this quest. "
-      .. "This one's left alone for a while, like a camp you've cleared.", 1, 1, 1, true)
+    if self.cleared then
+      GameTooltip:SetText("Move on")
+      GameTooltip:AddLine("Done here for now: on to the next spot for this quest, or the next stop "
+        .. "while this camp respawns.", 1, 1, 1, true)
+    else
+      GameTooltip:SetText("Another spot")
+      GameTooltip:AddLine("Camped, respawning or too busy? Head for another place to do this quest. "
+        .. "This one's left alone for a while, like a camp you've cleared.", 1, 1, 1, true)
+    end
     GameTooltip:Show()
   end)
   f.otherArea:SetScript("OnLeave", function() GameTooltip:Hide() end)
   ns.Skin.Button(f.otherArea)
   f.otherArea:Hide()
+  f.stay = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  f.stay:SetSize(STAY_WIDTH, OTHER_HEIGHT)
+  f.stay:SetText("Stay")
+  f.stay:SetScript("OnClick", function() ns.Nav.Stay() end)
+  f.stay:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:SetText("Stay")
+    GameTooltip:AddLine("Keep at it here: wait for the respawn, or finish what's left in sight.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  f.stay:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  ns.Skin.Button(f.stay)
+  f.stay:Hide()
 
   -- No journey on: Wayward's icon, Suggest a journey, Open Wayward (and the x).
   f.idle = CreateFrame("Frame", nil, f)
@@ -386,7 +410,7 @@ local function create()
   for _, fs in ipairs({ f.title, f.stopCount, f.step, f.sub, f.objectives, f.info }) do ns.Skin.Text(fs) end
   -- What the small bar hides; HUD.Update shows them again as each needs.
   f.journeyParts = { f.holder, f.title, f.stopCount, f.progress, f.step, f.sub, f.objectives, f.info, f.list, f.moveOn, f.skip,
-    f.add, f.footRule, f.gathering, f.otherArea }
+    f.add, f.footRule, f.gathering, f.otherArea, f.stay }
 
   local elapsed = 0
   f:SetScript("OnUpdate", function(_, dt)
@@ -725,15 +749,25 @@ function HUD.Update()
   local objective = objectives[1]
   local above = sub ~= "" and frame.sub or frame.step
   -- Another spot, right of the objectives (or of where they'd be).
-  local other = trip and not gatherHere and step.stop ~= nil and step.stop == ns.Nav.HeadingFor() and ns.Nav.CanOtherArea()
+  local heading = trip and not gatherHere and step.stop ~= nil and step.stop == ns.Nav.HeadingFor()
+  -- The camp you're in looks cleared: Stay or Move on, your call.
+  local cleared = heading and objective ~= nil and ns.Nav.InArea() and ns.Camps.LooksCleared(step.stop) or false
+  local other = heading and (cleared or ns.Nav.CanOtherArea()) or false
+  frame.otherArea.cleared = cleared
+  frame.otherArea:SetText(cleared and "Move on" or "Another spot")
   frame.otherArea:SetShown(other)
   frame.otherArea:ClearAllPoints()
   frame.otherArea:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT", 0, -3)
+  frame.stay:SetShown(cleared)
+  frame.stay:ClearAllPoints()
+  frame.stay:SetPoint("RIGHT", frame.otherArea, "LEFT", -4, 0)
   frame.objectives:SetText(objectiveLines(objectives))
   frame.objectives:SetShown(objective ~= nil)
   frame.objectives:ClearAllPoints()
   frame.objectives:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -5)
-  if other then
+  if cleared then
+    frame.objectives:SetPoint("RIGHT", frame.stay, "LEFT", -6, 0)
+  elseif other then
     frame.objectives:SetPoint("RIGHT", frame.otherArea, "LEFT", -6, 0)
   else
     frame.objectives:SetPoint("RIGHT", -PADDING, 0)
@@ -762,7 +796,7 @@ function HUD.Update()
   elseif objective and ns.Nav.InArea() then
     -- Among what you need: no arrow, just how it's going (and how long, at your pace here).
     if ns.Camps.LooksCleared(step.stop) then
-      frame.info:SetText("|cffffd100Camp looks cleared|r" .. there)
+      frame.info:SetText("|cffffd100Camp looks cleared:|r stay, or move on?" .. there)
     else
       local left = ns.Camps.TimeLeft(step.stop)
       frame.info:SetText("|cff7fd1aeIn the area|r"

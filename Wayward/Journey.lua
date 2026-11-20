@@ -1,5 +1,7 @@
 local _, ns = ...
 
+local unpack = unpack or table.unpack
+
 -- Journeys: adventures with several stops, e.g. "pick up three quests, then
 -- go to the Deadmines". Stops are visited in the quickest order found
 -- (nearest next stop, then reversing stretches and moving stops while that
@@ -218,7 +220,8 @@ function Journey.QuestStops(questID, here, seen)
     stops[#stops + 1] = { node = node, npc = finisher, text = string.format("Hand in %s to %s", name, finisher or "the quest giver"),
       after = #after > 0 and after or nil, action = { kind = "turnin", questID = questID } }
   end
-  return stops
+  -- One camp short of what it needs: Progress there, Continue at another.
+  return Journey.SplitShort(stops)
 end
 
 ---------------------------------------------------------------- objective areas
@@ -306,14 +309,27 @@ local function neededAreas(questID)
   end
   local marker = #out > 1 and ns.Quests.LogMarker(questID)
   if marker then
-    local near = {}
+    local near, biggest = {}, 0
     for _, area in ipairs(out) do
       local _, distance = ns.Data.Nearest(area.nodes, marker)
-      if distance and distance <= MARKER_YARDS then near[#near + 1] = area end
+      area.nearMarker = distance and distance <= MARKER_YARDS or false
+      if area.nearMarker then biggest = math.max(biggest, #area.nodes) end
     end
-    if #near > 0 then out = near end
+    for _, area in ipairs(out) do
+      if area.nearMarker or Journey.RivalsMarker(#area.nodes, biggest) then near[#near + 1] = area end
+    end
+    if biggest > 0 then out = near end
   end
   return out
+end
+
+-- Whether an area of `spawns` far from the game's marker still counts, the
+-- biggest area near it holding `biggest`. The marker is one point, but the
+-- game can mark more than one place for a quest (Apprentice's Duties: the
+-- crocolisks by the wreck and by Menethil): an area far from it as big as
+-- half the one there, and more than a stray, is another of them.
+function Journey.RivalsMarker(spawns, biggest)
+  return biggest > 0 and spawns > STRAY_SPAWNS and spawns * 2 >= biggest
 end
 
 -- Those areas less the strays: where the quest is done.
@@ -336,6 +352,10 @@ end
 
 local function clearedAt(stop, index, now)
   local at = stop.worked and stop.worked[index]
+  -- A Continue stop: the camps its Progress stop cleared are cleared for it too.
+  local progress = Journey.ProgressOf(stop)
+  local before = progress and progress.worked and progress.worked[index]
+  if before and (not at or before > at) then at = before end
   return at and now - at < CLEARED_FOR and at or nil
 end
 
@@ -450,28 +470,42 @@ end
 -- stays unless another is STICK_YARDS better. Returns the node to head for
 -- (the area's open spawn nearest `from`) and the area's index, or nil with
 -- fewer than two areas.
+local SHORT_YARDS = 300
+
 function Journey.PickArea(stop, from, toward)
   local action = stop and stop.action
   if not (action and action.questID and from) then return nil end
   local areas = Journey.OpenAreas(action.questID)
   if #areas < 2 then return nil end
   local now = time()
+  -- A Continue stop goes elsewhere than its Progress stop while that's open.
+  local progress = Journey.ProgressOf(stop)
+  local skip = progress and not progress.done and not progress.skipped
+    and (progress.aimArea or Journey.AimedArea(progress)) or nil
+  local left = ns.Quests.GroupsLeft(action.questID)
   local best, bestIndex, bestRank, bestValue
   for _, area in ipairs(areas) do
-    local node, distance = ns.Data.Nearest(area.nodes, from)
-    local cleared = clearedAt(stop, area.index, now)
-    local rank, value
-    if stop.inArea and stop.areaAt == area.index then
-      rank, value = 0, 0
-    elseif cleared then
-      rank, value = 2, cleared
-    else
-      rank, value = 1, distance + (toward and ns.Geo.Distance(node, toward) or 0)
-      -- The area the plan has you heading for, unless another is clearly better.
-      if area.index == stop.aimArea then value = value - STICK_YARDS end
-    end
-    if not bestRank or rank < bestRank or (rank == bestRank and value < bestValue) then
-      best, bestIndex, bestRank, bestValue = node, area.index, rank, value
+    if area.index ~= skip then
+      local node, distance = ns.Data.Nearest(area.nodes, from)
+      local cleared = clearedAt(stop, area.index, now)
+      local rank, value
+      if stop.inArea and stop.areaAt == area.index then
+        rank, value = 0, 0
+      elseif cleared then
+        rank, value = 2, cleared
+      else
+        -- A camp that should fall short of what's left counts as further
+        -- off (by up to SHORT_YARDS): of two about as far, the one that
+        -- should cover it (Apprentice's Duties: six crocolisks for five
+        -- skins, not two).
+        rank, value = 1, distance + (toward and ns.Geo.Distance(node, toward) or 0)
+          + Journey.Shortfall(action.questID, area.index, left) * SHORT_YARDS
+        -- The area the plan has you heading for, unless another is clearly better.
+        if area.index == stop.aimArea then value = value - STICK_YARDS end
+      end
+      if not bestRank or rank < bestRank or (rank == bestRank and value < bestValue) then
+        best, bestIndex, bestRank, bestValue = node, area.index, rank, value
+      end
     end
   end
   return best, bestIndex
@@ -653,6 +687,150 @@ local function markGathering(stops)
   if not other then
     for _, stop in ipairs(stops) do stop.gather = nil end
   end
+end
+
+---------------------------------------------------------------- more than one camp
+
+-- PROTOTYPE (drop chances). One camp may not hold what a quest needs: six
+-- murlocs at 40% a fin don't make the eight fins. What a camp should give is
+-- its spawns, each worth one kill (or one use), times the item's drop chance
+-- (Data/DropChances.lua). When the camp the quest is aimed at should give
+-- less than you still need, and it has another, the quest is two stops:
+-- "Progress <quest>" at the first camp and "Continue <quest>" at another,
+-- so the route shows where the rest is. Progress is done when you move on
+-- from its camp (or the quest is); Continue when the quest is. Staying on
+-- for the respawn is yours to choose (the directions box asks once the camp
+-- looks cleared).
+
+-- What one clear of a quest's area should give, against what's left:
+-- { [group] = { expect = n, left = n } } for the objectives still needed,
+-- and whether it falls short of any of them. Only items to collect count
+-- as short: an objective whose drop chance isn't known never does, nor
+-- creatures to kill (a camp of three for eight kills is a camp you wait at
+-- for the respawn, or leave for the next: the camps already do that).
+function Journey.AreaYield(questID, index, left)
+  local area = ns.Quests.ObjectiveAreas(questID)[index]
+  left = left or ns.Quests.GroupsLeft(questID)
+  local groups = ns.Quests.ObjectiveGroups(questID)
+  local out, short = {}, false
+  if not area then return out, false end
+  local unknown = {}
+  for _, m in ipairs(area) do
+    if (left[m.group] or 0) > 0 then
+      out[m.group] = out[m.group] or { expect = 0, left = left[m.group] }
+      if m.yield then out[m.group].expect = out[m.group].expect + m.yield else unknown[m.group] = true end
+    end
+  end
+  for g, entry in pairs(out) do
+    if unknown[g] then
+      entry.unknown = true
+    elseif groups[g] and groups[g].kind == "item" and entry.expect < entry.left then
+      short = true
+    end
+  end
+  return out, short
+end
+
+-- How far short one clear of an area should fall of what's left, 0 (it
+-- should cover it) to 1 (nothing), over the items whose drop chance is
+-- known: Journey.PickArea weighs it.
+function Journey.Shortfall(questID, index, left)
+  local yield = Journey.AreaYield(questID, index, left)
+  local groups = ns.Quests.ObjectiveGroups(questID)
+  local worst = 0
+  for g, entry in pairs(yield) do
+    if not entry.unknown and groups[g] and groups[g].kind == "item" and entry.left > 0 and entry.expect < entry.left then
+      worst = math.max(worst, (entry.left - entry.expect) / entry.left)
+    end
+  end
+  return worst
+end
+
+-- Whether a quest's items are rare drops: some item it still needs that
+-- no one of its open areas should give even one of in a clear (the Stone
+-- of Relu, 1.5% from the raptors: every camp is short). Splitting such a
+-- quest over two camps only walks you between them; it's a stay-a-while
+-- quest, done wherever you are.
+function Journey.RareDrops(questID)
+  local left = ns.Quests.GroupsLeft(questID)
+  local groups = ns.Quests.ObjectiveGroups(questID)
+  local best = {}
+  for _, area in ipairs(Journey.OpenAreas(questID)) do
+    for g, entry in pairs(Journey.AreaYield(questID, area.index, left)) do
+      if not entry.unknown and groups[g] and groups[g].kind == "item" then
+        best[g] = math.max(best[g] or 0, entry.expect)
+      end
+    end
+  end
+  for _, expect in pairs(best) do
+    if expect < 1 then return true end
+  end
+  return false
+end
+
+local function sameQuest(a, b)
+  return a and b and a.action and b.action and a.action.questID == b.action.questID
+end
+
+-- A Continue stop's Progress stop (the one it comes after), or nil.
+function Journey.ProgressOf(stop)
+  if not (stop and stop.action and stop.action.part == "continue") then return nil end
+  for _, before in ipairs(stop.after or {}) do
+    if sameQuest(before, stop) and before.action.part == "progress" then return before end
+  end
+  return nil
+end
+
+-- Splits a quest's "Do" stop in `stops` (Journey.QuestStops) in two when
+-- the camp it's aimed at should give less than you still need and there's
+-- another camp: Progress there, then Continue at another, both before the
+-- hand-in. Spread quests (gathered as you go) and dungeons stay as they are.
+function Journey.SplitShort(stops)
+  local out = {}
+  for _, stop in ipairs(stops) do
+    out[#out + 1] = stop
+    local action = stop.action
+    if action and action.kind == "complete" and not action.part and not action.dungeon and stop.resolve
+        and not Journey.Spread(action.questID) then
+      -- The camp the plan would pick from here (one that should cover it, of two about as far).
+      local _, picked = Journey.PickArea(stop, stop.node)
+      local aimed, short = picked or Journey.AimedArea(stop), false
+      if aimed then
+        local _, isShort = Journey.AreaYield(action.questID, aimed)
+        short = isShort and not Journey.RareDrops(action.questID)
+      end
+      if short then
+        local q = ns.Quests.Quest(action.questID)
+        local name = q and q.name or ("quest " .. action.questID)
+        action.part = "progress"
+        stop.text = "Progress " .. name
+        local continue = { node = stop.node, text = "Continue " .. name, after = { stop },
+          action = { kind = "complete", questID = action.questID, part = "continue" },
+          resolve = { kind = "objectives", questID = action.questID } }
+        local node = Journey.PickArea(continue, stop.node)
+        if node then continue.node = node end
+        out[#out + 1] = continue
+        -- Whatever waited for the objectives (the hand-in) waits for both.
+        for _, other in ipairs(stops) do
+          for _, before in ipairs(other.after or {}) do
+            if before == stop and other ~= continue then
+              table.insert(other.after, continue)
+              break
+            end
+          end
+        end
+      end
+    end
+  end
+  return out
+end
+
+-- You've moved on from a Progress stop's camp (cleared it, or another spot):
+-- it's done, and its Continue is next. Returns true for a Progress stop.
+function Journey.FinishProgress(stop)
+  if not (stop and stop.action and stop.action.part == "progress") or stop.done then return false end
+  stop.done = true
+  return true
 end
 
 -- Whether the journey still has something to gather as you go.
@@ -1808,6 +1986,35 @@ function Journey.Replan(journey, start, net, first)
     first = first, keep = journey.stops }, net)
 end
 
+-- What planning writes on the stops it plans: where each is aimed, the area
+-- gone through on the way, gathered as you go, done together.
+local PLANNED = { "node", "aimArea", "via", "gather", "together", "joined" }
+
+-- A plan only measured (what a pickup adds, a follow-up, the plan report's
+-- fresh plan) with the journey's own stops: `fn(...)`, with those fields put
+-- back on `stops` after. Otherwise a what-if in another order leaves its
+-- aim on them (Apprentice's Duties aimed at the crocolisks by Menethil, as
+-- the Prospector's next in a fresh plan, though you'd dragged it after the
+-- Cursed Crew, by the wreck's). Returns what `fn` does.
+function Journey.Measure(stops, fn, ...)
+  local saved = {}
+  for _, stop in ipairs(stops or {}) do
+    local values = {}
+    for i, field in ipairs(PLANNED) do values[i] = stop[field] end
+    saved[stop] = values
+  end
+  local results = { n = 0 }
+  local function keep(...)
+    results.n = select("#", ...)
+    for i = 1, results.n do results[i] = (select(i, ...)) end
+  end
+  keep(fn(...))
+  for stop, values in pairs(saved) do
+    for i, field in ipairs(PLANNED) do stop[field] = values[i] end
+  end
+  return unpack(results, 1, results.n)
+end
+
 local function questKey(stop)
   local a = stop.action
   return a and a.questID and (a.kind .. ":" .. a.questID) or nil
@@ -1823,15 +2030,26 @@ function Journey.Extend(journey, stops)
     local key = questKey(stop)
     if key and open(stop) then have[key] = true end
   end
-  local added = 0
+  local added, took = 0, {}
+  local function add(stop)
+    took[stop] = true
+    -- In a trip you ordered yourself, the next plan finds it a place.
+    if root.manual then stop.unplaced = true end
+    table.insert(root.stops, stop)
+    added = added + 1
+  end
   for _, stop in ipairs(stops) do
-    local key = questKey(stop)
-    if not (key and have[key]) then
-      -- In a trip you ordered yourself, the next plan finds it a place.
-      if root.manual then stop.unplaced = true end
-      table.insert(root.stops, stop)
-      added = added + 1
-      if key then have[key] = true end
+    local progress = Journey.ProgressOf(stop)
+    if progress then
+      -- A quest's Continue stop comes with its Progress stop, or not at all
+      -- (the journey does that quest's objectives as one stop already).
+      if took[progress] then add(stop) end
+    else
+      local key = questKey(stop)
+      if not (key and have[key]) then
+        add(stop)
+        if key then have[key] = true end
+      end
     end
   end
   return added

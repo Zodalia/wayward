@@ -98,6 +98,17 @@ local function objectiveLines(stop, here)
     if ns.Journey.Cleared(stop, index) then flags[#flags + 1] = "cleared lately" end
     out[#out + 1] = string.format("      #%d: %d spots of %s; nearest %s, %s%s", index, #area, table.concat(kinds, ", "),
       place(nearest), yards(here, nearest), #flags > 0 and ("  [" .. table.concat(flags, ", ") .. "]") or "")
+    -- What one clear of it should give (drop chances), against what's left.
+    local yield, short = ns.Journey.AreaYield(questID, index)
+    local parts = {}
+    for g, entry in pairs(yield) do
+      parts[#parts + 1] = entry.unknown and string.format("%s: chance unknown, %d left", groups[g] or "?", entry.left)
+        or string.format("%s: ~%.1f of %d left", groups[g] or "?", entry.expect, entry.left)
+    end
+    table.sort(parts)
+    if #parts > 0 then
+      out[#out + 1] = string.format("          one clear should give %s%s", table.concat(parts, "; "), short and "  (short)" or "")
+    end
   end
   local respawn = ns.Journey.RespawnIn(stop)
   if respawn > 0 then out[#out + 1] = "      every area cleared: respawns in " .. ns.FormatDuration(respawn) end
@@ -228,10 +239,7 @@ function PlanReport.Build()
 
       -- A fresh plan from here, as a re-plan would make it, put back after.
       if here and not root.manual then
-        local saved = {}
-        for _, s in ipairs(root.stops or {}) do saved[s] = { node = s.node, aim = s.aimArea, via = s.via } end
-        local ok, fresh = ns.Protect(ns.Journey.Replan, journey, here, net)
-        for s, v in pairs(saved) do s.node, s.aimArea, s.via = v.node, v.aim, v.via end
+        local ok, fresh = ns.Journey.Measure(root.stops, ns.Protect, ns.Journey.Replan, journey, here, net)
         add("")
         add("From here, travel only:")
         add("  plan's order:  %s, %s", names(order), duration(travel(here, order, net)))

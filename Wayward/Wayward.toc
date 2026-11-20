@@ -24,6 +24,7 @@ Data\ZoneLinks.lua
 Data\VendorGoods.lua
 Data\Seed.lua
 Data\ClassSpells.lua
+Data\DropChances.lua
 Sources\Questie.lua
 Sources\QuestieLive.lua
 Sources\Spells.lua

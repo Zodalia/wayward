@@ -717,13 +717,13 @@ function Nav.PickupOffer(questIDs)
   if a then
     local base, open
     if a.journey then
-      base = ns.Journey.Replan(a.journey, here)
+      base = ns.Journey.Measure(root.stops, ns.Journey.Replan, a.journey, here)
       open = {}
       for _, s in ipairs(root.stops or {}) do
         if not s.done and not s.skipped then open[#open + 1] = s end
       end
       for _, s in ipairs(stops) do open[#open + 1] = s end
-      local with = base and ns.Journey.Plan(here, { stops = open })
+      local with = base and ns.Journey.Measure(open, ns.Journey.Plan, here, { stops = open })
       offer.extra = base and with and math.max(0, with.seconds - base.seconds) or nil
       -- What it adds if you keep your Hearthstone (Journey.Plan's withoutHearth).
       offer.extraNoHearth = offer.extra and math.max(0, with.withoutHearth - base.withoutHearth) or nil
@@ -1356,7 +1356,7 @@ function Nav.FollowUpOffer(stops, anyDistance, skip, base)
   local noRoute = false
   local function measureFrom()
     if not (base or noRoute) then
-      base = ns.Journey.Replan(a.journey, here)
+      base = ns.Journey.Measure(root.stops, ns.Journey.Replan, a.journey, here)
       noRoute = base == nil
     end
     return base
@@ -1380,7 +1380,7 @@ function Nav.FollowUpOffer(stops, anyDistance, skip, base)
           -- The journey with it (and the ones listed before), against the journey without.
           local with = { unpack(open) }
           for _, s in ipairs(qs) do with[#with + 1] = s end
-          local planned = ns.Journey.Plan(here, { stops = with })
+          local planned = ns.Journey.Measure(with, ns.Journey.Plan, here, { stops = with })
           local extra = planned and planned.seconds - base.seconds - travel
           -- One done inside a dungeon the journey doesn't go into yet costs a
           -- run of it: never on the way, so never in unasked.
@@ -2268,9 +2268,19 @@ end
 -- (or other stops while it respawns), saying which. False without a route.
 local function onFromCamp(a, stop, here)
   note("left a cleared spot of %s", stopName(stop))
+  -- Moving on from a Progress stop's camp: that stop's done, its Continue is next.
+  local progressed = ns.Journey.FinishProgress(stop)
   local journey = a.journey and ns.Journey.Replan(a.journey, here)
-  if not journey then return false end
+  if not journey then
+    if progressed then stop.done = nil end
+    return false
+  end
   a.lastReplan = GetTime and GetTime()
+  if progressed then
+    ns.print(string.format("on to another spot for %s.", questName(stop.action.questID)))
+    adopt(a, { steps = journey.steps, seconds = journey.seconds }, journey)
+    return true
+  end
   local areas, left = ns.Journey.OpenAreas(stop.action.questID), 0
   for _, area in ipairs(areas) do
     if not ns.Journey.Cleared(stop, area.index) then left = left + 1 end
@@ -2307,7 +2317,10 @@ local function progressOf(questID)
   return table.concat(parts, "|")
 end
 
-local function doingLater()
+-- So is killing one of its creatures there (`killed`, an NPC ID): a quest
+-- item at 1.5% (the Stone of Relu) can take dozens of kills before the log
+-- shows anything, and you're doing it all the same.
+local function doingLater(killed)
   local a = Nav.active
   if not (a and a.journey) or onTaxi() or Nav.Dead() then return end
   local here = ns.Geo.PlayerNodeExact()
@@ -2319,14 +2332,16 @@ local function doingLater()
     if stop and stop.action.kind == "complete" then
       local before, now = stop.progress, progressOf(stop.action.questID)
       stop.progress = now
+      local progressed = before ~= nil and before ~= now
+      local itsKill = type(killed) == "number" and ns.Quests.ObjectiveMobs(stop.action.questID).ids[killed] == true
       -- A quest done together with the stop you're heading for is that stop already.
       local together = stop.joined ~= nil and stop.joined == (current and current.stop)
-      if before and before ~= now and not busy and not together and stop ~= (current and current.stop) then
+      if (progressed or itsKill) and not busy and not together and stop ~= (current and current.stop) then
         local inside, _, area = areaOf(stop, here)
         if inside then
           stop.inArea = true
           ns.Journey.EnterArea(stop, area)
-          note("progress on %s in its area: put first", stopName(stop))
+          note("%s on %s in its area: put first", itsKill and not progressed and "a kill" or "progress", stopName(stop))
           local journey = ns.Journey.Replan(a.journey, here, nil, stop)
           if journey then
             a.lastReplan = GetTime and GetTime()
@@ -2340,7 +2355,60 @@ local function doingLater()
   end
 end
 
-ns.On("QUEST_LOG_UPDATE", doingLater)
+ns.On("QUEST_LOG_UPDATE", function() doingLater() end)
+
+-- Your kills: the creature's NPC ID, from what the client lets an addon see.
+-- Forever's client (the 12.x API) keeps the combat log from addons, so a
+-- kill is also read from the corpse you loot (the loot window says whose it
+-- is) and from your target lying dead, tapped by you, as the fight ends.
+-- Whatever the game keeps secret counts as no kill.
+local function secret(v)
+  return type(issecretvalue) == "function" and issecretvalue(v)
+end
+
+local function creatureID(guid)
+  if type(guid) ~= "string" or secret(guid) then return nil end
+  local kind, _, _, _, _, npc = strsplit("-", guid)
+  return kind == "Creature" and tonumber(npc) or nil
+end
+
+local function killed(guid)
+  local npc = creatureID(guid)
+  if npc and Nav.active and Nav.active.journey then doingLater(npc) end
+end
+
+-- The combat log, where the client still has it for addons (Classic Era).
+if CombatLogGetCurrentEventInfo then
+  ns.On("COMBAT_LOG_EVENT_UNFILTERED", function()
+    if not (Nav.active and Nav.active.journey) then return end
+    local _, subevent, _, sourceGUID, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
+    if subevent ~= "PARTY_KILL" or secret(sourceGUID) then return end
+    if sourceGUID ~= UnitGUID("player") and sourceGUID ~= UnitGUID("pet") then return end
+    killed(destGUID)
+  end)
+end
+
+-- A corpse you loot: its creature, even when nothing for the quest dropped.
+ns.On("LOOT_OPENED", function()
+  if not (Nav.active and Nav.active.journey and GetNumLootItems and GetLootSourceInfo) then return end
+  local seen = {}
+  for slot = 1, GetNumLootItems() or 0 do
+    local guid = GetLootSourceInfo(slot)
+    if guid and not secret(guid) and not seen[guid] then
+      seen[guid] = true
+      killed(guid)
+    end
+  end
+end)
+
+-- The fight's over and your target lies dead, tapped by you: you killed it.
+ns.On("PLAYER_REGEN_ENABLED", function()
+  if not (Nav.active and Nav.active.journey and UnitExists and UnitExists("target")) then return end
+  local dead = UnitIsDead and UnitIsDead("target")
+  local denied = UnitIsTapDenied and UnitIsTapDenied("target") or false
+  if secret(dead) or secret(denied) or not dead or denied then return end
+  killed(UnitGUID("target"))
+end)
 
 -- Progress on a quest in your log that isn't in the journey on now: asked
 -- about like a pickup, once per quest ("Not now" is remembered until it
@@ -2487,6 +2555,15 @@ end
 
 -- Whether the stop you're heading for has another spot to go to (its
 -- objectives are in more than one area): the directions box's Another spot.
+-- You'll stay in the camp you're in though it looks cleared (Camps.Stay).
+function Nav.Stay()
+  local stop = Nav.HeadingFor()
+  if not ns.Camps.Stay(stop) then return false end
+  note("you stayed on at a cleared spot of %s", stopName(stop))
+  showStep()
+  return true
+end
+
 function Nav.CanOtherArea()
   return ns.Journey.AimedArea(Nav.HeadingFor()) ~= nil
 end
@@ -2500,6 +2577,8 @@ function Nav.OtherArea()
   local here = ns.Geo.PlayerNodeExact()
   if not (a and stop and here) or not ns.Journey.OtherArea(stop) then return false end
   note("you asked for another spot for %s", stopName(stop))
+  -- A Progress stop's other spot is its Continue.
+  ns.Journey.FinishProgress(stop)
   local journey = ns.Journey.Replan(a.journey, here, nil, stop)
   if not journey then return false end
   a.lastReplan = GetTime and GetTime()
@@ -2568,9 +2647,7 @@ end
 -- re-plan, and the way still points where it did.
 local dead = false
 
-local function secretValue(v)
-  return type(issecretvalue) == "function" and issecretvalue(v)
-end
+local secretValue = secret
 
 function Nav.Dead()
   if UnitIsDeadOrGhost then

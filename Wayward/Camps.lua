@@ -86,12 +86,24 @@ function Camps.Watch(stop)
   else
     visit.emptySince = visit.emptySince or now
   end
-  visit.looksCleared = visit.seen == true and (visit.kills or 0) > 0 and visit.emptySince ~= nil
-    and now - visit.emptySince >= EMPTY_SECONDS
+  -- Said you'd stay: cleared again only after a kill since then.
+  local killedSince = (visit.kills or 0) > 0 and (not visit.stayedAt or (visit.last or 0) > visit.stayedAt)
+  visit.looksCleared = visit.seen == true and killedSince and visit.emptySince ~= nil
+    and now - math.max(visit.emptySince, visit.stayedAt or 0) >= EMPTY_SECONDS
 end
 
 function Camps.LooksCleared(stop)
   return stop ~= nil and stop.inArea == true and stop.visit ~= nil and stop.visit.looksCleared == true
+end
+
+-- You'll stay in the camp that looks cleared (for the respawn, or what's
+-- left of it): it isn't asked about again until you've killed there since
+-- and it's empty once more. Walking off it still counts it as worked.
+function Camps.Stay(stop)
+  local visit = stop and stop.inArea and stop.visit
+  if not visit then return false end
+  visit.looksCleared, visit.stayedAt = false, time()
+  return true
 end
 
 -- Seconds the stop's objectives should still take at your pace in this camp, or nil.

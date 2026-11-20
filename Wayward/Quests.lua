@@ -649,21 +649,37 @@ function Quests.LogMarker(questID)
   return node
 end
 
--- Places an item drops or can be picked up: its droppers' and objects' spawns.
-local function itemNodes(itemID, label, nodes)
+-- How often a creature (kind "n") or object ("o") drops an item, 0-1, from
+-- Data/DropChances.lua; nil when it doesn't say.
+local function dropChance(itemID, kind, sourceID)
+  local entry = ns.DropChances and ns.DropChances[itemID]
+  local list = entry and entry[kind]
+  for i = 1, list and #list or 0, 2 do
+    if list[i] == sourceID then return list[i + 1] / 100 end
+  end
+  return nil
+end
+
+-- Places an item drops or can be picked up: its droppers' and objects'
+-- spawns. `yields` (optional) gets, for each node, how many of the item one
+-- kill or one use there should give (its drop chance), or false when unknown.
+local function itemNodes(itemID, label, nodes, yields)
   nodes = nodes or {}
   local item = Data.Item(itemID)
   if not item then return nodes end
-  local function add(record)
-    for _, node in ipairs(record and Data.Nodes(record.positions, label) or {}) do nodes[#nodes + 1] = node end
+  local function add(record, chance)
+    for _, node in ipairs(record and Data.Nodes(record.positions, label) or {}) do
+      nodes[#nodes + 1] = node
+      if yields then yields[#nodes] = chance or false end
+    end
   end
   for i, npcID in ipairs(item.npcDrops or {}) do
     if i > MAX_DROPPERS then break end
-    add(Data.Npc(npcID))
+    add(Data.Npc(npcID), dropChance(itemID, "n", npcID))
   end
   for i, objectID in ipairs(item.objectDrops or {}) do
     if i > MAX_DROPPERS then break end
-    add(Data.Object(objectID))
+    add(Data.Object(objectID), dropChance(itemID, "o", objectID))
   end
   return nodes
 end
@@ -675,17 +691,25 @@ end
 local function objectiveGroups(q, label)
   local groups = {}
   local objectives = type(q.objectives) == "table" and q.objectives or {}
+  -- kind and id: what the objective is ("npc" to kill, "object" to use,
+  -- "item" to collect), for how many it asks (Quests.GroupsLeft). yields:
+  -- per node, how many one kill or use there gives (an item: its drop
+  -- chance, false when unknown).
   for _, creature in ipairs(objectives[1] or {}) do
     local npc = Data.Npc(creature[1])
-    groups[#groups + 1] = { name = npc and npc.name, nodes = npc and Data.Nodes(npc.positions, label) or {} }
+    groups[#groups + 1] = { name = npc and npc.name, nodes = npc and Data.Nodes(npc.positions, label) or {},
+      kind = "npc", id = creature[1] }
   end
   for _, object in ipairs(objectives[2] or {}) do
     local o = Data.Object(object[1])
-    groups[#groups + 1] = { name = o and o.name, nodes = o and Data.Nodes(o.positions, label) or {} }
+    groups[#groups + 1] = { name = o and o.name, nodes = o and Data.Nodes(o.positions, label) or {},
+      kind = "object", id = object[1] }
   end
   for _, item in ipairs(objectives[3] or {}) do
     local i = Data.Item(item[1])
-    groups[#groups + 1] = { name = i and i.name, nodes = itemNodes(item[1], label) }
+    local yields = {}
+    groups[#groups + 1] = { name = i and i.name, nodes = itemNodes(item[1], label, nil, yields),
+      kind = "item", id = item[1], yields = yields }
   end
   if type(q.triggerEnd) == "table" then
     groups[#groups + 1] = { name = type(q.triggerEnd[1]) == "string" and q.triggerEnd[1] or nil,
@@ -1225,6 +1249,42 @@ function Quests.ObjectivesLeft(questID)
   return known and left or nil
 end
 
+-- How many each of a quest's objective groups (ObjectiveGroups) still
+-- needs: { [group index] = count }, for the groups it can tell. In your log,
+-- from the log ("Giant Crocolisk Skin: 2/6" needs 4; finished needs 0);
+-- otherwise all the quest asks for (Data/DropChances.lua's counts).
+function Quests.GroupsLeft(questID)
+  local out = {}
+  local groups = Quests.ObjectiveGroups(questID)
+  local objectives = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(questID)
+  if type(objectives) == "table" and #objectives > 0 then
+    for g, group in ipairs(groups) do
+      for _, o in ipairs(objectives) do
+        if group.name and type(o.text) == "string" and o.text:find(group.name, 1, true) then
+          local have, need = o.numFulfilled, o.numRequired
+          if not (type(have) == "number" and type(need) == "number") then
+            local a, b = o.text:match("(%d+)%s*/%s*(%d+)")
+            have, need = tonumber(a), tonumber(b)
+          end
+          if o.finished then
+            out[g] = 0
+          elseif type(have) == "number" and type(need) == "number" then
+            out[g] = math.max(0, need - have)
+          end
+        end
+      end
+    end
+    return out
+  end
+  local counts = ns.ObjectiveCounts and ns.ObjectiveCounts[questID]
+  if not counts then return out end
+  for g, group in ipairs(groups) do
+    local byKind = group.kind == "npc" and counts.npc or group.kind == "item" and counts.item or nil
+    if byKind and byKind[group.id] then out[g] = byKind[group.id] end
+  end
+  return out
+end
+
 -- The same places as areas: spawns within AREA_LINK yards of each other (in a
 -- chain) are one area, e.g. one murloc camp up the coast from the next. Each
 -- area is a list of { node, group } (group: its index in ObjectiveGroups);
@@ -1235,7 +1295,13 @@ local areaCache = {}
 local function buildAreas(questID)
   local members = {}
   for g, group in ipairs(Quests.ObjectiveGroups(questID)) do
-    for _, node in ipairs(group.nodes) do members[#members + 1] = { node = node, group = g } end
+    for i, node in ipairs(group.nodes) do
+      -- yield: what one kill or use here gives towards the objective (1 for
+      -- a kill; an item's drop chance; nil when unknown).
+      local yield
+      if group.kind == "item" then yield = group.yields and group.yields[i] or nil else yield = 1 end
+      members[#members + 1] = { node = node, group = g, yield = yield or nil }
+    end
   end
   -- Single linkage over a grid of AREA_LINK cells: only neighbouring cells are compared.
   local parent, cells = {}, {}
