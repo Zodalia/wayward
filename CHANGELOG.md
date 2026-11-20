@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0 beta 3
+
+- **Follow the party leader** (new, a first take): the party leader can lead
+  the party's journeys (`/ww lead`), and party members can follow their
+  directions (`/ww follow`). While you follow, your own journey is set
+  aside, and you get it back when you stop. Quests a follower picks up are
+  offered to the leader's journey, even ones the leader can't take.
+- **Quests over two camps** (prototype): when one camp shouldn't drop enough
+  of what a quest needs, the journey gives it two stops, Progress at one camp
+  and Continue at another. Drop chances come from pfQuest. Staying for the
+  respawn in a camp that looks cleared is up to you.
+- **Controllers** (Forever): every Wayward window works with the game's
+  controller cursor. Lists scroll with the d-pad and right stick, and B closes.
+  A key binding (Key Bindings > AddOns > Wayward) moves the cursor to the
+  directions box.
+- **On the way** is a pane of its own, showing what's around where you
+  stand. Its rows say "+ Add", and you wave one off from its "...".
+- **Directions box**: "Stop 3 of 5" under the title, and the time to that
+  stop.
+- **Journey overview**: walk through the stops one step at a time, with the
+  map following. The stop you're on is lit, and Do later is in its menu.
+- The window fits smaller screens. Notes, toasts and the banner share one
+  close button, one time bar and labelled buttons. List rows are wider, each
+  with a labelled button.
+- Fixes: the route shows on OpenMap's seamless world map; no more blocked
+  action errors with a controller at login; "in the area" means among the
+  spawns, not a field away.
+
 ## 0.4.0 beta 2
 
 The first public beta. Wayward is a levelling helper for WoW Forever and
