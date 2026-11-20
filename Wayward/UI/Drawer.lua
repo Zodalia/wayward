@@ -346,6 +346,9 @@ end
 function Drawer.Toggle()
   if Drawer.IsShown() then
     Drawer.Hide()
+  elseif ns.Party and ns.Party.Following() then
+    -- Following the party leader: nothing to add to their journey from here.
+    ns.Party.Blocked()
   else
     -- Each time you open it: Nearby, or what you plainly need now (worn
     -- gear, full bags).

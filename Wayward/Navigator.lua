@@ -114,7 +114,8 @@ end
 -- The journey is saved per character so it survives logging out (see Resume).
 local function save()
   local a = Nav.active
-  if not a then
+  -- Following the party leader's directions (Party.lua) isn't yours to resume.
+  if not a or a.follow then
     ns.charDB.nav = nil
   elseif a.journey then
     ns.charDB.nav = { title = a.title, journey = ns.Journey.Save(a.journey), stats = a.stats }
@@ -334,7 +335,16 @@ function Nav.StopsFor(result)
   return {}
 end
 
+-- While following the party leader (Party.lua) your journey is theirs: nothing
+-- starts or changes it here. Says so, and true when that's so.
+local function following()
+  if not (ns.Party and ns.Party.Following()) then return false end
+  ns.Party.Blocked()
+  return true
+end
+
 function Nav.Start(title, goal, route)
+  if following() then return end
   if Nav.active then
     return ask(title, function() Nav.AddToTrip({ visitStop(title, goal) }, title) end,
       function() startRoute(title, goal, route) end)
@@ -345,6 +355,7 @@ end
 -- `journey` from ns.Journey.Plan. `quiet` skips the chat line and overview
 -- (used when resuming after a login) and never asks.
 function Nav.StartJourney(journey, quiet)
+  if following() then return end
   if Nav.active and not quiet then
     return ask(journey.title, function() Nav.AddToTrip(ns.Journey.OpenStops(journey), journey.title) end,
       function() startJourney(journey) end)
@@ -362,6 +373,26 @@ function Nav.Stop()
   Nav.active = nil
   save()
   ns.Fire("NAV_CHANGED")
+end
+
+-- Directions to where the party leader is heading (Party.lua): plain
+-- directions to `goal` that nothing here changes, without a chat line, a
+-- sound or a fanfare at the end (`follow`, the leader's name). Replaces what's
+-- on. False, with nothing on, when there's no route.
+function Nav.Follow(leader, title, goal)
+  local here = ns.Geo.PlayerNode()
+  local route = here and goal and ns.Router.Plan(here, goal, ns.Network.Build())
+  clearWaypoints()
+  if not route then
+    Nav.active = nil
+    save()
+    ns.Fire("NAV_CHANGED")
+    return false
+  end
+  note("following %s to %s", leader, goal.label or title or "?")
+  Nav.active = { title = title, goal = goal, route = ns.Router.WithZoneSteps(route), index = 1, follow = leader }
+  showStep()
+  return true
 end
 
 -- Walking to a flight master: the step after is the flight.
@@ -686,13 +717,16 @@ end
 -- The offer for the quests picked up: { label, stops, alone (seconds), extra
 -- (seconds more on the current journey, or nil without one), extraNoHearth
 -- (the same if you keep your Hearthstone; on a journey only) }, or nil.
-function Nav.PickupOffer(questIDs)
+-- `member` (Party.lua): quests a party member following you picked up, as
+-- { name, finished = { [questID] = true } }: their stops (Journey.MemberQuestStops).
+function Nav.PickupOffer(questIDs, member)
   local here = ns.Geo.PlayerNode()
   if not here then return nil end
   local stops, names, ids = {}, {}, {}
   for _, id in ipairs(questIDs) do
-    if not Nav.TripHasQuest(id) then
-      local qs = ns.Journey.QuestStops(id, here)
+    if not Nav.TripHasQuest(id, member and member.name) then
+      local qs = member and ns.Journey.MemberQuestStops(id, here, member.name, member.finished and member.finished[id])
+        or ns.Journey.QuestStops(id, here)
       if #qs > 0 then
         local q = ns.Quests.Quest(id)
         names[#names + 1] = q and q.name or ("quest " .. id)
@@ -705,7 +739,8 @@ function Nav.PickupOffer(questIDs)
   local label = #names == 1 and names[1] or string.format("%d quests", #names)
   local alone = ns.Journey.Plan(here, { title = label, kind = "quest", icon = QUEST_ICON, stops = stops })
   if not alone then return nil end
-  local offer = { label = label, names = names, ids = ids, stops = stops, alone = alone.seconds, journey = alone }
+  local offer = { label = label, names = names, ids = ids, stops = stops, alone = alone.seconds, journey = alone,
+    member = member and member.name }
   -- A quest done inside a dungeon costs a run of it, not just the walk to
   -- its door: that counts in what it adds (so it's never added unasked as
   -- "on the way"), unless the journey goes into that dungeon already.
@@ -796,9 +831,11 @@ end
 -- `what` says how you came by them ("picked up", "made progress on"). Letting
 -- it fade, or its x, is "not now". `offer`: Nav.PickupOffer(ids), when it's
 -- been worked out already (each one plans the journey over, twice).
-local function askAbout(ids, what, offer)
-  offer = offer or Nav.PickupOffer(ids)
+local function askAbout(ids, what, offer, member)
+  offer = offer or Nav.PickupOffer(ids, member)
   if not offer then return end
+  -- A party member's quest (Party.lua): who it was.
+  local who = member and member.name or "You"
   Nav.lastPickupOffer = offer
   -- Said with the question, a dungeon's word isn't said again when you add it.
   local dungeon, chain = ns.Journey.DungeonNote(offer.stops), chainNote(offer)
@@ -806,7 +843,7 @@ local function askAbout(ids, what, offer)
     note = dungeon and chain and (dungeon .. "\n" .. chain) or dungeon or chain,
     title = offer.label, detail = #offer.names > 1 and offer.names or nil }
   if Nav.active and offer.extra then
-    item.text = string.format("You %s %s. Add it to your journey (%s)?", what, offer.label, Nav.ExtraText(offer))
+    item.text = string.format("%s %s %s. Add it to your journey (%s)?", who, what, offer.label, Nav.ExtraText(offer))
     item.actions = {
       { label = "Add detour", icon = "add", run = function() Nav.AddToTrip(offer.stops, offer.label) end },
       { label = "New journey", icon = "journey",
@@ -819,7 +856,7 @@ local function askAbout(ids, what, offer)
         end },
     }
   else
-    item.text = string.format("You %s %s. Start a journey for it (%s)?", what, offer.label,
+    item.text = string.format("%s %s %s. Start a journey for it (%s)?", who, what, offer.label,
       ns.FormatDuration(offer.alone))
     item.actions = { { label = "Start journey", icon = "journey", run = function() startJourney(offer.journey) end } }
   end
@@ -836,13 +873,14 @@ end
 local AUTO_ADD_SLACK = 180
 
 local function autoAddLine(offer)
-  return string.format("picked up %s: added to your journey (%s more). The journey overview's x drops it.",
-    offer.label, ns.FormatDuration(offer.extra))
+  return string.format("%s %s: added to your journey (%s more). The journey overview's x drops it.",
+    offer.member and (offer.member .. " picked up") or "picked up", offer.label, ns.FormatDuration(offer.extra))
 end
 
 -- The snackbar for quests added without asking (Nav.AddToTrip's `notice`).
 local function autoAddNotice(offer)
-  return { text = string.format("Added %s to your journey (%s more).", offer.label, ns.FormatDuration(offer.extra)),
+  local label = offer.member and string.format("%s's %s", offer.member, offer.label) or offer.label
+  return { text = string.format("Added %s to your journey (%s more).", label, ns.FormatDuration(offer.extra)),
     quests = questSet(offer.ids), detail = #offer.names > 1 and offer.names or nil }
 end
 
@@ -853,10 +891,10 @@ end
 
 -- Also returns the offer for the quests left, when nothing was added (it's
 -- still what they'd add): asking about them needn't work it out again.
-local function autoAddPickups(ids)
+local function autoAddPickups(ids, member)
   local a = Nav.active
   if ns.db.settings.autoAddPickups == false or not (a and a.journey) then return ids end
-  local offer = Nav.PickupOffer(ids)
+  local offer = Nav.PickupOffer(ids, member)
   local adds = addsUnasked(offer)
   if adds and adds <= AUTO_ADD_SLACK then
     Nav.AddToTrip(offer.stops, offer.label, autoAddLine(offer), autoAddNotice(offer))
@@ -866,7 +904,7 @@ local function autoAddPickups(ids)
   if #ids == 1 then return ids, offer end
   local rest, budget, added = {}, AUTO_ADD_SLACK, false
   for _, id in ipairs(ids) do
-    local one = Nav.active and Nav.active.journey and Nav.PickupOffer({ id })
+    local one = Nav.active and Nav.active.journey and Nav.PickupOffer({ id }, member)
     adds = addsUnasked(one)
     if adds and adds <= budget and Nav.AddToTrip(one.stops, one.label, autoAddLine(one), autoAddNotice(one)) then
       budget, added = budget - adds, true
@@ -877,14 +915,31 @@ local function autoAddPickups(ids)
   return rest, not added and offer or nil
 end
 
-local function handlePickups(ids)
+local function handlePickups(ids, member)
+  -- Following the party leader: your pickups go to their journey (Party.lua).
+  if not member and ns.Party and ns.Party.Following() then return end
   local offer
-  ids, offer = autoAddPickups(ids)
+  ids, offer = autoAddPickups(ids, member)
   if #ids == 0 or ns.db.settings.askOnPickup == false then return end
-  -- Asked once: progress on it later isn't asked about again.
-  ns.charDB.askedProgress = ns.charDB.askedProgress or {}
-  for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
-  askAbout(ids, "picked up", offer)
+  -- Asked once: progress on it later isn't asked about again (a party
+  -- member's: Party.lua keeps that).
+  if not member then
+    ns.charDB.askedProgress = ns.charDB.askedProgress or {}
+    for _, id in ipairs(ids) do ns.charDB.askedProgress[id] = true end
+  end
+  askAbout(ids, "picked up", offer, member)
+end
+
+-- Quests a party member following you picked up or made progress on
+-- (`what`, as for your own; Party.lua): handled as yours would be, with
+-- their name on the question. `member` as for Nav.PickupOffer.
+function Nav.MemberQuests(member, ids, what)
+  if #ids == 0 then return end
+  if what == "picked up" then
+    ns.Warm(function() handlePickups(ids, member) end)
+  elseif Nav.active and ns.db.settings.askOnPickup ~= false then
+    ns.Warm(function() askAbout(ids, what, nil, member) end)
+  end
 end
 
 local function askPickups()
@@ -1230,6 +1285,7 @@ end
 local addingFollowUps -- true while follow-ups go in after another addition: that one makes the sound
 
 function Nav.AddToTrip(stops, label, message, notice)
+  if following() then return false end
   local here = ns.Geo.PlayerNode()
   if not here or #stops == 0 then return false end
   local a = Nav.active
@@ -1523,11 +1579,16 @@ function offerFollowUps(stops, planned)
 end
 
 -- True when the current journey still has an open stop for this quest.
-function Nav.TripHasQuest(questID)
+-- `owner`: a party member's stops for it only (Journey.MemberQuestStops),
+-- false for your own only; any stop for it when nil.
+function Nav.TripHasQuest(questID, owner)
   local a = Nav.active
   local root = a and a.journey and (a.journey.root or a.journey.def)
   for _, stop in ipairs(root and root.stops or {}) do
-    if stop.action and stop.action.questID == questID and not stop.done and not stop.skipped then return true end
+    if stop.action and stop.action.questID == questID and not stop.done and not stop.skipped
+      and (owner == nil or stop.owner == (owner or nil)) then
+      return true
+    end
   end
   return false
 end
@@ -1784,6 +1845,7 @@ end
 -- Starts set-aside journey `i` again, planned from here; a journey on now is
 -- set aside in its place. True when it started.
 function Nav.ResumeSetAside(i)
+  if following() then return false end
   local list = Nav.SetAsideList()
   local entry = list[i or 1]
   if not entry then
@@ -2316,6 +2378,7 @@ local function progressOf(questID)
   end
   return table.concat(parts, "|")
 end
+Nav.ProgressOf = progressOf
 
 -- So is killing one of its creatures there (`killed`, an NPC ID): a quest
 -- item at 1.5% (the Stone of Relu) can take dozens of kills before the log
@@ -2418,6 +2481,11 @@ local seenProgress, progressed, progressWaiting = {}, {}, false
 local function askProgress()
   if InCombatLockdown and InCombatLockdown() then return end -- PLAYER_REGEN_ENABLED asks
   progressWaiting = false
+  -- Following the party leader: their journey asks (Party.lua).
+  if ns.Party and ns.Party.Following() then
+    progressed = {}
+    return
+  end
   local ids, seen = {}, {}
   for _, id in ipairs(progressed) do
     if not seen[id] and not Nav.TripHasQuest(id) and not ns.charDB.askedProgress[id] then ids[#ids + 1] = id end
@@ -2491,6 +2559,46 @@ function Nav.QuestAbandoned(questID)
 end
 
 ns.Listen("QUEST_ABANDONED", Nav.QuestAbandoned)
+
+-- A party member following you moved on with a quest (Party.lua): `event`
+-- "pickup", "complete" (its objectives done), "turnin" or "abandon". Their
+-- stops for it on the journey (Journey.MemberQuestStops) are done, or
+-- dropped with what needs them, and the journey goes on from there. True
+-- when any stop changed.
+local MEMBER_KINDS = {
+  pickup = { pickup = true },
+  complete = { complete = true, manual = true, item = true },
+  turnin = { pickup = true, complete = true, manual = true, item = true, turnin = true },
+}
+
+function Nav.MemberQuestEvent(owner, event, questID)
+  local a = Nav.active
+  if not (a and a.journey) then return false end
+  local root = a.journey.root or a.journey.def
+  local kinds, changed = MEMBER_KINDS[event], false
+  for _, stop in ipairs(root.stops or {}) do
+    local action = stop.action
+    if stop.owner == owner and action and action.questID == questID and not stop.done and not stop.skipped then
+      if event == "abandon" then
+        stop.skipped, changed = true, true
+        for _, other in ipairs(dependents(a.journey, stop)) do other.skipped = true end
+      elseif kinds and kinds[action.kind] then
+        stop.done, stop.passed, changed = true, nil, true
+      end
+    end
+  end
+  if not changed then return false end
+  note("%s: %s %s", owner, event, questName(questID))
+  if event == "abandon" then
+    ns.print(string.format("%s abandoned %s: dropped from your journey.", owner, questName(questID)))
+  end
+  if not ns.Journey.HasOpenStops(root) then
+    if event == "abandon" then endEarly() else arrive() end
+    return true
+  end
+  Nav.Recalculate()
+  return true
+end
 
 ---------------------------------------------------------------- move on, skip
 
@@ -2889,6 +2997,13 @@ function Nav.Tick()
         end
       elseif flightTalk(steps, k) and not onTaxi() then
         -- At the flight master: the flight starts when you open their map.
+        a.waiting = true
+        if a.index ~= k then
+          a.index = k
+          showStep()
+        end
+      elseif k == #steps and a.follow then
+        -- Where the party leader is heading: you wait there with them.
         a.waiting = true
         if a.index ~= k then
           a.index = k

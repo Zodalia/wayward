@@ -48,6 +48,7 @@ PlanReport.lua
 OnTheWay.lua
 Errands.lua
 Wayside.lua
+Party.lua
 Marker.lua
 Docks.lua
 Dungeons.lua

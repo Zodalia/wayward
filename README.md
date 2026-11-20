@@ -565,6 +565,27 @@ play it. `/ww sounds export` opens your choices as one line to copy
 (`popup=7355 step=836 …`). Moments: `popup`, `step`, `start`,
 `complete`, `toast`.
 
+### Following the party leader
+
+A first take on journeys across a party. When you lead a party, Wayward asks
+once whether you'd like to lead its journeys too (`/ww lead` any time). If
+you say yes, party members with Wayward, there now or joining later, are asked
+once whether to follow your directions (`/ww follow`).
+
+- **Following**, your own journey is set aside. The directions box, arrow,
+  minimap and map show the way to the stop the leader is heading for, and
+  nothing on it can be added or changed. At the stop you wait for the
+  leader's next one. The box's x asks whether to stop following, and
+  stopping picks your own journey up where you left it. So does the leader
+  stopping leading or leaving the group.
+- **Leading**, the journey is yours as usual. When a follower picks up a
+  quest or makes progress on one that isn't on the journey, you're asked
+  about it the way you would be about your own ("Ruth picked up The Tome of
+  Valor. Add it to your journey?"), even if it's a quest you can't take.
+  Its stops are theirs: done when their objectives are done or they hand it
+  in. Ending a journey leaves the party following you for the next one, with
+  an offer to stop leading as well.
+
 ### Getting around
 
 - **Walking goes zone by zone**, not as the crow flies. A walk into another

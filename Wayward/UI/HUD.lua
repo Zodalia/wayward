@@ -190,7 +190,14 @@ local function create()
   -- The x: ends the journey (asks first) or stops plain directions, or hides
   -- the small bar (the options bring it back).
   f.close:SetScript("OnClick", function()
-    if ns.Nav.active then ns.Nav.End() else HUD.HideIdle() end
+    -- Following the party leader (Party.lua): asks whether to stop following.
+    if ns.Nav.active and ns.Nav.active.follow then
+      ns.Party.AskLeave()
+    elseif ns.Nav.active then
+      ns.Nav.End()
+    else
+      HUD.HideIdle()
+    end
   end)
   tooltip(f.close, "Stop directions")
   ns.Skin.CloseButton(f.close)
@@ -547,7 +554,7 @@ local function refreshWayside(force)
   local ok, w = pcall(ns.Wayside.Get, false)
   if not ok then w = { gathering = {}, offers = {}, more = 0 } end
   frame.waysideCount = #w.offers + (w.more or 0)
-  showGathering(w.gathering)
+  showGathering((ns.Nav.active and ns.Nav.active.follow) and {} or w.gathering)
   ns.Drawer.Sync()
   local open = ns.Drawer.IsShown()
   frame.add.count:SetText((frame.waysideCount > 0 and not open) and tostring(frame.waysideCount) or "")
@@ -702,7 +709,11 @@ function HUD.Update()
   frame.moveOn:SetShown(trip)
   frame.skip:SetShown(trip)
   frame.close:Show()
-  frame.close.tip = trip and "End journey" or "Stop directions"
+  frame.close.tip = a.follow and "Stop following" or trip and "End journey" or "Stop directions"
+  -- Following the party leader: their journey, so nothing to add to it here.
+  frame.add:SetShown(not a.follow)
+  frame.footRule:SetShown(not a.follow)
+  if a.follow and ns.Drawer.IsShown() then ns.Drawer.Hide(true) end
   refreshWayside()
   place(trip)
 

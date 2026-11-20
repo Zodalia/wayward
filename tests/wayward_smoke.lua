@@ -11209,6 +11209,225 @@ do
   player.mapID, player.x, player.y = 1433, 0.5, 0.5
 end
 -- ===== journey overview: the walkthrough (end) =====
+-- ===== party: follower mode (begin) =====
+-- The party leader leads the party's journeys; members follow their
+-- directions, their own journeys set aside; what would have asked a follower
+-- about a detour asks the leader, quests the leader doesn't have included.
+do
+  io.write("party: follower mode\n")
+  ns.Nav.Stop()
+  ns.Snackbar.Clear()
+  ns.charDB.journeys = nil
+  player.mapID, player.x, player.y = 1433, 0.50, 0.50
+  local P = ns.Party
+  local here = ns.Geo.PlayerNode()
+  local function stop(x, label, kind, questID)
+    return { node = ns.Geo.Node(1433, x, 0.5, label), text = label, action = questID and { kind = kind, questID = questID } or nil }
+  end
+
+  -- A party of two, and the addon channel.
+  local saved = { IsInGroup = IsInGroup, IsInRaid = IsInRaid, UnitIsGroupLeader = UnitIsGroupLeader,
+    GetNumGroupMembers = GetNumGroupMembers, UnitExists = UnitExists, UnitName = UnitName, C_ChatInfo = C_ChatInfo,
+    Ambiguate = Ambiguate, QuestStops = ns.Journey.QuestStops, autoAdd = ns.db.settings.autoAddPickups,
+    completed = C_QuestLog.GetAllCompletedQuestIDs }
+  local group = { size = 2, leader = "player", other = "Ruth" }
+  IsInGroup = function() return group.size > 1 end
+  IsInRaid = function() return false end
+  GetNumGroupMembers = function() return group.size end
+  UnitExists = function(u) return u == "player" or (u == "party1" and group.size > 1) end
+  UnitIsGroupLeader = function(u) return u == group.leader end
+  UnitName = function(u)
+    if u == "party1" then return group.other end
+    return saved.UnitName(u)
+  end
+  Ambiguate = function(name) return (name:gsub("%-.*$", "")) end
+  local sent = {}
+  C_ChatInfo = { SendAddonMessage = function(prefix, msg, channel) sent[#sent + 1] = { prefix = prefix, msg = msg, channel = channel } end }
+  local function last() return sent[#sent] and sent[#sent].msg end
+  local function from(name, msg) fire("CHAT_MSG_ADDON", "Wayward", msg, "PARTY", name .. "-Realm") end
+  local asked
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, text, _, data) asked = { which = which, text = text, data = data } end
+
+  ---------------------------------------------------------------- leading
+
+  fire("GROUP_ROSTER_UPDATE")
+  check(asked and asked.which == "WAYWARD_LEAD" and asked.text:find("Lead its journeys too?", 1, true),
+    "the party leader is asked whether to lead its journeys: " .. tostring(asked and asked.text))
+  asked = nil
+  fire("GROUP_ROSTER_UPDATE")
+  check(asked == nil, "once per group: not asked again")
+  StaticPopupDialogs.WAYWARD_LEAD.OnAccept()
+  check(P.Leading() and last() == "LEAD" and sent[#sent].prefix == "Wayward" and sent[#sent].channel == "PARTY",
+    "leading tells the party: " .. tostring(last()))
+  from("Ruth", "FOLLOW")
+  check(P.followers.Ruth and last() == "STOP", "a member following is told where you're heading: nowhere yet")
+  local before = #sent
+  from("Zodalia", "FOLLOW")
+  check(#sent == before, "messages from yourself are ignored")
+
+  -- Someone new in the group is asked too.
+  group.size = 3
+  fire("GROUP_ROSTER_UPDATE")
+  check(last() == "LEAD", "a member joining: the party is told again, so they're asked")
+  group.size = 2
+  fire("GROUP_ROSTER_UPDATE")
+
+  -- Your journey's stop goes to the followers whenever it changes.
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Lead on", stops = { stop(0.53, "First stop"), stop(0.56, "Second stop") } }), true)
+  local msg = last()
+  check(msg and msg:find("^STOP|1433|0%.5300|0%.5000|Lead on|First stop|First stop"),
+    "the stop you're heading for goes to the followers: " .. tostring(msg))
+  before = #sent
+  ns.HUD.Update()
+  ns.Fire("NAV_CHANGED")
+  check(#sent == before, "and only when it changes")
+
+  -- A follower picks up a quest you don't have: you're asked about it, with their name.
+  ns.Journey.QuestStops = function(questID)
+    local pick = { node = ns.Geo.Node(1433, 0.58, 0.5, "Giver"), text = "Pick up Tome", action = { kind = "pickup", questID = questID } }
+    local work = { node = ns.Geo.Node(1433, 0.6, 0.5, "Camp"), text = "Do Tome", after = { pick }, action = { kind = "complete", questID = questID } }
+    local hand = { node = ns.Geo.Node(1433, 0.62, 0.5, "Finisher"), text = "Hand in Tome", after = { work }, action = { kind = "turnin", questID = questID } }
+    return { pick, work, hand }
+  end
+  local theirs = ns.Journey.MemberQuestStops(9901, here, "Ruth")
+  check(#theirs == 2 and theirs[1].owner == "Ruth" and theirs[1].text == "Do Tome (Ruth)" and theirs[1].after == nil
+    and theirs[2].action.kind == "turnin", "a member's quest: their stops, no pickup (they have it), their name on each")
+  check(#ns.Journey.MemberQuestStops(9901, here, "Ruth", true) == 1, "objectives done in their log: just the hand-in")
+  ns.db.settings.autoAddPickups = false
+  from("Ruth", "Q|pickup|9901|0")
+  runTimers()
+  local bar = ns.Snackbar.Current()
+  check(bar and bar.text:find("^Ruth picked up quest 9901") and bar.text:find("Add it to your journey", 1, true),
+    "the leader is asked about the follower's quest: " .. tostring(bar and bar.text))
+  ns.Snackbar.Click(1)
+  local root = ns.Nav.active.journey.root or ns.Nav.active.journey.def
+  local owned = {}
+  for _, s in ipairs(root.stops) do if s.owner == "Ruth" then owned[#owned + 1] = s end end
+  check(#owned == 2 and ns.Nav.TripHasQuest(9901, "Ruth") and not ns.Nav.TripHasQuest(9901, false),
+    "Add detour puts their stops on your journey, as theirs")
+  check(ns.Journey.Load(ns.Journey.Save(ns.Nav.active.journey)).stops[3].owner == "Ruth", "whose stop it is is saved")
+
+  -- Your own quest log doesn't move their stops on; their Wayward does.
+  C_QuestLog.GetAllCompletedQuestIDs = function() return { 2, 9901 } end
+  fire("QUEST_LOG_UPDATE")
+  check(not owned[1].done and not owned[2].done, "your quest log never marks a follower's stops done")
+  C_QuestLog.GetAllCompletedQuestIDs = saved.completed
+  from("Ruth", "Q|complete|9901|1")
+  check(owned[1].done and not owned[2].done, "their objectives done: the stop is done")
+  from("Ruth", "Q|progress|9901|1")
+  check(ns.Snackbar.Current() == nil, "progress on a quest on the journey asks nothing")
+  from("Ruth", "Q|turnin|9901|0")
+  check(owned[2].done and ns.Nav.active ~= nil, "handed in: done, and the journey goes on")
+  from("Mallory", "Q|pickup|9902|0")
+  runTimers()
+  check(ns.Snackbar.Current() == nil, "someone who isn't following is never asked about")
+
+  -- Ending the journey: they keep following, unless you'd rather stop leading.
+  ns.Nav.Stop()
+  check(last() == "STOP", "no journey: the followers are told")
+  runTimers()
+  bar = ns.Snackbar.Current()
+  check(bar and bar.text:find("Ruth is still following you", 1, true) and bar.actions[1].label == "Stop leading",
+    "a journey ended: an offer to stop leading as well: " .. tostring(bar and bar.text))
+  ns.Snackbar.Click(1)
+  check(not P.Leading() and last() == "UNLEAD" and next(P.followers) == nil, "Stop leading tells the followers")
+  ns.Journey.QuestStops = saved.QuestStops
+  ns.db.settings.autoAddPickups = saved.autoAdd
+
+  ---------------------------------------------------------------- following
+
+  group.leader, group.other = "party1", "Thrall"
+  asked = nil
+  fire("GROUP_ROSTER_UPDATE")
+  check(asked == nil, "not the leader: not asked to lead")
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "My own", stops = { stop(0.53, "Mine one"), stop(0.56, "Mine two") } }), true)
+  from("Ruth", "LEAD")
+  check(asked == nil, "only the party leader can lead")
+  from("Thrall", "LEAD")
+  check(asked and asked.which == "WAYWARD_FOLLOW" and asked.text:find("Thrall is leading", 1, true),
+    "the leader leading: asked whether to follow: " .. tostring(asked and asked.text))
+  StaticPopupDialogs.WAYWARD_FOLLOW.OnAccept(nil, asked.data)
+  local list = ns.Nav.SetAsideList()
+  check(P.Following() == "Thrall" and last() == "FOLLOW" and ns.Nav.active == nil and #list == 1
+    and list[1].title == "My own" and list[1].followAside, "following sets your journey aside and tells the leader")
+
+  from("Thrall", "STOP|1433|0.6000|0.5000|Lead on|Lakeshire|Hand in Tome")
+  local a = ns.Nav.active
+  check(a and a.follow == "Thrall" and a.title == "Following Thrall: Hand in Tome" and a.goal.label == "Lakeshire"
+    and ns.charDB.nav == nil, "directions to where the leader is heading, not saved as yours: " .. tostring(a and a.title))
+  ns.HUD.Refresh()
+  local hud = ns.HUD.Frame()
+  check(not hud.add:IsShown() and not hud.list:IsShown() and not hud.skip:IsShown() and hud.close:IsShown()
+    and hud.close.tip == "Stop following", "the directions box: directions only, and an x that stops following")
+  from("Ruth", "STOP|1433|0.1|0.1|X|Y|Z")
+  check(ns.Nav.active.goal.label == "Lakeshire", "only the leader's directions are followed")
+
+  -- Nothing about the journey changes here.
+  before = #chat
+  ns.Nav.StartJourney(ns.Journey.Plan(here, { title = "Sneaky", stops = { stop(0.53, "S") } }), true)
+  check(ns.Nav.active.follow and chat[before + 1] and chat[before + 1]:find("you're following Thrall", 1, true),
+    "starting a journey while following says why it can't")
+  check(ns.Nav.AddToTrip({ stop(0.53, "Detour") }, "Detour") == false and ns.Nav.ResumeSetAside(1) == false
+    and ns.Nav.active.follow, "nor can a detour be added or a journey resumed")
+  ns.Drawer.Toggle()
+  check(not ns.Drawer.IsShown(), "nor On the way opened")
+
+  -- Your quests go to the leader, not to a question here.
+  ns.Snackbar.Clear()
+  fire("QUEST_ACCEPTED", 9903)
+  check(last() == "Q|pickup|9903|0", "a quest picked up is told to the leader: " .. tostring(last()))
+  runTimers()
+  check(ns.Snackbar.Current() == nil, "and nothing asks you about it")
+  fire("QUEST_TURNED_IN", 9903)
+  check(last() == "Q|turnin|9903|0", "handed in: told too")
+  ns.Fire("QUEST_ABANDONED", 9904)
+  check(last() == "Q|abandon|9904|0", "abandoned: told too")
+
+  -- At the stop you wait for the leader; their next stop moves you on.
+  player.x = 0.6
+  ns.HUD.Update()
+  check(ns.Nav.active and ns.Nav.active.follow and ns.Nav.Waiting(), "arrived where the leader is heading: you wait there")
+  player.x = 0.5
+  from("Thrall", "STOP")
+  check(ns.Nav.active == nil and P.Following() == "Thrall", "the leader with no journey: you wait, still following")
+
+  -- The x: asks, then your own journey picks up again.
+  from("Thrall", "STOP|1433|0.6000|0.5000|Lead on|Lakeshire|Hand in Tome")
+  asked = nil
+  hud.close.scripts.OnClick(hud.close)
+  check(asked and asked.which == "WAYWARD_UNFOLLOW", "the box's x asks whether to stop following")
+  StaticPopupDialogs.WAYWARD_UNFOLLOW.OnAccept()
+  check(P.Following() == nil and last() == "UNFOLLOW" and ns.Nav.active and ns.Nav.active.title == "My own"
+    and #ns.Nav.SetAsideList() == 0, "stopping picks your own journey up again: " .. tostring(ns.Nav.active and ns.Nav.active.title))
+
+  -- Not now sticks for the group.
+  from("Thrall", "LEAD")
+  StaticPopupDialogs.WAYWARD_FOLLOW.OnCancel(nil, asked.data)
+  asked = nil
+  from("Thrall", "LEAD")
+  check(asked == nil, "said not now: not asked again")
+  SlashCmdList.WAYWARD("follow")
+  check(P.Following() == "Thrall", "/ww follow follows anyway")
+
+  -- The leader stopping, or leaving: back to your own journey.
+  from("Thrall", "UNLEAD")
+  check(P.Following() == nil and ns.Nav.active and ns.Nav.active.title == "My own", "the leader stopping leading ends it")
+  from("Thrall", "LEAD")
+  P.Follow("Thrall")
+  group.size = 1
+  fire("GROUP_ROSTER_UPDATE")
+  check(P.Following() == nil and ns.Nav.active and ns.Nav.active.title == "My own", "leaving the group ends it")
+
+  ns.Nav.Stop()
+  ns.Snackbar.Clear()
+  ns.charDB.journeys, ns.charDB.party = nil, nil
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  IsInGroup, IsInRaid, UnitIsGroupLeader = saved.IsInGroup, saved.IsInRaid, saved.UnitIsGroupLeader
+  GetNumGroupMembers, UnitExists, UnitName = saved.GetNumGroupMembers, saved.UnitExists, saved.UnitName
+  C_ChatInfo, Ambiguate = saved.C_ChatInfo, saved.Ambiguate
+end
+-- ===== party: follower mode (end) =====
 for _, line in ipairs(chat) do io.write("[chat] ", line, "\n") end
 if failures > 0 then
   io.write(failures, " FAILED\n")

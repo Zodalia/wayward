@@ -109,6 +109,9 @@ function Journey.SyncQuestState(def)
   local function sync(stop)
     local action = stop and stop.action
     if not (action and action.questID) or (stop.done and not stop.passed) then return end
+    -- A party member's quest (Journey.MemberQuestStops) follows their log,
+    -- not yours: their Wayward says when it moves on (Party.lua).
+    if stop.owner then return end
     local id = action.questID
     local now
     if action.kind == "pickup" then
@@ -222,6 +225,38 @@ function Journey.QuestStops(questID, here, seen)
   end
   -- One camp short of what it needs: Progress there, Continue at another.
   return Journey.SplitShort(stops)
+end
+
+-- The stops for a quest a party member following you has (Party.lua): the
+-- same as Journey.QuestStops, less the pickup (they have it) and, once
+-- `finished` (its objectives done in their log), all but the hand-in. Each
+-- stop is theirs (`owner`, their name, in its text too): your quest log
+-- never marks it done; their Wayward does (Navigator's MemberQuestEvent).
+function Journey.MemberQuestStops(questID, here, owner, finished)
+  local stops = Journey.QuestStops(questID, here)
+  local gone = {}
+  for _, s in ipairs(stops) do
+    local kind = s.action and s.action.kind
+    if s.action and s.action.questID == questID and (kind == "pickup" or (finished and kind ~= "turnin")) then
+      gone[s] = true
+    end
+  end
+  local out = {}
+  for _, s in ipairs(stops) do
+    if not gone[s] then
+      s.owner = owner
+      s.text = string.format("%s (%s)", s.text or Journey.DefaultText(s) or "?", owner)
+      if s.after then
+        local keep = {}
+        for _, before in ipairs(s.after) do
+          if not gone[before] then keep[#keep + 1] = before end
+        end
+        s.after = #keep > 0 and keep or nil
+      end
+      out[#out + 1] = s
+    end
+  end
+  return out
 end
 
 ---------------------------------------------------------------- objective areas
@@ -2017,7 +2052,8 @@ end
 
 local function questKey(stop)
   local a = stop.action
-  return a and a.questID and (a.kind .. ":" .. a.questID) or nil
+  -- Two party members on the same quest: a stop each (Journey.MemberQuestStops).
+  return a and a.questID and (a.kind .. ":" .. a.questID .. (stop.owner and ("@" .. stop.owner) or "")) or nil
 end
 
 -- Adds stops to a journey's plan, skipping quest stops it already has open.
@@ -2305,7 +2341,8 @@ function Journey.Save(journey)
     end
     return { node = saveNode(stop.node), text = stop.text, giver = stop.giver, npc = stop.npc, action = stop.action, resolve = stop.resolve,
       done = stop.done, passed = stop.passed, skipped = stop.skipped, worked = stop.worked, after = links.after,
-      later = links.later, laterUntil = stop.laterUntil, pinned = stop.pinned, pinAfter = links.pinAfter, pinnedBy = links.pinnedBy }
+      later = links.later, laterUntil = stop.laterUntil, pinned = stop.pinned, pinAfter = links.pinAfter, pinnedBy = links.pinnedBy,
+      owner = stop.owner }
   end
   local saved = { title = root.title, kind = root.kind, icon = root.icon, manual = root.manual, stops = {} }
   for i, stop in ipairs(root.stops or {}) do saved.stops[i] = save(stop) end
@@ -2352,7 +2389,8 @@ function Journey.Load(saved)
   local def = { title = saved.title, kind = saved.kind, icon = saved.icon, manual = saved.manual, stops = {} }
   local function load(s)
     return { node = loadNode(s.node), text = s.text, giver = s.giver, npc = s.npc, action = s.action, resolve = s.resolve, done = s.done,
-      passed = s.passed, skipped = s.skipped, worked = s.worked, laterUntil = s.laterUntil, pinned = s.pinned }
+      passed = s.passed, skipped = s.skipped, worked = s.worked, laterUntil = s.laterUntil, pinned = s.pinned,
+      owner = s.owner }
   end
   for i, s in ipairs(saved.stops or {}) do def.stops[i] = load(s) end
   for i, s in ipairs(saved.stops or {}) do
